@@ -1,0 +1,24 @@
+# build output
+/target/
+/classes/
+*.jar
+
+# frontend deps fetched at build time — never vendored (SPEC §6.3)
+/node_modules/
+/resources/public/vendor/
+
+# generated mesh + thumbnail cache
+/cache/
+/thumbs/
+
+# clojure tooling
+.cpcache/
+.nrepl-port
+.lsp/
+.clj-kondo/.cache/
+
+# editor / os
+.idea/
+*.iml
+.vscode/
+.DS_Store
