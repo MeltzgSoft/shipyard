@@ -119,40 +119,90 @@ self-describing - a copied part folder carries its own mount data.
 
 ## 2. Project layout
 
+**Source roots are split by runtime.** A single `src/` would put `.cljs` files on the JVM
+classpath and ship them inside the uberjar - dead weight that also blurs which code runs
+where. Splitting makes the boundary a build fact rather than a naming convention.
+
 ```
 shipyard/
-├── deps.edn
-├── build.clj                       tools.build: vendor fetch, uberjar
-├── package.json                    pinned three.js + htmx, fetched at build
+├── deps.edn                        :paths ["src/clj" "src/cljc" "resources"]
+├── shadow-cljs.edn                 :source-paths ["src/cljs" "src/cljc"]
+├── build.clj                       tools.build: npm, shadow release, uberjar
+├── package.json / package-lock.json    pinned three.js + htmx
+├── node_modules/                   GITIGNORED
 ├── SPEC.md  TECHNICAL.md
-├── src/shipyard/
-│   ├── main.clj                    entry point, system lifecycle
-│   ├── config.clj                  XDG paths, library root, tunables
-│   ├── library/
-│   │   ├── scan.clj                part-folder discovery
-│   │   └── index.clj               mtime+size scan cache
-│   ├── catalog/
-│   │   ├── db.clj                  datascript conn, schema, queries
-│   │   └── sidecar.clj             shipyard.edn read/write
-│   ├── mesh/
-│   │   ├── stl.clj                 binary STL parse
-│   │   ├── weld.clj                vertex dedup + crease-split normals
-│   │   ├── lod.clj                 meshoptimizer via LWJGL
-│   │   ├── wire.cljc               .symesh layout - SHARED, encode JVM / decode CLJS
-│   │   └── cache.clj               lazy preprocess + disk cache
-│   ├── http/
-│   │   ├── routes.clj              reitit
-│   │   ├── views.clj               hiccup
-│   │   └── htmx.clj                HX-Trigger helpers
-│   └── viewport.cljs               the browser island (CLJS)
-├── shadow-cljs.edn
-├── resources/public/
-│   ├── app.css
-│   └── js/                         GITIGNORED - shadow-cljs output
-└── test/shipyard/
-    ├── fixtures/                   small generated STLs, committed
-    └── mesh/…
+│
+├── src/clj/shipyard/               JVM only
+│   ├── main.clj                    entry point: read config, ig/init, shutdown hook
+│   ├── system.clj                  integrant key derivation, halt ordering
+│   ├── library/{scan,index}.clj    part-folder discovery; mtime+size scan cache
+│   ├── catalog/{db,sidecar}.clj    datascript conn + schema; shipyard.edn read/write
+│   ├── mesh/{stl,weld,lod,cache}.clj
+│   └── http/{routes,views,htmx}.clj
+│
+├── src/cljc/shipyard/              BOTH runtimes
+│   ├── wire.cljc                   .symesh layout - encode JVM / decode CLJS
+│   └── geom.cljc                   mount frames, assembly transform, mirroring
+│
+├── src/cljs/shipyard/              browser only
+│   └── viewport.cljs               the island
+│
+├── resources/
+│   ├── config.edn                  system configuration (§2.1)
+│   └── public/
+│       ├── app.css
+│       └── js/                     GITIGNORED - shadow-cljs output + htmx copy
+│
+└── test/
+    ├── clj/shipyard/               unit + integration + e2e (§10)
+    ├── cljc/shipyard/wire_test.cljc    runs on BOTH runtimes
+    └── fixtures/                   small generated STLs, committed
 ```
+
+`geom.cljc` is new and belongs in `cljc` for the same reason `wire.cljc` does: the
+assembly transform (SPEC §5.3) is computed server-side to place parts, and the viewport
+needs the same maths for the M2 wizard's live gizmo preview. One definition, not two.
+
+### 2.1 Configuration
+
+**Configuration is data, not code.** `resources/config.edn` holds the integrant system map;
+no namespace exists to hold constants.
+
+```clojure
+;; resources/config.edn - read with aero, which supplies #env / #or / #profile
+{:shipyard/library    {:root #or [#env SHIPYARD_LIBRARY #ref [:xdg :data-home]]}
+ :shipyard/catalog    {:library #ig/ref :shipyard/library}
+ :shipyard/mesh-cache {:dir       #ref [:xdg :cache-home]
+                       :cap-bytes #profile {:default 4294967296 :test 67108864}
+                       :threads   #or [#env SHIPYARD_THREADS :auto]
+                       :crease-deg 35
+                       :lod-tiers [1.0 0.25 0.05]}
+ :shipyard/http       {:port    #or [#env PORT 8080]
+                       :catalog #ig/ref :shipyard/catalog
+                       :cache   #ig/ref :shipyard/mesh-cache}}
+```
+
+Each component namespace defines its own `ig/init-key` and `ig/halt-key!`, keeping
+lifecycle next to the thing it constructs. `system.clj` holds only key derivation and
+anything ordering-sensitive; `main.clj` reads the config, calls `ig/init`, and registers a
+shutdown hook.
+
+**Three layers, later winning over earlier:**
+
+1. `resources/config.edn` - defaults, shipped in the jar.
+2. `$XDG_CONFIG_HOME/shipyard/config.edn` - user preferences, deep-merged if present.
+3. Environment variables - `SHIPYARD_LIBRARY`, `PORT`, `SHIPYARD_THREADS`.
+
+The middle layer matters because **the library root is user data, not deployment
+configuration**. Which directory holds someone's models is a preference they set once and
+change rarely, so it belongs in a file they own rather than an env var they must remember
+to export.
+
+Tunables that spikes established live here rather than being hardcoded: the crease angle
+(§6.2), the LOD tier ratios (§6.3), and the cache cap (§6.5). All three were measured
+rather than derived, so all three should be adjustable without a rebuild.
+
+Aero's `#profile` gives tests a small cache cap so eviction is exercisable in seconds.
 
 ## 3. Dependencies
 
@@ -165,7 +215,8 @@ shipyard/
   ring/ring-jetty-adapter        {:mvn/version "1.12.2"}
   hiccup/hiccup                  {:mvn/version "2.0.0-RC3"}
   datascript/datascript          {:mvn/version "1.7.3"}
-  integrant/integrant            {:mvn/version "0.13.1"}
+  integrant/integrant            {:mvn/version "1.0.1"}
+  aero/aero                      {:mvn/version "1.1.6"}
   org.clojure/tools.logging      {:mvn/version "1.3.0"}
   org.lwjgl/lwjgl                {:mvn/version "3.3.6"}
   org.lwjgl/lwjgl-meshoptimizer  {:mvn/version "3.3.6"}}
@@ -178,7 +229,7 @@ shipyard/
   :build {:deps {io.github.clojure/tools.build {:mvn/version "0.10.5"}} :ns-default build}
   :cljs  {:extra-paths ["src"]
           :extra-deps {thheller/shadow-cljs {:mvn/version "3.4.12"}}}
-  :test  {:extra-paths ["test"]
+  :test  {:extra-paths ["test/clj" "test/cljc"]
           :extra-deps {lambdaisland/kaocha {:mvn/version "1.91.1392"}
                        etaoin/etaoin       {:mvn/version "1.1.43"}}}}}
 ```
