@@ -178,7 +178,9 @@ shipyard/
   :build {:deps {io.github.clojure/tools.build {:mvn/version "0.10.5"}} :ns-default build}
   :cljs  {:extra-paths ["src"]
           :extra-deps {thheller/shadow-cljs {:mvn/version "3.4.12"}}}
-  :test  {:extra-paths ["test"] :extra-deps {lambdaisland/kaocha {:mvn/version "1.91.1392"}}}}}
+  :test  {:extra-paths ["test"]
+          :extra-deps {lambdaisland/kaocha {:mvn/version "1.91.1392"}
+                       etaoin/etaoin       {:mvn/version "1.1.43"}}}}}
 ```
 
 **Verified end to end** (issue #6): natives load, all calls execute, results are
@@ -855,25 +857,117 @@ jobs:
       - run: clojure -T:build uber
 ```
 
-**Pipeline smoke test** on both platforms: parse a fixture STL, weld it, generate LOD
-tiers, encode `.symesh`, and assert triangle/vertex counts and the LOD tier sizes against
-recorded values. Fixtures are small generated solids committed to the repo - CI never
-depends on the 19 GB library.
+Level mapping (§10): **unit and integration run on both platforms**, since those are what
+exercise natives and filesystem semantics. **E2E runs on Linux only** - it tests
+application behaviour, not platform behaviour, and paying for a second headless browser
+buys nothing. The library canary (§10.4) is not a CI job at all.
 
 ## 10. Testing
 
-| Test | Asserts |
+Three levels, distinguished by **what they are allowed to touch**, not by how big they
+are. The boundary is the point: a test that needs the filesystem is not a unit test, and
+pretending otherwise is what makes suites slow and flaky.
+
+| level | may touch | budget | runs |
+|---|---|---|---|
+| **Unit** | nothing outside the process | < 10 s whole suite | every save |
+| **Integration** | filesystem, natives, HTTP, real EDN | < 2 min | every push |
+| **E2E** | a real browser against the running system | < 5 min | pull requests |
+
+Runner is kaocha with one suite per level, so `clojure -M:test:unit` is a sub-second
+feedback loop and CI can fan the levels out across jobs.
+
+### 10.1 Unit - pure functions
+
+No files, no sockets, no natives. Meshes are generated in memory (cube, icosphere,
+greebled plate); STL parsing is tested against a `byte[]`, never a path.
+
+| Subject | Asserts |
 |---|---|
-| STL parse | Triangle count and bbox on a generated cube and icosphere |
-| ASCII rejection | Clear error, no garbage geometry |
-| Weld ratio | Cube welds to 8-24 verts; sphere to `V/T < 1.5`; fail at `≥ 2.5` |
-| Crease split | Cube keeps hard edges - 24 verts, not 8 |
+| STL parse | Triangle count and bbox on generated solids |
+| Malformed STL | `size != 84 + 50n` is detected; ASCII input routes to the ASCII reader (§6.1) |
+| Weld | Cube welds to 8 positions; V/T warns above 1.25, fails at 2.5 (§6.2) |
+| Crease split | Cube keeps hard edges - 24 vertices, not 8 |
 | LOD monotonicity | Each tier's index count strictly decreases; tier 0 is lossless |
-| Wire roundtrip | Encode → decode → geometry equals input within float tolerance |
-| Scan | Fixture tree yields expected ids, roles, variants; `other/` skipped |
-| Role inference | Table-driven over real names taken from the library |
-| Sidecar roundtrip | Write → read → equal; malformed EDN fails loudly, doesn't drop mounts |
-| Cache invalidation | Touching an STL invalidates its `mesh-key` |
+| Wire roundtrip | encode -> decode -> geometry equal within float tolerance |
+| Role inference | Table-driven over real folder names taken from the library (§5.2) |
+| Mount frame | Facet -> position/axis/roll; bbox midpoint not vertex average; longest hull **edge** not diagonal |
+| Assembly transform | `M = S . Tz(g) . Rx(pi) . P^-1` places a known plug on a known socket |
+| Symmetry mirroring | Mirrored mount is the exact reflection; roll handedness preserved |
+
+**`wire.cljc` is tested on both runtimes from one namespace** - JVM via kaocha, CLJS via
+shadow-cljs `:target :node-test`. That cross-runtime run is the actual proof that encoder
+and decoder agree on the binary layout, and it is the highest-value test in the project:
+a drift bug here corrupts geometry silently rather than throwing.
+
+### 10.2 Integration - side effects
+
+Real filesystem, real natives, real HTTP. Each test gets a temp directory; none touch the
+user's library.
+
+| Subject | Asserts |
+|---|---|
+| Scanner | Fixture tree yields expected ids, roles, variants; `other/` skipped; supported-only flagged not dropped |
+| Variant selection | `unsupported-pitted.stl` preferred; `supported.stl` never read (§5.3) |
+| Cache lifecycle | Miss -> generate -> hit; touching an STL invalidates its `mesh-key`; LRU evicts at the cap |
+| Atomic writes | A concurrent reader never observes a partial `.symesh` |
+| Concurrent preprocess | Two requests for one part produce one job, not two (§6.5) |
+| Sidecar | Write -> read -> equal; malformed EDN fails loudly and does **not** silently drop mounts |
+| Write-through order | A failed transact still leaves the sidecar on disk (§1.2) |
+| meshoptimizer | Real native calls: simplify hits target, `optimizeVertexFetch` compacts, Prune is not enabled |
+| HTTP | Routes return expected fragments; `/mesh/*` sends immutable cache headers; `HX-Trigger` payloads parse |
+
+**This level is what the Windows runner is for.** Beyond the LWJGL natives (§9), Windows
+differs on the things this level exercises: path separators, file locking, and
+`Files.move` atomicity - and the cache depends on temp-file-plus-rename being atomic.
+
+### 10.3 E2E - headless browser
+
+**etaoin** driving headless Chrome against a real server started on an ephemeral port,
+backed by the fixture library. Clojure end to end, no separate JS test stack.
+
+| Flow | Asserts |
+|---|---|
+| Browse and filter | Library panel lists fixture parts; filters narrow correctly |
+| Load a part | Selecting a part fires `shipyard:load-mesh`; the viewport reports it loaded |
+| Canvas survives swaps | An htmx swap elsewhere leaves the WebGL context alive (`hx-preserve`, §6.1) |
+| Mount wizard (M2) | Clicking a face returns a highlighted facet and a plausible frame |
+| Assembly (M3) | Choosing a prow places it at the socket transform |
+| Paint (M5) | Scrubbing a colour updates the material live; release persists it |
+| Degraded mode | With the viewport bundle blocked, browsing and loadouts still work (§8) |
+
+**Asserting on WebGL is the hard part, and pixels are the wrong answer.** Screenshot
+diffing a 3D scene is brittle - driver, antialiasing and timing all move it. Instead the
+viewport exposes a **test-only introspection hook**, `window.__shipyard.stats()`,
+returning scene facts: loaded part ids, vertex and draw counts, camera target, material
+colours. Assertions read that. It is compiled out of release builds via a `goog-define`,
+so it cannot ship.
+
+One screenshot test remains, and it only asks the crudest question: **is the canvas
+non-blank?** Sample pixels and assert they are not uniform. That catches "nothing rendered
+at all", which the stats hook cannot - the hook would happily report a loaded mesh that
+never reached the screen.
+
+**Headless Chrome needs software rendering for WebGL in CI** (SwiftShader). Verify this in
+the first E2E test written, not at M6 - a CI box with no GPU will otherwise fail in a way
+that looks like an application bug.
+
+### 10.4 Fixtures, and the library canary
+
+Fixtures are small generated STLs committed to the repo, in a directory tree mirroring the
+real structure including its edge cases: an ASCII STL, a supported-only folder, an
+`other/` directory, a `weapons/` subdirectory, and a pitted variant. **CI never depends on
+the 19 GB library.**
+
+But fixtures only contain problems we already know about. The ASCII STL (§6.1) was found
+by scanning the real collection, and no fixture suite would ever have produced it. So
+there is a fourth thing, deliberately not a test level:
+
+**A library canary** - `clojure -M:canary` - runs the scanner and preprocessor across the
+whole real library and reports anomalies: files failing the `84 + 50n` check, welds
+breaching the V/T ceiling, empty or non-manifold meshes, parts with no renderable variant.
+Run on demand and after acquiring new bundles. It is a data-quality probe, not a pass/fail
+gate, and it belongs to no CI job.
 
 ## 11. Performance budgets
 
