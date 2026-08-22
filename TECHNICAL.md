@@ -208,7 +208,7 @@ Aero's `#profile` gives tests a small cache cap so eviction is exercisable in se
 
 ```clojure
 ;; deps.edn
-{:paths ["src" "resources"]
+{:paths ["src/clj" "src/cljc" "resources"]
  :deps
  {org.clojure/clojure            {:mvn/version "1.12.0"}
   metosin/reitit-ring            {:mvn/version "0.7.2"}
@@ -227,7 +227,7 @@ Aero's `#profile` gives tests a small cache cap so eviction is exercisable in se
                                  org.lwjgl/lwjgl-meshoptimizer$natives-windows {:mvn/version "3.3.6"}}}
   :natives-macos   {…}  ; natives-macos, natives-macos-arm64, natives-linux-arm64
   :build {:deps {io.github.clojure/tools.build {:mvn/version "0.10.5"}} :ns-default build}
-  :cljs  {:extra-paths ["src"]
+  :cljs  {:extra-paths ["src/cljs" "src/cljc"]
           :extra-deps {thheller/shadow-cljs {:mvn/version "3.4.12"}}}
   :test  {:extra-paths ["test/clj" "test/cljc"]
           :extra-deps {lambdaisland/kaocha {:mvn/version "1.91.1392"}
