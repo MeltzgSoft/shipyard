@@ -169,18 +169,39 @@ shipyard/
   org.lwjgl/lwjgl                {:mvn/version "3.3.6"}
   org.lwjgl/lwjgl-meshoptimizer  {:mvn/version "3.3.6"}}
  :aliases
- {:natives-linux   {:extra-deps {org.lwjgl/lwjgl {:mvn/version "3.3.6" :classifier "natives-linux"}
-                                 org.lwjgl/lwjgl-meshoptimizer {:mvn/version "3.3.6" :classifier "natives-linux"}}}
-  :natives-windows {:extra-deps {org.lwjgl/lwjgl {:mvn/version "3.3.6" :classifier "natives-windows"}
-                                 org.lwjgl/lwjgl-meshoptimizer {:mvn/version "3.3.6" :classifier "natives-windows"}}}
-  :natives-macos   {…}  ; natives-macos and natives-macos-arm64
+ {:natives-linux   {:extra-deps {org.lwjgl/lwjgl$natives-linux               {:mvn/version "3.3.6"}
+                                 org.lwjgl/lwjgl-meshoptimizer$natives-linux {:mvn/version "3.3.6"}}}
+  :natives-windows {:extra-deps {org.lwjgl/lwjgl$natives-windows               {:mvn/version "3.3.6"}
+                                 org.lwjgl/lwjgl-meshoptimizer$natives-windows {:mvn/version "3.3.6"}}}
+  :natives-macos   {…}  ; natives-macos, natives-macos-arm64, natives-linux-arm64
   :build {:deps {io.github.clojure/tools.build {:mvn/version "0.10.5"}} :ns-default build}
   :test  {:extra-paths ["test"] :extra-deps {lambdaisland/kaocha {:mvn/version "1.91.1392"}}}}}
 ```
 
-`lwjgl-meshoptimizer` 3.3.6 verified present on Maven Central. The uberjar bundles **all
-four** native classifiers so one artifact runs everywhere; LWJGL selects at runtime. Cost
-is a few MB.
+**Verified end to end** (issue #6): natives load, all calls execute, results are
+deterministic across threads. `MESHOPTIMIZER_VERSION = 220`.
+
+tools.deps expresses a Maven classifier as `artifact$classifier`, **not** a `:classifier`
+key — the latter resolves to the wrong artifact silently. Core `lwjgl` natives are
+required alongside the module's, not merely the module's. Five classifiers resolve:
+`natives-linux`, `natives-windows`, `natives-macos`, `natives-macos-arm64`,
+`natives-linux-arm64`. The uberjar bundles all of them; LWJGL selects at runtime.
+
+**Java 25 requires two JVM flags:**
+
+```
+--enable-native-access=ALL-UNNAMED
+--sun-misc-unsafe-memory-access=allow
+```
+
+Both are warnings only on 25, but native access becomes a hard error in a later JDK, so
+set them now. For the shipped uberjar use the `Enable-Native-Access: ALL-UNNAMED`
+manifest attribute instead of the CLI flag.
+
+LWJGL extracts natives to a temp directory at startup, so **the runtime needs a writable
+temp dir** — override with `-Dorg.lwjgl.librarypath` where that does not hold. Its
+`Failed to instantiate memory allocator: JEmallocAllocator` log line is harmless; it
+falls back to the stdlib allocator.
 
 No CSG dependency — face picking (SPEC §5) removed the need, which is what makes the pure
 JVM stack viable.
@@ -354,16 +375,40 @@ splitting on mechanical hulls, expect `0.6–1.2`. Still a 2.5–5× reduction o
 
 ### 6.3 LOD
 
-`MeshOptimizer/meshopt_simplify` at tiers **100% / 25% / 5%** of index count, target
-error 0.01, run after `meshopt_optimizeVertexCache`.
+**`meshopt_simplifyWithAttributes`**, not plain `meshopt_simplify`, at tiers
+**100% / 25% / 5%** of index count, run after `meshopt_optimizeVertexCache`.
 
-The key property: simplified index buffers **reference the same vertex buffer**. All
-tiers share one set of positions and normals, so a multi-LOD mesh costs one vertex buffer
-plus a few small index buffers — which is exactly what §6.4 encodes.
+We carry per-vertex normals, and the attribute term measurably restrains collapses that
+damage shading — verified on a flat grid with varying normals, where geometric error is
+zero by construction so only the attribute term can act (issue #6). **Start at attribute
+weight 0.5 per normal component.** On smooth geometry both functions produce identical
+output, since normals there are derived from positions; the win is precisely on hard
+edges and split normals, which is what these hulls are made of.
+
+Measured cost on 131k triangles: `optimizeVertexCache` 8.8 ms, simplify 31.1 ms. Not a
+factor in the §11 budgets.
+
+Simplification does **not** compact the vertex buffer — output indices still reference
+the original vertex array. `meshopt_optimizeVertexFetch` compacts a tier to only the
+vertices it uses, which on measured data is dramatic: a 5% tier drops from the full
+~305 KB vertex buffer to 34 KB.
+
+That reopens a wire-format question §6.4 currently answers one way — one shared vertex
+buffer plus N index buffers, versus N self-contained compacted tiers. Sharing wins if
+tiers are switched at runtime; compaction wins if only one tier is ever loaded at a time,
+which is what SPEC's list-based fleet view (one ship rendered at a time) implies.
+**Deferred pending the seam investigation below.**
 
 M1 renders tier 0 only. Tiers exist because generating them is nearly free once
-meshoptimizer is in the path, and M6 thumbnails plus any future simultaneous-fleet view
-need them (SPEC §7).
+meshoptimizer is in the path, and M6 thumbnails need them (SPEC §7).
+
+> **Open — under investigation (issue #6).** The pipeline crease-splits vertices (§6.2)
+> *before* simplification, so every hard edge carries duplicated positions with differing
+> normals. If simplify treats those as disconnected topology it will refuse to collapse
+> across them and leave a dense band of triangles tracing every panel line — the opposite
+> of what LOD is for. The correct pipeline order (crease-split then simplify, versus
+> simplify then crease-split each tier, versus a position-only remap via
+> `meshopt_generateVertexRemap`) is being measured. §6.4 is provisional until it resolves.
 
 ### 6.4 Wire format — `.symesh`
 
@@ -428,6 +473,35 @@ always safe and never loses user data. A cold re-encode of an evicted part costs
 same as its first view.
 
 This supersedes SPEC §11's open question, which left eviction unspecified.
+
+### 6.6 LWJGL interop notes
+
+Verified working practice (issue #6). These are the traps that cost real time.
+
+- **`MemoryStack` only for small out-params** such as `result_error`. It is
+  `AutoCloseable`, so `(with-open [s (MemoryStack/stackPush)] …)` is correct from
+  Clojure, but the default stack is **64 KB** and it is **thread-local** — never share
+  one across threads. Mesh-sized buffers go through `MemoryUtil/memAlloc*` with an
+  explicit `try/finally memFree`.
+- **Views do not own memory.** `MemoryUtil/memFloatBuffer` gives a zero-copy view into an
+  interleaved buffer; free the backing allocation, never the view.
+- **Prefer `memFloatBuffer` to NIO `.slice()` / `.asFloatBuffer()`.** `ByteBuffer.slice()`
+  resets byte order to big-endian, silently corrupting float reads.
+- **Interleaved attribute views need tail padding.** LWJGL's bounds check requires
+  `vertex_count * (stride/4)` floats measured from the *attribute* offset, overrunning by
+  one attribute — allocate 12 extra bytes at the end of the vertex buffer.
+- **Strides are bytes; buffer bounds are elements.** Easy to conflate.
+- **`meshopt_simplify*` returns a count and never throws** on ordinary failure. Check it.
+  The result is always a multiple of 3.
+- **Leave LWJGL's bounds checks on.** They caught a real undersized-destination bug during
+  the spike. Do not set `-Dorg.lwjgl.util.NoChecks=true`.
+- **meshopt is stateless and reentrant.** 8 threads × 4 tiers over shared read-only source
+  buffers produced byte-identical results, confirming the §6.5 pool design. Each thread
+  must own its output buffers.
+- **Clojure specifics.** `(set! *warn-on-reflection* true)` is essential on these hot
+  interop paths. Primitive-hinted fns are limited to 4 args — use an options map for wide
+  signatures. Parenthesize `(ByteOrder/nativeOrder)`; Clojure 1.12 reads the bare form as
+  a method value.
 
 ---
 
@@ -518,9 +592,14 @@ No bundler. three.js ships as an ES module and the import map covers resolution.
 
 Forgejo Actions, matrix over `ubuntu-latest` and `windows-latest`.
 
-The JVM is portable; **LWJGL natives are not**, and that layer is the one most likely to
-break silently on one platform. The Windows runner exists to exercise the mesh pipeline
-against Windows natives, not merely to compile.
+The JVM is portable; **LWJGL natives are not**. But the justification is narrower than it
+first appears (issue #6): the natives are prebuilt jars on Maven Central, so a Linux
+runner can resolve and package the Windows classifier without trouble. **Windows CI is
+needed only to *execute* tests on Windows, never to build or release.**
+
+It still earns its place — running the pipeline against Windows natives is the only way
+to catch a platform-specific failure before a user does — but if CI minutes get tight,
+this is the job to cut, and cutting it does not endanger the release artifact.
 
 ```yaml
 jobs:
