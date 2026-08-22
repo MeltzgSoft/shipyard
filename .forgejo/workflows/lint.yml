@@ -2,37 +2,38 @@ name: lint
 
 on:
   push:
-    branches: [main]
+    branches: ["main"]
   pull_request:
 
 jobs:
   lint:
-    # Linting and formatting are platform-independent, so one runner is enough.
-    # Platform coverage belongs to the test workflow (TECHNICAL.md §9, §10.2).
+    # One runner: neither tool is platform-dependent. Platform coverage belongs
+    # to the test workflow (TECHNICAL.md §9, §10.2).
     runs-on: linux
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v4
+      - name: Set up JDK 25
+        # Full URL: this Forgejo does not resolve third-party actions from
+        # github.com by default. Only actions/checkout works bare.
+        uses: https://github.com/actions/setup-java@v5
         with:
-          distribution: temurin
           java-version: '25'
+          distribution: temurin
 
-      - uses: DeLaGuardo/setup-clojure@13.4
-        with:
-          cli: latest
+      - name: Install Clojure CLI
+        # NOT DeLaGuardo/setup-clojure: it authenticates to api.github.com with
+        # the job's GITHUB_TOKEN - a Forgejo token here - and 401s even for a
+        # pinned version. The official installer involves no GitHub at all.
+        run: |
+          curl -sLO https://download.clojure.org/install/linux-install-1.12.4.1618.sh
+          chmod +x linux-install-1.12.4.1618.sh
+          ./linux-install-1.12.4.1618.sh --prefix "$HOME/clojure"
+          echo "$HOME/clojure/bin" >> "$GITHUB_PATH"
 
-      - name: Cache Maven repository
-        uses: actions/cache@v4
-        with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-m2-${{ hashFiles('deps.edn') }}
-          restore-keys: ${{ runner.os }}-m2-
-
-      - name: clj-kondo
-        run: clojure -M:clj-kondo --lint src test build.clj
-
-      - name: cljfmt
-        # `check` fails on any deviation and prints a diff. Run
-        # `clojure -M:cljfmt fix src test build.clj` locally to resolve.
+      - name: Formatting
+        # `clojure -M:cljfmt fix src test build.clj` resolves failures locally.
         run: clojure -M:cljfmt check src test build.clj
+
+      - name: Linting
+        run: clojure -M:clj-kondo --lint src --lint test --lint build.clj
