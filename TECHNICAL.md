@@ -778,18 +778,20 @@ on three.js objects are the fix. Verify a release build early rather than at M6.
 
 ## 8. Build
 
-Frontend dependencies are fetched at build time and packaged into the jar; no vendored
-copies in the repo (SPEC §6.3).
+**npm is the single source of truth for JavaScript dependencies.** Every JS dependency is
+declared in `package.json`, pinned, and installed with `npm ci` so the lockfile is
+authoritative and integrity-checked. Nothing is vendored into the repo, and nothing is
+fetched from a CDN at runtime (SPEC §6.3).
 
 ```json
 { "devDependencies": { "shadow-cljs": "3.4.12" },
-  "dependencies":    { "three": "0.185.1", "htmx.org": "2.0.3" } }
+  "dependencies":    { "three": "0.185.1", "htmx.org": "2.0.10" } }
 ```
 
 ```clojure
 ;; shadow-cljs.edn
 {:source-paths ["src"]
- :dependencies []                       ; deps.edn is the source of truth
+ :dependencies []                       ; deps.edn is the source of truth for Clojure deps
  :builds {:viewport {:target     :browser
                      :output-dir "resources/public/js"
                      :asset-path "/js"
@@ -802,9 +804,23 @@ copies in the repo (SPEC §6.3).
 1. `npm ci` - pinned versions, integrity-checked.
 2. `npx shadow-cljs release viewport` - emits `resources/public/js/viewport.js` with
    three.js bundled in. No import map, no manual copying, no addon path rewriting.
-3. Copy `htmx.org/dist/htmx.min.js` into `resources/public/js/`. htmx is loaded by a plain
-   `<script>` tag, not imported by the CLJS build, so it stays a straight file copy.
+3. Copy `node_modules/htmx.org/dist/htmx.min.js` into `resources/public/js/`.
 4. `compile-clj`, then `uber` with all four LWJGL native classifiers.
+
+**Why htmx is copied rather than bundled**, given it is an npm dependency like any other
+and shadow-cljs could `(:require ["htmx.org"])` it. Two reasons, and the first is the one
+that matters:
+
+- **Failure isolation.** htmx drives every panel in the application; the CLJS bundle drives
+  one canvas. Bundling them means a broken or slow viewport build takes the entire UI down
+  with it. Kept separate, a viewport failure costs you the 3D preview and nothing else -
+  browsing, loadouts and the fleet roster keep working. The dependency direction should
+  match the importance: the UI must not depend on the island.
+- **Initialization timing.** htmx scans the DOM for `hx-*` attributes on load. A plain
+  `<script>` tag makes that ordering explicit and independent of module graph evaluation.
+
+This is a delivery decision, not a dependency-management one. Both libraries are managed
+identically by npm; only how they reach the browser differs.
 
 Dev runs two processes: `npx shadow-cljs watch viewport` for hot-reloaded CLJS, and the
 JVM server for HTML and meshes. Only the JVM process is needed to serve a release build.
