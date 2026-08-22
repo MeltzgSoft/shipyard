@@ -48,19 +48,33 @@ Explicitly out of scope. These are deliberate exclusions, not deferred work.
 
 ## 4. Source material
 
-Library root: `~/Documents/3D_models/BFG`, ~15 bundles, 19 GB.
+Library root: `~/Documents/3D_models/BFG`, ~15 bundles, 19 GB, 3,160 STLs.
 
-Directory convention is regular across bundles:
+**One folder per part, holding all of that part's variants:**
 
 ```
-<Bundle>/<Class>/[weapons/]/{supported|unsupported}/{pitted|unpitted}/<Part>.stl
+<Bundle>/[<Class>/][weapons/]<Part Name>/
+    unsupported.stl              the geometry Shipyard reads
+    unsupported-pitted.stl       where magnet pits have been cut (4 across the library)
+    supported.stl                print-prepared, with support scaffolding — ignored
 ```
 
-- `supported/` is print-prepared geometry with support scaffolding. **Ignored entirely.**
-  `unsupported/` is the only source Shipyard reads.
-- `pitted/` holds hulls that have already had magnet pits cut. Currently 4 files.
+- **The folder name is the part identity.** No parsing a part name out of a filename.
+- **Variant selection is a filename lookup**, not path archaeology: read
+  `unsupported.stl`, prefer `unsupported-pitted.stl` when present, never read
+  `supported.stl`.
+- `<Class>` is absent in the four single-ship bundles, which are one ship each.
+- `weapons/` is a role hint the scanner can trust.
+- 1,661 part folders. 173 of them hold a single file, because those parts ship in only
+  one form upstream — expected, not an error.
 
-Measured, `unsupported/` only: 1,592 files, ~118M triangles, mean 74k per part.
+`other/` directories sit alongside and are not part folders: Lychee `.lys` project files
+(1,489 across the collection, self-contained binaries embedding their own geometry) plus
+occasional `README.txt` files carrying assembly notes in prose. Neither is consumed by
+Shipyard v1, but the `.lys` names enumerate combinations the designers intended and may
+be useful later for seeding the catalog.
+
+Measured, `unsupported*.stl` only: 1,592 files, ~118M triangles, mean 74k per part.
 
 | Subject | Triangles |
 |---|---|
@@ -73,8 +87,8 @@ Two structurally different kinds of model live in the same collection:
 
 - **Kitbash classes** — Cruiser, Grand Cruiser, Battleship. Separate hull, prow, bridge,
   antenna and weapon files. These are what Shipyard is for.
-- **Escorts appear to be pre-combined whole ships.** `Cyanide Prow Rapier.stl` reads as
-  hull-class × prow-variant already merged, ~36 such files in Human Navy alone.
+- **Escorts appear to be pre-combined whole ships.** `Cyanide Prow Rapier/` reads as
+  hull-class × prow-variant already merged, ~36 such parts in Human Navy alone.
   **Unverified** — see Risks. If confirmed, escorts are a pick-one list, not an assembly.
 
 `other/` directories contain Lychee `.lys` project files (1,489 across the collection),
@@ -88,16 +102,16 @@ The critical constraint. Parts are laid out for printing, not assembly. Human Na
 Cruiser bounding box minima:
 
 ```
-Hull.stl               (-19.06, -18.87,  5.00)    centred, Z is the long axis
-Bridge.stl             ( -7.58,  -9.63,  5.00)    shares the hull's frame
-Classic Ram Prow.stl   (400.00,   0.00,  0.00)    parked at X=400 on the plate
-Cyanide Nova Prow.stl  ( 90.00,   0.00,  0.00)    X=90
-Weapon Battery.stl     (230.00,  25.00,  0.00)    X=230, Y=25
+Hull/                   (-19.06, -18.87,  5.00)   centred, Z is the long axis
+Bridge/                 ( -7.58,  -9.63,  5.00)   shares the hull's frame
+Classic Ram Prow/       (400.00,   0.00,  0.00)   parked at X=400 on the plate
+Cyanide Nova Prow/      ( 90.00,   0.00,  0.00)   X=90
+weapons/Weapon Battery/ (230.00,  25.00,  0.00)   X=230, Y=25
 ```
 
 Every part except the hull and bridge sits at its own plate slot, rotated flat for
 printing. Loading parts and rendering them as-is produces a scattered plate, not a ship.
-Placement metadata is therefore unavoidable, and pre-aligning 1,592 files by hand is not
+Placement metadata is therefore unavoidable, and pre-aligning 1,661 parts by hand is not
 a real option.
 
 ---
@@ -295,8 +309,10 @@ normals reduce it further.
 
 Stages, all server-side:
 
-1. **Scan.** Walk the library root. Infer bundle, hull class, and part role from path and
-   filename. Skip `supported/`. Produce part records. Cheap; no mesh parsing.
+1. **Scan.** Walk the library root for part folders. Bundle, class and `weapons/` come
+   straight from the path; the folder name is the part name. Within a folder, prefer
+   `unsupported-pitted.stl`, fall back to `unsupported.stl`, never read `supported.stl`.
+   Skip `other/`. Produce part records. Cheap; no mesh parsing.
 2. **Preprocess**, lazily on first view of a part:
    - Parse binary STL via `ByteBuffer` — an 84-byte header plus 50 bytes per triangle.
    - Weld and index by quantized position.
@@ -342,7 +358,7 @@ Stored as EDN initially; SQLite if query patterns demand it.
 
 ```clojure
 {:part/id       "human-navy/cruiser/hull"
- :part/source   "Human Navy Fleet Bundle/Cruiser/unsupported/pitted/Hull.stl"
+ :part/source   "Human Navy Fleet Bundle/Cruiser/Hull/unsupported-pitted.stl"
  :part/sha      "3f9a…"
  :part/bundle   "Human Navy Fleet Bundle"
  :part/class    :cruiser
