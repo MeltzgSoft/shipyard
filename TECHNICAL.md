@@ -529,6 +529,14 @@ quality, not memory.
 threshold of 1.0 would have fired on two of four reference parts under normal operation —
 a warning that cries wolf is worse than none.
 
+**The weld is load-bearing for simplification, not just memory.** Measured (§6.3): a mesh
+whose coincident positions differ by a single ULP tears badly under simplification —
+6,684 boundary edges after decimation against 99 for the correctly welded mesh, on a model
+with 896 genuine border edges. A near-miss weld does not degrade gracefully; it shreds the
+LOD tiers. This makes the V/T ratio check a real guard rather than a nicety: if welding
+silently fails, the visible symptom appears two stages later and looks like a simplifier
+bug.
+
 ### 6.3 LOD
 
 **`meshopt_simplifyWithAttributes`**, not plain `meshopt_simplify`, at tiers
@@ -544,29 +552,47 @@ edges and split normals, which is what these hulls are made of.
 Measured cost on 131k triangles: `optimizeVertexCache` 8.8 ms, simplify 31.1 ms. Not a
 factor in the §11 budgets.
 
-Simplification does **not** compact the vertex buffer — output indices still reference
-the original vertex array. `meshopt_optimizeVertexFetch` compacts a tier to only the
-vertices it uses, which on measured data is dramatic: a 5% tier drops from the full
-~305 KB vertex buffer to 34 KB.
+**The crease-seam question is resolved: split-then-simplify is correct.** Measured on a
+117,696-triangle greebled plate (58,925 welded vertices, 78,413 after crease splitting,
+28.2% of positions on a seam).
 
-That reopens a wire-format question §6.4 currently answers one way — one shared vertex
-buffer plus N index buffers, versus N self-contained compacted tiers. Sharing wins if
-tiers are switched at runtime; compaction wins if only one tier is ever loaded at a time,
-which is what SPEC's list-based fleet view (one ship rendered at a time) implies.
-**Deferred pending the seam investigation below.**
+A hard floor exists but never binds. Driving `target_index_count` to 0 and raising the
+error budget without limit, a crease-split mesh refuses to collapse below **3.05%** of its
+original index count, while the position-welded equivalent goes to zero. The seams are
+genuinely un-collapsible topology. But our tiers are 25% and 5%, both comfortably above
+the floor, and both hit their target exactly. **Do not add a tier below ~8%** — that is
+where this stops being theoretical.
 
-M1 renders tier 0 only. Tiers exist because generating them is nearly free once
-meshoptimizer is in the path, and M6 thumbnails need them (SPEC §7).
+Pipeline order, measured both ways at 25%:
 
-> **Open — under investigation (issue #6).** The pipeline crease-splits vertices (§6.2)
-> *before* simplification, so every hard edge carries duplicated positions with differing
-> normals. If simplify treats those as disconnected topology it will refuse to collapse
-> across them and leave a dense band of triangles tracing every panel line — the opposite
-> of what LOD is for. The correct pipeline order (crease-split then simplify, versus
-> simplify then crease-split each tier, versus a position-only remap via
-> `meshopt_generateVertexRemap`) is being measured. §6.4 is provisional until it resolves.
+| order | vertices | cost |
+|---|---:|---|
+| **(b) split → simplify** | 29,630 | 35 ms |
+| (a) simplify → split per tier | 28,807 | 35 ms + 365 ms re-split |
+
+Order (a) yields 3% fewer vertices for roughly 10× the time, and must re-split every tier.
+**Keep (b)**, which is the order §6.2 already describes.
+
+`simplifyWithAttributes` at weight 0.5 produced results identical to plain simplify on
+seam collapse and floor behaviour, so it remains the choice for shading quality (§6.3
+above) rather than for topology.
+
+**Simplification does not compact the vertex buffer** — output indices still reference the
+original array. `meshopt_optimizeVertexFetch` compacts each tier to only the vertices it
+uses, and the measured saving is large: the 5% tier needs 8,030 of 78,413 vertices, about
+10%.
 
 ### 6.4 Wire format — `.symesh`
+
+**Resolved:** one self-contained file per LOD tier, each compacted with
+`meshopt_optimizeVertexFetch`. Not one shared vertex buffer with N index buffers.
+
+Sharing a vertex buffer only pays if tiers are switched at runtime, and SPEC's fleet view
+is a list rendering one ship at a time — so a viewer holds exactly one tier. Compaction
+then shrinks the 5% tier's vertex buffer roughly tenfold (§6.3), which is what M6
+thumbnails download. Independent files also cache and evict independently over plain HTTP.
+
+Path: `mesh/<sha256>.<tier>.symesh`, tier ∈ {0,1,2}.
 
 Little-endian throughout, every field 4-byte aligned.
 
@@ -577,31 +603,29 @@ offset  type         field
  8      uint32       version = 1
 12      uint32       flags            bit0 = normals present
 16      uint32       vertexCount   V
-20      uint32       lodCount      L
+20      uint32       indexCount    I
 24      float32[3]   bboxMin
 36      float32[3]   bboxMax
-48      uint32[2*L]  per-LOD (byteOffset, indexCount), offsets from file start
 ──────────────────────────────────────────────────────────────
-        float32[3*V] positions
+48      float32[3*V] positions
         float32[3*V] normals          (if flags bit0)
-        uint32[...]  index buffers, concatenated in LOD order
+        uint32[I]    indices
 ```
 
 Client-side decode is a handful of typed-array views — no parsing:
 
 ```js
-const dv = new DataView(buf), V = dv.getUint32(16, true), L = dv.getUint32(20, true);
-let p = 48 + 8 * L;
-const pos = new Float32Array(buf, p, 3 * V);            p += 12 * V;
-const nrm = new Float32Array(buf, p, 3 * V);
+const dv = new DataView(buf), V = dv.getUint32(16, true), I = dv.getUint32(20, true);
+let p = 48;
+const pos = new Float32Array(buf, p, 3 * V);  p += 12 * V;
+const nrm = new Float32Array(buf, p, 3 * V);  p += 12 * V;
 const g = new THREE.BufferGeometry();
 g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
 g.setAttribute("normal",   new THREE.BufferAttribute(nrm, 3));
-g.setIndex(new THREE.BufferAttribute(
-  new Uint32Array(buf, dv.getUint32(48, true), dv.getUint32(52, true)), 1));
+g.setIndex(new THREE.BufferAttribute(new Uint32Array(buf, p, I), 1));
 ```
 
-`bboxMin/Max` are in the header so the camera can frame a part without scanning vertices.
+`bboxMin/Max` sit in the header so the camera can frame a part without scanning vertices.
 
 Served with `Content-Encoding: gzip`. Float data compresses poorly (~10%), so this is
 minor — but it is one header, and it is free.
@@ -650,6 +674,10 @@ Verified working practice (issue #6). These are the traps that cost real time.
 - **Strides are bytes; buffer bounds are elements.** Easy to conflate.
 - **`meshopt_simplify*` returns a count and never throws** on ordinary failure. Check it.
   The result is always a multiple of 3.
+- **Never enable `meshopt_SimplifyPrune` without clamping `target_error`.** Measured: at
+  `target_error = 1.0` it returns **zero indices — the entire mesh deleted** — while
+  0.5 and below behave normally. It fails silently by returning a count, not by throwing.
+  We do not need Prune; if it is ever enabled, cap the error budget well below 1.0.
 - **Leave LWJGL's bounds checks on.** They caught a real undersized-destination bug during
   the spike. Do not set `-Dorg.lwjgl.util.NoChecks=true`.
 - **meshopt is stateless and reentrant.** 8 threads × 4 tiers over shared read-only source
