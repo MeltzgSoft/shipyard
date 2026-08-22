@@ -62,6 +62,19 @@ Tests come in three levels separated by **what they are allowed to touch**, not 
 unit touches nothing outside the process, integration gets the filesystem and natives,
 e2e drives a real browser. See TECHNICAL.md §10.
 
+### Git hooks
+
+Install once per clone - git does not do this for you:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+`pre-commit` runs cljfmt, clj-kondo and the unit suite, so a red CI run is never the
+first you hear of a formatting problem. It runs every check before reporting, so one
+commit attempt tells you everything to fix. Integration and e2e stay in CI deliberately:
+a hook slow enough to be annoying is a hook people bypass with `--no-verify`.
+
 ## Documentation
 
 | document | audience |
