@@ -54,6 +54,31 @@
    :jvm-opts  ["--enable-native-access=ALL-UNNAMED"
                "--sun-misc-unsafe-memory-access=allow"]}
 
+  ;; --- dependency freshness ------------------------------------------------
+  ;; `clojure -M:outdated` reports newer versions for deps.edn AND package.json,
+  ;; which matters here because three.js and htmx are pinned in npm rather than
+  ;; Maven (TECHNICAL.md §8).
+  :outdated
+  {:deps      {com.github.liquidz/antq {:mvn/version "2.11.1276"}}
+   :main-opts ["-m" "antq.core"]}
+
+  ;; --- formatting -----------------------------------------------------------
+  ;; `clojure -M:cljfmt check` / `clojure -M:cljfmt fix`.
+  ;; src/cljs and the test roots are added because neither is on the default
+  ;; :paths - cljs is compiled by shadow, not the JVM.
+  :cljfmt
+  {:extra-paths ["src/cljs" "test/clj" "test/cljc"]
+   :extra-deps  {dev.weavejester/cljfmt {:mvn/version "0.16.5"}}
+   :main-opts   ["-m" "cljfmt.main"]}
+
+  ;; --- linting --------------------------------------------------------------
+  ;; `clojure -M:clj-kondo --lint src test build.clj`. Same path reasoning as
+  ;; :cljfmt above.
+  :clj-kondo
+  {:extra-paths ["src/cljs" "test/clj" "test/cljc"]
+   :extra-deps  {clj-kondo/clj-kondo {:mvn/version "2026.08.04"}}
+   :main-opts   ["-m" "clj-kondo.main"]}
+
   ;; --- build --------------------------------------------------------------
   :build
   {:deps       {io.github.clojure/tools.build {:mvn/version "0.10.5"}}

@@ -1,0 +1,38 @@
+name: lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    # Linting and formatting are platform-independent, so one runner is enough.
+    # Platform coverage belongs to the test workflow (TECHNICAL.md §9, §10.2).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - uses: DeLaGuardo/setup-clojure@13.4
+        with:
+          cli: latest
+
+      - name: Cache Maven repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-m2-${{ hashFiles('deps.edn') }}
+          restore-keys: ${{ runner.os }}-m2-
+
+      - name: clj-kondo
+        run: clojure -M:clj-kondo --lint src test build.clj
+
+      - name: cljfmt
+        # `check` fails on any deviation and prints a diff. Run
+        # `clojure -M:cljfmt fix src test build.clj` locally to resolve.
+        run: clojure -M:cljfmt check src test build.clj

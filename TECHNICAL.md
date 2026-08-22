@@ -917,12 +917,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
-        with: { distribution: temurin, java-version: '21' }
+        with: { distribution: temurin, java-version: '25' }
       - uses: actions/cache@v4
         with: { path: ~/.m2, key: ${{ matrix.os }}-m2-${{ hashFiles('deps.edn') }} }
       - run: clojure -M:test:natives-${{ matrix.os == 'windows-latest' && 'windows' || 'linux' }}
       - run: clojure -T:build uber
 ```
+
+**Java 25, not 21.** The `:run` and `:test` aliases pass
+`--sun-misc-unsafe-memory-access=allow`, which does not exist before JDK 23 - an older
+JVM refuses to start rather than ignoring it.
+
+Workflows live in `.forgejo/workflows/`: `lint.yml` (clj-kondo + cljfmt, one runner,
+since neither is platform-dependent) and `test.yml` (the test matrix plus a Linux-only
+build job that assembles the uberjar and smoke-tests the artifact).
 
 Level mapping (§10): **unit and integration run on both platforms**, since those are what
 exercise natives and filesystem semantics. **E2E runs on Linux only** - it tests

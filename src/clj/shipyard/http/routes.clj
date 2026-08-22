@@ -9,7 +9,10 @@
    :headers {"content-type" "application/json"}
    :body    "{\"status\":\"ok\"}"})
 
-(defn handler [{:keys [library cache]}]
+(defn handler
+  "Build the ring handler. `deps` carries :library and :cache; neither is read
+  until the real routes land in #15."
+  [_deps]
   (ring/ring-handler
    (ring/router
     [["/healthz" {:get healthz}]])

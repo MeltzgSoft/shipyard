@@ -10,7 +10,7 @@
     (reset! running sys)
     (.addShutdownHook (Runtime/getRuntime)
                       (Thread. ^Runnable
-                               (fn []
-                                 (log/info "shutting down")
-                                 (system/stop! sys))))
+                       (fn []
+                         (log/info "shutting down")
+                         (system/stop! sys))))
     @(promise)))
