@@ -1,7 +1,7 @@
 # Shipyard
 
 A desktop application for previewing Battlefleet Gothic miniatures assembled from
-existing STL part libraries — choose a hull, prow, bridge and weapon loadout, see the
+existing STL part libraries - choose a hull, prow, bridge and weapon loadout, see the
 result rendered as a complete ship, orbit and zoom it, design a paint scheme for it,
 and keep the result as a named loadout in a fleet roster.
 
@@ -11,7 +11,7 @@ Status: specification. No code yet.
 
 ## 1. Problem
 
-The BFG model collection is a kitbash system. A Human Navy Cruiser is not one file — it
+The BFG model collection is a kitbash system. A Human Navy Cruiser is not one file - it
 is a hull, one of twelve interchangeable prows, a bridge, two antennae, and a set of
 weapon modules that repeat across several mount points. The combinatorics are large and
 there is no way to see a combination before committing to it.
@@ -39,7 +39,7 @@ Explicitly out of scope. These are deliberate exclusions, not deferred work.
 - **No merged STL / 3MF export.** Shipyard does not produce printable files. Parts are
   printed separately and magnet-assembled physically; there is no digital kitbash output.
 - **No print plate layout, support generation, or slicer integration.**
-- **No automatic magnet pitting.** Deferred, not rejected — see §5.2. Because mounts are
+- **No automatic magnet pitting.** Deferred, not rejected - see §5.2. Because mounts are
   now defined by face picking rather than derived from pits, alignment no longer depends
   on it, so it buys nothing on the critical path. Pitting continues via `/stl-modify`.
 - **No game rules.** No points values, weapon stats, fleet legality, or army lists.
@@ -56,7 +56,7 @@ Library root: `~/Documents/3D_models/BFG`, ~15 bundles, 19 GB, 3,160 STLs.
 <Bundle>/[<Class>/][weapons/]<Part Name>/
     unsupported.stl              the geometry Shipyard reads
     unsupported-pitted.stl       where magnet pits have been cut (4 across the library)
-    supported.stl                print-prepared, with support scaffolding — ignored
+    supported.stl                print-prepared, with support scaffolding - ignored
 ```
 
 - **The folder name is the part identity.** No parsing a part name out of a filename.
@@ -66,7 +66,7 @@ Library root: `~/Documents/3D_models/BFG`, ~15 bundles, 19 GB, 3,160 STLs.
 - `<Class>` is absent in the four single-ship bundles, which are one ship each.
 - `weapons/` is a role hint the scanner can trust.
 - 1,661 part folders. 173 of them hold a single file, because those parts ship in only
-  one form upstream — expected, not an error.
+  one form upstream - expected, not an error.
 
 `other/` directories sit alongside and are not part folders: Lychee `.lys` project files
 (1,489 across the collection, self-contained binaries embedding their own geometry) plus
@@ -85,11 +85,11 @@ Measured, `unsupported*.stl` only: 1,592 files, ~118M triangles, mean 74k per pa
 
 Two structurally different kinds of model live in the same collection:
 
-- **Kitbash classes** — Cruiser, Grand Cruiser, Battleship. Separate hull, prow, bridge,
+- **Kitbash classes** - Cruiser, Grand Cruiser, Battleship. Separate hull, prow, bridge,
   antenna and weapon files. These are what Shipyard is for.
 - **Escorts appear to be pre-combined whole ships.** `Cyanide Prow Rapier/` reads as
   hull-class × prow-variant already merged, ~36 such parts in Human Navy alone.
-  **Unverified** — see Risks. If confirmed, escorts are a pick-one list, not an assembly.
+  **Unverified** - see Risks. If confirmed, escorts are a pick-one list, not an assembly.
 
 `other/` directories contain Lychee `.lys` project files (1,489 across the collection),
 named per configuration, plus occasional `README.txt` files carrying assembly notes in
@@ -118,7 +118,7 @@ a real option.
 
 ## 5. The mount model
 
-The heart of the design. A mount is defined by **picking a face** — the flat surface where
+The heart of the design. A mount is defined by **picking a face** - the flat surface where
 two parts meet. On a weapon module you pick its backside; on a hull you pick each seat
 where a weapon goes. That single interaction supplies all six degrees of freedom.
 
@@ -146,7 +146,7 @@ worth carrying over rather than rediscovering:
 
 This is the significant consequence: **magnet pits are no longer needed for alignment.**
 An unpitted part can be mounted the moment its face is picked. Pitting reduces to a
-purely physical concern — where to drill for magnets — and its location is *derived from*
+purely physical concern - where to drill for magnets - and its location is *derived from*
 the mount frame rather than the other way round, since the pit centre is exactly the
 facet's bounding-box midpoint that the frame already records.
 
@@ -170,21 +170,21 @@ M = S · Tz(g) · Rx(π) · P⁻¹
 
 `Rx(π)` flips the plug to face the socket, mapping its +Z to the socket's −Z while
 preserving the +X roll reference. `Tz(g)` is an optional gap along the socket axis,
-default 0 — the virtual model mates flush, but a small positive `g` can represent the
+default 0 - the virtual model mates flush, but a small positive `g` can represent the
 physical standoff introduced by magnets if that turns out to matter visually.
 
 ### 5.4 The face-picking wizard
 
 The primary authoring interaction. Two flows, differing only in how many faces are picked.
 
-**For a module** (weapon, prow, bridge, antenna) — pick **one** face, its mating back
+**For a module** (weapon, prow, bridge, antenna) - pick **one** face, its mating back
 surface. Shipyard shows the derived axis as an arrow and the roll as an in-plane
 indicator; the user confirms or adjusts, names it, saves. One plug per module.
 
-**For a hull** — pick **N** faces, one per seat: each weapon shelf, the prow cap, the
+**For a hull** - pick **N** faces, one per seat: each weapon shelf, the prow cap, the
 bridge deck. Each gets an id and an `accepts` role. Multiple sockets per hull.
 
-**Symmetry mirroring halves the work.** These ships are bilaterally symmetric — the Human
+**Symmetry mirroring halves the work.** These ships are bilaterally symmetric - the Human
 Navy Cruiser hull spans X ∈ [−19.06, 19.06] about a centreline at zero. Picking `port-1`
 offers to generate `starboard-1` by mirroring the frame across the hull's symmetry plane.
 Since mount authoring is the project's main cost centre (§11), this is one of the
@@ -210,7 +210,7 @@ and it means no facet-grouping or convex-hull code has to exist in JavaScript.
 
 #### Facet indices are never persisted
 
-Coplanar-facet grouping is order-dependent and not stable between runs — the existing
+Coplanar-facet grouping is order-dependent and not stable between runs - the existing
 Python tooling documents this explicitly and warns against hardcoding a facet index from
 one script into another. Shipyard therefore stores only the **derived frame**, which is
 stable geometry independent of traversal order. A facet index is a transient handle valid
@@ -218,7 +218,7 @@ within a single request, never a stored reference.
 
 ### 5.5 Mount records are the durable artefact
 
-The existing `/stl-modify` workflow discards its working data — its instructions delete
+The existing `/stl-modify` workflow discards its working data - its instructions delete
 the scripts after each run, so the only record of a mount is baked into an output STL.
 Recording mounts as first-class data makes them serve three purposes at once: alignment
 frames for the virtual preview, magnet drill locations for the physical build, and a
@@ -241,8 +241,8 @@ Clojure JVM (single process)
 └─ /mesh/{key}.glb  binary, cached on disk, generated lazily
 
 browser
-├─ htmx — all UI
-└─ viewport.js — three.js island, driven by HX-Trigger events
+├─ htmx - all UI
+└─ viewport.js - three.js island, driven by HX-Trigger events
 ```
 
 Cross-platform by construction: run the jar, open localhost. Identical on Linux, macOS
@@ -272,7 +272,7 @@ JSON event that the viewport listens for.
      :body    (h/html (picker-panel loadout))}))
 ```
 
-The server stays authoritative over loadouts, fleets and schemes — which is what we want,
+The server stays authoritative over loadouts, fleets and schemes - which is what we want,
 since all three are persisted anyway.
 
 ### 6.2 What stays in JavaScript
@@ -289,7 +289,7 @@ Accepted, and inherent to the problem rather than a limitation of the approach:
 ### 6.3 Frontend dependencies
 
 three.js (~600KB) and htmx are fetched at **build time** at pinned versions and packaged
-into the jar's resources. **No vendored copies in the repo** — the vendor directory is
+into the jar's resources. **No vendored copies in the repo** - the vendor directory is
 gitignored. `package.json` + `npm ci` gives version pinning and integrity checking for
 free; a `tools.build` step copies the dist files into `resources/public/vendor/` before
 the uberjar is assembled. three.js ships as an ES module, so an import map and
@@ -303,8 +303,8 @@ Performance is determined here, not by the renderer.
 
 STL is the worst possible GPU format: no vertex sharing, so every triangle carries three
 independent vertices. Pushing raw STL for a heavy scene costs several hundred megabytes
-of VRAM and will stutter on integrated graphics. Welding vertices — a closed mesh has
-roughly V ≈ T/2 — and using an index buffer cuts that by about two thirds, and quantized
+of VRAM and will stutter on integrated graphics. Welding vertices - a closed mesh has
+roughly V ≈ T/2 - and using an index buffer cuts that by about two thirds, and quantized
 normals reduce it further.
 
 Stages, all server-side:
@@ -314,20 +314,20 @@ Stages, all server-side:
    `unsupported-pitted.stl`, fall back to `unsupported.stl`, never read `supported.stl`.
    Skip `other/`. Produce part records. Cheap; no mesh parsing.
 2. **Preprocess**, lazily on first view of a part:
-   - Parse binary STL via `ByteBuffer` — an 84-byte header plus 50 bytes per triangle.
+   - Parse binary STL via `ByteBuffer` - an 84-byte header plus 50 bytes per triangle.
    - Weld and index by quantized position.
    - Recompute smooth normals with a hard-edge angle threshold.
    - Generate LOD tiers with meshoptimizer `simplify` (100% / 25% / 5%).
    - Encode to `.glb` with meshopt compression.
 3. **Cache**, content-addressed by SHA of the source file. Re-pitting a hull changes the
-   hash, which invalidates the cache automatically — no manual cache management.
+   hash, which invalidates the cache automatically - no manual cache management.
 4. **Serve** `/mesh/{key}.glb` as static binary.
 
 Preprocessing the whole 118M-triangle library up front is an hours-long job with no
 payoff. Lazy generation means the cache only ever holds what has actually been looked at.
 
 **LOD tiers are not needed on day one.** The fleet roster is a list rendering one ship at
-a time (§8.4), so the working budget is a single ship — 270k to 600k triangles, which any
+a time (§8.4), so the working budget is a single ship - 270k to 600k triangles, which any
 GPU handles without help. The pipeline generates the tiers regardless, because doing so
 costs almost nothing once meshoptimizer is already in the path, and it means thumbnails
 and any future simultaneous-fleet view are cheap to add.
@@ -335,17 +335,17 @@ and any future simultaneous-fleet view are cheap to add.
 JVM notes: STL parsing, welding and batch preprocessing are CPU grunt work where real
 parallelism across cores is a substantial advantage. LWJGL 3 ships meshoptimizer bindings
 with prebuilt natives for all three platforms, covering simplification, vertex-cache
-optimization and the meshopt encoder — no FFI work required. JOML covers transform math.
+optimization and the meshopt encoder - no FFI work required. JOML covers transform math.
 
 **No CSG boolean is required.** Earlier drafts needed it for pit derivation and for
 in-app pitting; face picking eliminates the first and §3 defers the second. This removes
-the only dependency the JVM was genuinely weak at — pure-Java CSG is BSP-based and would
+the only dependency the JVM was genuinely weak at - pure-Java CSG is BSP-based and would
 have been slow and fragile on a 133k-triangle hull. Should the optional `:seeded` path
 (§5.2) be built later, bind manifold3d through its C API using Java 22's FFM, or shell
 out to a small Python sidecar reusing the existing tooling.
 
-What the wizard needs instead is **coplanar facet grouping** — a flood fill over adjacent
-triangles with a normal-dot threshold — plus a 2D convex hull for the roll axis. Both are
+What the wizard needs instead is **coplanar facet grouping** - a flood fill over adjacent
+triangles with a normal-dot threshold - plus a 2D convex hull for the roll axis. Both are
 modest, self-contained JVM code with no native dependency.
 
 ---
@@ -378,17 +378,17 @@ Stored as EDN initially; SQLite if query patterns demand it.
  :mount/axis    [-1.0 0.0 0.0]           ; frame +Z, outward from the seat
  :mount/roll    [0.0 0.0 1.0]            ; frame +X
  :mount/magnet  {:r 1.5 :depth 1.0}      ; optional; physical drilling only
- :mount/origin  :picked}                 ; :picked :mirrored :seeded — provenance
+ :mount/origin  :picked}                 ; :picked :mirrored :seeded - provenance
 ```
 
 Position, axis and roll are all derived from one picked face (§5.1). `:mount/magnet` is
-optional and carries no weight in assembly — it records where to drill, nothing more.
+optional and carries no weight in assembly - it records where to drill, nothing more.
 
 `:mount/origin` records provenance so lower-confidence entries can be surfaced for
 review: `:picked` was chosen directly by the user, `:mirrored` was generated by symmetry
 from another mount, `:seeded` was proposed automatically from a pitted/unpitted diff.
 
-No facet index appears in this record, deliberately — see §5.4.
+No facet index appears in this record, deliberately - see §5.4.
 
 ### 8.3 Loadout
 
@@ -409,12 +409,12 @@ A named ship. Slot assignments plus an optional scheme override.
 ### 8.4 Fleet
 
 An ordered list of loadouts with a default scheme. **Rendered as a list, one ship
-displayed at a time** — selecting an entry loads it into the viewport. Not a simultaneous
+displayed at a time** - selecting an entry loads it into the viewport. Not a simultaneous
 scene. Thumbnails per entry are desirable but lower priority (M6).
 
 ### 8.5 Paint scheme
 
-**v1 is per-part colour** — hull one colour, prow another, weapons a third. Nearly free,
+**v1 is per-part colour** - hull one colour, prow another, weapons a third. Nearly free,
 since the parts are already separate meshes with separate materials. A scheme maps part
 role to a material:
 
@@ -432,7 +432,7 @@ role to a material:
 Mapping to actual manufacturer ranges is not attempted in v1.
 
 **Assumption, flagged:** per-part granularity is assumed sufficient for v1. Per-region
-painting — spine, engine block, panel lines separately — is a plausible later refinement
+painting - spine, engine block, panel lines separately - is a plausible later refinement
 but requires either region definitions or true surface painting, and STL carries no UVs.
 Confirm before building on this.
 
@@ -445,22 +445,22 @@ markings.
 
 All server-rendered hiccup driven by htmx, except the viewport.
 
-- **Library browser** — filter by bundle, class, role. Search by name.
-- **Assembly view** — the viewport plus a slot panel. Each slot lists compatible parts,
+- **Library browser** - filter by bundle, class, role. Search by name.
+- **Assembly view** - the viewport plus a slot panel. Each slot lists compatible parts,
   filtered by the socket's `:mount/accepts`. Selecting one issues the `HX-Trigger` event
   that swaps geometry in the scene.
-- **Mount wizard** (§5.4) — pick a face in the viewport, review the computed frame,
+- **Mount wizard** (§5.4) - pick a face in the viewport, review the computed frame,
   adjust roll, name it, save. Offers symmetry mirroring on hulls. Surfaces
   `:mount/origin` so mirrored and seeded mounts can be confirmed.
-- **Paint editor** — per-role swatches against the live model.
-- **Fleet roster** — list of loadouts, select to load into the viewport.
+- **Paint editor** - per-role swatches against the live model.
+- **Fleet roster** - list of loadouts, select to load into the viewport.
 
 ### 9.1 Thumbnails
 
 Generated by capturing the live viewport with `canvas.toDataURL()` and POSTing the result
 back to be stored against the loadout. This avoids a headless GL renderer on the JVM
 entirely, which would otherwise be the most annoying part of the feature. The cost is
-that a loadout has no thumbnail until it has been viewed once — acceptable, and the
+that a loadout has no thumbnail until it has been viewed once - acceptable, and the
 capture can be triggered automatically on save.
 
 ---
@@ -480,7 +480,7 @@ M2 and M3 were one milestone in an earlier draft. Splitting them reflects that t
 is now the centrepiece rather than a fallback: it is independently useful and
 independently testable, and assembly is a thin layer of transform math on top of it.
 
-**First scope is the Human Navy Cruiser** — one hull, twelve prows, bridge, two antennae,
+**First scope is the Human Navy Cruiser** - one hull, twelve prows, bridge, two antennae,
 six weapon modules. Enough variety to prove the catalog schema and the wizard before
 scaling to 19 GB, and its pitted variant makes it a convenient test case for the optional
 `:seeded` path later.
@@ -491,7 +491,7 @@ scaling to 19 GB, and its pitted variant makes it a convenient test case for the
 
 Forgejo Actions, Linux and Windows runners.
 
-The JVM is portable but **the native dependencies are not** — LWJGL ships
+The JVM is portable but **the native dependencies are not** - LWJGL ships
 platform-specific meshoptimizer natives, and that is precisely the layer most likely to
 break silently on one platform. A Windows runner earns its place by exercising the mesh
 pipeline end to end on Windows natives, not merely by compiling.
@@ -523,7 +523,7 @@ CI self-contained.
   merge-adjacent-facets affordance in the wizard.
 
 - **Non-watertight source meshes.** Only relevant if the optional `:seeded` path (§5.2)
-  is built — `trimesh.boolean.difference` raises `ValueError: Not all meshes are
+  is built - `trimesh.boolean.difference` raises `ValueError: Not all meshes are
   volumes!` on such input, requiring the manifold3d direct API. Face picking is
   unaffected: it needs no booleans and works on any mesh that loads.
 

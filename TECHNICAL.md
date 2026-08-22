@@ -1,8 +1,8 @@
-# Shipyard — Technical Specification
+# Shipyard - Technical Specification
 
 Implementation-level design. Scope: **M1** (library scan, catalog, mesh pipeline,
 single-part viewer) in full detail, plus the system-wide foundations M1 forces us to
-commit to — project layout, dependencies, storage, and the HTTP contract — which every
+commit to - project layout, dependencies, storage, and the HTTP contract - which every
 later milestone inherits.
 
 M2–M6 are deliberately not specced at this depth. M1 will teach us things about the mesh
@@ -16,7 +16,7 @@ Companion to [SPEC.md](SPEC.md), which covers product scope and architecture rat
 
 Three questions SPEC.md left open, now settled.
 
-### 1.1 No glTF — a purpose-built wire format
+### 1.1 No glTF - a purpose-built wire format
 
 SPEC §7 said encode to `.glb`. Dropped. We control both ends of the wire, so glTF's
 interop value is close to zero here, while writing a GLB encoder on the JVM means a JSON
@@ -30,7 +30,7 @@ Instead: a flat binary format (§6) that decodes straight into a three.js
 The encoder lives behind `shipyard.mesh.wire` alone. If interop ever matters, swapping in
 GLB touches one namespace.
 
-### 1.2 Datascript for querying — it does not replace the sidecars
+### 1.2 Datascript for querying - it does not replace the sidecars
 
 **Datascript ingests at startup. It never owns data.**
 
@@ -44,7 +44,7 @@ can only be a derived index. The durable layer is plain EDN files.
      mounts, per-part overrides            │
                                            ├──▶  Datascript DB    (in memory)
    $XDG_DATA_HOME/shipyard/                │       parts, mounts, loadouts,
-     loadouts.edn  fleets.edn  schemes.edn ┘       fleets, schemes — all queryable
+     loadouts.edn  fleets.edn  schemes.edn ┘       fleets, schemes - all queryable
 
    $XDG_CACHE_HOME/shipyard/
      index.edn        scan cache, mtime+size keyed
@@ -55,13 +55,13 @@ can only be a derived index. The durable layer is plain EDN files.
 data files, transact the lot into a fresh Datascript DB. 1,661 small EDN files is a fast
 read; no mesh is touched (§5.3).
 
-**What each layer may hold — and what never moves.**
+**What each layer may hold - and what never moves.**
 
 | Layer | Holds | Never holds |
 |---|---|---|
 | Datascript | Metadata only: ids, names, roles, variants, a triangle count, a content hash, mount frames | Any geometry. Not one vertex |
 | `$XDG_CACHE_HOME/…/mesh/` | Derived `.symesh` encodings, regenerable from source at any time | Copies of STLs |
-| The library | The STLs, exactly where they are | — |
+| The library | The STLs, exactly where they are | - |
 
 **Source STLs are never copied, moved, or ingested.** They are opened lazily, once, when
 a part is first viewed, and read again only if their mtime or size changes. The full
@@ -70,7 +70,7 @@ recomputation.
 
 The naming invites a misreading worth heading off: `:part/mesh-key` is the SHA-256 *of*
 the source STL, used to name the derived file `mesh/<sha>.symesh`. The STL itself is not
-stored under that hash — the hash is an identity for the encoding produced from it.
+stored under that hash - the hash is an identity for the encoding produced from it.
 
 **Write path is write-through, file first.**
 
@@ -84,12 +84,12 @@ File first matters: if the transact throws, the data is already safe on disk and
 restart picks it up. The reverse order can lose a write.
 
 **Why Datascript earns its place** even though M1's queries are simple: compatibility
-filtering in M3 is a genuine join — every part whose role satisfies some socket's
+filtering in M3 is a genuine join - every part whose role satisfies some socket's
 `accepts`, within a class, excluding those already slotted. That's a datalog one-liner
 and an awkward nest of `filter` over maps. Establishing it in M1 avoids a migration.
 
 **Why not Datalevin**, which would be durable and remove the ingest step: it would make a
-database the source of truth for data that wants to live beside the STLs — greppable,
+database the source of truth for data that wants to live beside the STLs - greppable,
 diffable, and portable if the library moves. Sidecars keep mounts attached to the parts
 they describe. The ingest step is the price and it is small.
 
@@ -113,7 +113,7 @@ Human Navy Fleet Bundle/Cruiser/Hull/
 
 Consequences: mounts survive library reorganisation, diff per-part rather than as one
 churning central file, and are trivially inspectable. The library becomes
-self-describing — a copied part folder carries its own mount data.
+self-describing - a copied part folder carries its own mount data.
 
 ---
 
@@ -147,7 +147,7 @@ shipyard/
 ├── resources/public/
 │   ├── app.css
 │   ├── viewport.js                 the only hand-written JS
-│   └── vendor/                     GITIGNORED — populated at build
+│   └── vendor/                     GITIGNORED - populated at build
 └── test/shipyard/
     ├── fixtures/                   small generated STLs, committed
     └── mesh/…
@@ -182,7 +182,7 @@ shipyard/
 deterministic across threads. `MESHOPTIMIZER_VERSION = 220`.
 
 tools.deps expresses a Maven classifier as `artifact$classifier`, **not** a `:classifier`
-key — the latter resolves to the wrong artifact silently. Core `lwjgl` natives are
+key - the latter resolves to the wrong artifact silently. Core `lwjgl` natives are
 required alongside the module's, not merely the module's. Five classifiers resolve:
 `natives-linux`, `natives-windows`, `natives-macos`, `natives-macos-arm64`,
 `natives-linux-arm64`. The uberjar bundles all of them; LWJGL selects at runtime.
@@ -199,11 +199,11 @@ set them now. For the shipped uberjar use the `Enable-Native-Access: ALL-UNNAMED
 manifest attribute instead of the CLI flag.
 
 LWJGL extracts natives to a temp directory at startup, so **the runtime needs a writable
-temp dir** — override with `-Dorg.lwjgl.librarypath` where that does not hold. Its
+temp dir** - override with `-Dorg.lwjgl.librarypath` where that does not hold. Its
 `Failed to instantiate memory allocator: JEmallocAllocator` log line is harmless; it
 falls back to the stdlib allocator.
 
-No CSG dependency — face picking (SPEC §5) removed the need, which is what makes the pure
+No CSG dependency - face picking (SPEC §5) removed the need, which is what makes the pure
 JVM stack viable.
 
 ---
@@ -215,7 +215,7 @@ JVM stack viable.
   {:part/id          {:db/unique :db.unique/identity}   ; relative folder path
    :part/bundle      {:db/index true}
    :part/class       {:db/index true}                   ; :cruiser, :escort, nil
-   :part/role-hint   {:db/index true}                   ; browsing only — never compatibility (§5.2)
+   :part/role-hint   {:db/index true}                   ; browsing only - never compatibility (§5.2)
    :part/role-source {}                                 ; :inferred | :class | :manual
    :part/name        {}
    :part/variants    {:db/cardinality :db.cardinality/many}  ; :supported :unsupported :unsupported-pitted
@@ -241,7 +241,7 @@ JVM stack viable.
    :scheme/id        {:db/unique :db.unique/identity}})
 ```
 
-`:part/id` is the library-relative folder path — stable, human-readable, debuggable in a
+`:part/id` is the library-relative folder path - stable, human-readable, debuggable in a
 URL. Distinct from `:part/mesh-key`, the content hash used for mesh caching (§5.4).
 
 The M1 query surface is small, but the shape it establishes is what M3 needs:
@@ -253,7 +253,7 @@ The M1 query surface is small, but the shape it establishes is what M3 needs:
               [?e :part/id ?id] [?e :part/name ?name]]
      @conn "Human Navy Fleet Bundle" :cruiser)
 
-;; M3: what can go in this socket — the join that justifies datascript
+;; M3: what can go in this socket - the join that justifies datascript
 (d/q '[:find ?id :in $ ?class [?role ...]
        :where [?e :part/class ?class] [?e :part/role ?role] [?e :part/id ?id]]
      @conn :cruiser (:mount/accepts socket))
@@ -274,21 +274,21 @@ Path decomposition, relative to library root:
 <Bundle>/[<Class>/][weapons/]<Part Name>/
 ```
 
-- **bundle** — first segment.
-- **class** — second segment if present and not `weapons`/the part folder itself. Absent
+- **bundle** - first segment.
+- **class** - second segment if present and not `weapons`/the part folder itself. Absent
   in the four single-ship bundles.
-- **weapons** — presence of a `weapons` segment.
-- **name** — the part folder's own name.
+- **weapons** - presence of a `weapons` segment.
+- **name** - the part folder's own name.
 
-### 5.2 Role inference — a hint, never a fact
+### 5.2 Role inference - a hint, never a fact
 
 **Measured over all 1,661 part folders (issue #5).** The rule table works far better than
 feared on its headline number and far worse on inspection, and the design follows from
 the second fact rather than the first.
 
 Raw result: `:unknown` is **25.1%**, not the ~60% we braced for. But that 74.9%
-"coverage" is inflated. 22.8 points of it come from directory facts, not filenames — a
-`weapons/` path segment or an `ordinance` class — which are free and correct. Filename
+"coverage" is inflated. 22.8 points of it come from directory facts, not filenames - a
+`weapons/` path segment or an `ordinance` class - which are free and correct. Filename
 matching alone classifies **52.1%**, and after removing demonstrable false positives,
 roughly **45% of the library carries a filename-derived role you could defend.**
 
@@ -305,7 +305,7 @@ vocabularies, not one library:
 | Space Bugs Fleet Bundle | 69.2% |
 
 Human Navy scores 1.6% because that designer puts "Prow" in nearly every escort folder
-name — and those are not prows (see below). The table is tuned to Human Navy vocabulary
+name - and those are not prows (see below). The table is tuned to Human Navy vocabulary
 and degrades monotonically with distance from it.
 
 #### Three failure classes no regex can fix
@@ -313,7 +313,7 @@ and degrades monotonically with distance from it.
 These are why role must never be authoritative.
 
 **Whole ships wearing a part name.** Human Navy's `Escort/` holds 32 folders matching
-`prow` and **zero hulls** — there is nothing for `Cyanide Prow Python` to attach to,
+`prow` and **zero hulls** - there is nothing for `Cyanide Prow Python` to attach to,
 because it *is* the Python escort; "Cyanide Prow" is the styling. The identical object is
 classified three ways depending on who named the folder:
 
@@ -326,12 +326,12 @@ classified three ways depending on who named the folder:
 45 parts affected. The table measures vocabulary, not geometry.
 
 **Hull sections indistinguishable from whole hulls.** 35 of 171 `:hull` matches are
-mandatory pieces of one hull, not interchangeable options — `Bloody Iron Forward hull` +
+mandatory pieces of one hull, not interchangeable options - `Bloody Iron Forward hull` +
 `Rear Hull`, `Unbreakable Speculation - Mid/Center/Rear Hull`. Worst case, `XVI -
 Revengeful Specter` has `- hull`, `- multi part hull front` and `- multi part hull rear`:
 the first is a one-piece print, the others are the same ship split for small printers.
 Printing all three yields two ships' worth of hull. And bare numbering is genuinely
-ambiguous — `Combatbarge Hull 1/Hull 2` are sections while `Pirate Elves Hull1/Hull2/Hull3`
+ambiguous - `Combatbarge Hull 1/Hull 2` are sections while `Pirate Elves Hull1/Hull2/Hull3`
 are alternatives, with nothing in the name to separate them.
 
 **Folder names that enumerate fitted options.** `Blitz Deck 2 Supa boosta small` is a
@@ -364,7 +364,7 @@ Ordered, first match wins, case-insensitive, matched against the folder name.
 Takes `:unknown` from 25.1% to **10.0%**; worst bundle from 69.2% to 23.1%; 13 of 19
 bundles reach zero.
 
-**Two regex details that matter.** Matching is **substring, not word-bounded** — 14
+**Two regex details that matter.** Matching is **substring, not word-bounded** - 14
 folders are CamelCase or underscore-joined (`Metis_Hull`, `GGRBridge`, `VossTorpedo`,
 `BombCanon`) and word boundaries silently drop every one. **Except `ram` and `aft`, which
 must be word-bounded**: `ram` as a substring hits 9 `Pyramid` folders, and `aft` hits 19
@@ -386,7 +386,7 @@ a rule table becomes a maintenance liability.
 2. **It never feeds compatibility matching.** M3 reads mounts, which are ground truth
    established by the wizard. A ~10–20% error rate depending on bundle is fine for
    browsing and fatal for assembly.
-3. **The UI renders it as a soft suggestion** — greyed and italic, overridable — the same
+3. **The UI renders it as a soft suggestion** - greyed and italic, overridable - the same
    treatment §5.3 gives supported-only parts. It must not look authoritative.
 4. **A manual role set in the wizard overrides the hint permanently** and suppresses
    re-inference for that part.
@@ -399,7 +399,7 @@ genuine kitbash in others, and **both inside the same folder** in five of them.
 
 - **Fully pre-combined:** Human Navy, Toaster Mechanics, Ork, Anarchist Jarheads, Greater
   Good Defense, Greater Good Fish Market, Space Bugs.
-- **Mixed — ships plus a real kit in one folder:** Hazard Stripe, Gloomy Jarheads,
+- **Mixed - ships plus a real kit in one folder:** Hazard Stripe, Gloomy Jarheads,
   Interstellar Jarheads (both), Zombie Space Raider. Hazard Stripe holds 12 whole ships
   *and* a genuine two-piece `IW Barge Hull` + prow kit.
 - **Genuinely kitbash, with pre-assembled convenience files alongside:** Pirate Space
@@ -414,19 +414,19 @@ Decisive counter-case: `Pirate Elves Conium Destroyer 1` is **19 disjoint unmerg
 components** whose volume multiset is exactly the union of three sibling parts (1011.21
 vs 1009.78, 0.14% apart).
 
-**This vindicates rejecting the `Escort → :ship` fallback in §5.2** — it would have been
+**This vindicates rejecting the `Escort → :ship` fallback in §5.2** - it would have been
 wrong for eight bundles.
 
 **Names cannot decide this.** `Cyanide Prow Rapier`, `Toaster Stalker Prow` and
 `Gladiator Standard Prow` all say "Prow" and are whole ships; `Mercury hull and prow` says
 both. Detection must be geometric, computing per part: sorted bbox extents, mesh volume,
-connected-component count, and a 0.5 mm-binned axial cross-section profile — then a
+connected-component count, and a 0.5 mm-binned axial cross-section profile - then a
 variant-family test (cross-sections agreeing within `max(0.3 mm, 2%)` **and** profiles
 agreeing over `≥ max(20 mm, 40% of min L)`; measured margin is 22–68 mm for ships against
 ≤10.5 mm for kitbash, a clean gap), plus an anchor test (a component needs a sibling of
 ≥2× its volume to plug into) and an assembly test via component-volume decomposition.
 
-Absolute size does not discriminate — `Combatbarge Standard Prow` (a component) has
+Absolute size does not discriminate - `Combatbarge Standard Prow` (a component) has
 volume 5357 while `Gladiator Standard Prow` (a whole ship) has 1227. All comparisons must
 be sibling-relative.
 
@@ -441,7 +441,7 @@ renderable. The classifier is M2 work, where mesh analysis already happens.
 (defn source-stl [part-dir]
   (or (existing part-dir "unsupported-pitted.stl")
       (existing part-dir "unsupported.stl")))
-;; supported.stl is never read — it carries print scaffolding
+;; supported.stl is never read - it carries print scaffolding
 ```
 
 A part with only `supported.stl` (73 exist) is catalogued with `:part/variants
@@ -455,8 +455,8 @@ computing SHA-256 over the library at every boot is unacceptable.
 
 Two keys, two purposes:
 
-- `:part/id` — the folder path. Free, computed during the walk.
-- `:part/mesh-key` — SHA-256 of the source STL. Computed **only** when a part is first
+- `:part/id` - the folder path. Free, computed during the walk.
+- `:part/mesh-key` - SHA-256 of the source STL. Computed **only** when a part is first
   preprocessed, which is already lazy.
 
 `$XDG_CACHE_HOME/shipyard/index.edn` maps `path → {:mtime :size :mesh-key :tris}`. At
@@ -474,18 +474,18 @@ EDN; it opens no mesh.
 ### 6.1 Parse
 
 Binary STL: 80-byte header, `uint32` little-endian triangle count, then 50 bytes per
-triangle — 3 floats face normal, 3×3 floats vertices, `uint16` attribute count.
+triangle - 3 floats face normal, 3×3 floats vertices, `uint16` attribute count.
 
 Read via a memory-mapped `ByteBuffer` in `LITTLE_ENDIAN` order. No per-triangle object
 allocation; write straight into primitive `float[]`.
 
-**One ASCII STL exists** and must be handled — the claim that none do was wrong
+**One ASCII STL exists** and must be handled - the claim that none do was wrong
 (verified, issue #3): `Toaster Mechanics Fleet Bundle/Escort/Toaster Stalker Prow/
 unsupported.stl`, 6.3 MB, CRLF line endings. Its binary header parses as 1,814,065,765
 triangles, so a header-trusting parser allocates ~90 GB or reads garbage.
 
 **Validate every file before parsing:** require `size == 84 + 50n` for the header's `n`.
-On mismatch, fall back to the ASCII path rather than failing — a single unreadable part
+On mismatch, fall back to the ASCII path rather than failing - a single unreadable part
 in a 1,592-file library is not an acceptable outcome. A minimal ASCII reader is ~30 lines
 and this is the only file needing it, but the validation guard matters more than the
 reader: it is what stops a malformed or truncated file taking the process down.
@@ -501,7 +501,7 @@ closed-manifold ideal of 0.5, and quantized snapping to a 1e-4 mm grid produces
 *identical* counts to three decimals. Exporters here emit bit-identical floats for shared
 vertices, so a `HashMap` keyed on the three ints from `Float.floatToRawIntBits` is both
 correct and sufficient. The quantized-snap fallback earlier drafts specified is dead
-code — drop it.
+code - drop it.
 
 **Then split by crease angle.** Welding alone gives smooth normals everywhere, which
 rounds off the hard mechanical edges all over these hulls. Build vertex→face adjacency,
@@ -518,7 +518,7 @@ are within a threshold (default **35°**), and emit one output vertex per
 | Classic Ram Prow | 77,296 | 0.779 | 0.722 | **0.698** | 0.677 | 0.649 |
 | Bridge | 11,064 | 1.124 | 1.084 | **1.069** | 1.028 | 0.978 |
 
-At 35° the range is **0.70–1.07**, against raw STL's 3.0 — a **2.8–4.3× reduction**, which
+At 35° the range is **0.70–1.07**, against raw STL's 3.0 - a **2.8–4.3× reduction**, which
 confirms the estimate these numbers replace.
 
 **35° stands as the default, and the knob barely matters.** Across 15°→60° the ratio moves
@@ -526,11 +526,11 @@ only ~15%, so this is not a parameter worth tuning per bundle. Pick it for shadi
 quality, not memory.
 
 **Corrected test assertions.** Warn above **1.25**, fail at **≥ 2.5**. The earlier warn
-threshold of 1.0 would have fired on two of four reference parts under normal operation —
+threshold of 1.0 would have fired on two of four reference parts under normal operation -
 a warning that cries wolf is worse than none.
 
 **The weld is load-bearing for simplification, not just memory.** Measured (§6.3): a mesh
-whose coincident positions differ by a single ULP tears badly under simplification —
+whose coincident positions differ by a single ULP tears badly under simplification -
 6,684 boundary edges after decimation against 99 for the correctly welded mesh, on a model
 with 896 genuine border edges. A near-miss weld does not degrade gracefully; it shreds the
 LOD tiers. This makes the V/T ratio check a real guard rather than a nicety: if welding
@@ -543,7 +543,7 @@ bug.
 **100% / 25% / 5%** of index count, run after `meshopt_optimizeVertexCache`.
 
 We carry per-vertex normals, and the attribute term measurably restrains collapses that
-damage shading — verified on a flat grid with varying normals, where geometric error is
+damage shading - verified on a flat grid with varying normals, where geometric error is
 zero by construction so only the attribute term can act (issue #6). **Start at attribute
 weight 0.5 per normal component.** On smooth geometry both functions produce identical
 output, since normals there are derived from positions; the win is precisely on hard
@@ -560,7 +560,7 @@ A hard floor exists but never binds. Driving `target_index_count` to 0 and raisi
 error budget without limit, a crease-split mesh refuses to collapse below **3.05%** of its
 original index count, while the position-welded equivalent goes to zero. The seams are
 genuinely un-collapsible topology. But our tiers are 25% and 5%, both comfortably above
-the floor, and both hit their target exactly. **Do not add a tier below ~8%** — that is
+the floor, and both hit their target exactly. **Do not add a tier below ~8%** - that is
 where this stops being theoretical.
 
 Pipeline order, measured both ways at 25%:
@@ -577,18 +577,18 @@ Order (a) yields 3% fewer vertices for roughly 10× the time, and must re-split 
 seam collapse and floor behaviour, so it remains the choice for shading quality (§6.3
 above) rather than for topology.
 
-**Simplification does not compact the vertex buffer** — output indices still reference the
+**Simplification does not compact the vertex buffer** - output indices still reference the
 original array. `meshopt_optimizeVertexFetch` compacts each tier to only the vertices it
 uses, and the measured saving is large: the 5% tier needs 8,030 of 78,413 vertices, about
 10%.
 
-### 6.4 Wire format — `.symesh`
+### 6.4 Wire format - `.symesh`
 
 **Resolved:** one self-contained file per LOD tier, each compacted with
 `meshopt_optimizeVertexFetch`. Not one shared vertex buffer with N index buffers.
 
 Sharing a vertex buffer only pays if tiers are switched at runtime, and SPEC's fleet view
-is a list rendering one ship at a time — so a viewer holds exactly one tier. Compaction
+is a list rendering one ship at a time - so a viewer holds exactly one tier. Compaction
 then shrinks the 5% tier's vertex buffer roughly tenfold (§6.3), which is what M6
 thumbnails download. Independent files also cache and evict independently over plain HTTP.
 
@@ -612,7 +612,7 @@ offset  type         field
         uint32[I]    indices
 ```
 
-Client-side decode is a handful of typed-array views — no parsing:
+Client-side decode is a handful of typed-array views - no parsing:
 
 ```js
 const dv = new DataView(buf), V = dv.getUint32(16, true), I = dv.getUint32(20, true);
@@ -628,13 +628,13 @@ g.setIndex(new THREE.BufferAttribute(new Uint32Array(buf, p, I), 1));
 `bboxMin/Max` sit in the header so the camera can frame a part without scanning vertices.
 
 Served with `Content-Encoding: gzip`. Float data compresses poorly (~10%), so this is
-minor — but it is one header, and it is free.
+minor - but it is one header, and it is free.
 
 ### 6.5 Cache and concurrency
 
 `$XDG_CACHE_HOME/shipyard/mesh/<sha256>.symesh`, written atomically (temp file + rename)
 so a concurrent reader never sees a partial file. Requests for a part already being
-preprocessed await the in-flight job rather than starting a second — a `ConcurrentHashMap`
+preprocessed await the in-flight job rather than starting a second - a `ConcurrentHashMap`
 of `path → CompletableFuture`.
 
 **Thread pool sized to `availableProcessors`**, not virtual threads. Preprocessing is
@@ -643,12 +643,12 @@ scheduling overhead here. Virtual threads are correct for the Jetty request pool
 a separate concern.
 
 **Cache budget and eviction.** A `.symesh` runs about **82%** of its source STL, not the
-70% earlier drafts assumed — for the Cruiser hull, 5.4 MB against 6.6 MB: 139,935 welded
+70% earlier drafts assumed - for the Cruiser hull, 5.4 MB against 6.6 MB: 139,935 welded
 vertices (§6.2, 35°) at 24 B for positions plus normals, and 2.07 MB across three LOD
 index tiers. Lazy generation bounds growth to what has been viewed, but the ceiling is
 real: browsing the entire library would accumulate roughly **8 GB**.
 
-So the cache is capped — **default 4 GB**, configurable, with LRU eviction by access time
+So the cache is capped - **default 4 GB**, configurable, with LRU eviction by access time
 on a background sweep. Every entry is regenerable from the source STL, so eviction is
 always safe and never loses user data. A cold re-encode of an evicted part costs the
 same as its first view.
@@ -661,7 +661,7 @@ Verified working practice (issue #6). These are the traps that cost real time.
 
 - **`MemoryStack` only for small out-params** such as `result_error`. It is
   `AutoCloseable`, so `(with-open [s (MemoryStack/stackPush)] …)` is correct from
-  Clojure, but the default stack is **64 KB** and it is **thread-local** — never share
+  Clojure, but the default stack is **64 KB** and it is **thread-local** - never share
   one across threads. Mesh-sized buffers go through `MemoryUtil/memAlloc*` with an
   explicit `try/finally memFree`.
 - **Views do not own memory.** `MemoryUtil/memFloatBuffer` gives a zero-copy view into an
@@ -670,12 +670,12 @@ Verified working practice (issue #6). These are the traps that cost real time.
   resets byte order to big-endian, silently corrupting float reads.
 - **Interleaved attribute views need tail padding.** LWJGL's bounds check requires
   `vertex_count * (stride/4)` floats measured from the *attribute* offset, overrunning by
-  one attribute — allocate 12 extra bytes at the end of the vertex buffer.
+  one attribute - allocate 12 extra bytes at the end of the vertex buffer.
 - **Strides are bytes; buffer bounds are elements.** Easy to conflate.
 - **`meshopt_simplify*` returns a count and never throws** on ordinary failure. Check it.
   The result is always a multiple of 3.
 - **Never enable `meshopt_SimplifyPrune` without clamping `target_error`.** Measured: at
-  `target_error = 1.0` it returns **zero indices — the entire mesh deleted** — while
+  `target_error = 1.0` it returns **zero indices - the entire mesh deleted** - while
   0.5 and below behave normally. It fails silently by returning a count, not by throwing.
   We do not need Prune; if it is ever enabled, cap the error budget well below 1.0.
 - **Leave LWJGL's bounds checks on.** They caught a real undersized-destination bug during
@@ -684,7 +684,7 @@ Verified working practice (issue #6). These are the traps that cost real time.
   buffers produced byte-identical results, confirming the §6.5 pool design. Each thread
   must own its output buffers.
 - **Clojure specifics.** `(set! *warn-on-reflection* true)` is essential on these hot
-  interop paths. Primitive-hinted fns are limited to 4 args — use an options map for wide
+  interop paths. Primitive-hinted fns are limited to 4 args - use an options map for wide
   signatures. Parenthesize `(ByteOrder/nativeOrder)`; Clojure 1.12 reads the bare form as
   a method value.
 
@@ -694,7 +694,7 @@ Verified working practice (issue #6). These are the traps that cost real time.
 
 | Route | Returns |
 |---|---|
-| `GET /` | App shell — library panel, viewport canvas, import map |
+| `GET /` | App shell - library panel, viewport canvas, import map |
 | `GET /library` | Hiccup fragment. Params `bundle` `class` `role` `q` |
 | `GET /part/:id` | Detail fragment + `HX-Trigger` to load the mesh |
 | `GET /mesh/:key.symesh` | Binary (§6.4). Immutable, content-addressed |
@@ -706,7 +706,7 @@ Verified working practice (issue #6). These are the traps that cost real time.
 `Cache-Control: public, max-age=31536000, immutable`. Fragments send `no-store`.
 
 **Preprocess latency.** A cold part takes seconds. `GET /part/:id` returns the fragment
-immediately with a loading state, and the mesh URL is only issued once the job completes —
+immediately with a loading state, and the mesh URL is only issued once the job completes -
 so the request never blocks on the pipeline.
 
 ### 7.1 htmx contract
@@ -724,14 +724,14 @@ communication is `HX-Trigger`:
 | Event | Payload | Meaning |
 |---|---|---|
 | `shipyard:load-mesh` | `url`, `part-id`, `frame` | Load and display; `frame` recentres the camera |
-| `shipyard:clear` | — | Empty the scene |
+| `shipyard:clear` | - | Empty the scene |
 | `shipyard:status` | `state`, `message` | Preprocessing progress / errors |
 
 Event names are namespaced `shipyard:*` so they never collide with htmx's own.
 
 ### 7.2 Viewport module
 
-`resources/public/viewport.js`, an ES module — the only hand-written JS in M1.
+`resources/public/viewport.js`, an ES module - the only hand-written JS in M1.
 
 Owns: renderer, scene, camera, `OrbitControls`, an IBL environment, a `Map` of part-id →
 `Object3D`, and the `.symesh` decoder. Listens for the events above on `document.body`.
@@ -753,7 +753,7 @@ copies in the repo (SPEC §6.3).
 
 `build.clj` steps:
 
-1. `npm ci` — pinned versions, integrity-checked.
+1. `npm ci` - pinned versions, integrity-checked.
 2. Copy into `resources/public/vendor/`:
    - `three/build/three.module.js`
    - `three/examples/jsm/controls/OrbitControls.js`
@@ -771,7 +771,7 @@ three.js addons import bare `"three"`, so the shell needs an import map:
 
 No bundler. three.js ships as an ES module and the import map covers resolution.
 
-`resources/public/vendor/` is gitignored — already committed in `.gitignore`.
+`resources/public/vendor/` is gitignored - already committed in `.gitignore`.
 
 ## 9. CI
 
@@ -782,8 +782,8 @@ first appears (issue #6): the natives are prebuilt jars on Maven Central, so a L
 runner can resolve and package the Windows classifier without trouble. **Windows CI is
 needed only to *execute* tests on Windows, never to build or release.**
 
-It still earns its place — running the pipeline against Windows natives is the only way
-to catch a platform-specific failure before a user does — but if CI minutes get tight,
+It still earns its place - running the pipeline against Windows natives is the only way
+to catch a platform-specific failure before a user does - but if CI minutes get tight,
 this is the job to cut, and cutting it does not endanger the release artifact.
 
 ```yaml
@@ -803,7 +803,7 @@ jobs:
 
 **Pipeline smoke test** on both platforms: parse a fixture STL, weld it, generate LOD
 tiers, encode `.symesh`, and assert triangle/vertex counts and the LOD tier sizes against
-recorded values. Fixtures are small generated solids committed to the repo — CI never
+recorded values. Fixtures are small generated solids committed to the repo - CI never
 depends on the 19 GB library.
 
 ## 10. Testing
@@ -813,7 +813,7 @@ depends on the 19 GB library.
 | STL parse | Triangle count and bbox on a generated cube and icosphere |
 | ASCII rejection | Clear error, no garbage geometry |
 | Weld ratio | Cube welds to 8–24 verts; sphere to `V/T < 1.5`; fail at `≥ 2.5` |
-| Crease split | Cube keeps hard edges — 24 verts, not 8 |
+| Crease split | Cube keeps hard edges - 24 verts, not 8 |
 | LOD monotonicity | Each tier's index count strictly decreases; tier 0 is lossless |
 | Wire roundtrip | Encode → decode → geometry equals input within float tolerance |
 | Scan | Fixture tree yields expected ids, roles, variants; `other/` skipped |
@@ -836,17 +836,17 @@ Targets M1 must hold. Measured on the Human Navy Cruiser (SPEC §4).
 | Peak heap, preprocessing | < 2 GB |
 
 If the cold preprocess budget fails, the lazy-cache design is what protects the user
-experience — it is paid once per part, ever.
+experience - it is paid once per part, ever.
 
 ## 12. Open questions
 
 - **Escort classification** (SPEC §11) blocks accurate role inference. Verify by
-  inspecting geometry — a pre-combined escort should show one connected component with a
-  hull-like bbox — before M2 depends on it.
+  inspecting geometry - a pre-combined escort should show one connected component with a
+  hull-like bbox - before M2 depends on it.
 - **Crease angle 35°** is a starting guess. Tune against real hulls; it may need to be
   per-bundle if designers differ in how they export.
 - **`:unknown` role frequency** is unmeasured. If it is most of the library, the role
-  table needs work — or roles should come from the mount wizard instead of filenames.
+  table needs work - or roles should come from the mount wizard instead of filenames.
 - **Sidecar write conflicts** if the library is on shared storage. Single-user assumption
   for now; a lock file is the cheap fix if it ever matters.
 - **Single-ship bundles break the role model conceptually** (issue #5). Role presupposes
@@ -854,7 +854,7 @@ experience — it is paid once per part, ever.
   *sections of one model, all of which get printed*. `Bloody Iron Forward hull` and
   `Rear Hull` are two halves, not two choices. Filtering `:hull` mixes 160 interchangeable
   hulls with 11 non-interchangeable fragments. This needs a `:bundle/kind :single-ship`
-  flag or a part-level `:assembly` grouping — neither derivable from a folder name, so it
+  flag or a part-level `:assembly` grouping - neither derivable from a folder name, so it
   is a missing concept rather than a rule-table bug. Decide before M3.
 - **`ordinance/` contains 11 flight stands** (`Bomber Base`, `Fighter Base`) which are not
   ordnance. Minor, but they will show up in the wrong filter.
