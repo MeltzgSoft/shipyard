@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Runs the checks the pull request template asks you to tick, so a red CI run is
+# never the first time you find out.
+#
+# Install (once per clone - git does not do this for you):
+#   git config core.hooksPath .githooks
+#
+# Runs every check before reporting, rather than stopping at the first failure,
+# so one commit attempt tells you everything that needs fixing.
+#
+# Checks the working tree, not the index. If you stage a subset of your changes
+# this reports on all of them - which is the safer direction to be wrong in.
+
+failed_cmds=()
+
+run() {
+  echo "==> $*"
+  "$@" || failed_cmds+=("$*")
+}
+
+run clojure -M:cljfmt check src test build.clj
+run clojure -M:clj-kondo --lint src --lint test --lint build.clj
+
+# Unit only. Integration and e2e belong to CI: a pre-commit hook slow enough to
+# be annoying is a hook people bypass with --no-verify, which is worse than not
+# having one.
+run clojure -M:test --focus :unit
+
+if [ ${#failed_cmds[@]} -gt 0 ]; then
+  echo
+  echo "Failed commands:"
+  printf '  %s\n' "${failed_cmds[@]}"
+  echo
+  echo "Fix formatting with: clojure -M:cljfmt fix src test build.clj"
+  exit 1
+fi

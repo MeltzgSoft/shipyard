@@ -4,12 +4,15 @@
   (:require [clojure.tools.logging :as log]
             [integrant.core :as ig]
             [ring.adapter.jetty :as jetty])
-  (:import [org.eclipse.jetty.server Server]))
+  (:import [org.eclipse.jetty.server Server ServerConnector]))
 
 (defmethod ig/init-key :shipyard.http/server [_ {:keys [port host handler]}]
   (let [server (jetty/run-jetty handler {:port port :host host :join? false})]
     (log/info (format "shipyard listening on http://%s:%d" host
-                      (.getLocalPort (first (.getConnectors ^Server server)))))
+                      ;; .getConnectors returns Connector[]; `first` erases to
+                      ;; Object, so .getLocalPort needs the concrete type.
+                      (.getLocalPort ^ServerConnector
+                       (first (.getConnectors ^Server server)))))
     server))
 
 (defmethod ig/halt-key! :shipyard.http/server [_ ^Server server]

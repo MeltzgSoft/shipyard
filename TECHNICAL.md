@@ -768,10 +768,14 @@ Verified working practice (issue #6). These are the traps that cost real time.
 - **meshopt is stateless and reentrant.** 8 threads x 4 tiers over shared read-only source
   buffers produced byte-identical results, confirming the §6.5 pool design. Each thread
   must own its output buffers.
-- **Clojure specifics.** `(set! *warn-on-reflection* true)` is essential on these hot
-  interop paths. Primitive-hinted fns are limited to 4 args - use an options map for wide
-  signatures. Parenthesize `(ByteOrder/nativeOrder)`; Clojure 1.12 reads the bare form as
-  a method value.
+- **Clojure specifics.** Reflection on these hot interop paths is a real cost, and it is
+  enforced centrally rather than per namespace: `shipyard.unit.reflection-test` recompiles
+  every namespace under `src/clj` and `src/cljc` with `*warn-on-reflection*` bound and
+  fails on any warning. Per-namespace `(set! *warn-on-reflection* true)` only ever covered
+  the namespaces somebody remembered to annotate - it missed a real reflective call in
+  `http/server.clj` that the central check caught immediately. Primitive-hinted fns are
+  limited to 4 args - use an options map for wide signatures. Parenthesize
+  `(ByteOrder/nativeOrder)`; Clojure 1.12 reads the bare form as a method value.
 
 ---
 
