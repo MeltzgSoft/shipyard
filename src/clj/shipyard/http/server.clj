@@ -12,7 +12,7 @@
                       ;; .getConnectors returns Connector[]; `first` erases to
                       ;; Object, so .getLocalPort needs the concrete type.
                       (.getLocalPort ^ServerConnector
-                                     (first (.getConnectors ^Server server)))))
+                       (first (.getConnectors ^Server server)))))
     server))
 
 (defmethod ig/halt-key! :shipyard.http/server [_ ^Server server]
