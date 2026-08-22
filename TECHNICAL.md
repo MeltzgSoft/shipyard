@@ -495,10 +495,13 @@ reader: it is what stops a malformed or truncated file taking the process down.
 The single highest-value transform. STL shares no vertices, so raw upload costs ~3× what
 it should.
 
-**Weld on exact float bits first.** Exporters emit bit-identical floats for shared
-vertices, so exact matching is correct and fast — a `HashMap` keyed on the three ints
-from `Float.floatToRawIntBits`. Quantized snapping is the fallback for meshes that have
-been through a transform, engaged only when the exact pass fails the ratio check below.
+**Weld on exact float bits. No fallback needed.** Measured across four Human Navy parts:
+exact bit matching reaches **V/T = 0.497–0.498**, essentially the theoretical
+closed-manifold ideal of 0.5, and quantized snapping to a 1e-4 mm grid produces
+*identical* counts to three decimals. Exporters here emit bit-identical floats for shared
+vertices, so a `HashMap` keyed on the three ints from `Float.floatToRawIntBits` is both
+correct and sufficient. The quantized-snap fallback earlier drafts specified is dead
+code — drop it.
 
 **Then split by crease angle.** Welding alone gives smooth normals everywhere, which
 rounds off the hard mechanical edges all over these hulls. Build vertex→face adjacency,
@@ -506,13 +509,25 @@ cluster each vertex's incident faces into smoothing groups where adjacent face n
 are within a threshold (default **35°**), and emit one output vertex per
 (position, smoothing group), with an area-weighted normal.
 
-**Ratio check as a correctness test.** A closed manifold with no creases welds to
-`V ≈ T/2`; unwelded STL is `V = 3T`. Hard-edged models land in between. Assert
-`V/T < 1.5`, log a warning above `1.0`, and fail the fixture test outright at `≥ 2.5`,
-which means welding silently did nothing.
+**Measured crease-split ratios** (V/T after splitting, by threshold):
 
-Honest expectation: SPEC §7's "roughly V ≈ T/2" is the smooth-manifold ideal. With crease
-splitting on mechanical hulls, expect `0.6–1.2`. Still a 2.5–5× reduction over raw.
+| part | T | 15° | 25° | **35°** | 45° | 60° |
+|---|---:|---:|---:|---:|---:|---:|
+| Cruiser Hull | 132,892 | 1.093 | 1.071 | **1.053** | 1.015 | 0.943 |
+| Battleship Hull | 209,560 | 0.947 | 0.934 | **0.918** | 0.835 | 0.782 |
+| Classic Ram Prow | 77,296 | 0.779 | 0.722 | **0.698** | 0.677 | 0.649 |
+| Bridge | 11,064 | 1.124 | 1.084 | **1.069** | 1.028 | 0.978 |
+
+At 35° the range is **0.70–1.07**, against raw STL's 3.0 — a **2.8–4.3× reduction**, which
+confirms the estimate these numbers replace.
+
+**35° stands as the default, and the knob barely matters.** Across 15°→60° the ratio moves
+only ~15%, so this is not a parameter worth tuning per bundle. Pick it for shading
+quality, not memory.
+
+**Corrected test assertions.** Warn above **1.25**, fail at **≥ 2.5**. The earlier warn
+threshold of 1.0 would have fired on two of four reference parts under normal operation —
+a warning that cries wolf is worse than none.
 
 ### 6.3 LOD
 
@@ -603,10 +618,11 @@ CPU-bound native and array work; virtual threads help blocking I/O and would onl
 scheduling overhead here. Virtual threads are correct for the Jetty request pool, which is
 a separate concern.
 
-**Cache budget and eviction.** A `.symesh` runs about 70% of its source STL — for the
-Cruiser hull, ~4.6 MB against 6.6 MB (106k welded vertices at 24 B, plus three LOD index
-tiers at ~2.1 MB). Lazy generation bounds growth to what has actually been viewed, but
-the ceiling is real: browsing the entire library would accumulate roughly 7 GB.
+**Cache budget and eviction.** A `.symesh` runs about **82%** of its source STL, not the
+70% earlier drafts assumed — for the Cruiser hull, 5.4 MB against 6.6 MB: 139,935 welded
+vertices (§6.2, 35°) at 24 B for positions plus normals, and 2.07 MB across three LOD
+index tiers. Lazy generation bounds growth to what has been viewed, but the ceiling is
+real: browsing the entire library would accumulate roughly **8 GB**.
 
 So the cache is capped — **default 4 GB**, configurable, with LRU eviction by access time
 on a background sweep. Every entry is regenerable from the source STL, so eviction is
