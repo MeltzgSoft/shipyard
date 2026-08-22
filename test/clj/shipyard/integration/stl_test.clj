@@ -53,24 +53,28 @@
             (format "parsing %d triangles allocated %d bytes for a %d-byte result (limit %d). A per-triangle object would put this an order of magnitude higher."
                     n used out (* 3 out)))))))
 
-(def ^:private known-ascii
-  "The one ASCII STL in the real library (issue #3). Absent in CI, so this test
-  reports a skip rather than failing - the committed fixture above is what keeps
-  the ASCII path covered everywhere."
-  (io/file (System/getProperty "user.home")
-           "Documents/3D_models/BFG/Toaster Mechanics Fleet Bundle/Escort/Toaster Stalker Prow/unsupported.stl"))
+(deftest binary-fixture-built-from-the-spec
+  (testing "a real binary file whose header text begins with 'solid'"
+    (let [m (stl/parse-file (io/file "test/fixtures/triangle-binary-solid-header.stl"))]
+      (is (= 1 (:triangle-count m))
+          "detection keys on size == 84 + 50n, never on the leading text")
+      (is (= [1.0 2.0 3.0 4.0 5.0 6.0 7.0 8.0 9.0] (vec ^floats (:positions m)))
+          "distinctive coordinates: a byte-order or offset error cannot look plausible")
+      (is (= [1.0 2.0 3.0] (mapv float (:bbox-min m))))
+      (is (= [7.0 8.0 9.0] (mapv float (:bbox-max m)))))))
 
-(deftest real-ascii-file-from-the-library
-  ;; The skip branch must still assert: kaocha fails a test that runs no
-  ;; assertions ("Test ran without assertions"), so a bare println here turns an
-  ;; intentional skip into a red build on any machine without the library.
-  (if-not (.isFile known-ascii)
-    (is true "real library not present; test/fixtures/cube-ascii-crlf.stl covers the ASCII path")
-    (let [m (stl/parse-file known-ascii)]
-      (testing "its binary header claims 1.8 billion triangles and must be ignored"
-        (is (pos? (:triangle-count m)))
-        (is (< (:triangle-count m) 1000000)))
-      (is (= (* 9 (:triangle-count m)) (alength ^floats (:positions m))))
-      (is (every? #(Float/isFinite %) (concat (:bbox-min m) (:bbox-max m))))
-      (println (format "  real ASCII file: %,d triangles, bbox %s -> %s"
-                       (:triangle-count m) (:bbox-min m) (:bbox-max m))))))
+(deftest ascii-fixture-header-is-an-absurd-triangle-count
+  (testing "the property that kills a header-trusting parser"
+    (let [f    (io/file "test/fixtures/cube-ascii-crlf.stl")
+          size (.length f)
+          buf  (doto (java.nio.ByteBuffer/wrap (java.nio.file.Files/readAllBytes (.toPath f)))
+                 (.order java.nio.ByteOrder/LITTLE_ENDIAN))
+          n    (stl/binary-triangle-count buf size)]
+      (is (= 540028976 n)
+          "bytes 80-83 of this ASCII text misread as half a billion triangles")
+      (is (> (stl/expected-size n) (* 25 1024 1024 1024))
+          "which would demand over 25 GB - the same class of lie as the real library's ASCII file")
+      (is (not= size (stl/expected-size n)))
+      (testing "and it parses correctly anyway"
+        (let [m (stl/parse-file f)]
+          (is (= 12 (:triangle-count m))))))))
