@@ -391,17 +391,49 @@ a rule table becomes a maintenance liability.
 4. **A manual role set in the wizard overrides the hint permanently** and suppresses
    re-inference for that part.
 
-### 5.5 Escorts are whole ships
+### 5.5 Escorts: mixed, and only geometry can tell
 
-Converging evidence from issue #5: 137 escort-class folders are complete models, not
-kitbash parts. Human Navy's escort folder contains no hulls at all, and Space Bugs escorts
-run 24 MB each — far larger than that bundle's largest hull.
+**Measured across all 15 escort-bearing bundles (issue #3). The blanket rule this section
+previously asserted is wrong.** Escorts are pre-combined whole ships in *some* bundles,
+genuine kitbash in others, and **both inside the same folder** in five of them.
 
-They take `:role :ship` **assigned by rule from the class segment, recorded as
-`:role-source :class`** — deliberate, not inferred from a filename. M2 must not rely on
-the `:unknown`/`:prow` split the old table produced for them.
+- **Fully pre-combined:** Human Navy, Toaster Mechanics, Ork, Anarchist Jarheads, Greater
+  Good Defense, Greater Good Fish Market, Space Bugs.
+- **Mixed — ships plus a real kit in one folder:** Hazard Stripe, Gloomy Jarheads,
+  Interstellar Jarheads (both), Zombie Space Raider. Hazard Stripe holds 12 whole ships
+  *and* a genuine two-piece `IW Barge Hull` + prow kit.
+- **Genuinely kitbash, with pre-assembled convenience files alongside:** Pirate Space
+  Elves, Edgy Space Elves, tiamat.
 
-Geometric confirmation is pending issue #3.
+Human Navy is proven whole-ship three independent ways: cross-section extents identical
+across all prow variants of a class while only length changes (Doubtless: 28.06 × 19.00
+for all 8); siblings sharing 55–88% of their axial profile, against ≤36% for
+known-kitbash Cruiser prows; and no `Rapier Hull` existing anywhere to attach to.
+
+Decisive counter-case: `Pirate Elves Conium Destroyer 1` is **19 disjoint unmerged
+components** whose volume multiset is exactly the union of three sibling parts (1011.21
+vs 1009.78, 0.14% apart).
+
+**This vindicates rejecting the `Escort → :ship` fallback in §5.2** — it would have been
+wrong for eight bundles.
+
+**Names cannot decide this.** `Cyanide Prow Rapier`, `Toaster Stalker Prow` and
+`Gladiator Standard Prow` all say "Prow" and are whole ships; `Mercury hull and prow` says
+both. Detection must be geometric, computing per part: sorted bbox extents, mesh volume,
+connected-component count, and a 0.5 mm-binned axial cross-section profile — then a
+variant-family test (cross-sections agreeing within `max(0.3 mm, 2%)` **and** profiles
+agreeing over `≥ max(20 mm, 40% of min L)`; measured margin is 22–68 mm for ships against
+≤10.5 mm for kitbash, a clean gap), plus an anchor test (a component needs a sibling of
+≥2× its volume to plug into) and an assembly test via component-volume decomposition.
+
+Absolute size does not discriminate — `Combatbarge Standard Prow` (a component) has
+volume 5357 while `Gladiator Standard Prow` (a whole ship) has 1227. All comparisons must
+be sibling-relative.
+
+**Scope call: this does not belong in M1.** It needs volume and connected-component
+analysis on every escort, which is far more than a catalog scan should do. M1 marks
+escort-class parts `:role-hint :unknown, :role-source :inferred` and leaves them
+renderable. The classifier is M2 work, where mesh analysis already happens.
 
 ### 5.3 Variant selection
 
@@ -447,8 +479,16 @@ triangle — 3 floats face normal, 3×3 floats vertices, `uint16` attribute coun
 Read via a memory-mapped `ByteBuffer` in `LITTLE_ENDIAN` order. No per-triangle object
 allocation; write straight into primitive `float[]`.
 
-ASCII STL is not supported. Detect (`solid ` prefix *and* size ≠ 84 + 50n) and fail with
-a clear message rather than producing garbage. No ASCII files exist in the library.
+**One ASCII STL exists** and must be handled — the claim that none do was wrong
+(verified, issue #3): `Toaster Mechanics Fleet Bundle/Escort/Toaster Stalker Prow/
+unsupported.stl`, 6.3 MB, CRLF line endings. Its binary header parses as 1,814,065,765
+triangles, so a header-trusting parser allocates ~90 GB or reads garbage.
+
+**Validate every file before parsing:** require `size == 84 + 50n` for the header's `n`.
+On mismatch, fall back to the ASCII path rather than failing — a single unreadable part
+in a 1,592-file library is not an acceptable outcome. A minimal ASCII reader is ~30 lines
+and this is the only file needing it, but the validation guard matters more than the
+reader: it is what stops a malformed or truncated file taking the process down.
 
 ### 6.2 Weld and crease-split normals
 
