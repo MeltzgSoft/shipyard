@@ -10,22 +10,33 @@
             [clojure.test :refer [deftest is]]))
 
 (defn source-namespaces
-  "Every namespace under the JVM source roots, derived from file paths."
+  "Every namespace under the JVM source roots, derived from file paths.
+
+  Uses Path/relativize rather than stripping a root prefix with a regex: on
+  Windows `file-seq` yields `src\\clj\\...`, which no pattern built from the
+  forward-slash root will match, and the symbol silently comes out as
+  `src.clj.shipyard.http.routes`."
   []
   (for [root ["src/clj" "src/cljc"]
+        :let [root-path (.toPath (io/file root))]
         ^java.io.File f (file-seq (io/file root))
         :when (and (.isFile f) (re-find #"\.cljc?$" (.getName f)))]
-    (-> (.getPath f)
-        (str/replace (re-pattern (str "^\\Q" root "\\E[/\\\\]")) "")
+    (-> (.relativize root-path (.toPath f))
+        str
+        (str/replace "\\" "/")
         (str/replace #"\.cljc?$" "")
         (str/replace "_" "-")
-        (str/replace #"[/\\]" ".")
+        (str/replace "/" ".")
         symbol)))
 
 (deftest no-reflection-in-source
   (let [nss (source-namespaces)
         sw  (java.io.StringWriter.)]
     (is (seq nss) "the source roots should not be empty")
+    ;; Fails loudly on a bad derivation instead of letting `require` throw
+    ;; FileNotFoundException several frames away.
+    (is (every? #(str/starts-with? (str %) "shipyard.") nss)
+        (str "namespace names derived from paths look wrong: " (pr-str (vec nss))))
     ;; :reload forces recompilation; without it an already-loaded namespace
     ;; emits nothing and the test passes vacuously.
     (binding [*warn-on-reflection* true
