@@ -14,9 +14,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: linux
             natives: natives-linux
-          - os: windows-latest
+          - os: windows
             natives: natives-windows
     runs-on: ${{ matrix.os }}
     steps:
@@ -51,7 +51,7 @@ jobs:
     # Proves the release artifact assembles. Linux only: the LWJGL natives are
     # prebuilt jars on Maven Central, so one platform can package all four
     # classifiers (issue #6). Windows CI is for running tests, not building.
-    runs-on: ubuntu-latest
+    runs-on: linux
     steps:
       - uses: actions/checkout@v4
 

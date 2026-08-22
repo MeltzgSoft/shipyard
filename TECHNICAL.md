@@ -898,7 +898,7 @@ JVM server for HTML and meshes. Only the JVM process is needed to serve a releas
 
 ## 9. CI
 
-Forgejo Actions, matrix over `ubuntu-latest` and `windows-latest`.
+Forgejo Actions, matrix over the `linux` and `windows` runner labels.
 
 The JVM is portable; **LWJGL natives are not**. But the justification is narrower than it
 first appears (issue #6): the natives are prebuilt jars on Maven Central, so a Linux
@@ -912,7 +912,7 @@ this is the job to cut, and cutting it does not endanger the release artifact.
 ```yaml
 jobs:
   build:
-    strategy: { matrix: { os: [ubuntu-latest, windows-latest] } }
+    strategy: { matrix: { os: [linux, windows] } }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -920,7 +920,7 @@ jobs:
         with: { distribution: temurin, java-version: '25' }
       - uses: actions/cache@v4
         with: { path: ~/.m2, key: ${{ matrix.os }}-m2-${{ hashFiles('deps.edn') }} }
-      - run: clojure -M:test:natives-${{ matrix.os == 'windows-latest' && 'windows' || 'linux' }}
+      - run: clojure -M:test:natives-${{ matrix.os }}
       - run: clojure -T:build uber
 ```
 

@@ -9,7 +9,7 @@ jobs:
   lint:
     # Linting and formatting are platform-independent, so one runner is enough.
     # Platform coverage belongs to the test workflow (TECHNICAL.md §9, §10.2).
-    runs-on: ubuntu-latest
+    runs-on: linux
     steps:
       - uses: actions/checkout@v4
 
