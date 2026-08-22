@@ -31,6 +31,8 @@ Shipyard closes that loop. Pick parts, see the assembled ship, decide before pri
 - Save named loadouts and organise them into a fleet roster.
 - Define how parts mate by picking faces in the viewport, and persist those mounts as
   durable data that accumulates across sessions.
+- Ship a user manual that describes what Shipyard can actually do today, kept current
+  with the software rather than written once at the end (§12).
 
 ## 3. Non-goals
 
@@ -503,7 +505,50 @@ CI self-contained.
 
 ---
 
-## 11. Risks and open questions
+## 12. Documentation requirements
+
+Two documents are deliverables of this project, not artefacts of it, and both carry a
+standing obligation to stay current.
+
+### 12.1 The user manual
+
+`docs/MANUAL.md` describes how to run Shipyard and get a ship on screen, written for
+someone who owns STL models and wants to preview them - not for someone reading the code.
+
+It documents **what the software does today.** Features that are specified but not built
+are marked as such with the milestone that will deliver them, so a reader can always tell
+the difference between a promise and a capability. That distinction is the whole point: a
+manual describing unbuilt features is a lie with a table of contents.
+
+**Every change to user-facing behaviour updates the manual in the same pull request.**
+Not in a follow-up, not at the end of a milestone. A milestone is not complete while its
+manual section still says *Not yet built*.
+
+Scope: installation, pointing Shipyard at a library, every user-facing workflow, and
+troubleshooting for failures a user can actually hit. Where the software has a rough
+edge - roles being guesses, parts that only ship as `supported.stl`, malformed STLs in
+the wild - the manual says so plainly rather than letting the user discover it and assume
+the software is broken.
+
+### 12.2 The README
+
+`README.md` serves contributors: what Shipyard is, the required toolchain, how to build,
+run, test, lint and format it, and where the other documents are.
+
+**Every change to how the project is set up, run, or tested updates the README in the
+same pull request.** A README that lags is worse than none, because people trust it and
+lose an hour before doubting it.
+
+### 12.3 Why these are requirements
+
+This project's specifications have already been wrong three times in ways only
+measurement caught - the claim that no ASCII STLs existed, that escorts were uniformly
+whole ships, that welding would reach `V ≈ T/2`. Documentation drifts the same way and
+more quietly, because nothing fails when it does. Making currency a merge obligation is
+the only mechanism that reliably works; a periodic documentation pass is a promise to
+future-you that future-you will not keep.
+
+## 13. Risks and open questions
 
 - **Escorts may not be assemblies.** §4 infers that escort STLs are pre-combined whole
   ships from filename patterns and file sizes. Not verified by inspecting geometry. If

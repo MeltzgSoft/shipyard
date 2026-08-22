@@ -221,6 +221,14 @@ Aero's `#profile` gives tests a small cache cap so eviction is exercisable in se
 
 ## 3. Dependencies
 
+**Java 25 is the canonical JDK.** Not a minimum to be negotiated down: the `:run` and
+`:test` aliases pass `--sun-misc-unsafe-memory-access=allow`, which does not exist before
+JDK 23 and makes an older JVM refuse to start, and `--enable-native-access=ALL-UNNAMED`,
+which LWJGL needs to load its natives cleanly. CI pins 25 on every job and the uberjar declares
+`Enable-Native-Access` in its manifest. There is deliberately no runtime version check:
+the aliases already fail fast on an older JVM, and a jar run on one is the operator's
+call to make.
+
 ```clojure
 ;; deps.edn
 {:paths ["src/clj" "src/cljc" "resources"]

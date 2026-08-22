@@ -15,3 +15,4 @@
     (is (= (str home "/models") (system/expand-home "~/models")))
     (is (= "/abs/path" (system/expand-home "/abs/path")))
     (is (nil? (system/expand-home nil)))))
+
