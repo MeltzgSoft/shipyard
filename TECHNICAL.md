@@ -126,7 +126,7 @@ where. Splitting makes the boundary a build fact rather than a naming convention
 ```
 shipyard/
 ├── deps.edn                        :paths ["src/clj" "src/cljc" "resources"]
-├── shadow-cljs.edn                 :source-paths ["src/cljs" "src/cljc"]
+├── shadow-cljs.edn                 :deps {:aliases [:cljs]} - paths come from deps.edn
 ├── build.clj                       tools.build: npm, shadow release, uberjar
 ├── package.json / package-lock.json    pinned three.js + htmx
 ├── node_modules/                   GITIGNORED
@@ -138,7 +138,7 @@ shipyard/
 │   ├── library/{scan,index}.clj    part-folder discovery; mtime+size scan cache
 │   ├── catalog/{db,sidecar}.clj    datascript conn + schema; shipyard.edn read/write
 │   ├── mesh/{stl,weld,lod,cache}.clj
-│   └── http/{routes,views,htmx}.clj
+│   └── http/{server,routes,views,htmx}.clj    server = jetty lifecycle
 │
 ├── src/cljc/shipyard/              BOTH runtimes
 │   ├── wire.cljc                   .symesh layout - encode JVM / decode CLJS
@@ -169,23 +169,38 @@ needs the same maths for the M2 wizard's live gizmo preview. One definition, not
 no namespace exists to hold constants.
 
 ```clojure
-;; resources/config.edn - read with aero, which supplies #env / #or / #profile
-{:shipyard/library    {:root #or [#env SHIPYARD_LIBRARY #ref [:xdg :data-home]]}
- :shipyard/catalog    {:library #ig/ref :shipyard/library}
- :shipyard/mesh-cache {:dir       #ref [:xdg :cache-home]
-                       :cap-bytes #profile {:default 4294967296 :test 67108864}
-                       :threads   #or [#env SHIPYARD_THREADS :auto]
-                       :crease-deg 35
-                       :lod-tiers [1.0 0.25 0.05]}
- :shipyard/http       {:port    #or [#env PORT 8080]
-                       :catalog #ig/ref :shipyard/catalog
-                       :cache   #ig/ref :shipyard/mesh-cache}}
+;; resources/config.edn - read with aero, which supplies #env / #or / #profile.
+;; Component keys are namespaced to the namespace that implements them, so
+;; integrant's load-namespaces finds each ig/init-key without a registry.
+{:shipyard.library/index
+ {:root #or [#env SHIPYARD_LIBRARY "~/Documents/3D_models/BFG"]}
+
+ :shipyard.mesh/cache
+ {:crease-deg 35
+  :lod-tiers  [1.0 0.25 0.05]
+  :cap-bytes  #profile {:default 4294967296 :test 67108864}
+  :threads    :auto}
+
+ :shipyard.http/routes
+ {:library #ig/ref :shipyard.library/index
+  :cache   #ig/ref :shipyard.mesh/cache}
+
+ :shipyard.http/server
+ {:port #or [#env PORT 8080] :host "127.0.0.1"
+  :handler #ig/ref :shipyard.http/routes}}
 ```
+
+`#ig/ref` is not built into aero - `shipyard.system` registers it with
+`(defmethod aero/reader 'ig/ref ...)`. XDG directories are resolved in code rather
+than by a config reader, since they need the documented per-variable fallbacks.
 
 Each component namespace defines its own `ig/init-key` and `ig/halt-key!`, keeping
 lifecycle next to the thing it constructs. `system.clj` holds only key derivation and
 anything ordering-sensitive; `main.clj` reads the config, calls `ig/init`, and registers a
 shutdown hook.
+
+`load-config` takes `:config-dir` and `:env` so the layering is testable without
+mutating the process environment.
 
 **Three layers, later winning over earlier:**
 
@@ -205,6 +220,14 @@ rather than derived, so all three should be adjustable without a rebuild.
 Aero's `#profile` gives tests a small cache cap so eviction is exercisable in seconds.
 
 ## 3. Dependencies
+
+**Java 25 is the canonical JDK.** Not a minimum to be negotiated down: the `:run` and
+`:test` aliases pass `--sun-misc-unsafe-memory-access=allow`, which does not exist before
+JDK 23 and makes an older JVM refuse to start, and `--enable-native-access=ALL-UNNAMED`,
+which LWJGL needs to load its natives cleanly. CI pins 25 on every job and the uberjar declares
+`Enable-Native-Access` in its manifest. There is deliberately no runtime version check:
+the aliases already fail fast on an older JVM, and a jar run on one is the operator's
+call to make.
 
 ```clojure
 ;; deps.edn
@@ -842,9 +865,10 @@ fetched from a CDN at runtime (SPEC §6.3).
 ```
 
 ```clojure
-;; shadow-cljs.edn
-{:source-paths ["src/cljs" "src/cljc"]
- :dependencies []                       ; deps.edn is the source of truth for Clojure deps
+;; shadow-cljs.edn - source paths are NOT set here. With :deps, shadow-cljs
+;; takes them from the deps.edn :cljs alias and ignores any :source-paths
+;; in this file (it warns if you set them anyway).
+{:deps   {:aliases [:cljs]}
  :builds {:viewport {:target     :browser
                      :output-dir "resources/public/js"
                      :asset-path "/js"
@@ -882,7 +906,7 @@ JVM server for HTML and meshes. Only the JVM process is needed to serve a releas
 
 ## 9. CI
 
-Forgejo Actions, matrix over `ubuntu-latest` and `windows-latest`.
+Forgejo Actions, matrix over the `linux` and `windows` runner labels.
 
 The JVM is portable; **LWJGL natives are not**. But the justification is narrower than it
 first appears (issue #6): the natives are prebuilt jars on Maven Central, so a Linux
@@ -896,17 +920,25 @@ this is the job to cut, and cutting it does not endanger the release artifact.
 ```yaml
 jobs:
   build:
-    strategy: { matrix: { os: [ubuntu-latest, windows-latest] } }
+    strategy: { matrix: { os: [linux, windows] } }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
-        with: { distribution: temurin, java-version: '21' }
+        with: { distribution: temurin, java-version: '25' }
       - uses: actions/cache@v4
         with: { path: ~/.m2, key: ${{ matrix.os }}-m2-${{ hashFiles('deps.edn') }} }
-      - run: clojure -M:test:natives-${{ matrix.os == 'windows-latest' && 'windows' || 'linux' }}
+      - run: clojure -M:test:natives-${{ matrix.os }}
       - run: clojure -T:build uber
 ```
+
+**Java 25, not 21.** The `:run` and `:test` aliases pass
+`--sun-misc-unsafe-memory-access=allow`, which does not exist before JDK 23 - an older
+JVM refuses to start rather than ignoring it.
+
+Workflows live in `.forgejo/workflows/`: `lint.yml` (clj-kondo + cljfmt, one runner,
+since neither is platform-dependent) and `test.yml` (the test matrix plus a Linux-only
+build job that assembles the uberjar and smoke-tests the artifact).
 
 Level mapping (§10): **unit and integration run on both platforms**, since those are what
 exercise natives and filesystem semantics. **E2E runs on Linux only** - it tests

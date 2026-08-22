@@ -1,0 +1,10 @@
+;; Source paths are NOT configured here. With :deps, shadow-cljs takes them from
+;; the deps.edn :cljs alias (:extra-paths ["src/cljs" "src/cljc"]) and ignores
+;; any :source-paths set in this file.
+{:deps   {:aliases [:cljs]}
+ :builds {:viewport
+          {:target     :browser
+           :output-dir "resources/public/js"
+           :asset-path "/js"
+           :modules    {:viewport {:init-fn shipyard.viewport/init}}
+           :release    {:compiler-options {:optimizations :advanced}}}}}

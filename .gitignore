@@ -3,16 +3,13 @@
 /classes/
 *.jar
 
-# frontend deps fetched at build time — never vendored (SPEC §6.3)
+# frontend deps fetched at build time - never vendored (SPEC §6.3)
 /node_modules/
 /resources/public/js/
 
-# generated mesh + thumbnail cache
-/cache/
-/thumbs/
-
-# clojure tooling
+# clojure / shadow-cljs tooling
 .cpcache/
+.shadow-cljs/
 .nrepl-port
 .lsp/
 .clj-kondo/.cache/
