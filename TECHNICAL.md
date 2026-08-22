@@ -138,16 +138,17 @@ shipyard/
 │   │   ├── stl.clj                 binary STL parse
 │   │   ├── weld.clj                vertex dedup + crease-split normals
 │   │   ├── lod.clj                 meshoptimizer via LWJGL
-│   │   ├── wire.clj                .symesh encode
+│   │   ├── wire.cljc               .symesh layout - SHARED, encode JVM / decode CLJS
 │   │   └── cache.clj               lazy preprocess + disk cache
-│   └── http/
-│       ├── routes.clj              reitit
-│       ├── views.clj               hiccup
-│       └── htmx.clj                HX-Trigger helpers
+│   ├── http/
+│   │   ├── routes.clj              reitit
+│   │   ├── views.clj               hiccup
+│   │   └── htmx.clj                HX-Trigger helpers
+│   └── viewport.cljs               the browser island (CLJS)
+├── shadow-cljs.edn
 ├── resources/public/
 │   ├── app.css
-│   ├── viewport.js                 the only hand-written JS
-│   └── vendor/                     GITIGNORED - populated at build
+│   └── js/                         GITIGNORED - shadow-cljs output
 └── test/shipyard/
     ├── fixtures/                   small generated STLs, committed
     └── mesh/…
@@ -175,6 +176,8 @@ shipyard/
                                  org.lwjgl/lwjgl-meshoptimizer$natives-windows {:mvn/version "3.3.6"}}}
   :natives-macos   {…}  ; natives-macos, natives-macos-arm64, natives-linux-arm64
   :build {:deps {io.github.clojure/tools.build {:mvn/version "0.10.5"}} :ns-default build}
+  :cljs  {:extra-paths ["src"]
+          :extra-deps {thheller/shadow-cljs {:mvn/version "3.4.12"}}}
   :test  {:extra-paths ["test"] :extra-deps {lambdaisland/kaocha {:mvn/version "1.91.1392"}}}}}
 ```
 
@@ -612,17 +615,23 @@ offset  type         field
         uint32[I]    indices
 ```
 
-Client-side decode is a handful of typed-array views - no parsing:
+Client-side decode is a handful of typed-array views - no parsing. Offsets come from
+`wire.cljc`, so encoder and decoder cannot drift:
 
-```js
-const dv = new DataView(buf), V = dv.getUint32(16, true), I = dv.getUint32(20, true);
-let p = 48;
-const pos = new Float32Array(buf, p, 3 * V);  p += 12 * V;
-const nrm = new Float32Array(buf, p, 3 * V);  p += 12 * V;
-const g = new THREE.BufferGeometry();
-g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-g.setAttribute("normal",   new THREE.BufferAttribute(nrm, 3));
-g.setIndex(new THREE.BufferAttribute(new Uint32Array(buf, p, I), 1));
+```clojure
+(defn decode [^js buf]
+  (let [dv (js/DataView. buf)
+        V  (.getUint32 dv off-vertex-count true)
+        I  (.getUint32 dv off-index-count  true)
+        p  off-payload
+        g  (three/BufferGeometry.)]
+    (doto g
+      (.setAttribute "position"
+        (three/BufferAttribute. (js/Float32Array. buf p (* 3 V)) 3))
+      (.setAttribute "normal"
+        (three/BufferAttribute. (js/Float32Array. buf (+ p (* 12 V)) (* 3 V)) 3))
+      (.setIndex
+        (three/BufferAttribute. (js/Uint32Array. buf (+ p (* 24 V)) I) 1)))))
 ```
 
 `bboxMin/Max` sit in the header so the camera can frame a part without scanning vertices.
@@ -731,47 +740,76 @@ Event names are namespaced `shipyard:*` so they never collide with htmx's own.
 
 ### 7.2 Viewport module
 
-`resources/public/viewport.js`, an ES module - the only hand-written JS in M1.
+`src/shipyard/viewport.cljs`, compiled by shadow-cljs - the browser island, and the only
+client-side code we write.
 
-Owns: renderer, scene, camera, `OrbitControls`, an IBL environment, a `Map` of part-id →
-`Object3D`, and the `.symesh` decoder. Listens for the events above on `document.body`.
+Owns: renderer, scene, camera, `OrbitControls`, an IBL environment, a map of part-id ->
+`Object3D`, and the `.symesh` decoder. Listens for the `shipyard:*` events on
+`document.body`.
 
 Materials are `MeshStandardMaterial` with a neutral studio environment. PBR from the
 start because M5 paint schemes depend on it, and retrofitting lighting is worse than
 building on it.
 
----
+**Why ClojureScript rather than hand-written JS.** The earlier decision (SPEC §6) rejected
+a ClojureScript *frontend* - re-frame owning the whole UI - in favour of server-rendered
+hiccup and htmx. That still stands: htmx renders every panel. This is only the viewport
+island, and three arguments carry it:
+
+1. **It removes build machinery rather than adding it.** shadow-cljs consumes npm packages
+   directly, so `(:require ["three" :as three])` replaces the copy-four-files-into-vendor
+   step, the import map, and the addon path juggling that §8 previously needed. We already
+   required npm for three.js, so the toolchain is not new.
+2. **`wire.cljc` gives the binary format one definition.** The `.symesh` layout (§6.4) is
+   otherwise implemented twice - a JVM encoder and a JS decoder - with magic bytes, field
+   offsets and flags hand-mirrored across two languages. A reader-conditional namespace
+   holding the offsets makes a whole class of drift bug impossible.
+3. **EDN over the wire.** `HX-Trigger` payloads can carry EDN read natively by the client,
+   so mount frames and transforms need no JSON marshalling layer.
+
+**The honest cost is three.js interop.** 3D code is heavy on property mutation and matrix
+math, where `(set! (.-x (.-position obj)) 1.0)` is plainly worse than `obj.position.x =
+1.0`. Keep the hot render loop small and imperative; the value of CLJS here is in the
+decoder, the event handling and the scene bookkeeping, not the per-frame math.
+
+**Watch item:** `:advanced` compilation against an external JS library relies on shadow's
+externs inference. It is usually clean, but if property names get munged, `^js` type hints
+on three.js objects are the fix. Verify a release build early rather than at M6.
 
 ## 8. Build
 
-Frontend dependencies are **fetched at build time and packaged into the jar**; no vendored
+Frontend dependencies are fetched at build time and packaged into the jar; no vendored
 copies in the repo (SPEC §6.3).
 
 ```json
-{ "dependencies": { "three": "0.169.0", "htmx.org": "2.0.3" } }
+{ "devDependencies": { "shadow-cljs": "3.4.12" },
+  "dependencies":    { "three": "0.185.1", "htmx.org": "2.0.3" } }
+```
+
+```clojure
+;; shadow-cljs.edn
+{:source-paths ["src"]
+ :dependencies []                       ; deps.edn is the source of truth
+ :builds {:viewport {:target     :browser
+                     :output-dir "resources/public/js"
+                     :asset-path "/js"
+                     :modules    {:viewport {:init-fn shipyard.viewport/init}}
+                     :release    {:compiler-options {:optimizations :advanced}}}}}
 ```
 
 `build.clj` steps:
 
 1. `npm ci` - pinned versions, integrity-checked.
-2. Copy into `resources/public/vendor/`:
-   - `three/build/three.module.js`
-   - `three/examples/jsm/controls/OrbitControls.js`
-   - `three/examples/jsm/environments/RoomEnvironment.js`
-   - `htmx.org/dist/htmx.min.js`
-3. `compile-clj`, then `uber` with all four LWJGL native classifiers.
+2. `npx shadow-cljs release viewport` - emits `resources/public/js/viewport.js` with
+   three.js bundled in. No import map, no manual copying, no addon path rewriting.
+3. Copy `htmx.org/dist/htmx.min.js` into `resources/public/js/`. htmx is loaded by a plain
+   `<script>` tag, not imported by the CLJS build, so it stays a straight file copy.
+4. `compile-clj`, then `uber` with all four LWJGL native classifiers.
 
-three.js addons import bare `"three"`, so the shell needs an import map:
+Dev runs two processes: `npx shadow-cljs watch viewport` for hot-reloaded CLJS, and the
+JVM server for HTML and meshes. Only the JVM process is needed to serve a release build.
 
-```html
-<script type="importmap">
-{"imports":{"three":"/vendor/three.module.js","three/addons/":"/vendor/addons/"}}
-</script>
-```
-
-No bundler. three.js ships as an ES module and the import map covers resolution.
-
-`resources/public/vendor/` is gitignored - already committed in `.gitignore`.
+`resources/public/js/` is gitignored.
 
 ## 9. CI
 

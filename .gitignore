@@ -5,7 +5,7 @@
 
 # frontend deps fetched at build time — never vendored (SPEC §6.3)
 /node_modules/
-/resources/public/vendor/
+/resources/public/js/
 
 # generated mesh + thumbnail cache
 /cache/
