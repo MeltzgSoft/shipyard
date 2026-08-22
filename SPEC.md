@@ -88,7 +88,7 @@ Two structurally different kinds of model live in the same collection:
 - **Kitbash classes** - Cruiser, Grand Cruiser, Battleship. Separate hull, prow, bridge,
   antenna and weapon files. These are what Shipyard is for.
 - **Escorts appear to be pre-combined whole ships.** `Cyanide Prow Rapier/` reads as
-  hull-class × prow-variant already merged, ~36 such parts in Human Navy alone.
+  hull-class x prow-variant already merged, ~36 such parts in Human Navy alone.
   **Unverified** - see Risks. If confirmed, escorts are a pick-one list, not an assembly.
 
 `other/` directories contain Lychee `.lys` project files (1,489 across the collection),
@@ -168,7 +168,7 @@ pointing outward from their mating surfaces, the module's world transform is:
 M = S · Tz(g) · Rx(π) · P⁻¹
 ```
 
-`Rx(π)` flips the plug to face the socket, mapping its +Z to the socket's −Z while
+`Rx(π)` flips the plug to face the socket, mapping its +Z to the socket's -Z while
 preserving the +X roll reference. `Tz(g)` is an optional gap along the socket axis,
 default 0 - the virtual model mates flush, but a small positive `g` can represent the
 physical standoff introduced by magnets if that turns out to matter visually.
@@ -185,7 +185,7 @@ indicator; the user confirms or adjusts, names it, saves. One plug per module.
 bridge deck. Each gets an id and an `accepts` role. Multiple sockets per hull.
 
 **Symmetry mirroring halves the work.** These ships are bilaterally symmetric - the Human
-Navy Cruiser hull spans X ∈ [−19.06, 19.06] about a centreline at zero. Picking `port-1`
+Navy Cruiser hull spans X ∈ [-19.06, 19.06] about a centreline at zero. Picking `port-1`
 offers to generate `starboard-1` by mirroring the frame across the hull's symmetry plane.
 Since mount authoring is the project's main cost centre (§11), this is one of the
 highest-leverage features in the application.

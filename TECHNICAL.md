@@ -5,7 +5,7 @@ single-part viewer) in full detail, plus the system-wide foundations M1 forces u
 commit to - project layout, dependencies, storage, and the HTTP contract - which every
 later milestone inherits.
 
-M2–M6 are deliberately not specced at this depth. M1 will teach us things about the mesh
+M2-M6 are deliberately not specced at this depth. M1 will teach us things about the mesh
 pipeline that would invalidate the guesses.
 
 Companion to [SPEC.md](SPEC.md), which covers product scope and architecture rationale.
@@ -376,7 +376,7 @@ wrong. Driving the number down while raising the error rate is exactly the failu
 investigation existed to prevent. Escorts get `:ship` deliberately (§5.5), not inferred.
 
 Also rejected: `pyramid`, `mouth`, `acid`, `plasma`, `tendril`, `gland`, `KFF`, `skull`.
-Each is one designer's private vocabulary worth 0.2–0.6 points. Chasing that tail is how
+Each is one designer's private vocabulary worth 0.2-0.6 points. Chasing that tail is how
 a rule table becomes a maintenance liability.
 
 #### Consequences for the design
@@ -384,7 +384,7 @@ a rule table becomes a maintenance liability.
 1. **The field is `:part/role-hint`, carrying `:part/role-source :inferred`.** Not
    `:part/role`. The name has to say what it is.
 2. **It never feeds compatibility matching.** M3 reads mounts, which are ground truth
-   established by the wizard. A ~10–20% error rate depending on bundle is fine for
+   established by the wizard. A ~10-20% error rate depending on bundle is fine for
    browsing and fatal for assembly.
 3. **The UI renders it as a soft suggestion** - greyed and italic, overridable - the same
    treatment §5.3 gives supported-only parts. It must not look authoritative.
@@ -406,8 +406,8 @@ genuine kitbash in others, and **both inside the same folder** in five of them.
   Elves, Edgy Space Elves, tiamat.
 
 Human Navy is proven whole-ship three independent ways: cross-section extents identical
-across all prow variants of a class while only length changes (Doubtless: 28.06 × 19.00
-for all 8); siblings sharing 55–88% of their axial profile, against ≤36% for
+across all prow variants of a class while only length changes (Doubtless: 28.06 x 19.00
+for all 8); siblings sharing 55-88% of their axial profile, against ≤36% for
 known-kitbash Cruiser prows; and no `Rapier Hull` existing anywhere to attach to.
 
 Decisive counter-case: `Pirate Elves Conium Destroyer 1` is **19 disjoint unmerged
@@ -422,9 +422,9 @@ wrong for eight bundles.
 both. Detection must be geometric, computing per part: sorted bbox extents, mesh volume,
 connected-component count, and a 0.5 mm-binned axial cross-section profile - then a
 variant-family test (cross-sections agreeing within `max(0.3 mm, 2%)` **and** profiles
-agreeing over `≥ max(20 mm, 40% of min L)`; measured margin is 22–68 mm for ships against
+agreeing over `≥ max(20 mm, 40% of min L)`; measured margin is 22-68 mm for ships against
 ≤10.5 mm for kitbash, a clean gap), plus an anchor test (a component needs a sibling of
-≥2× its volume to plug into) and an assembly test via component-volume decomposition.
+≥2x its volume to plug into) and an assembly test via component-volume decomposition.
 
 Absolute size does not discriminate - `Combatbarge Standard Prow` (a component) has
 volume 5357 while `Gladiator Standard Prow` (a whole ship) has 1227. All comparisons must
@@ -474,7 +474,7 @@ EDN; it opens no mesh.
 ### 6.1 Parse
 
 Binary STL: 80-byte header, `uint32` little-endian triangle count, then 50 bytes per
-triangle - 3 floats face normal, 3×3 floats vertices, `uint16` attribute count.
+triangle - 3 floats face normal, 3x3 floats vertices, `uint16` attribute count.
 
 Read via a memory-mapped `ByteBuffer` in `LITTLE_ENDIAN` order. No per-triangle object
 allocation; write straight into primitive `float[]`.
@@ -492,11 +492,11 @@ reader: it is what stops a malformed or truncated file taking the process down.
 
 ### 6.2 Weld and crease-split normals
 
-The single highest-value transform. STL shares no vertices, so raw upload costs ~3× what
+The single highest-value transform. STL shares no vertices, so raw upload costs ~3x what
 it should.
 
 **Weld on exact float bits. No fallback needed.** Measured across four Human Navy parts:
-exact bit matching reaches **V/T = 0.497–0.498**, essentially the theoretical
+exact bit matching reaches **V/T = 0.497-0.498**, essentially the theoretical
 closed-manifold ideal of 0.5, and quantized snapping to a 1e-4 mm grid produces
 *identical* counts to three decimals. Exporters here emit bit-identical floats for shared
 vertices, so a `HashMap` keyed on the three ints from `Float.floatToRawIntBits` is both
@@ -518,7 +518,7 @@ are within a threshold (default **35°**), and emit one output vertex per
 | Classic Ram Prow | 77,296 | 0.779 | 0.722 | **0.698** | 0.677 | 0.649 |
 | Bridge | 11,064 | 1.124 | 1.084 | **1.069** | 1.028 | 0.978 |
 
-At 35° the range is **0.70–1.07**, against raw STL's 3.0 - a **2.8–4.3× reduction**, which
+At 35° the range is **0.70-1.07**, against raw STL's 3.0 - a **2.8-4.3x reduction**, which
 confirms the estimate these numbers replace.
 
 **35° stands as the default, and the knob barely matters.** Across 15°→60° the ratio moves
@@ -570,7 +570,7 @@ Pipeline order, measured both ways at 25%:
 | **(b) split → simplify** | 29,630 | 35 ms |
 | (a) simplify → split per tier | 28,807 | 35 ms + 365 ms re-split |
 
-Order (a) yields 3% fewer vertices for roughly 10× the time, and must re-split every tier.
+Order (a) yields 3% fewer vertices for roughly 10x the time, and must re-split every tier.
 **Keep (b)**, which is the order §6.2 already describes.
 
 `simplifyWithAttributes` at weight 0.5 produced results identical to plain simplify on
@@ -680,7 +680,7 @@ Verified working practice (issue #6). These are the traps that cost real time.
   We do not need Prune; if it is ever enabled, cap the error budget well below 1.0.
 - **Leave LWJGL's bounds checks on.** They caught a real undersized-destination bug during
   the spike. Do not set `-Dorg.lwjgl.util.NoChecks=true`.
-- **meshopt is stateless and reentrant.** 8 threads × 4 tiers over shared read-only source
+- **meshopt is stateless and reentrant.** 8 threads x 4 tiers over shared read-only source
   buffers produced byte-identical results, confirming the §6.5 pool design. Each thread
   must own its output buffers.
 - **Clojure specifics.** `(set! *warn-on-reflection* true)` is essential on these hot
@@ -812,7 +812,7 @@ depends on the 19 GB library.
 |---|---|
 | STL parse | Triangle count and bbox on a generated cube and icosphere |
 | ASCII rejection | Clear error, no garbage geometry |
-| Weld ratio | Cube welds to 8–24 verts; sphere to `V/T < 1.5`; fail at `≥ 2.5` |
+| Weld ratio | Cube welds to 8-24 verts; sphere to `V/T < 1.5`; fail at `≥ 2.5` |
 | Crease split | Cube keeps hard edges - 24 verts, not 8 |
 | LOD monotonicity | Each tier's index count strictly decreases; tier 0 is lossless |
 | Wire roundtrip | Encode → decode → geometry equals input within float tolerance |
@@ -832,7 +832,7 @@ Targets M1 must hold. Measured on the Human Navy Cruiser (SPEC §4).
 | Preprocess Cruiser hull (133k tris) | < 2 s |
 | Preprocess heaviest part (1.2M tris) | < 15 s |
 | Serve cached `.symesh` | < 50 ms |
-| Viewport, one ship (270k–600k tris) | 60 fps |
+| Viewport, one ship (270k-600k tris) | 60 fps |
 | Peak heap, preprocessing | < 2 GB |
 
 If the cold preprocess budget fails, the lazy-cache design is what protects the user
