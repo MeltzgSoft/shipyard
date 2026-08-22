@@ -843,7 +843,7 @@ fetched from a CDN at runtime (SPEC §6.3).
 
 ```clojure
 ;; shadow-cljs.edn
-{:source-paths ["src"]
+{:source-paths ["src/cljs" "src/cljc"]
  :dependencies []                       ; deps.edn is the source of truth for Clojure deps
  :builds {:viewport {:target     :browser
                      :output-dir "resources/public/js"
