@@ -215,7 +215,8 @@ JVM stack viable.
   {:part/id          {:db/unique :db.unique/identity}   ; relative folder path
    :part/bundle      {:db/index true}
    :part/class       {:db/index true}                   ; :cruiser, :escort, nil
-   :part/role        {:db/index true}                   ; :hull :prow :bridge :antenna :weapon :ordinance
+   :part/role-hint   {:db/index true}                   ; browsing only — never compatibility (§5.2)
+   :part/role-source {}                                 ; :inferred | :class | :manual
    :part/name        {}
    :part/variants    {:db/cardinality :db.cardinality/many}  ; :supported :unsupported :unsupported-pitted
    :part/mesh-key    {}                                 ; sha256 of chosen STL, nil until preprocessed
@@ -279,28 +280,128 @@ Path decomposition, relative to library root:
 - **weapons** — presence of a `weapons` segment.
 - **name** — the part folder's own name.
 
-### 5.2 Role inference
+### 5.2 Role inference — a hint, never a fact
 
-Ordered rules, first match wins. Case-insensitive on the folder name.
+**Measured over all 1,661 part folders (issue #5).** The rule table works far better than
+feared on its headline number and far worse on inspection, and the design follows from
+the second fact rather than the first.
+
+Raw result: `:unknown` is **25.1%**, not the ~60% we braced for. But that 74.9%
+"coverage" is inflated. 22.8 points of it come from directory facts, not filenames — a
+`weapons/` path segment or an `ordinance` class — which are free and correct. Filename
+matching alone classifies **52.1%**, and after removing demonstrable false positives,
+roughly **45% of the library carries a filename-derived role you could defend.**
+
+**The variance across bundles is the real finding.** This is nineteen designers'
+vocabularies, not one library:
+
+| bundle | `:unknown` |
+|---|---:|
+| Human Navy Fleet Bundle | 1.6% |
+| Pirate Space Elves | 6.4% |
+| Toaster Mechanics | 17.3% |
+| Zombie Space Raider | 45.8% |
+| Ork Fleet Bundle | 54.9% |
+| Space Bugs Fleet Bundle | 69.2% |
+
+Human Navy scores 1.6% because that designer puts "Prow" in nearly every escort folder
+name — and those are not prows (see below). The table is tuned to Human Navy vocabulary
+and degrades monotonically with distance from it.
+
+#### Three failure classes no regex can fix
+
+These are why role must never be authoritative.
+
+**Whole ships wearing a part name.** Human Navy's `Escort/` holds 32 folders matching
+`prow` and **zero hulls** — there is nothing for `Cyanide Prow Python` to attach to,
+because it *is* the Python escort; "Cyanide Prow" is the styling. The identical object is
+classified three ways depending on who named the folder:
+
+| object | folder | inferred |
+|---|---|---|
+| Python escort | `Human Navy/Escort/Cyanide Prow Python` | `:prow` |
+| Python escort | `Hazard Stripe/Escort/IW Python` | `:unknown` |
+| Python escort | `Toaster Mechanics/Escort/Toaster Python` | `:unknown` |
+
+45 parts affected. The table measures vocabulary, not geometry.
+
+**Hull sections indistinguishable from whole hulls.** 35 of 171 `:hull` matches are
+mandatory pieces of one hull, not interchangeable options — `Bloody Iron Forward hull` +
+`Rear Hull`, `Unbreakable Speculation - Mid/Center/Rear Hull`. Worst case, `XVI -
+Revengeful Specter` has `- hull`, `- multi part hull front` and `- multi part hull rear`:
+the first is a one-piece print, the others are the same ship split for small printers.
+Printing all three yields two ships' worth of hull. And bare numbering is genuinely
+ambiguous — `Combatbarge Hull 1/Hull 2` are sections while `Pirate Elves Hull1/Hull2/Hull3`
+are alternatives, with nothing in the name to separate them.
+
+**Folder names that enumerate fitted options.** `Blitz Deck 2 Supa boosta small` is a
+10.6 MB whole Ork escort whose name lists its loadout. Any lexicon grabs it. There is no
+syntax distinguishing "part named X" from "ship fitted with X", so every rule table over
+these names carries an irreducible error rate.
+
+#### The revised table
+
+Ordered, first match wins, case-insensitive, matched against the folder name.
 
 | Rule | Role |
 |---|---|
-| A `weapons` path segment | `:weapon` |
-| Class segment is `ordinance` | `:ordinance` |
-| Name matches `hull` | `:hull` |
-| Name matches `prow` | `:prow` |
-| Name matches `bridge` | `:bridge` |
-| Name matches `antenna|sensor` | `:antenna` |
-| Name matches `wing|fin|sail` | `:fin` |
+| `weapons` path segment | `:weapon` |
+| class segment is `ordinance` | `:ordinance` |
+| class segment is `Terrain` | `:terrain` |
+| positional word (`fore|forward|front|mid|center|rear|top|bottom|upper|lower`) adjacent to `hull` | `:hull-section` |
+| `hull` | `:hull` |
+| `prow|nose` | `:prow` |
+| `bridge` | `:bridge` |
+| `antenna|sensor` | `:antenna` |
+| `engine|thruster|boosta|cowl|nozzle` | `:engine` |
+| `turret|batter(y|ie)|batery|gunz|guns|lance|torpedo|torp|launch|zzap|cannon|canon|missile|bombard|klaw|claw|blaster|\bram\b|bomb` | `:weapon` |
+| `stern|rudder|tail|\baft\b` | `:stern` |
+| `wing|fin|sail`, unless preceded by `no ` | `:fin` |
+| `deck|keel|pod|section|spine|dome` | `:section` |
+| `insert|plug|logo|gargoyle` | `:detail` |
 | otherwise | `:unknown` |
 
-`:unknown` is expected and fine — the mount wizard is what actually establishes
-compatibility, and role is only a browsing/filtering convenience. The scanner must never
-fail on an unrecognised name.
+Takes `:unknown` from 25.1% to **10.0%**; worst bundle from 69.2% to 23.1%; 13 of 19
+bundles reach zero.
 
-**Escorts are a known open question** (SPEC §11): they look like pre-combined whole ships,
-which would make them `:ship` rather than a kitbash part. M1 tags them `:unknown` and
-leaves it; verify before M2 relies on it.
+**Two regex details that matter.** Matching is **substring, not word-bounded** — 14
+folders are CamelCase or underscore-joined (`Metis_Hull`, `GGRBridge`, `VossTorpedo`,
+`BombCanon`) and word boundaries silently drop every one. **Except `ram` and `aft`, which
+must be word-bounded**: `ram` as a substring hits 9 `Pyramid` folders, and `aft` hits 19
+`Crafty` folders while matching nothing real, since `aft` is unused in this library.
+
+**Rejected: an `Escort` → `:ship` fallback.** It would take `:unknown` to 1.9%, but it
+asserts a fact from a directory name with no evidence, and 3 of its 137 hits are provably
+wrong. Driving the number down while raising the error rate is exactly the failure this
+investigation existed to prevent. Escorts get `:ship` deliberately (§5.5), not inferred.
+
+Also rejected: `pyramid`, `mouth`, `acid`, `plasma`, `tendril`, `gland`, `KFF`, `skull`.
+Each is one designer's private vocabulary worth 0.2–0.6 points. Chasing that tail is how
+a rule table becomes a maintenance liability.
+
+#### Consequences for the design
+
+1. **The field is `:part/role-hint`, carrying `:part/role-source :inferred`.** Not
+   `:part/role`. The name has to say what it is.
+2. **It never feeds compatibility matching.** M3 reads mounts, which are ground truth
+   established by the wizard. A ~10–20% error rate depending on bundle is fine for
+   browsing and fatal for assembly.
+3. **The UI renders it as a soft suggestion** — greyed and italic, overridable — the same
+   treatment §5.3 gives supported-only parts. It must not look authoritative.
+4. **A manual role set in the wizard overrides the hint permanently** and suppresses
+   re-inference for that part.
+
+### 5.5 Escorts are whole ships
+
+Converging evidence from issue #5: 137 escort-class folders are complete models, not
+kitbash parts. Human Navy's escort folder contains no hulls at all, and Space Bugs escorts
+run 24 MB each — far larger than that bundle's largest hull.
+
+They take `:role :ship` **assigned by rule from the class segment, recorded as
+`:role-source :class`** — deliberate, not inferred from a filename. M2 must not rely on
+the `:unknown`/`:prow` split the old table produced for them.
+
+Geometric confirmation is pending issue #3.
 
 ### 5.3 Variant selection
 
@@ -664,6 +765,15 @@ experience — it is paid once per part, ever.
   table needs work — or roles should come from the mount wizard instead of filenames.
 - **Sidecar write conflicts** if the library is on shared storage. Single-user assumption
   for now; a lock file is the cheap fix if it ever matters.
+- **Single-ship bundles break the role model conceptually** (issue #5). Role presupposes
+  alternatives competing for a slot, but the four numbered bundles hold 56 parts that are
+  *sections of one model, all of which get printed*. `Bloody Iron Forward hull` and
+  `Rear Hull` are two halves, not two choices. Filtering `:hull` mixes 160 interchangeable
+  hulls with 11 non-interchangeable fragments. This needs a `:bundle/kind :single-ship`
+  flag or a part-level `:assembly` grouping — neither derivable from a folder name, so it
+  is a missing concept rather than a rule-table bug. Decide before M3.
+- **`ordinance/` contains 11 flight stands** (`Bomber Base`, `Fighter Base`) which are not
+  ordnance. Minor, but they will show up in the wrong filter.
 - **Cache cap of 4 GB** (§6.5) is a guess pending real usage. If normal browsing evicts
   parts that get re-viewed minutes later, raise it; the sweep should log evictions so
   that is visible rather than inferred.
