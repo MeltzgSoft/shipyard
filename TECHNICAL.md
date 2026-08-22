@@ -55,6 +55,23 @@ can only be a derived index. The durable layer is plain EDN files.
 data files, transact the lot into a fresh Datascript DB. 1,661 small EDN files is a fast
 read; no mesh is touched (§5.3).
 
+**What each layer may hold — and what never moves.**
+
+| Layer | Holds | Never holds |
+|---|---|---|
+| Datascript | Metadata only: ids, names, roles, variants, a triangle count, a content hash, mount frames | Any geometry. Not one vertex |
+| `$XDG_CACHE_HOME/…/mesh/` | Derived `.symesh` encodings, regenerable from source at any time | Copies of STLs |
+| The library | The STLs, exactly where they are | — |
+
+**Source STLs are never copied, moved, or ingested.** They are opened lazily, once, when
+a part is first viewed, and read again only if their mtime or size changes. The full
+library at rest is untouched by Shipyard; deleting the entire cache costs nothing but
+recomputation.
+
+The naming invites a misreading worth heading off: `:part/mesh-key` is the SHA-256 *of*
+the source STL, used to name the derived file `mesh/<sha>.symesh`. The STL itself is not
+stored under that hash — the hash is an identity for the encoding produced from it.
+
 **Write path is write-through, file first.**
 
 ```clojure
@@ -400,8 +417,17 @@ CPU-bound native and array work; virtual threads help blocking I/O and would onl
 scheduling overhead here. Virtual threads are correct for the Jetty request pool, which is
 a separate concern.
 
-No eviction policy in M1 (SPEC §11). Lazy generation bounds the cache to what has been
-viewed; revisit if it becomes a problem.
+**Cache budget and eviction.** A `.symesh` runs about 70% of its source STL — for the
+Cruiser hull, ~4.6 MB against 6.6 MB (106k welded vertices at 24 B, plus three LOD index
+tiers at ~2.1 MB). Lazy generation bounds growth to what has actually been viewed, but
+the ceiling is real: browsing the entire library would accumulate roughly 7 GB.
+
+So the cache is capped — **default 4 GB**, configurable, with LRU eviction by access time
+on a background sweep. Every entry is regenerable from the source STL, so eviction is
+always safe and never loses user data. A cold re-encode of an evicted part costs the
+same as its first view.
+
+This supersedes SPEC §11's open question, which left eviction unspecified.
 
 ---
 
@@ -559,3 +585,6 @@ experience — it is paid once per part, ever.
   table needs work — or roles should come from the mount wizard instead of filenames.
 - **Sidecar write conflicts** if the library is on shared storage. Single-user assumption
   for now; a lock file is the cheap fix if it ever matters.
+- **Cache cap of 4 GB** (§6.5) is a guess pending real usage. If normal browsing evicts
+  parts that get re-viewed minutes later, raise it; the sweep should log evictions so
+  that is visible rather than inferred.
