@@ -16,8 +16,6 @@
            [java.nio.channels FileChannel]
            [java.nio.file StandardOpenOption]))
 
-(set! *warn-on-reflection* true)
-
 (def ^:const header-bytes 84)   ; 80-byte header + uint32 triangle count
 (def ^:const record-bytes 50)   ; 12 normal + 36 vertices + 2 attribute bytes
 (def ^:const normal-bytes 12)

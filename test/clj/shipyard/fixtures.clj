@@ -7,8 +7,6 @@
   recorded from a run."
   (:import [java.nio ByteBuffer ByteOrder]))
 
-(set! *warn-on-reflection* true)
-
 (defn cube
   "Axis-aligned cube of side `s` centred on the origin. 12 triangles, 8 distinct
   positions, every edge a hard 90-degree crease."
