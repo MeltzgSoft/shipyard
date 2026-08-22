@@ -1,0 +1,60 @@
+{:paths ["src/clj" "src/cljc" "resources"]
+
+ :deps
+ {org.clojure/clojure            {:mvn/version "1.12.4"}
+  metosin/reitit-ring            {:mvn/version "0.7.2"}
+  ring/ring-jetty-adapter        {:mvn/version "1.12.2"}
+  hiccup/hiccup                  {:mvn/version "2.0.0-RC3"}
+  datascript/datascript          {:mvn/version "1.7.3"}
+  integrant/integrant            {:mvn/version "1.0.1"}
+  aero/aero                      {:mvn/version "1.1.6"}
+  org.clojure/tools.logging      {:mvn/version "1.3.0"}
+  ch.qos.logback/logback-classic {:mvn/version "1.5.13"}
+  org.lwjgl/lwjgl                {:mvn/version "3.3.6"}
+  org.lwjgl/lwjgl-meshoptimizer  {:mvn/version "3.3.6"}}
+
+ :aliases
+ {;; --- platform natives (LWJGL needs core + module for each platform) -----
+  :natives-linux
+  {:extra-deps {org.lwjgl/lwjgl$natives-linux               {:mvn/version "3.3.6"}
+                org.lwjgl/lwjgl-meshoptimizer$natives-linux {:mvn/version "3.3.6"}}}
+  :natives-windows
+  {:extra-deps {org.lwjgl/lwjgl$natives-windows               {:mvn/version "3.3.6"}
+                org.lwjgl/lwjgl-meshoptimizer$natives-windows {:mvn/version "3.3.6"}}}
+  :natives-macos
+  {:extra-deps {org.lwjgl/lwjgl$natives-macos               {:mvn/version "3.3.6"}
+                org.lwjgl/lwjgl-meshoptimizer$natives-macos {:mvn/version "3.3.6"}}}
+  :natives-macos-arm64
+  {:extra-deps {org.lwjgl/lwjgl$natives-macos-arm64               {:mvn/version "3.3.6"}
+                org.lwjgl/lwjgl-meshoptimizer$natives-macos-arm64 {:mvn/version "3.3.6"}}}
+
+  ;; --- run ----------------------------------------------------------------
+  :run
+  {:main-opts  ["-m" "shipyard.main"]
+   :jvm-opts   ["--enable-native-access=ALL-UNNAMED"
+                "--sun-misc-unsafe-memory-access=allow"]}
+
+  ;; --- test ---------------------------------------------------------------
+  :test
+  {:extra-paths ["test/clj" "test/cljc"]
+   :extra-deps  {lambdaisland/kaocha {:mvn/version "1.91.1392"}
+                 etaoin/etaoin       {:mvn/version "1.1.43"}}
+   :jvm-opts    ["--enable-native-access=ALL-UNNAMED"
+                 "--sun-misc-unsafe-memory-access=allow"]
+   :main-opts   ["-m" "kaocha.runner"]}
+
+  ;; --- cljs ---------------------------------------------------------------
+  :cljs
+  {:extra-paths ["src/cljs" "src/cljc"]
+   :extra-deps  {thheller/shadow-cljs {:mvn/version "3.4.12"}}}
+
+  ;; --- canary (issue #18) --------------------------------------------------
+  :canary
+  {:main-opts ["-m" "shipyard.canary"]
+   :jvm-opts  ["--enable-native-access=ALL-UNNAMED"
+               "--sun-misc-unsafe-memory-access=allow"]}
+
+  ;; --- build --------------------------------------------------------------
+  :build
+  {:deps       {io.github.clojure/tools.build {:mvn/version "0.10.5"}}
+   :ns-default build}}}

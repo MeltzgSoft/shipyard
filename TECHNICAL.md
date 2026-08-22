@@ -126,7 +126,7 @@ where. Splitting makes the boundary a build fact rather than a naming convention
 ```
 shipyard/
 ├── deps.edn                        :paths ["src/clj" "src/cljc" "resources"]
-├── shadow-cljs.edn                 :source-paths ["src/cljs" "src/cljc"]
+├── shadow-cljs.edn                 :deps {:aliases [:cljs]} - paths come from deps.edn
 ├── build.clj                       tools.build: npm, shadow release, uberjar
 ├── package.json / package-lock.json    pinned three.js + htmx
 ├── node_modules/                   GITIGNORED
@@ -138,7 +138,7 @@ shipyard/
 │   ├── library/{scan,index}.clj    part-folder discovery; mtime+size scan cache
 │   ├── catalog/{db,sidecar}.clj    datascript conn + schema; shipyard.edn read/write
 │   ├── mesh/{stl,weld,lod,cache}.clj
-│   └── http/{routes,views,htmx}.clj
+│   └── http/{server,routes,views,htmx}.clj    server = jetty lifecycle
 │
 ├── src/cljc/shipyard/              BOTH runtimes
 │   ├── wire.cljc                   .symesh layout - encode JVM / decode CLJS
@@ -169,23 +169,38 @@ needs the same maths for the M2 wizard's live gizmo preview. One definition, not
 no namespace exists to hold constants.
 
 ```clojure
-;; resources/config.edn - read with aero, which supplies #env / #or / #profile
-{:shipyard/library    {:root #or [#env SHIPYARD_LIBRARY #ref [:xdg :data-home]]}
- :shipyard/catalog    {:library #ig/ref :shipyard/library}
- :shipyard/mesh-cache {:dir       #ref [:xdg :cache-home]
-                       :cap-bytes #profile {:default 4294967296 :test 67108864}
-                       :threads   #or [#env SHIPYARD_THREADS :auto]
-                       :crease-deg 35
-                       :lod-tiers [1.0 0.25 0.05]}
- :shipyard/http       {:port    #or [#env PORT 8080]
-                       :catalog #ig/ref :shipyard/catalog
-                       :cache   #ig/ref :shipyard/mesh-cache}}
+;; resources/config.edn - read with aero, which supplies #env / #or / #profile.
+;; Component keys are namespaced to the namespace that implements them, so
+;; integrant's load-namespaces finds each ig/init-key without a registry.
+{:shipyard.library/index
+ {:root #or [#env SHIPYARD_LIBRARY "~/Documents/3D_models/BFG"]}
+
+ :shipyard.mesh/cache
+ {:crease-deg 35
+  :lod-tiers  [1.0 0.25 0.05]
+  :cap-bytes  #profile {:default 4294967296 :test 67108864}
+  :threads    :auto}
+
+ :shipyard.http/routes
+ {:library #ig/ref :shipyard.library/index
+  :cache   #ig/ref :shipyard.mesh/cache}
+
+ :shipyard.http/server
+ {:port #or [#env PORT 8080] :host "127.0.0.1"
+  :handler #ig/ref :shipyard.http/routes}}
 ```
+
+`#ig/ref` is not built into aero - `shipyard.system` registers it with
+`(defmethod aero/reader 'ig/ref ...)`. XDG directories are resolved in code rather
+than by a config reader, since they need the documented per-variable fallbacks.
 
 Each component namespace defines its own `ig/init-key` and `ig/halt-key!`, keeping
 lifecycle next to the thing it constructs. `system.clj` holds only key derivation and
 anything ordering-sensitive; `main.clj` reads the config, calls `ig/init`, and registers a
 shutdown hook.
+
+`load-config` takes `:config-dir` and `:env` so the layering is testable without
+mutating the process environment.
 
 **Three layers, later winning over earlier:**
 
@@ -842,9 +857,10 @@ fetched from a CDN at runtime (SPEC §6.3).
 ```
 
 ```clojure
-;; shadow-cljs.edn
-{:source-paths ["src/cljs" "src/cljc"]
- :dependencies []                       ; deps.edn is the source of truth for Clojure deps
+;; shadow-cljs.edn - source paths are NOT set here. With :deps, shadow-cljs
+;; takes them from the deps.edn :cljs alias and ignores any :source-paths
+;; in this file (it warns if you set them anyway).
+{:deps   {:aliases [:cljs]}
  :builds {:viewport {:target     :browser
                      :output-dir "resources/public/js"
                      :asset-path "/js"
