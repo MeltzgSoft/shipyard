@@ -1,0 +1,35 @@
+name: pr-description
+
+# Its own workflow, not a job in test.yml, because it triggers on `edited`.
+# Folding it in would re-run the whole test matrix every time somebody fixes a
+# typo in a pull request description.
+on:
+  pull_request:
+    types: [opened, edited, reopened, ready_for_review]
+
+jobs:
+  check:
+    # Drafts are work in progress; a red check on every unfinished description
+    # trains people to ignore red checks.
+    if: github.event.pull_request.draft == false
+    runs-on: linux
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract the description from the event payload
+        # Read the payload rather than calling the API: no token, no network,
+        # and it is the exact text the author submitted.
+        run: |
+          set -euo pipefail
+          if command -v jq >/dev/null 2>&1; then
+            jq -r '.pull_request.body // ""' "$GITHUB_EVENT_PATH" > pr-body.md
+          elif command -v python3 >/dev/null 2>&1; then
+            python3 -c "import json,os;print(json.load(open(os.environ['GITHUB_EVENT_PATH'])).get('pull_request',{}).get('body') or '')" > pr-body.md
+          else
+            echo "::error::neither jq nor python3 is available on this runner to read the event payload"
+            exit 2
+          fi
+          echo "description: $(wc -c < pr-body.md) bytes"
+
+      - name: Check it follows the template
+        run: .forgejo/scripts/check-pr-description.sh pr-body.md

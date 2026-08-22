@@ -75,6 +75,15 @@ e2e drives a real browser. See TECHNICAL.md §10.
 or tested updates this README in the same pull request. Documentation that lags the code
 is worse than none, because people trust it. See SPEC.md §12.
 
+Pull request descriptions follow `.forgejo/PULL_REQUEST_TEMPLATE.md`, and CI checks that
+they do - that the sections are present, that "What this changes" says something, and
+that the checklists have been engaged with rather than submitted untouched. It checks
+engagement, not prose. Run it yourself before pushing:
+
+```bash
+.forgejo/scripts/check-pr-description.sh my-description.md
+```
+
 ## Project layout
 
 ```
