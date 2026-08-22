@@ -61,8 +61,11 @@
            "Documents/3D_models/BFG/Toaster Mechanics Fleet Bundle/Escort/Toaster Stalker Prow/unsupported.stl"))
 
 (deftest real-ascii-file-from-the-library
+  ;; The skip branch must still assert: kaocha fails a test that runs no
+  ;; assertions ("Test ran without assertions"), so a bare println here turns an
+  ;; intentional skip into a red build on any machine without the library.
   (if-not (.isFile known-ascii)
-    (println "  (skipping: real library not present)")
+    (is true "real library not present; test/fixtures/cube-ascii-crlf.stl covers the ASCII path")
     (let [m (stl/parse-file known-ascii)]
       (testing "its binary header claims 1.8 billion triangles and must be ignored"
         (is (pos? (:triangle-count m)))

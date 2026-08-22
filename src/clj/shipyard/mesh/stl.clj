@@ -136,7 +136,13 @@
     (parse-buffer buf (alength b) (java.io.ByteArrayInputStream. b))))
 
 (defn parse-file
-  "Parse an STL from disk, memory-mapped so a 200 MB hull costs no heap."
+  "Parse an STL from disk, memory-mapped so the largest hull in the library
+  (57.8 MB) costs no heap.
+
+  Note for anything that writes near the library: on Windows a mapping keeps the
+  file locked until the buffer is collected, whatever the channel does. Harmless
+  here because library files are only ever read, but worth remembering if the
+  cache (#13) ever writes back."
   [path]
   (let [f    (io/file path)
         size (.length ^File f)]
