@@ -5,6 +5,20 @@
 
 (defn- close? [a b] (< (abs (- (double a) (double b))) 1e-5))
 
+(deftest zero-triangle-header-says-so
+  (testing "a valid binary STL declaring no triangles is refused with a message
+            about the file rather than about a float"
+    ;; Found by the canary (#18). The bbox accumulators stay at their infinities
+    ;; when there is nothing to accumulate, and `(float Double/POSITIVE_INFINITY)`
+    ;; threw "Value out of range for float: Infinity" - true, and useless.
+    (let [empty-stl (f/->binary-stl [])]
+      (is (= 84 (alength empty-stl)) "84 + 50*0, so it takes the binary path")
+      (is (thrown-with-msg? clojure.lang.ExceptionInfo #"zero triangles"
+                            (stl/parse-bytes empty-stl)))
+      (testing "and says which case it is in data, so callers need not grep prose"
+        (is (= 0 (:triangle-count (ex-data (try (stl/parse-bytes empty-stl)
+                                                (catch clojure.lang.ExceptionInfo e e))))))))))
+
 (deftest binary-cube
   (let [tris (f/cube 2.0)
         m    (stl/parse-bytes (f/->binary-stl tris))]

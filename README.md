@@ -59,6 +59,7 @@ clojure -M:test:natives-linux --focus :integration  # filesystem, natives, HTTP
 npx shadow-cljs compile viewport                    # e2e needs the bundle, with test hooks
 clojure -M:test:natives-linux --focus :e2e          # headless browser
 
+clojure -M:canary                       # data-quality probe over the real library
 clojure -M:cljfmt check src test build.clj    # `fix` to apply
 clojure -M:clj-kondo --lint src --lint test --lint build.clj
 clojure -M:outdated                     # dependency freshness, deps.edn + package.json

@@ -43,6 +43,16 @@
   nothing mutates buffer position, nothing is allocated per triangle, and there
   is no inner `recur` to mis-target."
   [^ByteBuffer buf ^long n]
+  ;; An empty mesh has no bbox, and computing one anyway is how this surfaced:
+  ;; the accumulators stay at their infinities and `(float Double/POSITIVE_INFINITY)`
+  ;; throws "Value out of range for float: Infinity" - a message that tells the
+  ;; reader nothing about the file. Found by the canary (#18) on a 0-triangle
+  ;; export. The ASCII path already refused this case; now both do, and both say
+  ;; so in ex-data.
+  (when (zero? n)
+    (throw (ex-info (str "Not a usable STL: the header declares zero triangles, "
+                         "so the file contains no geometry.")
+                    {:size (expected-size 0) :declared n :triangle-count 0})))
   (let [corners (* 3 n)
         pos     (float-array (* 9 n))]
     ;; Accumulate the bbox in doubles: Clojure has no primitive float local, so
@@ -89,6 +99,10 @@
                 (.add verts (Float/parseFloat (nth parts 3)))))))))
     (let [total (.size verts)
           n     (quot total 9)]
+      ;; No `:triangle-count 0` in this ex-data, deliberately. A truncated
+      ;; binary file lands here with zero vertices too, and it is corrupt rather
+      ;; than empty - only the binary path can tell the difference, because only
+      ;; there does a header say "zero triangles" and the size agree with it.
       (when (or (zero? total) (pos? (rem total 9)))
         (throw (ex-info (str "Not a usable STL: the file is not valid binary "
                              "(size " source-size " bytes, header declares "
