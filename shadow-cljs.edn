@@ -2,7 +2,14 @@
 ;; the deps.edn :cljs alias (:extra-paths ["src/cljs" "src/cljc"]) and ignores
 ;; any :source-paths set in this file.
 {:deps   {:aliases [:cljs]}
- :builds {:viewport
+ :builds {;; The cljc tests run here as well as on the JVM. That cross-runtime
+          ;; run is what proves encoder and decoder agree on the binary layout.
+          :test
+          {:target     :node-test
+           :output-to  "target/js/node-tests.js"
+           :ns-regexp  "shipyard\\..*-test$"}
+
+          :viewport
           {:target     :browser
            :output-dir "resources/public/js"
            :asset-path "/js"

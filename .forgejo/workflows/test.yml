@@ -91,3 +91,38 @@ jobs:
       - name: Integration tests
         shell: pwsh
         run: clojure -M:test:natives-windows --focus :integration
+
+  test-cljs:
+    # The cljc tests again, on the browser runtime. A JVM-only pass proves the
+    # encoder agrees with itself; this is what proves encoder and decoder agree
+    # on the binary layout (TECHNICAL.md §10.1).
+    #
+    # Linux only: this tests a runtime, not a platform.
+    runs-on: linux
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: https://github.com/actions/setup-java@v5
+        with:
+          java-version: '25'
+          distribution: temurin
+
+      - uses: https://github.com/actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install Clojure CLI
+        run: |
+          curl -sLO https://download.clojure.org/install/linux-install-1.12.4.1618.sh
+          chmod +x linux-install-1.12.4.1618.sh
+          ./linux-install-1.12.4.1618.sh --prefix "$HOME/clojure"
+          echo "$HOME/clojure/bin" >> "$GITHUB_PATH"
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Run cljc tests on the browser runtime
+        run: |
+          npx shadow-cljs compile test
+          node target/js/node-tests.js
