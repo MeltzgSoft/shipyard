@@ -5,7 +5,11 @@ name: pr-description
 # typo in a pull request description.
 on:
   pull_request:
-    types: [opened, edited, reopened, ready_for_review]
+    # `synchronize` matters for branch protection, not for the check itself.
+    # Status checks are recorded per commit SHA, so without it a pushed commit
+    # carries no pr-description status at all - and a rule requiring one would
+    # block that pull request permanently rather than re-running.
+    types: [opened, edited, reopened, ready_for_review, synchronize]
 
 jobs:
   check:
