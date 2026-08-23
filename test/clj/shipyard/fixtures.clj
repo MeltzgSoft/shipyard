@@ -41,7 +41,10 @@
     (vec (for [i (range rings)
                j (range segments)
                t (cond
-                   (zero? i)          [[(p 0 0) (p 1 j) (p 1 (inc j))]]
+                   ;; Pole fans wind opposite to each other: going the same way
+                   ;; round the ring puts the top cap's normal inward. Verified
+                   ;; by asserting every face normal points away from the centre.
+                   (zero? i)          [[(p 0 0) (p 1 (inc j)) (p 1 j)]]
                    (= i (dec rings))  [[(p i j) (p i (inc j)) (p rings 0)]]
                    :else              [[(p i j) (p i (inc j)) (p (inc i) (inc j))]
                                        [(p i j) (p (inc i) (inc j)) (p (inc i) j)]])]
