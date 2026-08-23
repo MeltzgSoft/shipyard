@@ -631,30 +631,39 @@ edges and split normals, which is what these hulls are made of.
 Measured cost on 131k triangles: `optimizeVertexCache` 8.8 ms, simplify 31.1 ms. Not a
 factor in the §11 budgets.
 
-**The crease-seam question is resolved: split-then-simplify is correct.** Measured on a
-117,696-triangle greebled plate (58,925 welded vertices, 78,413 after crease splitting,
-28.2% of positions on a seam).
+**Pipeline order: weld -> simplify -> crease-split per tier.** Issue #6 concluded the
+opposite from a synthetic greebled plate, and real hulls disproved it (issue #10).
 
-A hard floor exists but never binds. Driving `target_index_count` to 0 and raising the
-error budget without limit, a crease-split mesh refuses to collapse below **3.05%** of its
-original index count, while the position-welded equivalent goes to zero. The seams are
-genuinely un-collapsible topology. But our tiers are 25% and 5%, both comfortably above
-the floor, and both hit their target exactly. **Do not add a tier below ~8%** - that is
-where this stops being theoretical.
+The plate had 28.2% of its positions on a crease seam and floored at 3.05%, comfortably
+below our tiers. The Cruiser Hull expands **2.12x** under crease splitting - 66,086
+position-welded vertices become 139,949 - because nearly every vertex sits on a panel
+edge. On that topology the seams lock the mesh solid:
 
-Pipeline order, measured both ways at 25%:
+| topology | 25% target | 5% target | unlimited error budget |
+|---|---|---|---|
+| crease-split (what #6 recommended) | 34.4% | 34.4% | **34.1%, and will not move** |
+| position-welded | **24.98%** | **4.93%** | collapses to zero |
 
-| order | vertices | cost |
-|---|---:|---|
-| **(b) split → simplify** | 29,630 | 35 ms |
-| (a) simplify → split per tier | 28,807 | 35 ms + 365 ms re-split |
+So a 25% tier missed and a 5% tier was unreachable. Simplifying the position-welded mesh
+and crease-splitting each tier afterwards reaches both targets exactly. Measured after the
+change: Cruiser Hull 24.97% and 4.93%, Battleship Hull 24.98% and 4.97%.
 
-Order (a) yields 3% fewer vertices for roughly 10x the time, and must re-split every tier.
-**Keep (b)**, which is the order §6.2 already describes.
+Each tier is crease-split on **its own** geometry, since normals must describe the
+decimated surface rather than the original.
 
-`simplifyWithAttributes` at weight 0.5 produced results identical to plain simplify on
-seam collapse and floor behaviour, so it remains the choice for shading quality (§6.3
-above) rather than for topology.
+Attributes still restrain shading damage, but they are fed smooth per-vertex normals
+computed on the welded mesh - no split, so no topology lock. **The weighting tapers off
+below `aggressive-below` (default 0.10).** At weight 0.5 the Cruiser Hull's 5% target
+stops at 11.8%; at zero it reaches 4.9%. A 5% tier is a distant placeholder where size
+matters more than shading fidelity, so it drops the weighting; the 25% tier, which M6
+thumbnails may use, keeps it.
+
+Cost of the reorder: crease-splitting runs once per tier instead of once. Measured at
+416 ms for all three tiers of the Cruiser Hull, against a §11 budget of 2 s.
+
+**The general lesson:** the plate was a synthetic mesh chosen to have creases, and it was
+not seam-dense enough to expose the failure. Spike conclusions about geometry need a real
+part before they are load-bearing.
 
 **Simplification does not compact the vertex buffer** - output indices still reference the
 original array. `meshopt_optimizeVertexFetch` compacts each tier to only the vertices it
