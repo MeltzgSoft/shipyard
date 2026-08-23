@@ -18,6 +18,7 @@
            "unsupported.stl" "unsupported-pitted.stl")
     (touch (io/file root "Human Navy Fleet Bundle" "Cruiser" "Classic Ram Prow") "unsupported.stl")
     (touch (io/file root "Human Navy Fleet Bundle" "Cruiser" "weapons" "Lance Battery") "unsupported.stl")
+    (touch (io/file root "Human Navy Fleet Bundle" "Cruiser" "weapons" "turrets" "Lance Turret") "unsupported.stl")
     (touch (io/file root "Human Navy Fleet Bundle" "Battleship" "Battleship Hull") "unsupported.stl")
     (touch (io/file root "Ork Fleet Bundle" "Cruiser" "Battle Krooza Hull") "unsupported.stl")
     root))
@@ -33,10 +34,10 @@
 (deftest schema-and-ingest
   (let [root (fixture-tree)
         {:keys [conn]} (catalog root)]
-    (is (= 5 (count (db/browse @conn {}))))
+    (is (= 6 (count (db/browse @conn {}))))
     (testing ":part/id is an identity, so re-transacting updates rather than duplicating"
       (d/transact! conn [{:part/id "Human Navy Fleet Bundle/Cruiser/Hull" :part/tris 42}])
-      (is (= 5 (count (db/browse @conn {}))))
+      (is (= 6 (count (db/browse @conn {}))))
       (is (= 42 (:part/tris (db/part @conn "Human Navy Fleet Bundle/Cruiser/Hull")))))))
 
 (deftest holds-metadata-only
@@ -48,13 +49,30 @@
       (is (empty? (set/intersection attrs db/geometry-keys)))
       (is (every? #(not (re-find #"position|normal|vertex|geometry|indices" (name %))) attrs)))))
 
+(deftest turret-metadata-survives-ingest
+  (let [root (fixture-tree)
+        {:keys [conn]} (catalog root)
+        db @conn]
+    (testing "directory facts reach the catalog rather than being dropped"
+      (let [t (db/part db "Human Navy Fleet Bundle/Cruiser/weapons/turrets/Lance Turret")]
+        (is (= :turret (:part/role-hint t)))
+        (is (true? (:part/turrets? t)))
+        (is (not (:part/accepts-turrets? t)) "a turret does not accept a turret")))
+    (testing "the mount wizard's shortlist is queryable"
+      (let [ids (set (map :part/id (db/browse db {:accepts-turrets? true})))]
+        (is (contains? ids "Human Navy Fleet Bundle/Cruiser/weapons/Lance Battery")
+            "a battery carries the holes")
+        (is (contains? ids "Human Navy Fleet Bundle/Cruiser/Hull")
+            "so does a cruiser hull")
+        (is (not (contains? ids "Human Navy Fleet Bundle/Cruiser/Classic Ram Prow")))))))
+
 (deftest browse-queries
   (let [root (fixture-tree)
         {:keys [conn]} (catalog root)
         db @conn]
     (is (= ["Human Navy Fleet Bundle" "Ork Fleet Bundle"] (db/bundles db)))
     (is (= ["Battleship" "Cruiser"] (db/classes db "Human Navy Fleet Bundle")))
-    (is (= 3 (count (db/browse db {:bundle "Human Navy Fleet Bundle" :class "Cruiser"}))))
+    (is (= 4 (count (db/browse db {:bundle "Human Navy Fleet Bundle" :class "Cruiser"}))))
     (is (= 1 (count (db/browse db {:role :weapon}))))
     (is (= 3 (count (db/browse db {:role :hull}))))
     (testing "free-text search on the name"
@@ -84,7 +102,7 @@
                             (sidecar/read-sidecar root id))))
     (testing "but one bad file must not make the whole library invisible"
       (let [{:keys [conn]} (catalog root)]
-        (is (= 5 (count (db/browse @conn {}))))))))
+        (is (= 6 (count (db/browse @conn {}))))))))
 
 (deftest write-through-is-file-first
   (let [root (fixture-tree)

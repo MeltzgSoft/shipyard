@@ -19,6 +19,12 @@
    :part/class       {:db/index true}
    :part/role-hint   {:db/index true}     ; browsing only - never compatibility (§5.2)
    :part/role-source {}
+   :part/weapons?    {:db/index true}     ; directory facts, not guesses
+   :part/turrets?    {:db/index true}
+   ;; Indexed because the mount wizard's first question is "what still needs
+   ;; turret pits authored" - a shortlist of 180, superseded per part by a real
+   ;; socket with :mount/accepts #{:turret} (SPEC §5.4).
+   :part/accepts-turrets? {:db/index true}
    :part/name        {}
    :part/variants    {:db/cardinality :db.cardinality/many}
    :part/source      {}
@@ -58,7 +64,9 @@
   (cond-> (into {} (remove (comp nil? val)) (select-keys part
                                                          [:part/id :part/bundle :part/class :part/name
                                                           :part/role-hint :part/role-source :part/source
-                                                          :part/renderable :part/mesh-key :part/tris]))
+                                                          :part/renderable :part/mesh-key :part/tris
+                                                          :part/weapons? :part/turrets?
+                                                          :part/accepts-turrets?]))
     (seq (:part/variants part)) (assoc :part/variants (vec (:part/variants part)))
     (seq mounts)                (assoc :part/mounts (vec mounts))))
 
@@ -91,12 +99,15 @@
 
 (defn browse
   "Filter the library. Every criterion is optional; `q` matches the part name
-  case-insensitively."
-  [db {:keys [bundle class role q]}]
+  case-insensitively, and `accepts-turrets?` narrows to the parts the mount
+  wizard still has turret pits to author on."
+  [db {:keys [bundle class role q accepts-turrets?]}]
   (->> (d/q '[:find [(pull ?e [*]) ...] :where [?e :part/id]] db)
        (filter #(or (nil? bundle) (= bundle (:part/bundle %))))
        (filter #(or (nil? class)  (= class (:part/class %))))
        (filter #(or (nil? role)   (= role (:part/role-hint %))))
+       (filter #(or (nil? accepts-turrets?)
+                    (= (boolean accepts-turrets?) (boolean (:part/accepts-turrets? %)))))
        (filter #(or (nil? q)
                     (re-find (re-pattern (str "(?i)" (java.util.regex.Pattern/quote q)))
                              (str (:part/name %)))))
