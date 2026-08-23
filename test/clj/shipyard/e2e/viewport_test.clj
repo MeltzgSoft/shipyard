@@ -1,0 +1,182 @@
+(ns shipyard.e2e.viewport-test
+  "Headless Chrome against a real server (TECHNICAL.md §10.3).
+
+  Assertions read `window.__shipyard.stats()` rather than pixels: screenshot
+  diffing a 3D scene moves with the driver, the antialiasing and the timing.
+  One test still asks the crudest pixel question - is the canvas blank - because
+  the stats hook would happily report a mesh that never reached the screen."
+  (:require [clojure.java.io :as io]
+            [clojure.string :as str]
+            [clojure.test :refer [deftest is testing use-fixtures]]
+            [etaoin.api :as e]
+            [integrant.core :as ig]
+            [shipyard.e2e.support :as s])
+  (:import [javax.imageio ImageIO]))
+
+(def ^:dynamic *driver* nil)
+(def ^:dynamic *system* nil)
+
+(use-fixtures :once
+  (fn [run]
+    (s/assert-bundle!)
+    (let [system (s/start-system!)
+          driver (s/make-driver)]
+      (try
+        (binding [*system* system, *driver* driver]
+          (run))
+        (finally
+          (e/quit driver)
+          (ig/halt! system))))))
+
+(defn- open-app! []
+  (e/go *driver* (s/base-url *system*))
+  (e/wait-visible *driver* {:css "#library-results .part"} {:timeout 20}))
+
+(defn- select-part! [part-name]
+  (e/click *driver* {:xpath (format "//button[.//span[text()='%s']]" part-name)}))
+
+;; --- WebGL first, per the acceptance criteria -------------------------------
+
+(deftest webgl-works-in-this-browser
+  (testing "asserted before anything else: a GPU-less runner without software
+            rendering fails in a way that looks like an application bug"
+    (open-app!)
+    (let [ctx (e/js-execute *driver*
+                            "var c = document.getElementById('viewport');
+                             var gl = c.getContext('webgl2') || c.getContext('webgl');
+                             return gl ? gl.getParameter(gl.VERSION) : null;")]
+      (is (some? ctx) "no WebGL context - is SwiftShader enabled?")
+      (is (str/includes? (str ctx) "WebGL")))
+    (testing "and the island came up rather than falling into degraded mode"
+      (is (some? (s/wait-until #(s/stats *driver*)))))))
+
+;; --- browsing ---------------------------------------------------------------
+
+(deftest browse-and-filter
+  (open-app!)
+  (is (= 4 (count (e/query-all *driver* {:css "#library-results .part"}))))
+  (testing "a supported-only part is greyed, with its reason, not hidden"
+    (is (= 1 (count (e/query-all *driver* {:css ".part--unrenderable"}))))
+    (is (str/includes? (e/get-element-text *driver* {:css ".part--unrenderable"})
+                       "supported STL")))
+  (testing "filtering by bundle narrows the list"
+    (e/select *driver* {:css "select[name=bundle]"} "Ork Fleet Bundle")
+    (is (s/wait-until #(= 1 (count (e/query-all *driver* {:css "#library-results .part"})))))
+    (is (str/includes? (e/get-element-text *driver* {:css "#library-results"}) "Ram Ship")))
+  (testing "and All bundles widens it again"
+    (e/select *driver* {:css "select[name=bundle]"} "All bundles")
+    (is (s/wait-until #(= 4 (count (e/query-all *driver* {:css "#library-results .part"}))))))
+  (testing "free-text search matches names across bundles"
+    (e/fill *driver* {:css "input[name=q]"} "Ram")
+    (is (s/wait-until #(= 2 (count (e/query-all *driver* {:css "#library-results .part"})))))))
+
+;; --- loading ----------------------------------------------------------------
+
+(deftest loading-a-part-renders-and-frames-it
+  (open-app!)
+  (select-part! "Cruiser Hull")
+  (let [stats (s/await-part *driver* s/hull-id)]
+    (is (pos? (:vertices stats)))
+    (is (pos? (:triangles stats)))
+    (is (pos? (:draws stats)) "the scene is actually being rendered")
+    (testing "and it is a PBR material, because M5 depends on it"
+      (is (seq (:materials stats)))))
+  (testing "the camera frames the part from the header bbox"
+    ;; The prow fixture is the one solid that is not centred on the origin, so
+    ;; this fails for a camera that never moved rather than passing by accident.
+    (select-part! "Classic Ram Prow")
+    (let [stats  (s/await-part *driver* s/prow-id)
+          target (:target stats)]
+      (is (every? (fn [[got want]] (< (abs (- (double got) want)) 0.25))
+                  (map vector target s/prow-offset))
+          (str "camera target " (pr-str target) " should be near " (pr-str s/prow-offset))))))
+
+(deftest selecting-an-unpreviewable-part-clears-the-scene
+  (open-app!)
+  (select-part! "Cruiser Hull")
+  (s/await-part *driver* s/hull-id)
+  (select-part! "Supported Only Prow")
+  (is (s/wait-until #(empty? (s/loaded-parts *driver*)))
+      "shipyard:clear should have emptied the scene")
+  (testing "and the panel says why rather than going blank"
+    (is (str/includes? (e/get-element-text *driver* {:css "#detail"}) "supported STL"))))
+
+(deftest repeated-loads-do-not-accumulate
+  (testing "twenty parts in sequence must not grow GPU memory without bound, so
+            a replaced part is disposed rather than merely removed"
+    (open-app!)
+    (dotimes [_ 3]
+      (select-part! "Cruiser Hull")
+      (s/await-part *driver* s/hull-id)
+      (select-part! "Supported Only Prow")
+      (s/wait-until #(empty? (s/loaded-parts *driver*))))
+    (select-part! "Cruiser Hull")
+    (is (= [s/hull-id] (vec (:parts (s/await-part *driver* s/hull-id)))))))
+
+;; --- the island -------------------------------------------------------------
+
+(deftest htmx-swaps-leave-the-webgl-context-alive
+  (open-app!)
+  (select-part! "Cruiser Hull")
+  (let [before (s/await-part *driver* s/hull-id)]
+    ;; Mark the live canvas from JS. If htmx ever replaces the element, the
+    ;; marker goes with it - which is exactly the failure hx-preserve prevents.
+    (e/js-execute *driver* "document.getElementById('viewport').__alive = 42;")
+    (testing "swap the library panel and the detail panel"
+      (e/select *driver* {:css "select[name=bundle]"} "Ork Fleet Bundle")
+      (is (s/wait-until #(= 1 (count (e/query-all *driver* {:css "#library-results .part"})))))
+      (select-part! "Ram Ship")
+      (s/await-part *driver* s/ork-id))
+    (testing "the canvas element survived both"
+      (is (= 42 (e/js-execute *driver* "return document.getElementById('viewport').__alive;"))))
+    (testing "and the hull is still on the GPU - nothing was re-uploaded"
+      (let [after (s/stats *driver*)]
+        (is (= #{s/hull-id s/ork-id} (set (:parts after))))
+        (is (> (:vertices after) (:vertices before))
+            "the second part was added to the live scene, not to a rebuilt one")))))
+
+;; --- pixels -----------------------------------------------------------------
+
+(deftest the-canvas-is-not-blank
+  (testing "the crudest question the stats hook cannot answer: did anything
+            actually reach the screen"
+    (open-app!)
+    (select-part! "Cruiser Hull")
+    (s/await-part *driver* s/hull-id)
+    ;; One frame's grace: stats can report an uploaded mesh before it is drawn.
+    (Thread/sleep 500)
+    (let [shot (io/file (s/temp-dir "shipyard-e2e-shot") "canvas.png")]
+      (e/screenshot-element *driver* {:css "#viewport"} shot)
+      (let [img    (ImageIO/read shot)
+            w      (.getWidth img)
+            h      (.getHeight img)
+            pixels (for [x (range 0 w (max 1 (quot w 40)))
+                         y (range 0 h (max 1 (quot h 40)))]
+                     (.getRGB img x y))]
+        (is (pos? w))
+        (is (> (count (distinct pixels)) 1)
+            "every sampled pixel is identical - nothing rendered")))))
+
+;; --- degraded mode ----------------------------------------------------------
+
+(deftest browsing-works-without-the-viewport-bundle
+  (testing "with the bundle blocked, the server-rendered UI carries on (§8)"
+    (let [[system server] (s/start-degraded!)
+          driver (s/make-driver)]
+      (try
+        (e/go driver (str "http://127.0.0.1:" (s/server-port server)))
+        (e/wait-visible driver {:css "#library-results .part"} {:timeout 20})
+        (is (= "undefined" (e/js-execute driver "return typeof window.__shipyard;"))
+            "the island really is absent")
+        (is (= 4 (count (e/query-all driver {:css "#library-results .part"}))))
+        (testing "filtering still works, because htmx is a separate file"
+          (e/select driver {:css "select[name=bundle]"} "Ork Fleet Bundle")
+          (is (s/wait-until #(= 1 (count (e/query-all driver {:css "#library-results .part"}))))))
+        (testing "and a part still preprocesses and reports itself loaded"
+          (e/click driver {:xpath "//button[.//span[text()='Ram Ship']]"})
+          (is (s/wait-until
+               #(str/includes? (e/get-element-text driver {:css "#detail"}) "Loaded"))))
+        (finally
+          (e/quit driver)
+          (.stop ^org.eclipse.jetty.server.Server server)
+          (ig/halt! system))))))

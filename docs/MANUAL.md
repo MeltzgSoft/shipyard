@@ -158,7 +158,9 @@ in an unexpected format. Shipyard logs which file and carries on rather than fai
 outright; the rest of your library is unaffected.
 
 **"The 3D view is blank."** Your browser needs WebGL. Any current desktop browser has it,
-but a remote session or a very old graphics driver may not.
+but a remote session or a very old graphics driver may not. If Shipyard cannot get a 3D
+context it says so in the browser console and disables the viewport only - browsing,
+filtering and part details keep working, so nothing else on the page is lost.
 
 ## Getting help
 

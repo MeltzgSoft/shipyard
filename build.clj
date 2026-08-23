@@ -18,6 +18,18 @@
 
 (defn clean [_] (b/delete {:path "target"}))
 
+(defn- assert-no-test-hooks
+  "The E2E introspection hook must not ship (issue #16, TECHNICAL.md §10.3).
+
+  Checked here rather than trusted, because the way it survives is silent:
+  `(and TEST-HOOKS sys)` compiles to `cljs.core/truth_(false) ? … : null`,
+  which Closure cannot fold, and the bundle still defines window.__shipyard."
+  [bundle]
+  (when (re-find #"__shipyard" (slurp bundle))
+    (throw (ex-info (str "the release bundle still defines window.__shipyard: "
+                         "the goog-define did not constant-fold")
+                    {:bundle bundle}))))
+
 (defn frontend
   "npm dependencies, the CLJS release bundle, and htmx.
 
@@ -26,6 +38,7 @@
   [_]
   (sh "npm" "ci")
   (sh "npx" "shadow-cljs" "release" "viewport")
+  (assert-no-test-hooks "resources/public/js/viewport.js")
   (b/copy-file {:src    "node_modules/htmx.org/dist/htmx.min.js"
                 :target "resources/public/js/htmx.min.js"}))
 

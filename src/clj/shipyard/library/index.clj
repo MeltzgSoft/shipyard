@@ -18,7 +18,12 @@
   second is a real permission problem and should surface as one."
   5)
 
-(defn index-file [] (fs/file (system/cache-home) "shipyard" "index.edn"))
+(defn index-file
+  "`cache-home` is injectable so a test can be hermetic: an E2E run scanning a
+  fixture tree must not write part ids from a temp directory into the index the
+  developer's real library depends on."
+  ([] (index-file (system/cache-home)))
+  ([cache-home] (fs/file cache-home "shipyard" "index.edn")))
 
 (defn write-atomically!
   "Write via a temp file and rename, so a concurrent reader never sees a partial
@@ -121,13 +126,13 @@
   [{:keys [index]} part-id]
   (:mesh-key (get @index part-id)))
 
-(defmethod ig/init-key :shipyard.library/index [_ {:keys [root]}]
+(defmethod ig/init-key :shipyard.library/index [_ {:keys [root cache-home]}]
   (let [dir (fs/file root)]
     (when-not (fs/directory? dir)
       ;; Not fatal: the app must still start so the user can point it somewhere
       ;; real. A hard failure here makes a fresh install unusable.
       (log/warn "library root does not exist:" root))
-    (let [f      (index-file)
+    (let [f      (index-file (or cache-home (system/cache-home)))
           stored (load-index f)
           parts  (or (scan/scan dir) [])
           idx    (refresh parts root stored)]
