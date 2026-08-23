@@ -241,6 +241,8 @@ call to make.
   integrant/integrant            {:mvn/version "1.0.1"}
   aero/aero                      {:mvn/version "1.1.6"}
   org.clojure/tools.logging      {:mvn/version "1.3.0"}
+  babashka/fs                    {:mvn/version "0.5.34"}
+  digest/digest                  {:mvn/version "1.4.10"}
   org.lwjgl/lwjgl                {:mvn/version "3.3.6"}
   org.lwjgl/lwjgl-meshoptimizer  {:mvn/version "3.3.6"}}
  :aliases
@@ -776,10 +778,22 @@ so a concurrent reader never sees a partial file. Requests for a part already be
 preprocessed await the in-flight job rather than starting a second - a `ConcurrentHashMap`
 of `path → CompletableFuture`.
 
-**Thread pool sized to `availableProcessors`**, not virtual threads. Preprocessing is
-CPU-bound native and array work; virtual threads help blocking I/O and would only add
-scheduling overhead here. Virtual threads are correct for the Jetty request pool, which is
-a separate concern.
+**No thread pool.** Preprocessing runs on the calling thread, and single-flight comes from
+a `delay` held in an atom: the first deref runs the body, every other blocks on the same
+result. `swap!` may retry and build a delay it discards, which costs nothing precisely
+because a delay's body does not run until deref - the reason `future` is wrong here, since
+a discarded future has already started working.
+
+An earlier draft submitted to a fixed `ExecutorService`. It was removed: this is a
+single-user local application that views one part at a time, so the concurrent-request
+case it guarded against does not arise, and the batch case - the canary walking the whole
+library - gets bounded parallelism from `pmap` at its own call site, already capped at
+`availableProcessors + 2`. Running inline also lets an exception propagate as itself;
+submitting to a pool wrapped every parser error in an `ExecutionException`.
+
+**When a pool would earn its place:** a UI that prefetches many distinct parts at once,
+since preprocessing allocates tens of megabytes per part against a 2 GB peak budget
+(§11). Not before that exists.
 
 **Cache budget and eviction.** Measured on the Cruiser Hull once §6.4 became
 self-contained per-tier files (issue #13): tier 0 is 4.95 MB against a 6.64 MB source

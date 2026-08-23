@@ -17,8 +17,7 @@
   ([] (test-cache 64000000))
   ([cap]
    {:dir (temp-dir "shipyard-cache") :crease-deg 35 :lod-tiers [1.0 0.25 0.05]
-    :cap-bytes cap :threads 2
-    :pool (Executors/newFixedThreadPool 2) :inflight (atom {})}))
+    :cap-bytes cap :inflight (atom {})}))
 
 (defn- write-stl ^File [dir n]
   (let [f (io/file dir "unsupported.stl")]
