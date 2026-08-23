@@ -90,8 +90,14 @@ Select a part to load it.
 | Zoom | scroll wheel |
 
 The first time you open a part, Shipyard prepares it for display, which takes a moment on
-a large hull. After that it is cached and opens instantly. The cache holds derived data
-only - deleting it costs nothing but a little recomputation.
+a large hull. The panel says *Preparing this part for display* while it works, and the
+model appears when it is done - you can keep browsing in the meantime. After that it is
+cached and opens instantly. The cache holds derived data only - deleting it costs nothing
+but a little recomputation.
+
+If a part cannot be prepared - a truncated download, a file that is not really an STL -
+the panel says so and offers **Try again** rather than retrying silently. The rest of the
+library keeps working; one bad file never takes the browser down with it.
 
 ## 5. Defining how parts connect
 

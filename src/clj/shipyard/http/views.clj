@@ -154,7 +154,7 @@
     [:meta {:charset "utf-8"}]
     [:meta {:name "viewport" :content "width=device-width, initial-scale=1"}]
     [:title "Shipyard"]
-    [:link {:rel "stylesheet" :href "/css/app.css"}]
+    [:link {:rel "stylesheet" :href "/app.css"}]
     ;; htmx is a separate file from the viewport bundle so a broken viewport
     ;; build cannot take the whole UI down with it (TECHNICAL.md §8).
     [:script {:src "/js/htmx.min.js" :defer true}]

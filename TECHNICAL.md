@@ -138,7 +138,7 @@ shipyard/
 │   ├── library/{scan,index}.clj    part-folder discovery; mtime+size scan cache
 │   ├── catalog/{db,sidecar}.clj    datascript conn + schema; shipyard.edn read/write
 │   ├── mesh/{stl,weld,lod,cache}.clj
-│   └── http/{server,routes,views,htmx}.clj    server = jetty lifecycle
+│   └── http/{server,routes,views,htmx,urls,jobs}.clj  server = jetty lifecycle
 │
 ├── src/cljc/shipyard/              BOTH runtimes
 │   ├── wire.cljc                   .symesh layout - encode JVM / decode CLJS
@@ -795,6 +795,10 @@ submitting to a pool wrapped every parser error in an `ExecutionException`.
 since preprocessing allocates tens of megabytes per part against a 2 GB peak budget
 (§11). Not before that exists.
 
+That UI now exists, and the pool is in `shipyard.http.jobs` rather than here (§7). Two
+threads, and only the HTTP layer uses them: `ensure!` keeps its inline contract, so the
+canary still gets its back-pressure and its unwrapped exceptions.
+
 **Cache budget and eviction.** Measured on the Cruiser Hull once §6.4 became
 self-contained per-tier files (issue #13): tier 0 is 4.95 MB against a 6.64 MB source
 (74.5%), and all three tiers together are 6.92 MB - **about 104% of source**. The earlier
@@ -856,32 +860,86 @@ Verified working practice (issue #6). These are the traps that cost real time.
 
 | Route | Returns |
 |---|---|
-| `GET /` | App shell - library panel, viewport canvas, import map |
+| `GET /` | App shell - library panel, filter form, viewport canvas |
 | `GET /library` | Hiccup fragment. Params `bundle` `class` `role` `q` |
-| `GET /part/:id` | Detail fragment + `HX-Trigger` to load the mesh |
-| `GET /mesh/:key.symesh` | Binary (§6.4). Immutable, content-addressed |
+| `GET /part/*id` | Detail fragment + `HX-Trigger` to load the mesh |
+| `GET /mesh/:key.:tier.symesh` | Binary (§6.4). Immutable, content-addressed |
 | `GET /healthz` | Liveness |
 
-`:id` is the percent-encoded library-relative path.
+`:id` is the library-relative folder path, percent-encoded **per segment**: separators
+stay literal `/` and the route is a catch-all.
+
+Encoding the separators too - one segment containing `%2F` - is the obvious alternative
+and does not work. Jetty rejects an ambiguous path separator with 400 before the request
+reaches a handler, so no amount of correct handler code recovers it. Most of this library
+has spaces in its folder names, so this path is exercised by nearly every request.
+
+The mesh path carries the LOD tier as well as the key, because §6.3 writes one file per
+tier and all of them are derived from the same source hash.
+
+Decoding is reitit's, not ours: `reitit.impl/url-decode-coll` decodes path parameters on
+the way in. A handler that decoded again would corrupt any folder name containing a
+literal percent sign, and `shipyard.http.urls` therefore holds only the encoding half.
 
 **Caching.** `/mesh/*` is content-addressed and therefore immutable:
 `Cache-Control: public, max-age=31536000, immutable`. Fragments send `no-store`.
 
-**Preprocess latency.** A cold part takes seconds. `GET /part/:id` returns the fragment
+**Preprocess latency.** A cold part takes seconds. `GET /part/*id` returns the fragment
 immediately with a loading state, and the mesh URL is only issued once the job completes -
 so the request never blocks on the pipeline.
+
+The work runs on a two-thread pool in `shipyard.http.jobs`. That is the bounded executor
+§6.5 said would earn its place once a UI existed prefetching distinct parts, and it lives
+in the HTTP layer rather than in `shipyard.mesh.cache` so the cache keeps its inline
+contract for every other caller - the canary wants exactly that back-pressure, and an
+inline exception arrives as itself rather than wrapped in an `ExecutionException`.
+
+Completion reaches the browser by polling, not by a push channel. The loading fragment
+carries `hx-trigger="load delay:400ms"` pointed back at the same route, so the cycle
+re-arms every time the server sends it and stops the moment a ready fragment arrives
+without it. No SSE endpoint, no timer to cancel, and one route rather than two.
+
+A **failed** job is terminal until asked again. The failure fragment carries a retry link
+(`?retry=1`) rather than polling, because a poll that resubmits would retry the work
+forever and never show the user the error.
+
+`shipyard.http.jobs` writes each successful mesh key back into the scan index
+(§5.4). That is the half of the index `refresh` was already written for and nothing yet
+fed: it carries `:mesh-key` forward for any part whose source file is unchanged, so a
+warm part is answered from the index with no job and no poll, and a restart does not
+re-hash a 20 MB STL to name a URL it already knew.
 
 ### 7.1 htmx contract
 
 The canvas is `hx-preserve` and never a swap target (SPEC §6.1). All viewport
-communication is `HX-Trigger`:
+communication is `HX-Trigger`.
+
+**JSON is htmx's envelope; EDN is the payload.** htmx parses this header itself and
+dispatches one event per key of the outer object (`handleTriggerHeader`), so the envelope
+is not ours to choose. What rides inside each key is: the value is an EDN string, so
+keywords, sets and vectors reach the viewport as themselves rather than as a JSON shape
+re-mapped by hand on the client.
 
 ```clojure
-{"HX-Trigger" (json/write-str
-                {:shipyard/load-mesh {:url "/mesh/3f9a….symesh"
-                                      :part-id "Human Navy Fleet Bundle/Cruiser/Hull"
-                                      :frame true}})}
+{"HX-Trigger"
+ (json/write-str
+   {"shipyard:load-mesh"
+    (pr-str {:url "/mesh/3f9a….0.symesh"
+             :part-id "Human Navy Fleet Bundle/Cruiser/Hull"
+             :frame true})})}
 ```
+
+htmx wraps a non-object value as `{value: …}` before dispatching, so the client reads the
+EDN at `event.detail.value`:
+
+```clojure
+(.addEventListener js/document.body "shipyard:load-mesh"
+                   #(handle (edn/read-string (.. % -detail -value))))
+```
+
+An earlier version of this section showed the payload map JSON-encoded directly with
+keyword keys. That produces an event named `:shipyard/load-mesh` rather than
+`shipyard:load-mesh`, and delivers JSON rather than the EDN the rest of §7.2 assumes.
 
 | Event | Payload | Meaning |
 |---|---|---|
@@ -889,7 +947,15 @@ communication is `HX-Trigger`:
 | `shipyard:clear` | - | Empty the scene |
 | `shipyard:status` | `state`, `message` | Preprocessing progress / errors |
 
-Event names are namespaced `shipyard:*` so they never collide with htmx's own.
+Event names are namespaced `shipyard:*` so they never collide with htmx's own, which are
+all `htmx:*`.
+
+**Where the filter form lives.** In the shell, not in the `/library` fragment. The library
+does not change while the process runs, so there is nothing in the form to re-render - and
+not re-rendering it is what keeps the caret in the search box while you type. `/library`
+returns the results list alone, and the shell's copy of that element is the only one
+carrying a `load` trigger: repeating it in the fragment would make the panel refetch
+itself forever.
 
 ### 7.2 Viewport module
 
