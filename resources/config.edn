@@ -19,8 +19,12 @@
   :cap-bytes  #profile {:default 4294967296   ; 4 GB
                         :test    67108864}}   ; 64 MB so LRU eviction is testable in seconds
 
+ :shipyard.catalog/db
+ {:library #ig/ref :shipyard.library/index}
+
  :shipyard.http/routes
  {:library #ig/ref :shipyard.library/index
+  :catalog #ig/ref :shipyard.catalog/db
   :cache   #ig/ref :shipyard.mesh/cache}
 
  :shipyard.http/server
