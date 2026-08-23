@@ -32,6 +32,32 @@
     (is (= :weapon (role "Lance Battery" :weapons? true)))
     (is (= :weapon (role "Weapon Battery" :weapons? true)))))
 
+(deftest turret-housings-are-batteries-not-turrets
+  (testing "a Turret Bay is the thing with the holes, not the thing that fills
+            them - word order separates them, and size does not: these overlap
+            real turrets exactly at 272 KB to 1.6 MB"
+    (is (= :weapon (role "GGFMF Gyro Cruiser Turret Bay 1" :weapons? true)))
+    (is (= :weapon (role "GGFMF Reseller Cruiser Turret Bay A" :weapons? true)))
+    (is (= :weapon (role "Weapon Battery Turrets" :weapons? true)))
+    (is (= :weapon (role "Weapon Battery Turrets Frontward" :weapons? true))))
+  (testing "but a turret whose name merely contains 'bay' is still a turret"
+    (is (= :turret (role "CB Lancebay Turret x8" :weapons? true)))
+    (is (= :turret (role "Assault Combatbarge Lancebay Turret x5" :weapons? true)))))
+
+(deftest accepts-turrets-hint
+  (let [acc? #(scan/accepts-turrets? {:name % :turrets? false})]
+    (testing "the parts that carry turret sockets"
+      (is (acc? "GGFMF Gyro Cruiser Turret Bay 1"))
+      (is (acc? "Weapon Battery Turrets"))
+      (is (acc? "Lance Battery") "the user's example: lance batteries take turrets")
+      (is (acc? "Anarchist Battleship Spine Weapon Batteries")))
+    (testing "a turret never accepts a turret"
+      (is (not (scan/accepts-turrets? {:name "Lance Turret" :turrets? true})))
+      (is (not (acc? "Dorsal turret"))))
+    (testing "unrelated parts are untouched"
+      (is (not (acc? "Hull")))
+      (is (not (acc? "Classic Ram Prow"))))))
+
 (deftest a-prow-fitted-with-a-weapon-is-still-a-prow
   (testing "26 folders under weapons/ name a prow, and every one is a prow -
             the directory must not override a more specific name"

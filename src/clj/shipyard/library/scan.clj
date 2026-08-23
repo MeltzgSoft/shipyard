@@ -41,6 +41,16 @@
   name says which kind."
   #"(?i)turret")
 
+(def ^:private turret-housing-re
+  "Names that mention a turret but denote the thing it mounts INTO.
+
+  `Turret Bay 1` and `Weapon Battery Turrets` are batteries drilled to accept
+  turrets - the Greater Good cruisers carry the holes. Word order is what
+  separates them from real turrets: `Lancebay Turret` is a turret, `Turret Bay`
+  is a bay. Size is not a usable signal and misled an earlier pass: these are
+  272 KB-1.6 MB, overlapping real turrets exactly."
+  #"(?i)turret\s*bay|batter(y|ies)")
+
 (def ^:private name-rules
   "Ordered; first match wins. Matching is substring, NOT word-bounded: 14 folders
   are CamelCase or underscore-joined (`Metis_Hull`, `GGRBridge`, `VossTorpedo`,
@@ -54,12 +64,29 @@
    [#"(?i)bridge"                                                            :bridge]
    [#"(?i)antenna|sensor"                                                    :antenna]
    [#"(?i)engine|thruster|boosta|cowl|nozzle"                                :engine]
+   ;; guarded: see turret-housing-re
    [turret-re                                                                :turret]
    [#"(?i)turret|batter(y|ie)|batery|gunz|guns|lance|torpedo|torp|launch|zzap|cannon|canon|missile|bombard|klaw|claw|blaster|\bram\b|bomb" :weapon]
    [#"(?i)stern|rudder|tail|\baft\b"                                         :stern]
    [#"(?i)wing|fin|sail"                                                     :fin]
    [#"(?i)deck|keel|pod|section|spine|dome"                                  :section]
    [#"(?i)insert|plug|logo|gargoyle"                                         :detail]])
+
+(defn accepts-turrets?
+  "Does this part carry sockets that a turret drops into?
+
+  A HINT, on the same footing as `:part/role-hint` and superseded by real
+  mounts: once M2 authors a socket with `:mount/accepts #{:turret}`, that is the
+  fact and this is only a starting guess.
+
+  Derived from the same names that mark turret housings - a battery or a turret
+  bay is the thing with the holes. Deliberately coarse: the user reports that
+  *some* batteries take turrets, lance batteries among them, and nothing in a
+  folder name distinguishes those that do from those that do not. Over-flagging
+  gives the mount wizard a shortlist to work through; under-flagging would hide
+  the parts that need authoring most."
+  [{:keys [turrets? name]}]
+  (boolean (and (not turrets?) name (re-find turret-housing-re name))))
 
 (defn- hull-section?
   "A positional word adjacent to `hull` means a mandatory piece of one hull, not
@@ -94,7 +121,7 @@
 
       ;; Otherwise the directory says weapon and the name may refine it: a
       ;; turret is a weapon subtype, so this narrows rather than contradicts.
-      (and weapons? (re-find turret-re name))
+      (and weapons? (re-find turret-re name) (not (re-find turret-housing-re name)))
       [:turret :inferred]
 
       weapons?            [:weapon :class]
@@ -104,7 +131,8 @@
       :else
       (or (some (fn [[re role]]
                   (when (re-find re name)
-                    (when-not (and (= role :fin) (negated-fin? name))
+                    (when-not (or (and (= role :fin) (negated-fin? name))
+                                  (and (= role :turret) (re-find turret-housing-re name)))
                       [role :inferred])))
                 name-rules)
           [:unknown :inferred]))))
@@ -173,6 +201,7 @@
                      :part/class      (:class info)
                      :part/weapons?   (:weapons? info)
                      :part/turrets?   (:turrets? info)
+                     :part/accepts-turrets? (accepts-turrets? info)
                      :part/name       (:name info)
                      :part/variants   vs
                      :part/source     (source-variant vs)

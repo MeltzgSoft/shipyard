@@ -456,6 +456,24 @@ recorded in `TURRET-MOVES.json`), which makes turret-ness a directory fact rathe
 name guess: all 45 now resolve with `:role-source :class`. The name rule stays as a
 fallback for bundles acquired later and not yet reorganised.
 
+**`:part/accepts-turrets?` marks the parts a turret drops into.** A hint on the same
+footing as `:part/role-hint`, and superseded the moment M2 authors a socket with
+`:mount/accepts #{:turret}` - that is the fact, this is the starting guess. Derived from
+the same names that mark a turret housing, since a battery or a turret bay is the thing
+with the holes. Flags 62 parts (3.7%), none of them turrets.
+
+Deliberately coarse: *some* batteries take turrets, lance batteries among them, and
+nothing in a folder name separates those that do from those that do not. Over-flagging
+gives the mount wizard a shortlist; under-flagging would hide exactly the parts that most
+need authoring.
+
+**Turret housings are not turrets.** `Turret Bay 1` and `Weapon Battery Turrets` are
+batteries drilled to accept turrets - the Greater Good cruisers carry the holes. Word
+order is the discriminator: `Lancebay Turret` is a turret, `Turret Bay` is a bay. **Size
+is not**, and it misled a first pass: housings run 272 KB to 1.6 MB, overlapping real
+turrets exactly. Seven folders were moved into `turrets/` on that mistaken reasoning and
+moved back; `TURRET-MOVES.json` records both.
+
 **A prow fitted with a weapon is still a prow.** This fixes FP-2 from the role-inference
 spike, where the `weapons/` directory overrode a more specific name. 26 folders under
 `weapons/` have `prow` in the name - `Stalker Prow 1 with Lance Turret`, `GGDF Diplomat
