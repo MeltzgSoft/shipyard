@@ -38,21 +38,6 @@ jobs:
           ./linux-install-1.12.4.1618.sh --prefix "$HOME/clojure"
           echo "$HOME/clojure/bin" >> "$GITHUB_PATH"
 
-      - name: Cache Maven repository
-        # Restored because its absence is what caused #28's failure: every job
-        # downloaded the whole dependency tree cold, and tools.deps resolves in
-        # parallel, so aether's named-lock acquire timed out mid-resolve.
-        #
-        # *.lock is excluded deliberately - a cache saved while a lock file
-        # existed would restore a stale lock into a fresh container.
-        uses: https://github.com/actions/cache@v4
-        with:
-          path: |
-            ~/.m2/repository
-            !~/.m2/repository/**/*.lock
-          key: ${{ runner.os }}-m2-${{ hashFiles('deps.edn') }}
-          restore-keys: ${{ runner.os }}-m2-
-
       - name: Formatting
         # `clojure -M:cljfmt fix src test build.clj` resolves failures locally.
         run: clojure -M:cljfmt check src test build.clj
