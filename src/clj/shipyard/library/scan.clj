@@ -3,9 +3,8 @@
 
   Cheap by construction: this stats files and reads directory names. It never
   opens a mesh - hashing 19 GB at startup is what §5.4 exists to avoid."
-  (:require [clojure.java.io :as io]
-            [clojure.string :as str])
-  (:import [java.io File]))
+  (:require [babashka.fs :as fs]
+            [clojure.string :as str]))
 
 (def source-files
   "Variant filenames, in preference order. `supported.stl` is print scaffolding
@@ -155,8 +154,8 @@
 
 (defn part-folder?
   "A directory is a part folder iff it holds at least one variant file."
-  [^File dir]
-  (boolean (some #(.isFile (io/file dir %)) source-files)))
+  [dir]
+  (boolean (some #(fs/regular-file? (fs/file dir %)) source-files)))
 
 (defn- decompose
   "Split a library-relative path into bundle, optional class, and weapons flag.
@@ -176,8 +175,8 @@
     {:bundle bundle :class class :weapons? weapons? :turrets? turrets?
      :name (last segments)}))
 
-(defn- variants [^File dir]
-  (into #{} (keep (fn [f] (when (.isFile (io/file dir f)) (variant-key f)))
+(defn- variants [dir]
+  (into #{} (keep (fn [f] (when (fs/regular-file? (fs/file dir f)) (variant-key f)))
                   source-files)))
 
 (defn source-variant
@@ -193,34 +192,30 @@
   Directories named `other` are skipped whole: they hold Lychee projects,
   READMEs and images, not parts."
   [root]
-  (let [root-file (io/file root)
-        root-path (.toPath root-file)]
-    (when (.isDirectory root-file)
-      (->> (file-seq root-file)
-           (filter #(.isDirectory ^File %))
-           (remove #(= root-file %))
-           (remove (fn [^File d]
-                     (some (fn [s] (= "other" (str/lower-case s)))
-                           (str/split (str (.relativize root-path (.toPath d)))
-                                      #"[/\\]"))))
-           (filter part-folder?)
-           (map (fn [^File d]
-                  (let [rel  (str (.relativize root-path (.toPath d)))
-                        segs (str/split rel #"[/\\]")
-                        info (decompose segs)
-                        vs   (variants d)
-                        [role src] (role-hint info)]
-                    {:part/id         (str/replace rel "\\" "/")
-                     :part/bundle     (:bundle info)
-                     :part/class      (:class info)
-                     :part/weapons?   (:weapons? info)
-                     :part/turrets?   (:turrets? info)
-                     :part/accepts-turrets? (accepts-turrets? (assoc info :role role))
-                     :part/name       (:name info)
-                     :part/variants   vs
-                     :part/source     (source-variant vs)
-                     :part/renderable (some? (source-variant vs))
-                     :part/role-hint  role
-                     :part/role-source src})))
-           (sort-by :part/id)
-           vec))))
+  (when (fs/directory? root)
+    (->> (fs/glob root "**" {:hidden false})
+         (filter fs/directory?)
+         (remove (fn [d]
+                   (some #(= "other" (str/lower-case (str %)))
+                         (fs/components (fs/relativize root d)))))
+         (filter part-folder?)
+         (map (fn [d]
+                (let [rel  (fs/relativize root d)
+                      segs (mapv str (fs/components rel))
+                      info (decompose segs)
+                      vs   (variants d)
+                      [role src] (role-hint info)]
+                  {:part/id         (str/join "/" segs)
+                   :part/bundle     (:bundle info)
+                   :part/class      (:class info)
+                   :part/weapons?   (:weapons? info)
+                   :part/turrets?   (:turrets? info)
+                   :part/accepts-turrets? (accepts-turrets? (assoc info :role role))
+                   :part/name       (:name info)
+                   :part/variants   vs
+                   :part/source     (source-variant vs)
+                   :part/renderable (some? (source-variant vs))
+                   :part/role-hint  role
+                   :part/role-source src})))
+         (sort-by :part/id)
+         vec)))
