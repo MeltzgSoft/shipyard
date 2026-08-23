@@ -9,6 +9,12 @@
   integrant/integrant            {:mvn/version "1.0.1"}
   aero/aero                      {:mvn/version "1.1.6"}
   org.clojure/tools.logging      {:mvn/version "1.3.0"}
+  ;; Filesystem work as Clojure rather than java.nio interop, and it normalises
+  ;; path separators - the class of bug that broke the reflection guard on
+  ;; Windows.
+  babashka/fs                    {:mvn/version "0.5.34"}
+  ;; sha256 of a file, streamed. Replaces a hand-rolled MessageDigest loop.
+  digest/digest                  {:mvn/version "1.4.10"}
   ch.qos.logback/logback-classic {:mvn/version "1.5.13"}
   org.lwjgl/lwjgl                {:mvn/version "3.3.6"}
   org.lwjgl/lwjgl-meshoptimizer  {:mvn/version "3.3.6"}}

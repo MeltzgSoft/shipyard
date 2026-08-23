@@ -424,6 +424,9 @@ Ordered, first match wins, case-insensitive, matched against the folder name.
 
 | Rule | Role |
 |---|---|
+| `turrets` path segment | `:turret` |
+| `weapons` segment **and** a `prow`/`nose` name | `:prow` |
+| `weapons` segment **and** a `turret` name | `:turret` |
 | `weapons` path segment | `:weapon` |
 | class segment is `ordinance` | `:ordinance` |
 | class segment is `Terrain` | `:terrain` |
@@ -433,6 +436,7 @@ Ordered, first match wins, case-insensitive, matched against the folder name.
 | `bridge` | `:bridge` |
 | `antenna|sensor` | `:antenna` |
 | `engine|thruster|boosta|cowl|nozzle` | `:engine` |
+| `turret` | `:turret` |
 | `turret|batter(y|ie)|batery|gunz|guns|lance|torpedo|torp|launch|zzap|cannon|canon|missile|bombard|klaw|claw|blaster|\bram\b|bomb` | `:weapon` |
 | `stern|rudder|tail|\baft\b` | `:stern` |
 | `wing|fin|sail`, unless preceded by `no ` | `:fin` |
@@ -440,8 +444,49 @@ Ordered, first match wins, case-insensitive, matched against the folder name.
 | `insert|plug|logo|gargoyle` | `:detail` |
 | otherwise | `:unknown` |
 
-Takes `:unknown` from 25.1% to **10.0%**; worst bundle from 69.2% to 23.1%; 13 of 19
+Measured after these rules: `:prow` 440, `:weapon` 237, `:turret` 45, `:hull` 138,
+`:unknown` 169 (10.2%). Takes `:unknown` from 25.1% to **~10%**; worst bundle from 69.2% to 23.1%; 13 of 19
 bundles reach zero.
+
+**Turrets are a weapon subtype, not a sibling of one.** A turret drops into a
+socket on a weapon battery rather than mounting on the hull - a lance battery carries
+the hole and the turret fills it - so it needs its own role before M2 can describe the
+mount. The library was reorganised to put them under `weapons/turrets/` (45 folders,
+recorded in `TURRET-MOVES.json`), which makes turret-ness a directory fact rather than a
+name guess: all 45 now resolve with `:role-source :class`. The name rule stays as a
+fallback for bundles acquired later and not yet reorganised.
+
+**`:part/accepts-turrets?` marks the parts a turret drops into.** A hint on the same
+footing as `:part/role-hint`, and superseded the moment M2 authors a socket with
+`:mount/accepts #{:turret}` (SPEC §5.4) - that is the fact, this is only where to start
+looking. Two sources:
+
+| source | what it catches | count |
+|---|---|---:|
+| name says battery or turret bay | the housings that carry the holes | 62 |
+| directory says cruiser class or larger, role is hull | dorsal turret pits | 118 |
+
+**180 parts, 10.8%**, none of them turrets, and all 53 escort hulls correctly excluded -
+escorts are the one class small enough not to carry pits.
+
+Deliberately coarse, because **no name or directory can tell which individual part
+actually has pits** - that is geometry. *Some* batteries take turrets, lance batteries
+among them, and cruiser-and-larger hulls *tend* to. Over-flagging gives the mount wizard
+a shortlist of 180 to work through; under-flagging would hide exactly the parts that most
+need authoring.
+
+**Turret housings are not turrets.** `Turret Bay 1` and `Weapon Battery Turrets` are
+batteries drilled to accept turrets - the Greater Good cruisers carry the holes. Word
+order is the discriminator: `Lancebay Turret` is a turret, `Turret Bay` is a bay. **Size
+is not**, and it misled a first pass: housings run 272 KB to 1.6 MB, overlapping real
+turrets exactly. Seven folders were moved into `turrets/` on that mistaken reasoning and
+moved back; `TURRET-MOVES.json` records both.
+
+**A prow fitted with a weapon is still a prow.** This fixes FP-2 from the role-inference
+spike, where the `weapons/` directory overrode a more specific name. 26 folders under
+`weapons/` have `prow` in the name - `Stalker Prow 1 with Lance Turret`, `GGDF Diplomat
+Torpedo Prow A` - and every one of them is a prow, with no counter-example in the
+library. The directory establishes weapon-ness; a more specific name refines it.
 
 **Two regex details that matter.** Matching is **substring, not word-bounded** - 14
 folders are CamelCase or underscore-joined (`Metis_Hull`, `GGRBridge`, `VossTorpedo`,
