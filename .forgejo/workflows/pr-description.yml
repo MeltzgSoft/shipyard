@@ -7,22 +7,6 @@ on:
   pull_request:
     types: [opened, edited, reopened, ready_for_review]
 
-# Every job runs `clojure`, which takes a write lock on the shared ~/.m2 on this
-# runner. Concurrent workflows collide:
-#
-#   IllegalStateException: Could not acquire write lock for 'artifact:...'
-#
-# One group across ALL Shipyard workflows, so runs queue instead of racing. That
-# serialises CI, which is the right trade at this repo's traffic - a stacked set
-# of pull requests otherwise pushes several branches at once and fails on
-# infrastructure rather than on code.
-#
-# cancel-in-progress stays false: a superseded run holding the lock should finish
-# and release it rather than being killed mid-resolve.
-concurrency:
-  group: shipyard-ci
-  cancel-in-progress: false
-
 jobs:
   check:
     # Drafts are work in progress; a red check on every unfinished description

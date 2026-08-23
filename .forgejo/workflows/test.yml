@@ -5,21 +5,12 @@ on:
     branches: ["main"]
   pull_request:
 
-# Every job runs `clojure`, which takes a write lock on the shared ~/.m2 on this
-# runner. Concurrent workflows collide:
-#
-#   IllegalStateException: Could not acquire write lock for 'artifact:...'
-#
-# One group across ALL Shipyard workflows, so runs queue instead of racing. That
-# serialises CI, which is the right trade at this repo's traffic - a stacked set
-# of pull requests otherwise pushes several branches at once and fails on
-# infrastructure rather than on code.
-#
-# cancel-in-progress stays false: a superseded run holding the lock should finish
-# and release it rather than being killed mid-resolve.
-concurrency:
-  group: shipyard-ci
-  cancel-in-progress: false
+env:
+  # Each Linux job runs in its own container with its own ~/.m2 and Windows
+  # jobs are capacity 1, so exactly one process ever touches the local
+  # repository. Aether's cross-process locking therefore protects nothing and
+  # can only fail, as it did in #28.
+  CLJ_JVM_OPTS: "-Daether.syncContext.named.factory=noop"
 
 jobs:
   test-linux:
@@ -42,6 +33,21 @@ jobs:
           chmod +x linux-install-1.12.4.1618.sh
           ./linux-install-1.12.4.1618.sh --prefix "$HOME/clojure"
           echo "$HOME/clojure/bin" >> "$GITHUB_PATH"
+
+      - name: Cache Maven repository
+        # Restored because its absence is what caused #28's failure: every job
+        # downloaded the whole dependency tree cold, and tools.deps resolves in
+        # parallel, so aether's named-lock acquire timed out mid-resolve.
+        #
+        # *.lock is excluded deliberately - a cache saved while a lock file
+        # existed would restore a stale lock into a fresh container.
+        uses: https://github.com/actions/cache@v4
+        with:
+          path: |
+            ~/.m2/repository
+            !~/.m2/repository/**/*.lock
+          key: ${{ runner.os }}-m2-${{ hashFiles('deps.edn') }}
+          restore-keys: ${{ runner.os }}-m2-
 
       - name: Unit tests
         run: clojure -M:test:natives-linux --focus :unit
@@ -80,6 +86,21 @@ jobs:
           Remove-Item clojure-tools.zip
           Import-Module ClojureTools
           clojure -Sdescribe
+
+      - name: Cache Maven repository
+        # Restored because its absence is what caused #28's failure: every job
+        # downloaded the whole dependency tree cold, and tools.deps resolves in
+        # parallel, so aether's named-lock acquire timed out mid-resolve.
+        #
+        # *.lock is excluded deliberately - a cache saved while a lock file
+        # existed would restore a stale lock into a fresh container.
+        uses: https://github.com/actions/cache@v4
+        with:
+          path: |
+            ~/.m2/repository
+            !~/.m2/repository/**/*.lock
+          key: ${{ runner.os }}-m2-${{ hashFiles('deps.edn') }}
+          restore-keys: ${{ runner.os }}-m2-
 
       - name: Unit tests
         shell: pwsh
