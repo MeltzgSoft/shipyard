@@ -1122,6 +1122,12 @@ Ubuntu 22.04 is a snap shim and there is no snapd in the job container: it insta
 then fails to launch. The action also pins chromedriver to the browser, which matters -
 a chromedriver a major version off refuses to open a session at all.
 
+It unpacks the `.deb` rather than installing it, though, so **nothing resolves Chrome's
+dependencies** and the binary dies on its first run with `libnspr4.so: cannot open shared
+object file`. A CI container has none of them. The job installs the runtime libraries with
+apt first - that is what the `.deb` would have pulled in, and it is the whole of the
+difference between a browser that starts and one that does not.
+
 ### 9.1 What `package` actually asserts
 
 Starting the jar and pinging `/healthz` proves almost nothing. The job instead walks the

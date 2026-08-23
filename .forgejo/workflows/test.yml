@@ -145,6 +145,21 @@ jobs:
         with:
           node-version: '24'
 
+      - name: Chrome's shared libraries
+        # setup-chrome unpacks the .deb rather than installing it, so nothing
+        # resolves Chrome's dependencies and the binary dies on its first run
+        # with `libnspr4.so: cannot open shared object file`. This container is
+        # a CI image, not a desktop: none of these are present.
+        run: |
+          set -euo pipefail
+          sudo=""; [ "$(id -u)" -eq 0 ] || sudo=sudo
+          $sudo apt-get update -qq
+          $sudo apt-get install -y --no-install-recommends \
+            libnspr4 libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
+            libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
+            libgbm1 libasound2 libpango-1.0-0 libcairo2 libatspi2.0-0 \
+            libxshmfence1 fonts-liberation
+
       - name: Install Chrome and a matching chromedriver
         id: setup-chrome
         # A downloaded static build, not apt. `chromium-browser` on Ubuntu 22.04
