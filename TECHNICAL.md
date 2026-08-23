@@ -1117,16 +1117,23 @@ a random port, so every restore dies with `getCacheEntry failed: connect EHOSTUN
 keeps `~/.m2` between jobs, so it downloads nothing. Reinstate the cache step when the
 runner pins its cache port, not before.
 
-**Chrome comes from `browser-actions/setup-chrome`, not apt.** `chromium-browser` on
-Ubuntu 22.04 is a snap shim and there is no snapd in the job container: it installs and
-then fails to launch. The action also pins chromedriver to the browser, which matters -
-a chromedriver a major version off refuses to open a session at all.
+**Chrome comes from Chrome for Testing**, downloaded from the manifest that names the
+browser and the driver together. Nothing else here is safe:
 
-It unpacks the `.deb` rather than installing it, though, so **nothing resolves Chrome's
-dependencies** and the binary dies on its first run with `libnspr4.so: cannot open shared
-object file`. A CI container has none of them. The job installs the runtime libraries with
-apt first - that is what the `.deb` would have pulled in, and it is the whole of the
-difference between a browser that starts and one that does not.
+- `apt install chromium-browser` on Ubuntu 22.04 installs a snap shim, and there is no
+  snapd in the job container - it installs and then fails to launch.
+- `browser-actions/setup-chrome` failed twice, for two different reasons. It unpacks the
+  `.deb` rather than installing it, so **nothing resolves Chrome's dependencies** and the
+  binary dies on its first run with `libnspr4.so: cannot open shared object file`. And
+  with `chrome-version: stable` it installed **Chrome 151 beside chromedriver 152**, which
+  refuses the session outright: *This version of ChromeDriver only supports Chrome
+  version 152*.
+
+One manifest naming both downloads cannot skew, because the driver is published beside the
+browser it was built for. The runtime libraries still come from apt - these are CI
+containers and Chrome links against a desktop's worth of them - and the E2E step prints
+both versions before running, so a future skew shows up as two numbers rather than as a
+stack trace three hundred lines down.
 
 ### 9.1 What `package` actually asserts
 

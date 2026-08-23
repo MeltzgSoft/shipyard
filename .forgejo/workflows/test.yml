@@ -145,11 +145,16 @@ jobs:
         with:
           node-version: '24'
 
-      - name: Chrome's shared libraries
-        # setup-chrome unpacks the .deb rather than installing it, so nothing
-        # resolves Chrome's dependencies and the binary dies on its first run
-        # with `libnspr4.so: cannot open shared object file`. This container is
-        # a CI image, not a desktop: none of these are present.
+      - name: Chrome and chromedriver, matched by construction
+        # Chrome for Testing rather than browser-actions/setup-chrome, which
+        # failed here twice for two different reasons: it unpacks the .deb
+        # without resolving its dependencies, and with `chrome-version: stable`
+        # it installed Chrome 151 alongside chromedriver 152, which refuses the
+        # session outright. One manifest naming both downloads cannot skew - the
+        # driver is published beside the browser it was built for.
+        #
+        # The shared libraries still have to come from apt: these are CI
+        # containers, and Chrome links against a desktop's worth of them.
         run: |
           set -euo pipefail
           sudo=""; [ "$(id -u)" -eq 0 ] || sudo=sudo
@@ -158,18 +163,22 @@ jobs:
             libnspr4 libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
             libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
             libgbm1 libasound2 libpango-1.0-0 libcairo2 libatspi2.0-0 \
-            libxshmfence1 fonts-liberation
+            libxshmfence1 fonts-liberation unzip
 
-      - name: Install Chrome and a matching chromedriver
-        id: setup-chrome
-        # A downloaded static build, not apt. `chromium-browser` on Ubuntu 22.04
-        # is a snap shim, and there is no snapd in this container - it installs
-        # and then fails to launch. This action pins the two to each other,
-        # which matters: a chromedriver a major version off refuses the session.
-        uses: https://github.com/browser-actions/setup-chrome@v1
-        with:
-          chrome-version: stable
-          install-chromedriver: true
+          curl -sSfo /tmp/cft.json https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json
+          version=$(python3 -c 'import json; print(json.load(open("/tmp/cft.json"))["channels"]["Stable"]["version"])')
+          chrome_url=$(python3 -c 'import json; d = json.load(open("/tmp/cft.json"))["channels"]["Stable"]; print([x["url"] for x in d["downloads"]["chrome"] if x["platform"] == "linux64"][0])')
+          driver_url=$(python3 -c 'import json; d = json.load(open("/tmp/cft.json"))["channels"]["Stable"]; print([x["url"] for x in d["downloads"]["chromedriver"] if x["platform"] == "linux64"][0])')
+          echo "Chrome for Testing $version"
+
+          mkdir -p "$HOME/chrome"
+          curl -sSfo /tmp/chrome.zip "$chrome_url"
+          curl -sSfo /tmp/chromedriver.zip "$driver_url"
+          unzip -q /tmp/chrome.zip -d "$HOME/chrome"
+          unzip -q /tmp/chromedriver.zip -d "$HOME/chrome"
+          chmod +x "$HOME/chrome/chrome-linux64/chrome" "$HOME/chrome/chromedriver-linux64/chromedriver"
+          echo "$HOME/chrome/chromedriver-linux64" >> "$GITHUB_PATH"
+          echo "SHIPYARD_CHROME=$HOME/chrome/chrome-linux64/chrome" >> "$GITHUB_ENV"
 
       - name: Install Clojure CLI
         run: |
@@ -187,11 +196,11 @@ jobs:
         run: npx shadow-cljs compile viewport
 
       - name: E2E tests
-        # SHIPYARD_CHROME points etaoin at the binary setup-chrome installed;
-        # it is not on any of the usual paths.
-        env:
-          SHIPYARD_CHROME: ${{ steps.setup-chrome.outputs.chrome-path }}
+        # SHIPYARD_CHROME and PATH were both set by the step above. Printing
+        # the two versions first means a skew shows up as two numbers rather
+        # than as a stack trace three hundred lines down.
         run: |
+          "$SHIPYARD_CHROME" --version
           chromedriver --version
           clojure -M:test:natives-linux --focus :e2e
 
