@@ -5,6 +5,13 @@ on:
     branches: ["main"]
   pull_request:
 
+env:
+  # Each Linux job runs in its own container with its own ~/.m2 and Windows
+  # jobs are capacity 1, so exactly one process ever touches the local
+  # repository. Aether's cross-process locking therefore protects nothing and
+  # can only fail, as it did in #28.
+  CLJ_JVM_OPTS: "-Daether.syncContext.named.factory=noop"
+
 jobs:
   lint:
     # One runner: neither tool is platform-dependent. Platform coverage belongs

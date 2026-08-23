@@ -5,6 +5,25 @@ on:
     branches: ["main"]
   pull_request:
 
+env:
+  # Each Linux job runs in its own container with its own ~/.m2, and the Windows
+  # runner is host mode capacity 1, so exactly one process ever touches a local
+  # repository. Aether's cross-process locking therefore protects nothing and
+  # can only fail, as it did in #28.
+  CLJ_JVM_OPTS: "-Daether.syncContext.named.factory=noop"
+
+  # NO actions/cache for ~/.m2 here, deliberately. It was tried and does not
+  # work on this forge: the runner serves its actions cache on a random port
+  # (observed 46245), so every restore dies with
+  #   Failed to restore: getCacheEntry failed: connect EHOSTUNREACH
+  # usb-ci/unraid/runner/config.yml documents this exact symptom and pins the
+  # port to 38009 for it; the runner backing this repo is not running that
+  # setting. Until it does, a cache step buys nothing and warns on every run.
+  #
+  # Cost of going without: each Linux job downloads ~182 artifacts cold.
+  # Windows is unaffected - host mode keeps ~/.m2 between jobs, and it
+  # downloads nothing.
+
 jobs:
   test-linux:
     runs-on: linux
