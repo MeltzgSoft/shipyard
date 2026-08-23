@@ -72,21 +72,35 @@
    [#"(?i)deck|keel|pod|section|spine|dome"                                  :section]
    [#"(?i)insert|plug|logo|gargoyle"                                         :detail]])
 
+(def escort-class?
+  "Escorts are the one hull class small enough not to carry turret pits."
+  #{"escort"})
+
 (defn accepts-turrets?
-  "Does this part carry sockets that a turret drops into?
+  "Does this part carry pits that a turret drops into?
 
-  A HINT, on the same footing as `:part/role-hint` and superseded by real
-  mounts: once M2 authors a socket with `:mount/accepts #{:turret}`, that is the
-  fact and this is only a starting guess.
+  A HINT, on the same footing as `:part/role-hint`, and superseded the moment
+  M2 authors a socket with `:mount/accepts #{:turret}` - that is the fact, this
+  is only where to start looking.
 
-  Derived from the same names that mark turret housings - a battery or a turret
-  bay is the thing with the holes. Deliberately coarse: the user reports that
-  *some* batteries take turrets, lance batteries among them, and nothing in a
-  folder name distinguishes those that do from those that do not. Over-flagging
-  gives the mount wizard a shortlist to work through; under-flagging would hide
-  the parts that need authoring most."
-  [{:keys [turrets? name]}]
-  (boolean (and (not turrets?) name (re-find turret-housing-re name))))
+  Two sources, both coarse on purpose:
+
+  * **Weapon batteries and turret bays**, by name. A battery is the thing with
+    the holes.
+  * **Hulls of cruiser class and larger**, by directory. Cruisers, light
+    cruisers, grand cruisers, battleships and the single-ship capital bundles
+    tend to carry dorsal turret pits; escorts do not.
+
+  Neither can tell which individual part actually has pits - that is geometry,
+  not vocabulary. Over-flagging gives the mount wizard a shortlist to work
+  through; under-flagging would hide exactly the parts that most need
+  authoring."
+  [{:keys [turrets? class name role]}]
+  (boolean
+   (and (not turrets?)
+        (or (and name (re-find turret-housing-re name))
+            (and (#{:hull :hull-section} role)
+                 (not (escort-class? (some-> class str/lower-case))))))))
 
 (defn- hull-section?
   "A positional word adjacent to `hull` means a mandatory piece of one hull, not
@@ -201,7 +215,7 @@
                      :part/class      (:class info)
                      :part/weapons?   (:weapons? info)
                      :part/turrets?   (:turrets? info)
-                     :part/accepts-turrets? (accepts-turrets? info)
+                     :part/accepts-turrets? (accepts-turrets? (assoc info :role role))
                      :part/name       (:name info)
                      :part/variants   vs
                      :part/source     (source-variant vs)

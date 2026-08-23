@@ -46,6 +46,17 @@
 
 (deftest accepts-turrets-hint
   (let [acc? #(scan/accepts-turrets? {:name % :turrets? false})]
+    (testing "hulls of cruiser class and larger carry dorsal turret pits"
+      (is (scan/accepts-turrets? {:name "Hull" :class "Cruiser" :role :hull}))
+      (is (scan/accepts-turrets? {:name "Battleship Hull" :class "Battleship" :role :hull}))
+      (is (scan/accepts-turrets? {:name "Hull" :class "Light Cruiser" :role :hull}))
+      (is (scan/accepts-turrets? {:name "Hull" :class "Grand Cruiser" :role :hull}))
+      (is (scan/accepts-turrets? {:name "Mid Hull" :class nil :role :hull-section})
+          "single-ship bundles have no class segment and are all capital ships"))
+    (testing "escorts are the one class small enough not to"
+      (is (not (scan/accepts-turrets? {:name "Hull" :class "Escort" :role :hull}))))
+    (testing "a non-hull part in a cruiser folder is not flagged by class alone"
+      (is (not (scan/accepts-turrets? {:name "Classic Ram Prow" :class "Cruiser" :role :prow}))))
     (testing "the parts that carry turret sockets"
       (is (acc? "GGFMF Gyro Cruiser Turret Bay 1"))
       (is (acc? "Weapon Battery Turrets"))

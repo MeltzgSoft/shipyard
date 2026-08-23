@@ -458,13 +458,21 @@ fallback for bundles acquired later and not yet reorganised.
 
 **`:part/accepts-turrets?` marks the parts a turret drops into.** A hint on the same
 footing as `:part/role-hint`, and superseded the moment M2 authors a socket with
-`:mount/accepts #{:turret}` - that is the fact, this is the starting guess. Derived from
-the same names that mark a turret housing, since a battery or a turret bay is the thing
-with the holes. Flags 62 parts (3.7%), none of them turrets.
+`:mount/accepts #{:turret}` (SPEC §5.4) - that is the fact, this is only where to start
+looking. Two sources:
 
-Deliberately coarse: *some* batteries take turrets, lance batteries among them, and
-nothing in a folder name separates those that do from those that do not. Over-flagging
-gives the mount wizard a shortlist; under-flagging would hide exactly the parts that most
+| source | what it catches | count |
+|---|---|---:|
+| name says battery or turret bay | the housings that carry the holes | 62 |
+| directory says cruiser class or larger, role is hull | dorsal turret pits | 118 |
+
+**180 parts, 10.8%**, none of them turrets, and all 53 escort hulls correctly excluded -
+escorts are the one class small enough not to carry pits.
+
+Deliberately coarse, because **no name or directory can tell which individual part
+actually has pits** - that is geometry. *Some* batteries take turrets, lance batteries
+among them, and cruiser-and-larger hulls *tend* to. Over-flagging gives the mount wizard
+a shortlist of 180 to work through; under-flagging would hide exactly the parts that most
 need authoring.
 
 **Turret housings are not turrets.** `Turret Bay 1` and `Weapon Battery Turrets` are

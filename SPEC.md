@@ -186,6 +186,20 @@ indicator; the user confirms or adjusts, names it, saves. One plug per module.
 **For a hull** - pick **N** faces, one per seat: each weapon shelf, the prow cap, the
 bridge deck. Each gets an id and an `accepts` role. Multiple sockets per hull.
 
+**Turret pits are a socket like any other**, and the wizard must let a picked face be
+classified as one - `:mount/accepts #{:turret}`. They are worth calling out for two
+reasons. First, a turret does not mount on the hull at all in the usual sense: it drops
+into a pit, and those pits appear both on weapon batteries and on hulls of cruiser class
+and larger, so **a socket can live on a part that is itself a component**. That is the
+first case of part-on-part mounting, and the wizard cannot assume a socket implies a
+hull. Second, **no name tells you which parts have them** - it is geometry, and the
+catalog's `:part/accepts-turrets?` is a coarse hint (180 parts, 10.8%) meant only to give
+this step a shortlist to work through.
+
+Turret pits are also the case where picking many similar faces in a row is normal: a
+cruiser dorsal spine can carry several. The wizard should make repeating a classification
+cheap rather than demanding the full flow per pit.
+
 **Symmetry mirroring halves the work.** These ships are bilaterally symmetric - the Human
 Navy Cruiser hull spans X ∈ [-19.06, 19.06] about a centreline at zero. Picking `port-1`
 offers to generate `starboard-1` by mirroring the frame across the hull's symmetry plane.
