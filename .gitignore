@@ -19,3 +19,4 @@
 *.iml
 .vscode/
 .DS_Store
+/target/js/
