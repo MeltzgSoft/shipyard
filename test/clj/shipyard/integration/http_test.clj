@@ -240,6 +240,19 @@
     (testing "one job ran, not eight"
       (is (= :ready (:state (jobs/status (:jobs sys) hull-id)))))))
 
+(deftest an-unwritable-index-does-not-fail-a-good-part
+  (testing "recording the mesh key is an optimisation. Windows CI caught this:
+            a transient AccessDeniedException on the index write reported a part
+            that had preprocessed perfectly as failed."
+    (let [sys (system (library-tree))
+          ;; A directory where a file should be. Every write to it fails, on
+          ;; every platform, without needing a scanner to hold a handle.
+          sys (assoc-in sys [:library :index-file] (temp-dir "shipyard-not-a-file"))
+          h     (handler sys)
+          ready (await-ready h hull-id)]
+      (is (get (triggers ready) "shipyard:load-mesh"))
+      (is (= :ready (:state (jobs/status (:jobs sys) hull-id)))))))
+
 (deftest missing-library-root-says-so
   (let [sys (assoc-in (system (library-tree)) [:library :available] false)
         h   (handler sys)]

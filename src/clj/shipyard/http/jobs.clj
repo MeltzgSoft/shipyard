@@ -44,7 +44,16 @@
 (defn- execute [{:keys [state library cache]} part-id source]
   (let [result (try
                  (let [{:keys [mesh-key tris]} (cache/ensure! cache source)]
-                   (index/record-mesh-key! library part-id mesh-key tris)
+                   ;; Recording the key is an optimisation, not part of the
+                   ;; result. The mesh is on disk either way and the next run
+                   ;; recomputes the key from the source hash, so a part that
+                   ;; preprocessed perfectly must never be reported as failed
+                   ;; because an index file could not be written.
+                   (try
+                     (index/record-mesh-key! library part-id mesh-key tris)
+                     (catch Throwable t
+                       (log/warn "could not record the mesh key for" part-id "-"
+                                 (ex-message t))))
                    {:state :ready :mesh-key mesh-key})
                  (catch Throwable t
                    (log/warn t "preprocessing failed:" part-id)

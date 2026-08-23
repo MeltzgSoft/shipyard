@@ -888,6 +888,16 @@ literal percent sign, and `shipyard.http.urls` therefore holds only the encoding
 immediately with a loading state, and the mesh URL is only issued once the job completes -
 so the request never blocks on the pipeline.
 
+**A failed index write must not fail a good part.** Recording the mesh key is an
+optimisation: the mesh is on disk either way and the next run recomputes the key from the
+source hash. Windows CI caught this intermittently - `Files.move` answered
+`AccessDeniedException` on the index write that follows a preprocess, and a part that had
+preprocessed perfectly was reported to the user as failed. `write-atomically!` now retries
+a transient `FileSystemException` with a linear backoff before giving up (a file written
+moments ago can still be held by the search indexer or a virus scanner), and `jobs`
+swallows the failure if it does. This is exactly the class of bug §9 keeps the Windows job
+for.
+
 The work runs on a two-thread pool in `shipyard.http.jobs`. That is the bounded executor
 §6.5 said would earn its place once a UI existed prefetching distinct parts, and it lives
 in the HTTP layer rather than in `shipyard.mesh.cache` so the cache keeps its inline

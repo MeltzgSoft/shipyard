@@ -12,6 +12,12 @@
             [shipyard.library.scan :as scan]
             [shipyard.system :as system]))
 
+(def ^:const move-attempts
+  "Five tries with a linear backoff - 50, 100, 150, 200 ms. A scanner's hold on
+  a small file is milliseconds; anything still failing after three quarters of a
+  second is a real permission problem and should surface as one."
+  5)
+
 (defn index-file [] (fs/file (system/cache-home) "shipyard" "index.edn"))
 
 (defn write-atomically!
@@ -20,15 +26,36 @@
 
   `:atomic-move` is not supported on every filesystem, so fall back rather than
   fail: the consequence is a torn read under concurrency, not corruption, and
-  refusing to start is worse."
+  refusing to start is worse.
+
+  **And retry first, because Windows.** A file written moments ago can still be
+  held open by the search indexer or a virus scanner when the move fires, and
+  `Files.move` reports that as `AccessDeniedException` rather than as anything
+  that reads like `busy`. Windows CI caught it intermittently on the index write
+  that follows a preprocess - which is exactly the class of failure §9 says the
+  Windows job is there to find. The hold is short, so a few backed-off retries
+  clear it."
   [target ^String content]
   (fs/create-dirs (fs/parent target))
   (let [tmp (fs/create-temp-file {:dir (fs/parent target) :prefix "shipyard-" :suffix ".tmp"})]
     (spit (fs/file tmp) content)
-    (try
-      (fs/move tmp target {:atomic-move true :replace-existing true})
-      (catch java.nio.file.AtomicMoveNotSupportedException _
-        (fs/move tmp target {:replace-existing true})))))
+    (loop [attempt 1, atomic? true]
+      (let [outcome (try
+                      (fs/move tmp target (cond-> {:replace-existing true}
+                                            atomic? (assoc :atomic-move true)))
+                      :done
+                      ;; Must precede the FileSystemException catch: it is a
+                      ;; subclass, and this one is not worth retrying.
+                      (catch java.nio.file.AtomicMoveNotSupportedException _ :fallback)
+                      (catch java.nio.file.FileSystemException e
+                        (if (< attempt move-attempts)
+                          :retry
+                          (throw e))))]
+        (case outcome
+          :done     nil
+          :fallback (recur attempt false)
+          :retry    (do (Thread/sleep (* 50 (long attempt)))
+                        (recur (inc attempt) atomic?)))))))
 
 (defn load-index [f]
   (if (fs/regular-file? f)
