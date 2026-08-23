@@ -5,29 +5,23 @@
   the namespaces somebody remembered to annotate and put a build concern in
   source. This covers every namespace automatically, including ones not written
   yet, and it fails rather than printing a warning nobody reads."
-  (:require [clojure.java.io :as io]
+  (:require [babashka.fs :as fs]
             [clojure.string :as str]
             [clojure.test :refer [deftest is]]))
 
 (defn source-namespaces
   "Every namespace under the JVM source roots, derived from file paths.
 
-  Uses Path/relativize rather than stripping a root prefix with a regex: on
-  Windows `file-seq` yields `src\\clj\\...`, which no pattern built from the
-  forward-slash root will match, and the symbol silently comes out as
-  `src.clj.shipyard.http.routes`."
+  `fs/components` rather than string surgery on separators. The first version
+  stripped the root with a regex built from a forward-slash path, which matched
+  nothing on Windows and silently produced `src.clj.shipyard.http.routes` -
+  surfacing several frames away as a missing file."
   []
   (for [root ["src/clj" "src/cljc"]
-        :let [root-path (.toPath (io/file root))]
-        ^java.io.File f (file-seq (io/file root))
-        :when (and (.isFile f) (re-find #"\.cljc?$" (.getName f)))]
-    (-> (.relativize root-path (.toPath f))
-        str
-        (str/replace "\\" "/")
-        (str/replace #"\.cljc?$" "")
-        (str/replace "_" "-")
-        (str/replace "/" ".")
-        symbol)))
+        f    (fs/glob root "**.{clj,cljc}")]
+    (let [segs (mapv str (fs/components (fs/relativize root f)))
+          segs (update segs (dec (count segs)) #(str/replace % #"\.cljc?$" ""))]
+      (symbol (str/replace (str/join "." segs) "_" "-")))))
 
 (deftest no-reflection-in-source
   (let [nss (source-namespaces)
