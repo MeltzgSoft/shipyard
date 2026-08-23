@@ -781,16 +781,21 @@ CPU-bound native and array work; virtual threads help blocking I/O and would onl
 scheduling overhead here. Virtual threads are correct for the Jetty request pool, which is
 a separate concern.
 
-**Cache budget and eviction.** A `.symesh` runs about **82%** of its source STL, not the
-70% earlier drafts assumed - for the Cruiser hull, 5.4 MB against 6.6 MB: 139,935 welded
-vertices (§6.2, 35°) at 24 B for positions plus normals, and 2.07 MB across three LOD
-index tiers. Lazy generation bounds growth to what has been viewed, but the ceiling is
-real: browsing the entire library would accumulate roughly **8 GB**.
+**Cache budget and eviction.** Measured on the Cruiser Hull once §6.4 became
+self-contained per-tier files (issue #13): tier 0 is 4.95 MB against a 6.64 MB source
+(74.5%), and all three tiers together are 6.92 MB - **about 104% of source**. The earlier
+82% figure was computed for the shared-vertex-buffer format that §6.4 replaced; separate
+tiers duplicate the vertex data they use, which is the price of each tier being
+independently loadable. Browsing the entire library would therefore accumulate roughly
+**10 GB**, not 8.
 
 So the cache is capped - **default 4 GB**, configurable, with LRU eviction by access time
-on a background sweep. Every entry is regenerable from the source STL, so eviction is
-always safe and never loses user data. A cold re-encode of an evicted part costs the
-same as its first view.
+on a background sweep. Recency is the file's mtime, touched on every read, because
+`lastAccessTime` is unreliable wherever a filesystem mounts `noatime`.
+
+Every entry is regenerable from the source STL, so eviction is always safe and never
+loses user data. A cold re-encode of an evicted part costs the same as its first view:
+626 ms for the Cruiser Hull, against 5 ms for a warm hit.
 
 This supersedes SPEC §11's open question, which left eviction unspecified.
 
