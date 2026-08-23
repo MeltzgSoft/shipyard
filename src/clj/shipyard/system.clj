@@ -4,7 +4,9 @@
   Configuration is data (resources/config.edn); this namespace only resolves and
   starts it. No constants live here."
   (:require [aero.core :as aero]
+            [babashka.fs :as fs]
             [clojure.java.io :as io]
+            [clojure.string :as str]
             [clojure.tools.logging :as log]
             [integrant.core :as ig]))
 
@@ -24,7 +26,7 @@
 (defn expand-home
   "Expand a leading ~ so config files can be written the way people type paths."
   [path]
-  (if (and (string? path) (.startsWith ^String path "~"))
+  (if (and (string? path) (str/starts-with? path "~"))
     (str (System/getProperty "user.home") (subs path 1))
     path))
 
@@ -36,8 +38,8 @@
 (defn- user-config
   "Layer 2. Absent is the normal case, not an error."
   [config-dir]
-  (let [f (io/file config-dir "shipyard" "config.edn")]
-    (when (.isFile f)
+  (let [f (fs/file config-dir "shipyard" "config.edn")]
+    (when (fs/regular-file? f)
       (log/info "loading user config" (str f))
       (aero/read-config f))))
 
@@ -51,10 +53,7 @@
     (assoc-in [:shipyard.library/index :root] (get env "SHIPYARD_LIBRARY"))
 
     (get env "PORT")
-    (assoc-in [:shipyard.http/server :port] (parse-long (get env "PORT")))
-
-    (get env "SHIPYARD_THREADS")
-    (assoc-in [:shipyard.mesh/cache :threads] (parse-long (get env "SHIPYARD_THREADS")))))
+    (assoc-in [:shipyard.http/server :port] (parse-long (get env "PORT")))))
 
 (defn load-config
   "Resolve configuration from its three layers.

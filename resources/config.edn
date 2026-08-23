@@ -17,8 +17,7 @@
  {:crease-deg 35                  ; §6.2 - shading quality knob; V/T moves only ~15% over 15-60°
   :lod-tiers  [1.0 0.25 0.05]     ; §6.3 - never below ~8%, crease-split meshes floor at 3.05%
   :cap-bytes  #profile {:default 4294967296   ; 4 GB
-                        :test    67108864}    ; 64 MB so LRU eviction is testable in seconds
-  :threads    :auto}              ; :auto -> availableProcessors; CPU-bound, not virtual threads
+                        :test    67108864}}   ; 64 MB so LRU eviction is testable in seconds
 
  :shipyard.http/routes
  {:library #ig/ref :shipyard.library/index

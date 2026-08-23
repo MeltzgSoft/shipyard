@@ -241,6 +241,8 @@ call to make.
   integrant/integrant            {:mvn/version "1.0.1"}
   aero/aero                      {:mvn/version "1.1.6"}
   org.clojure/tools.logging      {:mvn/version "1.3.0"}
+  babashka/fs                    {:mvn/version "0.5.34"}
+  digest/digest                  {:mvn/version "1.4.10"}
   org.lwjgl/lwjgl                {:mvn/version "3.3.6"}
   org.lwjgl/lwjgl-meshoptimizer  {:mvn/version "3.3.6"}}
  :aliases
@@ -776,21 +778,38 @@ so a concurrent reader never sees a partial file. Requests for a part already be
 preprocessed await the in-flight job rather than starting a second - a `ConcurrentHashMap`
 of `path → CompletableFuture`.
 
-**Thread pool sized to `availableProcessors`**, not virtual threads. Preprocessing is
-CPU-bound native and array work; virtual threads help blocking I/O and would only add
-scheduling overhead here. Virtual threads are correct for the Jetty request pool, which is
-a separate concern.
+**No thread pool.** Preprocessing runs on the calling thread, and single-flight comes from
+a `delay` held in an atom: the first deref runs the body, every other blocks on the same
+result. `swap!` may retry and build a delay it discards, which costs nothing precisely
+because a delay's body does not run until deref - the reason `future` is wrong here, since
+a discarded future has already started working.
 
-**Cache budget and eviction.** A `.symesh` runs about **82%** of its source STL, not the
-70% earlier drafts assumed - for the Cruiser hull, 5.4 MB against 6.6 MB: 139,935 welded
-vertices (§6.2, 35°) at 24 B for positions plus normals, and 2.07 MB across three LOD
-index tiers. Lazy generation bounds growth to what has been viewed, but the ceiling is
-real: browsing the entire library would accumulate roughly **8 GB**.
+An earlier draft submitted to a fixed `ExecutorService`. It was removed: this is a
+single-user local application that views one part at a time, so the concurrent-request
+case it guarded against does not arise, and the batch case - the canary walking the whole
+library - gets bounded parallelism from `pmap` at its own call site, already capped at
+`availableProcessors + 2`. Running inline also lets an exception propagate as itself;
+submitting to a pool wrapped every parser error in an `ExecutionException`.
+
+**When a pool would earn its place:** a UI that prefetches many distinct parts at once,
+since preprocessing allocates tens of megabytes per part against a 2 GB peak budget
+(§11). Not before that exists.
+
+**Cache budget and eviction.** Measured on the Cruiser Hull once §6.4 became
+self-contained per-tier files (issue #13): tier 0 is 4.95 MB against a 6.64 MB source
+(74.5%), and all three tiers together are 6.92 MB - **about 104% of source**. The earlier
+82% figure was computed for the shared-vertex-buffer format that §6.4 replaced; separate
+tiers duplicate the vertex data they use, which is the price of each tier being
+independently loadable. Browsing the entire library would therefore accumulate roughly
+**10 GB**, not 8.
 
 So the cache is capped - **default 4 GB**, configurable, with LRU eviction by access time
-on a background sweep. Every entry is regenerable from the source STL, so eviction is
-always safe and never loses user data. A cold re-encode of an evicted part costs the
-same as its first view.
+on a background sweep. Recency is the file's mtime, touched on every read, because
+`lastAccessTime` is unreliable wherever a filesystem mounts `noatime`.
+
+Every entry is regenerable from the source STL, so eviction is always safe and never
+loses user data. A cold re-encode of an evicted part costs the same as its first view:
+626 ms for the Cruiser Hull, against 5 ms for a warm hit.
 
 This supersedes SPEC §11's open question, which left eviction unspecified.
 
