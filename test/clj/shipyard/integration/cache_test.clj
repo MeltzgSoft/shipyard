@@ -7,7 +7,7 @@
             [shipyard.library.index :as index]
             [shipyard.mesh.cache :as cache])
   (:import [java.io File]
-           [java.util.concurrent ConcurrentHashMap Executors TimeUnit]))
+           [java.util.concurrent Executors TimeUnit]))
 
 (defn- temp-dir ^File [prefix]
   (doto (io/file (System/getProperty "java.io.tmpdir") (str prefix "-" (random-uuid)))
@@ -18,7 +18,7 @@
   ([cap]
    {:dir (temp-dir "shipyard-cache") :crease-deg 35 :lod-tiers [1.0 0.25 0.05]
     :cap-bytes cap :threads 2
-    :pool (Executors/newFixedThreadPool 2) :inflight (ConcurrentHashMap.)}))
+    :pool (Executors/newFixedThreadPool 2) :inflight (atom {})}))
 
 (defn- write-stl ^File [dir n]
   (let [f (io/file dir "unsupported.stl")]

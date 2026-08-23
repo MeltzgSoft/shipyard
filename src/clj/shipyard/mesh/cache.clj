@@ -14,7 +14,7 @@
             [shipyard.wire :as wire])
   (:import [java.io File]
            [java.security MessageDigest]
-           [java.util.concurrent CompletableFuture ConcurrentHashMap ExecutorService Executors]))
+           [java.util.concurrent ExecutorService Executors]))
 
 (defn sha256
   "Content hash of a source STL. Computed only at first preprocess (§5.4)."
@@ -83,29 +83,44 @@
      :tiers    (count tiers)
      :tris     (:triangle-count parsed)}))
 
+(defn- run-job
+  "The work itself: take the cache hit, or preprocess and then evict."
+  [cache ^File source]
+  (let [mesh-key (sha256 source)
+        t0       (tier-file cache mesh-key 0)]
+    (if (.isFile t0)
+      (do (touch! t0) {:mesh-key mesh-key :cached true})
+      (let [r (preprocess! cache source mesh-key)]
+        (evict! cache)
+        r))))
+
 (defn ensure!
   "Return cache metadata for `source`, preprocessing it if needed.
 
-  Two concurrent callers for the same file produce one job, not two: the first
-  installs a future and everyone else awaits it."
-  [{:keys [^ConcurrentHashMap inflight ^ExecutorService pool] :as cache} ^File source]
+  Two concurrent callers for the same file produce one job, not two.
+
+  `delay` gives that for free: the first deref runs the body and every other
+  blocks on the same result. `swap!` may retry and build a delay it then
+  discards, which costs nothing precisely because a delay's body does not run
+  until someone derefs it - the reason `future` would be wrong here, since a
+  discarded future has already started working.
+
+  The executor is the one piece that stays interop, and it is not incidental:
+  `clojure.core/future` runs on an unbounded cached pool, and preprocessing is
+  CPU-bound with tens of megabytes of allocation per part. Eight simultaneous
+  requests must become `availableProcessors` jobs, not eight."
+  [{:keys [inflight ^ExecutorService pool] :as cache} ^File source]
   (let [k (.getAbsolutePath source)
-        fut (.computeIfAbsent
-             inflight k
-             (reify java.util.function.Function
-               (apply [_ _]
-                 (CompletableFuture/supplyAsync
-                  (reify java.util.function.Supplier
-                    (get [_]
-                      (let [mesh-key (sha256 source)
-                            t0 (tier-file cache mesh-key 0)]
-                        (if (.isFile t0)
-                          (do (touch! t0) {:mesh-key mesh-key :cached true})
-                          (let [r (preprocess! cache source mesh-key)]
-                            (evict! cache)
-                            r)))))
-                  pool))))]
-    (try @fut (finally (.remove inflight k fut)))))
+        d (-> (swap! inflight update k
+                     #(or % (delay @(.submit pool ^Callable (fn [] (run-job cache source))))))
+              (get k))]
+    (try
+      @d
+      (catch java.util.concurrent.ExecutionException e
+        ;; Unwrap, or a parser's "not a usable STL" ex-info reaches the caller
+        ;; disguised as an ExecutionException with no message worth reading.
+        (throw (or (.getCause e) e)))
+      (finally (swap! inflight dissoc k)))))
 
 ;; --- component --------------------------------------------------------------
 
@@ -118,7 +133,7 @@
     (log/infof "mesh cache at %s (cap %,d bytes, %d threads)" (str dir) cap-bytes n)
     {:dir dir :crease-deg crease-deg :lod-tiers lod-tiers
      :cap-bytes cap-bytes :threads n :pool pool
-     :inflight (ConcurrentHashMap.)}))
+     :inflight (atom {})}))
 
 (defmethod ig/halt-key! :shipyard.mesh/cache [_ {:keys [^ExecutorService pool]}]
   (when pool (.shutdown pool)))
