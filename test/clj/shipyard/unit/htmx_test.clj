@@ -21,6 +21,10 @@
       (is (= ["shipyard:load-mesh"] (keys parsed))))
     (testing "the payload is EDN, so keywords survive the trip unmapped"
       (is (= payload (edn/read-string (get parsed "shipyard:load-mesh")))))
+    (testing "and slashes are left alone - data.json escapes them by default,
+              which turns every mesh URL in a log into \\/mesh\\/"
+      (is (str/includes? header "/mesh/abc.0.symesh"))
+      (is (not (str/includes? header "\\/"))))
     (testing "a payload htmx would have flattened"
       (is (= {:state :failed :tiers #{0 1 2}}
              (-> (htmx/trigger {:status {:state :failed :tiers #{0 1 2}}})

@@ -20,3 +20,6 @@
 .vscode/
 .DS_Store
 /target/js/
+
+# CI smoke-test output, when the package job is run locally
+/run.log

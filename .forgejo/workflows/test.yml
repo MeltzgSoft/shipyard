@@ -126,3 +126,144 @@ jobs:
         run: |
           npx shadow-cljs compile test
           node target/js/node-tests.js
+
+  test-e2e:
+    # The browser level (TECHNICAL.md §10.3). Linux only, deliberately: it tests
+    # application behaviour, not platform behaviour, and it is the slowest job
+    # here - Windows would buy nothing and cost the §9 ten-minute budget.
+    runs-on: linux
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: https://github.com/actions/setup-java@v5
+        with:
+          java-version: '25'
+          distribution: temurin
+
+      - uses: https://github.com/actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install Chrome and a matching chromedriver
+        id: setup-chrome
+        # A downloaded static build, not apt. `chromium-browser` on Ubuntu 22.04
+        # is a snap shim, and there is no snapd in this container - it installs
+        # and then fails to launch. This action pins the two to each other,
+        # which matters: a chromedriver a major version off refuses the session.
+        uses: https://github.com/browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+          install-chromedriver: true
+
+      - name: Install Clojure CLI
+        run: |
+          curl -sLO https://download.clojure.org/install/linux-install-1.12.4.1618.sh
+          chmod +x linux-install-1.12.4.1618.sh
+          ./linux-install-1.12.4.1618.sh --prefix "$HOME/clojure"
+          echo "$HOME/clojure/bin" >> "$GITHUB_PATH"
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build the viewport bundle
+        # The dev build, not the release one: only it defines
+        # window.__shipyard.stats(), which every scene assertion reads.
+        run: npx shadow-cljs compile viewport
+
+      - name: E2E tests
+        # SHIPYARD_CHROME points etaoin at the binary setup-chrome installed;
+        # it is not on any of the usual paths.
+        env:
+          SHIPYARD_CHROME: ${{ steps.setup-chrome.outputs.chrome-path }}
+        run: |
+          chromedriver --version
+          clojure -M:test:natives-linux --focus :e2e
+
+  package:
+    # The release artifact, and the only job that proves one exists. Linux
+    # alone: the natives are prebuilt jars, so this packages all four
+    # classifiers (TECHNICAL.md §9).
+    runs-on: linux
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: https://github.com/actions/setup-java@v5
+        with:
+          java-version: '25'
+          distribution: temurin
+
+      - uses: https://github.com/actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install Clojure CLI
+        run: |
+          curl -sLO https://download.clojure.org/install/linux-install-1.12.4.1618.sh
+          chmod +x linux-install-1.12.4.1618.sh
+          ./linux-install-1.12.4.1618.sh --prefix "$HOME/clojure"
+          echo "$HOME/clojure/bin" >> "$GITHUB_PATH"
+
+      - name: Build the uberjar
+        # This also asserts the E2E introspection hook is absent from the
+        # release bundle (issue #16) - build.clj greps for it and throws.
+        run: clojure -T:build uber
+
+      - name: The jar does the whole job, the way a user runs it
+        # Not a liveness ping. This walks the real path - scan, catalog,
+        # preprocess through LWJGL, serve the mesh - so it covers three things
+        # nothing else here does:
+        #
+        #   * LWJGL picks the right native classifier out of the uberjar,
+        #     unpacks it and dlopens it. A runner with a read-only temp dir
+        #     fails here rather than later in something that looks like a mesh
+        #     bug (TECHNICAL.md §6.6).
+        #   * `Enable-Native-Access` in the manifest still works, so the shipped
+        #     jar needs no flag on the command line (issue #6). NOTE that this
+        #     only applies to `java -jar`: launching the same jar with `-cp`
+        #     ignores the manifest and warns.
+        #   * The frontend built into the jar is the one the shell asks for.
+        run: |
+          set -euo pipefail
+          lib="$(mktemp -d)"
+          mkdir -p "$lib/Test Bundle/Cruiser/Cube"
+          cp test/fixtures/cube-ascii-crlf.stl "$lib/Test Bundle/Cruiser/Cube/unsupported.stl"
+
+          SHIPYARD_LIBRARY="$lib" java -jar target/shipyard-0.1.0-SNAPSHOT.jar > run.log 2>&1 &
+          jar_pid=$!
+          trap 'kill "$jar_pid" 2>/dev/null || true' EXIT
+
+          for _ in $(seq 1 60); do
+            curl -fsS http://127.0.0.1:8080/healthz > /dev/null 2>&1 && break
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8080/healthz
+          curl -fsS http://127.0.0.1:8080/ | grep -q 'hx-preserve'
+          curl -fsS http://127.0.0.1:8080/library | grep -q 'Cube'
+
+          # A cold part preprocesses in the background, so poll the way the
+          # browser does until the mesh URL is issued.
+          trigger=""
+          for _ in $(seq 1 120); do
+            trigger="$(curl -fsSi 'http://127.0.0.1:8080/part/Test%20Bundle/Cruiser/Cube' \
+                       | tr -d '\r' | grep -i '^HX-Trigger:' || true)"
+            case "$trigger" in *load-mesh*) break ;; esac
+            sleep 1
+          done
+          case "$trigger" in
+            *load-mesh*) ;;
+            *) echo "::error::the part never became ready"; cat run.log; exit 1 ;;
+          esac
+
+          url="$(printf '%s' "$trigger" | grep -o '/mesh/[0-9a-f]\{64\}\.0\.symesh' | head -1)"
+          test -n "$url"
+          curl -fsSi "http://127.0.0.1:8080$url" | tr -d '\r' \
+            | grep -qi 'cache-control: public, max-age=31536000, immutable'
+
+          if grep -qi 'restricted method\|restricted native access' run.log; then
+            echo "::error::the jar warned about restricted native access - check the Enable-Native-Access manifest entry"
+            cat run.log
+            exit 1
+          fi
+          cat run.log
