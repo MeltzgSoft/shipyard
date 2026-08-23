@@ -72,6 +72,28 @@
    {}
    parts))
 
+(defn record-mesh-key!
+  "Remember the mesh key a preprocess produced, and persist the index.
+
+  This is the half of §5.4 that `refresh` was already written for and nothing
+  yet fed: it carries `:mesh-key` forward for any part whose source file is
+  unchanged, so a restart can name a part's mesh URL without re-hashing the
+  file. Writing the whole map each time is cheap next to what it saves - the
+  alternative is a SHA-256 over a 20 MB STL on every part you open."
+  [{:keys [index index-file]} part-id mesh-key tris]
+  (let [updated (swap! index update part-id
+                       (fn [entry]
+                         (cond-> (assoc entry :mesh-key mesh-key)
+                           tris (assoc :tris tris))))]
+    (save-index! index-file updated)
+    mesh-key))
+
+(defn mesh-key
+  "The recorded mesh key for a part, or nil if it has never been preprocessed
+  or its source file has changed since."
+  [{:keys [index]} part-id]
+  (:mesh-key (get @index part-id)))
+
 (defmethod ig/init-key :shipyard.library/index [_ {:keys [root]}]
   (let [dir (fs/file root)]
     (when-not (fs/directory? dir)

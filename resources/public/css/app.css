@@ -1,0 +1,160 @@
+/* Shipyard. One stylesheet, no framework: the UI is a browser panel, a stage
+   and a detail panel, and a framework would be more machinery than layout.
+
+   The palette is deliberately dark and neutral. The viewport is the only thing
+   on the page whose colour carries information, and a bright chrome around it
+   biases how a grey resin part reads. */
+
+:root {
+  --bg:        #14171c;
+  --panel:     #1c2128;
+  --panel-2:   #232a33;
+  --line:      #2f3742;
+  --ink:       #dfe4ea;
+  --ink-dim:   #96a0ad;
+  --ink-faint: #6a7480;
+  --accent:    #6fb1d8;
+  --warn:      #d8a25f;
+  --error:     #d97070;
+  --radius:    6px;
+  --gap:       0.75rem;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.9em; }
+
+.muted { color: var(--ink-dim); }
+
+/* --- masthead ----------------------------------------------------------- */
+
+.masthead {
+  display: flex;
+  align-items: baseline;
+  gap: var(--gap);
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+.masthead h1 { font-size: 1.05rem; font-weight: 600; margin: 0; letter-spacing: 0.02em; }
+.masthead__tagline { margin: 0; color: var(--ink-faint); font-size: 0.85rem; }
+
+/* --- layout ------------------------------------------------------------- */
+
+.layout {
+  flex: 1 1 auto;
+  min-height: 0;                 /* so the panels scroll instead of the page */
+  display: grid;
+  grid-template-columns: minmax(18rem, 24rem) 1fr;
+  gap: 1px;
+  background: var(--line);
+}
+
+.panel {
+  background: var(--panel);
+  overflow-y: auto;
+  min-height: 0;
+  padding: 0.75rem 1rem;
+}
+
+.panel__title { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-dim); margin: 0 0 0.6rem; }
+
+.stage {
+  position: relative;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  min-height: 0;
+  background: var(--bg);
+}
+
+/* The canvas is an island: hx-preserve keeps the WebGL context alive across
+   every swap on the page (SPEC §6.1). Nothing here may hide or replace it. */
+.stage__canvas { width: 100%; height: 100%; display: block; min-height: 0; }
+
+.stage__detail { border-top: 1px solid var(--line); max-height: 40%; }
+
+/* --- filters ------------------------------------------------------------ */
+
+.filters { display: grid; gap: 0.4rem; margin-bottom: 0.9rem; }
+.filters__field {
+  display: grid;
+  grid-template-columns: 4.5rem 1fr;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--ink-dim);
+}
+.filters select, .filters input {
+  background: var(--panel-2);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.3rem 0.4rem;
+  font: inherit;
+  font-size: 0.85rem;
+  min-width: 0;
+}
+.filters select:focus, .filters input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+/* --- library list ------------------------------------------------------- */
+
+.results__count { margin: 0 0 0.5rem; font-size: 0.75rem; color: var(--ink-faint); }
+
+.parts { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+
+.part { border-radius: var(--radius); background: var(--panel-2); padding: 0.45rem 0.6rem; }
+.part__select {
+  all: unset;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+  width: 100%;
+}
+.part__select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.part__name { font-size: 0.9rem; }
+.part__role { font-size: 0.7rem; color: var(--ink-dim); text-transform: lowercase; white-space: nowrap; }
+/* A guessed role is shown lighter than one the folder layout stated: roughly
+   one in ten is wrong, and the style is the disclaimer (MANUAL §3). */
+.part__role--guessed { color: var(--ink-faint); font-style: italic; }
+.part__path { margin: 0.15rem 0 0; font-size: 0.7rem; color: var(--ink-faint); word-break: break-word; }
+
+/* Greyed, never hidden: you should be able to see everything you own. */
+.part--unrenderable { opacity: 0.55; }
+.part__reason { margin: 0.3rem 0 0; font-size: 0.72rem; color: var(--warn); }
+
+/* --- detail ------------------------------------------------------------- */
+
+.detail__head { margin-bottom: 0.4rem; }
+.detail__name { font-size: 1rem; margin: 0; }
+.detail__crumbs { margin: 0.1rem 0 0; font-size: 0.78rem; color: var(--ink-dim); }
+.detail__id { margin: 0.1rem 0 0; font-size: 0.7rem; color: var(--ink-faint); word-break: break-word; }
+.detail__status { margin: 0.4rem 0 0; font-size: 0.82rem; color: var(--ink-dim); }
+.detail__reason { margin: 0.4rem 0 0; font-size: 0.82rem; color: var(--warn); }
+.detail__error  { margin: 0.4rem 0 0; font-size: 0.82rem; color: var(--error); }
+.detail__retry {
+  margin-top: 0.5rem;
+  background: var(--panel-2);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.3rem 0.7rem;
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.detail--empty { color: var(--ink-faint); }

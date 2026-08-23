@@ -90,12 +90,27 @@
 
 ;; --- queries ----------------------------------------------------------------
 
+(defn snapshot
+  "The current value of the catalog. A query takes a db value, not a connection,
+  so a handler that reads several facets sees one consistent index."
+  [{:keys [conn]}]
+  (d/db conn))
+
 (defn bundles [db]
   (sort (d/q '[:find [?b ...] :where [_ :part/bundle ?b]] db)))
 
-(defn classes [db bundle]
-  (sort (d/q '[:find [?c ...] :in $ ?b
-               :where [?e :part/bundle ?b] [?e :part/class ?c]] db bundle)))
+(defn classes
+  "Hull classes, across the library or within one bundle."
+  ([db] (sort (d/q '[:find [?c ...] :where [_ :part/class ?c]] db)))
+  ([db bundle]
+   (sort (d/q '[:find [?c ...] :in $ ?b
+                :where [?e :part/bundle ?b] [?e :part/class ?c]] db bundle))))
+
+(defn roles
+  "Role hints present in the library. Derived rather than listed: the inference
+  rules in §5.2 grow, and a hard-coded menu would quietly stop matching them."
+  [db]
+  (sort-by name (d/q '[:find [?r ...] :where [_ :part/role-hint ?r]] db)))
 
 (defn browse
   "Filter the library. Every criterion is optional; `q` matches the part name

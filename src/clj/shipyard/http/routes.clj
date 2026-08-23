@@ -1,21 +1,163 @@
 (ns shipyard.http.routes
-  "Ring handler. Scaffold: liveness plus the static shell. Real routes are
-  issue #15."
-  (:require [integrant.core :as ig]
-            [reitit.ring :as ring]))
+  "The route table and its handlers (TECHNICAL.md §7).
+
+  Every handler is a function of `deps` and a request, closed over by `partial`
+  at router build time. `deps` is the component map integrant assembled, so the
+  handler tree is a pure function of its dependencies and can be exercised
+  without a socket."
+  (:require [babashka.fs :as fs]
+            [clojure.string :as str]
+            [integrant.core :as ig]
+            [reitit.ring :as ring]
+            [ring.middleware.params :as params]
+            [shipyard.catalog.db :as db]
+            [shipyard.http.htmx :as htmx]
+            [shipyard.http.jobs :as jobs]
+            [shipyard.http.urls :as urls]
+            [shipyard.http.views :as views]
+            [shipyard.library.index :as index]
+            [shipyard.mesh.cache :as cache]))
 
 (defn- healthz [_]
   {:status  200
-   :headers {"content-type" "application/json"}
+   :headers {"content-type" "application/json"
+             "cache-control" htmx/fragment-cache-control}
    :body    "{\"status\":\"ok\"}"})
 
+;; --- shell ------------------------------------------------------------------
+
+(defn- facets
+  "The filter menus. Read from one db value so the three of them cannot
+  disagree, and computed once per page load - the library does not change while
+  the process runs."
+  [catalog]
+  (let [db (db/snapshot catalog)]
+    {:bundles (db/bundles db)
+     :classes (db/classes db)
+     :roles   (db/roles db)}))
+
+(defn- root [{:keys [catalog]} _]
+  (htmx/page (views/shell (facets catalog))))
+
+;; --- library ----------------------------------------------------------------
+
+(defn- blank->nil [s] (when-not (str/blank? s) s))
+
+(defn- library
+  "`GET /library`. An absent or empty parameter means no filter, which is what
+  the \"All bundles\" option submits."
+  [{:keys [catalog library]} {:keys [params]}]
+  (if-not (:available library)
+    (htmx/fragment (views/library-unavailable (:root library)))
+    (htmx/fragment
+     (views/library-results
+      (db/browse (db/snapshot catalog)
+                 {:bundle (blank->nil (get params "bundle"))
+                  :class  (blank->nil (get params "class"))
+                  :role   (some-> (get params "role") blank->nil keyword)
+                  :q      (blank->nil (get params "q"))})))))
+
+;; --- part detail ------------------------------------------------------------
+
+(defn- source-file
+  "The STL the mesh pipeline should open. Derived from the catalog record, never
+  from the URL: the id in the path only ever selects a part, it never names a
+  file."
+  [{:keys [root]} {:part/keys [id source]}]
+  (fs/file root id (index/name-of source)))
+
+(defn- ready
+  "The mesh is on disk. The fragment says so and the `HX-Trigger` hands the
+  viewport the URL - the canvas is never swapped, so this header is the only
+  channel to it (§7.1)."
+  [part mesh-key]
+  (htmx/fragment (views/detail-ready part)
+                 {:events {:load-mesh {:url     (urls/mesh-url mesh-key 0)
+                                       :part-id (:part/id part)
+                                       :frame   true}}}))
+
+(defn- preprocessing
+  "Submit the job if it is not already running and answer with whatever is true
+  right now. This returns in milliseconds even when the work takes seconds,
+  which is the whole point of §7's preprocess-latency rule."
+  [{:keys [library jobs]} part]
+  (let [id (:part/id part)
+        {:keys [state mesh-key message]} (jobs/submit! jobs id (source-file library part))]
+    (case state
+      :ready  (ready part mesh-key)
+      :failed (htmx/fragment (views/detail-failed part message)
+                             {:events {:status {:state :failed :message message}}})
+      (htmx/fragment (views/detail-preparing part)
+                     {:events {:status {:state   :preparing
+                                        :message "Preparing this part for display."}}}))))
+
+(defn- part
+  "`GET /part/*id`. A catch-all rather than `:id` because a part id contains
+  separators; see `shipyard.http.urls/encode-id` for why `%2F` is not an option.
+
+  `?retry=1` is the only way a failed job runs again. The poll fragment does not
+  carry it, so a failure is shown rather than silently retried on the next tick."
+  [{:keys [catalog library cache jobs] :as deps} {:keys [params path-params]}]
+  (let [id   (:id path-params)
+        part (db/part (db/snapshot catalog) id)]
+    (cond
+      (nil? (:part/id part))
+      (htmx/fragment (views/detail-missing id) {:status 404 :events {:clear nil}})
+
+      (views/unrenderable-reason part)
+      (htmx/fragment (views/detail-unrenderable part (views/unrenderable-reason part))
+                     {:events {:clear nil}})
+
+      :else
+      (let [_      (when (get params "retry") (jobs/forget! jobs id))
+            cached (index/mesh-key library id)]
+        (if (and cached (fs/regular-file? (cache/tier-file cache cached 0)))
+          ;; Known from a previous run: no job, no poll, no round trip.
+          (ready part cached)
+          (preprocessing deps part))))))
+
+;; --- mesh -------------------------------------------------------------------
+
+(defn- not-found [message]
+  {:status  404
+   :headers {"content-type" "text/plain; charset=utf-8"
+             "cache-control" htmx/fragment-cache-control}
+   :body    message})
+
+(defn- mesh
+  "`GET /mesh/<sha256>.<tier>.symesh`. The regex is the whole of the access
+  control: only a hex digest and a small integer ever reach the filesystem."
+  [{:keys [cache]} {:keys [path-params]}]
+  (let [[_ mesh-key tier] (re-matches urls/mesh-file-re (str (:file path-params)))
+        f (when mesh-key (cache/tier-file cache mesh-key (parse-long tier)))]
+    (if (and f (fs/regular-file? f))
+      {:status  200
+       :headers {"content-type"   "application/octet-stream"
+                 "content-length" (str (fs/size f))
+                 "cache-control"  htmx/immutable-cache-control}
+       :body    (fs/file f)}
+      (not-found "no such mesh"))))
+
+;; --- router -----------------------------------------------------------------
+
+(defn routes [deps]
+  [["/"        {:get (partial root deps)}]
+   ["/healthz" {:get healthz}]
+   ["/library" {:get (partial library deps)}]
+   ["/part/*id" {:get (partial part deps)}]
+   ["/mesh/:file" {:get (partial mesh deps)}]])
+
+(defn router [deps]
+  ;; ring-core's wrap-params rather than reitit's: the equivalent middleware
+  ;; lives in reitit-middleware, an artifact this project would otherwise have
+  ;; no reason to depend on.
+  (ring/router (routes deps) {:data {:middleware [params/wrap-params]}}))
+
 (defn handler
-  "Build the ring handler. `deps` carries :library and :cache; neither is read
-  until the real routes land in #15."
-  [_deps]
+  "Build the ring handler. `deps` carries :library, :catalog, :cache and :jobs."
+  [deps]
   (ring/ring-handler
-   (ring/router
-    [["/healthz" {:get healthz}]])
+   (router deps)
    (ring/routes
     (ring/create-resource-handler {:path "/"})
     (ring/create-default-handler))))
