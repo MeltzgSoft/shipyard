@@ -21,6 +21,8 @@
            "unsupported.stl" "supported.stl")
     (touch (io/file root "Human Navy Fleet Bundle" "Cruiser" "weapons" "Lance Battery")
            "unsupported.stl")
+    (touch (io/file root "Human Navy Fleet Bundle" "Cruiser" "weapons" "turrets" "Lance Turret")
+           "unsupported.stl")
     ;; supported-only: catalogued, not dropped
     (touch (io/file root "Human Navy Fleet Bundle" "Cruiser" "Voss Nova Prow")
            "supported.stl")
@@ -44,7 +46,7 @@
 (deftest scans-a-fixture-tree
   (let [parts (scan/scan (fixture-tree))
         m     (by-id parts)]
-    (is (= 7 (count parts)) "seven part folders; nothing under other/")
+    (is (= 8 (count parts)) "eight part folders; nothing under other/")
     (testing "other/ is skipped whole, including part folders nested inside it"
       (is (every? #(not (re-find #"/other/" (:part/id %))) parts)))
 
@@ -60,6 +62,14 @@
         (is (true? (:part/weapons? p)))
         (is (= :weapon (:part/role-hint p)))
         (is (= :class (:part/role-source p)))))
+
+    (testing "a turrets/ directory makes turret-ness a fact"
+      (let [p (m "Human Navy Fleet Bundle/Cruiser/weapons/turrets/Lance Turret")]
+        (is (true? (:part/turrets? p)))
+        (is (= :turret (:part/role-hint p)))
+        (is (= :class (:part/role-source p)))
+        (is (= "Cruiser" (:part/class p))
+            "turrets/ must not be mistaken for the class segment")))
 
     (testing "single-ship bundles have no class segment"
       (let [p (m "IV - The Bloody Iron/Bloody Iron Forward hull")]

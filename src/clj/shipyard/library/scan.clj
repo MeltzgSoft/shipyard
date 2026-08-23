@@ -31,6 +31,16 @@
 (def ^:private positional
   #"(?i)(fore|forward|front|mid|center|centre|rear|top|bottom|upper|lower)")
 
+(def ^:private turret-re
+  "A turret is a weapon *subtype*, not a sibling of one: it drops into a socket
+  on a weapon battery rather than mounting on the hull. Lance batteries are the
+  clearest case - the battery carries the hole, the turret fills it.
+
+  Kept separate from the weapon lexicon so the `weapons/` directory can be
+  refined rather than overridden: the directory establishes weapon-ness, the
+  name says which kind."
+  #"(?i)turret")
+
 (def ^:private name-rules
   "Ordered; first match wins. Matching is substring, NOT word-bounded: 14 folders
   are CamelCase or underscore-joined (`Metis_Hull`, `GGRBridge`, `VossTorpedo`,
@@ -44,6 +54,7 @@
    [#"(?i)bridge"                                                            :bridge]
    [#"(?i)antenna|sensor"                                                    :antenna]
    [#"(?i)engine|thruster|boosta|cowl|nozzle"                                :engine]
+   [turret-re                                                                :turret]
    [#"(?i)turret|batter(y|ie)|batery|gunz|guns|lance|torpedo|torp|launch|zzap|cannon|canon|missile|bombard|klaw|claw|blaster|\bram\b|bomb" :weapon]
    [#"(?i)stern|rudder|tail|\baft\b"                                         :stern]
    [#"(?i)wing|fin|sail"                                                     :fin]
@@ -65,9 +76,27 @@
 (defn role-hint
   "Guess a part's role. Returns `[role source]`; source is `:class` when a
   directory told us and `:inferred` when only the name did."
-  [{:keys [class weapons? name]}]
+  [{:keys [class weapons? turrets? name]}]
   (let [c (some-> class str/lower-case)]
     (cond
+      ;; A turrets/ directory is a fact, like weapons/. Turrets were moved there
+      ;; deliberately (TURRET-MOVES.json in the library) precisely so this stops
+      ;; being a name guess.
+      turrets?            [:turret :class]
+
+      ;; A prow sold with a weapon fitted is still a prow. 26 folders live under
+      ;; weapons/ with "prow" in the name - "Stalker Prow 1 with Lance Turret",
+      ;; "GGDF Diplomat Torpedo Prow A" - and every one of them is a prow, with
+      ;; no counter-example in the library. This is FP-2 from the role-inference
+      ;; spike, where the directory overrode a name that was more specific.
+      (and weapons? (re-find #"(?i)prow|nose" name))
+      [:prow :inferred]
+
+      ;; Otherwise the directory says weapon and the name may refine it: a
+      ;; turret is a weapon subtype, so this narrows rather than contradicts.
+      (and weapons? (re-find turret-re name))
+      [:turret :inferred]
+
       weapons?            [:weapon :class]
       (= c "ordinance")   [:ordinance :class]
       (= c "terrain")     [:terrain :class]
@@ -90,14 +119,20 @@
 (defn- decompose
   "Split a library-relative path into bundle, optional class, and weapons flag.
 
-  `<Bundle>/[<Class>/][weapons/]<Part Name>/`. Class is absent in the four
-  single-ship bundles."
+  `<Bundle>/[<Class>/][weapons/[turrets/]]<Part Name>/`. Class is absent in the
+  four single-ship bundles."
   [segments]
-  (let [bundle (first segments)
-        middle (butlast (rest segments))
-        weapons? (boolean (some #(= "weapons" (str/lower-case %)) middle))
-        class (first (remove #(= "weapons" (str/lower-case %)) middle))]
-    {:bundle bundle :class class :weapons? weapons? :name (last segments)}))
+  (let [bundle   (first segments)
+        middle   (butlast (rest segments))
+        lower    (map str/lower-case middle)
+        weapons? (boolean (some #{"weapons"} lower))
+        turrets? (boolean (some #{"turrets"} lower))
+        class    (->> (map vector lower middle)
+                      (remove (comp #{"weapons" "turrets"} first))
+                      first
+                      second)]
+    {:bundle bundle :class class :weapons? weapons? :turrets? turrets?
+     :name (last segments)}))
 
 (defn- variants [^File dir]
   (into #{} (keep (fn [f] (when (.isFile (io/file dir f)) (variant-key f)))
@@ -137,6 +172,7 @@
                      :part/bundle     (:bundle info)
                      :part/class      (:class info)
                      :part/weapons?   (:weapons? info)
+                     :part/turrets?   (:turrets? info)
                      :part/name       (:name info)
                      :part/variants   vs
                      :part/source     (source-variant vs)
