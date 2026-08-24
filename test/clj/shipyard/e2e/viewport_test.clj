@@ -156,22 +156,28 @@
 (deftest htmx-swaps-leave-the-webgl-context-alive
   (open-app!)
   (select-part! "Cruiser Hull")
-  (let [before (s/await-part *driver* s/hull-id)]
-    ;; Mark the live canvas from JS. If htmx ever replaces the element, the
-    ;; marker goes with it - which is exactly the failure hx-preserve prevents.
-    (e/js-execute *driver* "document.getElementById('viewport').__alive = 42;")
-    (testing "swap the library panel and the detail panel"
-      (e/select *driver* {:css "select[name=bundle]"} "Ork Fleet Bundle")
-      (is (s/wait-until #(= 1 (count (e/query-all *driver* {:css "#library-results .part"})))))
-      (select-part! "Ram Ship")
-      (s/await-part *driver* s/ork-id))
-    (testing "the canvas element survived both"
-      (is (= 42 (e/js-execute *driver* "return document.getElementById('viewport').__alive;"))))
-    (testing "and the hull is still on the GPU - nothing was re-uploaded"
-      (let [after (s/stats *driver*)]
-        (is (= #{s/hull-id s/ork-id} (set (:parts after))))
-        (is (> (:vertices after) (:vertices before))
-            "the second part was added to the live scene, not to a rebuilt one")))))
+  (s/await-part *driver* s/hull-id)
+  ;; Mark the live canvas from JS. If htmx ever replaces the element, the
+  ;; marker goes with it - which is exactly the failure hx-preserve prevents.
+  (e/js-execute *driver* "document.getElementById('viewport').__alive = 42;")
+  (testing "swap the library panel and the detail panel"
+    (e/select *driver* {:css "select[name=bundle]"} "Ork Fleet Bundle")
+    (is (s/wait-until #(= 1 (count (e/query-all *driver* {:css "#library-results .part"})))))
+    (select-part! "Ram Ship")
+    (s/await-part *driver* s/ork-id))
+  (testing "the canvas element survived both"
+    (is (= 42 (e/js-execute *driver* "return document.getElementById('viewport').__alive;"))))
+  (testing "and the surviving context is still drawing"
+    ;; This block used to assert the hull was **still in the scene** alongside
+    ;; the ork, and that vertices had grown - using accumulation as its proof
+    ;; that nothing had been rebuilt. #47 made a new selection replace the
+    ;; scene, so that proof is gone, and it was never the load-bearing one: the
+    ;; marker above is. A rebuilt canvas loses it.
+    (let [after (s/stats *driver*)]
+      (is (= [s/ork-id] (vec (:parts after)))
+          "the swap did not disturb the selection policy")
+      (is (pos? (:vertices after)))
+      (is (pos? (:draws after)) "the same context is still rendering"))))
 
 ;; --- pixels -----------------------------------------------------------------
 
