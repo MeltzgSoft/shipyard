@@ -49,6 +49,7 @@ Anything that touches the mesh pipeline needs **a platform alias for the LWJGL n
 `:natives-macos-arm64`. Commands without one below do not need one.
 
 ```bash
+cp node_modules/htmx.org/dist/htmx.min.js resources/public/js/   # once per clone - see below
 clojure -M:natives-linux:run            # server, no jar
 npx shadow-cljs watch viewport          # hot-reloaded CLJS, in a second terminal
 
@@ -61,6 +62,11 @@ clojure -M:cljfmt check src test build.clj    # `fix` to apply
 clojure -M:clj-kondo --lint src --lint test --lint build.clj
 clojure -M:outdated                     # dependency freshness, deps.edn + package.json
 ```
+
+**htmx is copied, not bundled** - `clojure -T:build uber` does it for you, but the dev
+commands above do not, so a fresh clone needs it once. Skip it and the page still renders
+and the canvas still loads; the library panel simply never populates, which reads exactly
+like a server bug. Why it is delivered separately from the CLJS bundle: TECHNICAL.md §8.
 
 `deps.edn` declares `org.lwjgl/lwjgl` and `org.lwjgl/lwjgl-meshoptimizer`, which are the
 Java API jars; the `.so`, `.dll` and `.dylib` are separate Maven artifacts carrying a
