@@ -7,6 +7,7 @@
   namespace exists to prevent."
   (:require [babashka.fs :as fs]
             [clojure.edn :as edn]
+            [digest]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
             [integrant.core :as ig]
@@ -14,11 +15,25 @@
             [shipyard.system :as system]))
 
 (defn index-file
-  "`cache-home` is injectable so a test can be hermetic: an E2E run scanning a
+  "The scan index for `root`.
+
+  **One file per library**, named by a digest of the root path. A single shared
+  file would have to be discarded every time the root changed, so alternating
+  between two libraries would re-hash both of them on every switch - and
+  re-hashing is the exact cost §5.4 exists to avoid. Per-root files make a
+  switch free in both directions.
+
+  The digest is of the path, not of anything in the library: it only has to be
+  stable across runs and safe as a filename, which a library-relative path full
+  of spaces is not.
+
+  `cache-home` is injectable so a test can be hermetic: an E2E run scanning a
   fixture tree must not write part ids from a temp directory into the index the
   developer's real library depends on."
-  ([] (index-file (system/cache-home)))
-  ([cache-home] (fs/file cache-home "shipyard" "index.edn")))
+  ([root] (index-file (system/cache-home) root))
+  ([cache-home root]
+   (fs/file cache-home "shipyard"
+            (str "index-" (subs (digest/sha-256 (str root)) 0 16) ".edn"))))
 
 (defn load-index
   "The stored entries, but only if they were scanned from `root`.
@@ -30,7 +45,7 @@
   the viewport a mesh of the wrong ship. A mismatch costs a rescan; the
   alternative costs correctness."
   [f root]
-  (if (fs/regular-file? f)
+  (if (and f (fs/regular-file? f))
     (try
       (let [stored (edn/read-string (slurp f))]
         (if (= (str root) (:root stored))
@@ -135,23 +150,24 @@
   place that knows what a library's state consists of, so starting and
   relocating cannot drift apart."
   [root cache-home]
-  (let [f (index-file cache-home)]
-    (if (str/blank? (str root))
-      ;; Nothing set. Not a failure - the settings form exists for exactly this
-      ;; state, and there is nothing to scan or stamp until it is used.
-      {:root nil :parts [] :entries {} :index-file f}
-      (let [dir (fs/file root)]
-        (when-not (fs/directory? dir)
-          ;; Not fatal: the app must still start so the user can point it
-          ;; somewhere real. A hard failure here makes a fresh install unusable.
-          (log/warn "library root does not exist:" root))
-        (let [stored (load-index f root)
-              parts  (or (scan/scan dir) [])
-              idx    (refresh parts root stored)]
-          (log/infof "library: %d parts, %d with a cached mesh key"
-                     (count parts) (count (filter :mesh-key (vals idx))))
-          (when-not (= idx stored) (save-index! f root idx))
-          {:root (str root) :parts parts :entries idx :index-file f})))))
+  (if (str/blank? (str root))
+    ;; Nothing set. Not a failure - the settings form exists for exactly this
+    ;; state, and there is nothing to scan, name a file for, or stamp until it
+    ;; is used.
+    {:root nil :parts [] :entries {} :index-file nil}
+    (let [f   (index-file cache-home root)
+          dir (fs/file root)]
+      (when-not (fs/directory? dir)
+        ;; Not fatal: the app must still start so the user can point it
+        ;; somewhere real. A hard failure here makes a fresh install unusable.
+        (log/warn "library root does not exist:" root))
+      (let [stored (load-index f root)
+            parts  (or (scan/scan dir) [])
+            idx    (refresh parts root stored)]
+        (log/infof "library: %d parts, %d with a cached mesh key"
+                   (count parts) (count (filter :mesh-key (vals idx))))
+        (when-not (= idx stored) (save-index! f root idx))
+        {:root (str root) :parts parts :entries idx :index-file f}))))
 
 (defn set-root!
   "Point the library at `root` and rescan, in place.

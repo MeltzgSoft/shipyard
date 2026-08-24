@@ -5,7 +5,8 @@
   without a restart. Integration rather than unit because every one of those
   claims is about the filesystem: what is on disk, what gets scanned, and what
   is still there after a restart."
-  (:require [clojure.java.io :as io]
+  (:require [babashka.fs :as fs]
+            [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [integrant.core :as ig]
@@ -166,9 +167,26 @@
         library (ig/init-key :shipyard.library/index {:root (str a) :cache-home cache})]
     (index/record-mesh-key! library part-id "cafe" 12)
     (is (= "cafe" (index/mesh-key library part-id)))
+
     (index/set-root! library (str b))
     (is (nil? (index/mesh-key library part-id))
-        "a part id is library-relative; serving the stored key would be the wrong mesh")))
+        "a part id is library-relative; serving the stored key would be the wrong mesh")
+    (index/record-mesh-key! library part-id "f00d" 34)
+
+    (testing "and each library keeps its own, so switching back is free"
+      ;; One index file per root. A single shared file would have to be thrown
+      ;; away on every switch, and re-hashing is the cost §5.4 exists to avoid.
+      (index/set-root! library (str a))
+      (is (= "cafe" (index/mesh-key library part-id)))
+      (index/set-root! library (str b))
+      (is (= "f00d" (index/mesh-key library part-id))))
+
+    (testing "the files are distinct, and each names the root it belongs to"
+      (let [files (->> (fs/list-dir (fs/file cache "shipyard"))
+                       (map (comp slurp fs/file)))]
+        (is (= 2 (count files)))
+        (is (some #(str/includes? % (str a)) files))
+        (is (some #(str/includes? % (str b)) files))))))
 
 ;; --- what the validator refuses ---------------------------------------------
 

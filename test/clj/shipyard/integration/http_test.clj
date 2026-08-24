@@ -250,9 +250,28 @@
             a transient AccessDeniedException on the index write reported a part
             that had preprocessed perfectly as failed."
     (let [sys (system (library-tree))
-          ;; A directory where a file should be. Every write to it fails, on
-          ;; every platform, without needing a scanner to hold a handle.
-          sys (assoc-in sys [:library :index-file] (temp-dir "shipyard-not-a-file"))
+          ;; An index path whose **parent** is a regular file, so
+          ;; `write-atomically!` fails on its opening `create-dirs`.
+          ;;
+          ;; Pointing the index at a directory - the obvious fixture, and what
+          ;; this test used to do - does not fail at all: `babashka.fs/move`
+          ;; moves a file *into* an existing directory rather than refusing, so
+          ;; the write quietly succeeded somewhere else and the test proved
+          ;; nothing. Empty or not makes no difference.
+          ;;
+          ;; Into the state atom, not onto the component map: the index file is
+          ;; part of the library's state now that the root can change, and an
+          ;; `assoc-in` on the component would leave this test passing without
+          ;; ever making a write fail.
+          bad (let [blocker (io/file (temp-dir "shipyard-not-a-file") "blocker")]
+                (spit blocker "")
+                (io/file blocker "index.edn"))
+          _   (swap! (:state (:library sys)) assoc :index-file bad)
+          ;; Pin the premise. This test passed for a while against a *writable*
+          ;; index, because it was reaching for a key that had moved - a guard
+          ;; that no longer guards looks exactly like one that does.
+          _   (is (thrown? Exception (index/save-index! bad "/lib" {}))
+                  "the index write must actually be failing")
           h     (handler sys)
           ready (await-ready h hull-id)]
       (is (get (triggers ready) "shipyard:load-mesh"))

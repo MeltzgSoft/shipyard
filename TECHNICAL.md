@@ -47,7 +47,7 @@ can only be a derived index. The durable layer is plain EDN files.
      loadouts.edn  fleets.edn  schemes.edn ┘       fleets, schemes - all queryable
 
    $XDG_CACHE_HOME/shipyard/
-     index.edn        scan cache, mtime+size keyed
+     index-<digest>.edn  scan cache, mtime+size keyed - one per library (§7.3)
      mesh/<sha>.symesh  encoded meshes
 ```
 
@@ -595,10 +595,15 @@ Two keys, two purposes:
 - `:part/mesh-key` - SHA-256 of the source STL. Computed **only** when a part is first
   preprocessed, which is already lazy.
 
-`$XDG_CACHE_HOME/shipyard/index.edn` maps `path → {:mtime :size :mesh-key :tris}`. At
-scan, a part whose mtime and size are unchanged reuses its cached `mesh-key`; anything
-else has its entry invalidated and re-derives on next view. Re-pitting a hull changes
-mtime and size, so the cache self-invalidates.
+`$XDG_CACHE_HOME/shipyard/index-<digest>.edn` maps `path → {:mtime :size :mesh-key :tris}`
+under a `:root` stamp. At scan, a part whose mtime and size are unchanged reuses its cached
+`mesh-key`; anything else has its entry invalidated and re-derives on next view. Re-pitting
+a hull changes mtime and size, so the cache self-invalidates.
+
+`<digest>` is the first 16 hex of a SHA-256 of the library root - **one index per
+library**, because the root is a setting and can change (§7.3). Not one shared file: a
+part id is library-relative, so a shared index would have to be discarded on every switch,
+and re-hashing is precisely the cost this cache exists to avoid.
 
 Budget: full scan of 1,661 folders, cold, **under 2 s**. It stats files and reads small
 EDN; it opens no mesh.
@@ -1069,10 +1074,17 @@ observed rather than by trying to stop them:
   `index/record-mesh-key!` drops results for part ids the current library does not
   contain.
 - *The scan index on disk.* It is keyed by library-relative part id, which was unambiguous
-  only while there was one root. It now carries the root it was built from, and a mismatch
-  reads as empty: a rescan costs seconds, and the alternative costs correctness - two
-  libraries can each hold `Cruiser/Hull`, and serving one's cached mesh key for the other
-  hands the viewport a mesh of the wrong ship.
+  only while there was one root. Two libraries can each hold `Cruiser/Hull`, and serving
+  one's cached mesh key for the other hands the viewport a mesh of the wrong ship. There
+  is therefore **one index file per library**, named by a digest of the root path (§5.4),
+  so switching between two libraries is free in both directions rather than re-hashing
+  both every time. Each file also carries a `:root` stamp and a mismatch reads as empty -
+  belt and braces, and it makes the file self-describing when you are looking at a cache
+  directory full of digests.
+
+  The cost is that index files for libraries you have stopped using are not collected.
+  One is a few hundred kilobytes against a mesh cache measured in gigabytes, so nothing
+  reclaims them yet; the `:root` stamp is what a future sweep would read.
 
 **Whether the root is there is checked, not remembered.** A drive can be unmounted, or a
 folder renamed, under a running server. The cost of asking is one `stat` per `/library`
