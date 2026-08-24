@@ -127,6 +127,48 @@ jobs:
           npx shadow-cljs compile test
           node target/js/node-tests.js
 
+  readme:
+    # Run what README's Development section tells a person to run.
+    #
+    # Nothing else does. The workflows spell every command correctly, which is
+    # why CI stayed green through #37 and #39 while the README told people to
+    # run commands that did not work - two lists that must agree, and only one
+    # of them executed. This job executes the other one, extracting the commands
+    # from the file rather than restating them here, because restating them is
+    # the bug.
+    #
+    # Linux only: it checks that the documentation is true, not that the code is
+    # portable. The natives alias it exercises is spelled per platform, and the
+    # README says so.
+    runs-on: linux
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: https://github.com/actions/setup-java@v5
+        with:
+          java-version: '25'
+          distribution: temurin
+
+      - uses: https://github.com/actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install Clojure CLI
+        run: |
+          curl -sLO https://download.clojure.org/install/linux-install-1.12.4.1618.sh
+          chmod +x linux-install-1.12.4.1618.sh
+          ./linux-install-1.12.4.1618.sh --prefix "$HOME/clojure"
+          echo "$HOME/clojure/bin" >> "$GITHUB_PATH"
+
+      # `npm ci` only - deliberately not the htmx copy. That copy is a step the
+      # README is responsible for telling you about, and #37 was it failing to.
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Run README's own Development commands
+        run: .forgejo/scripts/check-readme-commands.sh
+
   test-e2e:
     # The browser level (TECHNICAL.md §10.3). Linux only, deliberately: it tests
     # application behaviour, not platform behaviour, and it is the slowest job
