@@ -45,6 +45,7 @@ Point it at your STL library with `SHIPYARD_LIBRARY`, or set it once in
 ## Development
 
 ```bash
+cp node_modules/htmx.org/dist/htmx.min.js resources/public/js/   # once per clone - see below
 clojure -M:run                          # server, no jar
 npx shadow-cljs watch viewport          # hot-reloaded CLJS, in a second terminal
 
@@ -57,6 +58,11 @@ clojure -M:cljfmt check src test build.clj    # `fix` to apply
 clojure -M:clj-kondo --lint src --lint test --lint build.clj
 clojure -M:outdated                     # dependency freshness, deps.edn + package.json
 ```
+
+**htmx is copied, not bundled** - `clojure -T:build uber` does it for you, but the dev
+commands above do not, so a fresh clone needs it once. Skip it and the page still renders
+and the canvas still loads; the library panel simply never populates, which reads exactly
+like a server bug. Why it is delivered separately from the CLJS bundle: TECHNICAL.md §8.
 
 Tests come in three levels separated by **what they are allowed to touch**, not by size:
 unit touches nothing outside the process, integration gets the filesystem and natives,
