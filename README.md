@@ -56,6 +56,7 @@ npx shadow-cljs watch viewport          # hot-reloaded CLJS, in a second termina
 clojure -M:test:natives-linux                       # all suites
 clojure -M:test --focus :unit                       # pure functions only, sub-second
 clojure -M:test:natives-linux --focus :integration  # filesystem, natives, HTTP
+npx shadow-cljs compile viewport                    # e2e needs the bundle, with test hooks
 clojure -M:test:natives-linux --focus :e2e          # headless browser
 
 clojure -M:cljfmt check src test build.clj    # `fix` to apply
@@ -87,6 +88,15 @@ why the Quick start above is a plain `java -jar`.
 Tests come in three levels separated by **what they are allowed to touch**, not by size:
 unit touches nothing outside the process, integration gets the filesystem and natives,
 e2e drives a real browser. See TECHNICAL.md §10.
+
+The e2e suite needs Chrome or Chromium and a matching `chromedriver` on `PATH`, and it
+needs both gitignored front-end assets in place: the viewport bundle from the **dev**
+build - only that one defines the `window.__shipyard` introspection hook the assertions
+read - and htmx, which is copied out of `node_modules` rather than bundled. Without htmx
+the page renders and nothing ever loads the library, which reads exactly like a server
+bug; the suite checks for both up front and tells you which command to run. Set `SHIPYARD_CHROME` if your
+browser is not at one of the usual paths. The suite is hermetic: its library, mesh cache
+and scan index all live in a temp directory, so it never touches your real one.
 
 ### Git hooks
 

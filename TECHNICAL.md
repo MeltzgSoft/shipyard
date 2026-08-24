@@ -1001,9 +1001,28 @@ math, where `(set! (.-x (.-position obj)) 1.0)` is plainly worse than `obj.posit
 1.0`. Keep the hot render loop small and imperative; the value of CLJS here is in the
 decoder, the event handling and the scene bookkeeping, not the per-frame math.
 
-**Watch item:** `:advanced` compilation against an external JS library relies on shadow's
-externs inference. It is usually clean, but if property names get munged, `^js` type hints
-on three.js objects are the fix. Verify a release build early rather than at M6.
+**Watch item, now checked:** `:advanced` compilation against an external JS library relies
+on shadow's externs inference. A release build is clean at three 0.185 with `^js` hints on
+the three.js objects the scene code touches.
+
+**The test hook needs a bare `^boolean` define, not an `and`.** `(when (and TEST-HOOKS sys)
+…)` compiles to `cljs.core/truth_(false) ? window.__shipyard = … : null`, and Closure
+cannot fold a call to `truth_` - the hook survives `:advanced` and ships. Testing the
+define on its own emits a plain `if` that constant-folds away. `clojure -T:build uber`
+greps the release bundle for `__shipyard` and fails rather than trusting this.
+
+**`RoomEnvironment` is a `Scene` in three 0.185**, not an object with a `.scene`. Handing
+`PMREMGenerator/fromScene` the old `(.-scene env)` spelling passes it `undefined` and it
+throws inside `_sceneToCubeUV`.
+
+**Guard only the context acquisition in degraded mode.** Wrapping the whole of scene
+construction in the "no WebGL" catch hides real bugs behind the degraded-mode message: a
+scene that failed to build is indistinguishable from a machine with no GPU. Only
+`new WebGLRenderer` is allowed to answer nil.
+
+**The environment is generated, not fetched.** A `MeshStandardMaterial` with no
+environment renders as a flat silhouette, and an HDR file would put a megabyte of asset in
+the jar. `RoomEnvironment` through `PMREMGenerator` costs nothing at build time.
 
 ## 8. Build
 
@@ -1187,6 +1206,29 @@ never reached the screen.
 **Headless Chrome needs software rendering for WebGL in CI** (SwiftShader). Verify this in
 the first E2E test written, not at M6 - a CI box with no GPU will otherwise fail in a way
 that looks like an application bug.
+
+The flags that work are ANGLE over SwiftShader, and since Chrome 128 the fallback must be
+asked for explicitly - without `--enable-unsafe-swiftshader` the context is refused and
+`WebGLRenderer` throws:
+
+    --headless=new --use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader
+    --disable-dev-shm-usage --no-sandbox
+
+`webgl-works-in-this-browser` asserts `gl.VERSION` directly and runs before anything else,
+so a runner without software rendering says so rather than failing eight scene assertions.
+
+**The suite is hermetic, and that needed a change to two components.** `:shipyard.mesh/cache`
+and `:shipyard.library/index` take an optional `cache-home`, defaulting to the XDG
+location. Without it an E2E run evicts the developer's real mesh cache and files part ids
+from a temp tree into their scan index.
+
+**Degraded mode is blocked at the server, not in the browser**: the suite starts a second
+Jetty whose handler 404s `/js/viewport.js`. That is what a failed frontend build or a
+blocking proxy looks like from the page's side, and it needs no CDP.
+
+**The bundle must be built first.** The hook only exists in a dev build
+(`:dev {:closure-defines {shipyard.viewport/TEST-HOOKS true}}`), so the suite fails with
+the command to run rather than with a confusing WebGL error.
 
 ### 10.4 Fixtures, and the library canary
 
