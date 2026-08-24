@@ -126,3 +126,175 @@ jobs:
         run: |
           npx shadow-cljs compile test
           node target/js/node-tests.js
+
+  test-e2e:
+    # The browser level (TECHNICAL.md §10.3). Linux only, deliberately: it tests
+    # application behaviour, not platform behaviour, and it is the slowest job
+    # here - Windows would buy nothing and cost the §9 ten-minute budget.
+    runs-on: linux
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: https://github.com/actions/setup-java@v5
+        with:
+          java-version: '25'
+          distribution: temurin
+
+      - uses: https://github.com/actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Chrome and chromedriver, matched by construction
+        # Chrome for Testing rather than browser-actions/setup-chrome, which
+        # failed here twice for two different reasons: it unpacks the .deb
+        # without resolving its dependencies, and with `chrome-version: stable`
+        # it installed Chrome 151 alongside chromedriver 152, which refuses the
+        # session outright. One manifest naming both downloads cannot skew - the
+        # driver is published beside the browser it was built for.
+        #
+        # The shared libraries still have to come from apt: these are CI
+        # containers, and Chrome links against a desktop's worth of them.
+        run: |
+          set -euo pipefail
+          sudo=""; [ "$(id -u)" -eq 0 ] || sudo=sudo
+          $sudo apt-get update -qq
+          $sudo apt-get install -y --no-install-recommends \
+            libnspr4 libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
+            libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
+            libgbm1 libasound2 libpango-1.0-0 libcairo2 libatspi2.0-0 \
+            libxshmfence1 fonts-liberation unzip
+
+          curl -sSfo /tmp/cft.json https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json
+          version=$(python3 -c 'import json; print(json.load(open("/tmp/cft.json"))["channels"]["Stable"]["version"])')
+          chrome_url=$(python3 -c 'import json; d = json.load(open("/tmp/cft.json"))["channels"]["Stable"]; print([x["url"] for x in d["downloads"]["chrome"] if x["platform"] == "linux64"][0])')
+          driver_url=$(python3 -c 'import json; d = json.load(open("/tmp/cft.json"))["channels"]["Stable"]; print([x["url"] for x in d["downloads"]["chromedriver"] if x["platform"] == "linux64"][0])')
+          echo "Chrome for Testing $version"
+
+          mkdir -p "$HOME/chrome"
+          curl -sSfo /tmp/chrome.zip "$chrome_url"
+          curl -sSfo /tmp/chromedriver.zip "$driver_url"
+          unzip -q /tmp/chrome.zip -d "$HOME/chrome"
+          unzip -q /tmp/chromedriver.zip -d "$HOME/chrome"
+          chmod +x "$HOME/chrome/chrome-linux64/chrome" "$HOME/chrome/chromedriver-linux64/chromedriver"
+          echo "$HOME/chrome/chromedriver-linux64" >> "$GITHUB_PATH"
+          echo "SHIPYARD_CHROME=$HOME/chrome/chrome-linux64/chrome" >> "$GITHUB_ENV"
+
+      - name: Install Clojure CLI
+        run: |
+          curl -sLO https://download.clojure.org/install/linux-install-1.12.4.1618.sh
+          chmod +x linux-install-1.12.4.1618.sh
+          ./linux-install-1.12.4.1618.sh --prefix "$HOME/clojure"
+          echo "$HOME/clojure/bin" >> "$GITHUB_PATH"
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build the front-end assets
+        # The dev build, not the release one: only it defines
+        # window.__shipyard.stats(), which every scene assertion reads.
+        #
+        # And htmx, which `clojure -T:build uber` copies but no test task does.
+        # Without it the page renders, the canvas is there, and nothing ever
+        # loads the library - every test times out on an element that was never
+        # going to appear, which reads exactly like a server bug and is not one.
+        run: |
+          npx shadow-cljs compile viewport
+          cp node_modules/htmx.org/dist/htmx.min.js resources/public/js/
+
+      - name: E2E tests
+        # SHIPYARD_CHROME and PATH were both set by the step above. Printing
+        # the two versions first means a skew shows up as two numbers rather
+        # than as a stack trace three hundred lines down.
+        run: |
+          "$SHIPYARD_CHROME" --version
+          chromedriver --version
+          clojure -M:test:natives-linux --focus :e2e
+
+  package:
+    # The release artifact, and the only job that proves one exists. Linux
+    # alone: the natives are prebuilt jars, so this packages all four
+    # classifiers (TECHNICAL.md §9).
+    runs-on: linux
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: https://github.com/actions/setup-java@v5
+        with:
+          java-version: '25'
+          distribution: temurin
+
+      - uses: https://github.com/actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install Clojure CLI
+        run: |
+          curl -sLO https://download.clojure.org/install/linux-install-1.12.4.1618.sh
+          chmod +x linux-install-1.12.4.1618.sh
+          ./linux-install-1.12.4.1618.sh --prefix "$HOME/clojure"
+          echo "$HOME/clojure/bin" >> "$GITHUB_PATH"
+
+      - name: Build the uberjar
+        # This also asserts the E2E introspection hook is absent from the
+        # release bundle (issue #16) - build.clj greps for it and throws.
+        run: clojure -T:build uber
+
+      - name: The jar does the whole job, the way a user runs it
+        # Not a liveness ping. This walks the real path - scan, catalog,
+        # preprocess through LWJGL, serve the mesh - so it covers three things
+        # nothing else here does:
+        #
+        #   * LWJGL picks the right native classifier out of the uberjar,
+        #     unpacks it and dlopens it. A runner with a read-only temp dir
+        #     fails here rather than later in something that looks like a mesh
+        #     bug (TECHNICAL.md §6.6).
+        #   * `Enable-Native-Access` in the manifest still works, so the shipped
+        #     jar needs no flag on the command line (issue #6). NOTE that this
+        #     only applies to `java -jar`: launching the same jar with `-cp`
+        #     ignores the manifest and warns.
+        #   * The frontend built into the jar is the one the shell asks for.
+        run: |
+          set -euo pipefail
+          lib="$(mktemp -d)"
+          mkdir -p "$lib/Test Bundle/Cruiser/Cube"
+          cp test/fixtures/cube-ascii-crlf.stl "$lib/Test Bundle/Cruiser/Cube/unsupported.stl"
+
+          SHIPYARD_LIBRARY="$lib" java -jar target/shipyard-0.1.0-SNAPSHOT.jar > run.log 2>&1 &
+          jar_pid=$!
+          trap 'kill "$jar_pid" 2>/dev/null || true' EXIT
+
+          for _ in $(seq 1 60); do
+            curl -fsS http://127.0.0.1:8080/healthz > /dev/null 2>&1 && break
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8080/healthz
+          curl -fsS http://127.0.0.1:8080/ | grep -q 'hx-preserve'
+          curl -fsS http://127.0.0.1:8080/library | grep -q 'Cube'
+
+          # A cold part preprocesses in the background, so poll the way the
+          # browser does until the mesh URL is issued.
+          trigger=""
+          for _ in $(seq 1 120); do
+            trigger="$(curl -fsSi 'http://127.0.0.1:8080/part/Test%20Bundle/Cruiser/Cube' \
+                       | tr -d '\r' | grep -i '^HX-Trigger:' || true)"
+            case "$trigger" in *load-mesh*) break ;; esac
+            sleep 1
+          done
+          case "$trigger" in
+            *load-mesh*) ;;
+            *) echo "::error::the part never became ready"; cat run.log; exit 1 ;;
+          esac
+
+          url="$(printf '%s' "$trigger" | grep -o '/mesh/[0-9a-f]\{64\}\.0\.symesh' | head -1)"
+          test -n "$url"
+          curl -fsSi "http://127.0.0.1:8080$url" | tr -d '\r' \
+            | grep -qi 'cache-control: public, max-age=31536000, immutable'
+
+          if grep -qi 'restricted method\|restricted native access' run.log; then
+            echo "::error::the jar warned about restricted native access - check the Enable-Native-Access manifest entry"
+            cat run.log
+            exit 1
+          fi
+          cat run.log

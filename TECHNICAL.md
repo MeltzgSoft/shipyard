@@ -1089,33 +1089,71 @@ It still earns its place - running the pipeline against Windows natives is the o
 to catch a platform-specific failure before a user does - but if CI minutes get tight,
 this is the job to cut, and cutting it does not endanger the release artifact.
 
-```yaml
-jobs:
-  build:
-    strategy: { matrix: { os: [linux, windows] } }
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with: { distribution: temurin, java-version: '25' }
-      - uses: actions/cache@v4
-        with: { path: ~/.m2, key: ${{ matrix.os }}-m2-${{ hashFiles('deps.edn') }} }
-      - run: clojure -M:test:natives-${{ matrix.os }}
-      - run: clojure -T:build uber
-```
-
 **Java 25, not 21.** The `:run` and `:test` aliases pass
 `--sun-misc-unsafe-memory-access=allow`, which does not exist before JDK 23 - an older
 JVM refuses to start rather than ignoring it.
 
-Workflows live in `.forgejo/workflows/`: `lint.yml` (clj-kondo + cljfmt, one runner,
-since neither is platform-dependent) and `test.yml` (the test matrix plus a Linux-only
-build job that assembles the uberjar and smoke-tests the artifact).
+Workflows live in `.forgejo/workflows/`: `lint.yml` (clj-kondo + cljfmt, one runner, since
+neither is platform-dependent), `pr-description.yml` (its own workflow because it triggers
+on `edited`), and `test.yml`, which holds five jobs:
+
+| Job | Runner | What it is for |
+|---|---|---|
+| `test-linux` | linux | unit + integration |
+| `test-windows` | windows | unit + integration - path separators, file locking, `Files.move` |
+| `test-cljs` | linux | the cljc tests on the browser runtime, proving encoder and decoder agree |
+| `test-e2e` | linux | headless Chrome (§10.3) |
+| `package` | linux | the uberjar, and the only proof one runs |
 
 Level mapping (§10): **unit and integration run on both platforms**, since those are what
 exercise natives and filesystem semantics. **E2E runs on Linux only** - it tests
 application behaviour, not platform behaviour, and paying for a second headless browser
 buys nothing. The library canary (§10.4) is not a CI job at all.
+
+**No `actions/cache`, and this is not an oversight.** The sketch above used to show a
+`~/.m2` cache step. It does not work on this forge: the runner serves its actions cache on
+a random port, so every restore dies with `getCacheEntry failed: connect EHOSTUNREACH`
+(#28). Each Linux job therefore downloads its dependencies cold; Windows is host mode and
+keeps `~/.m2` between jobs, so it downloads nothing. Reinstate the cache step when the
+runner pins its cache port, not before.
+
+**Chrome comes from Chrome for Testing**, downloaded from the manifest that names the
+browser and the driver together. Nothing else here is safe:
+
+- `apt install chromium-browser` on Ubuntu 22.04 installs a snap shim, and there is no
+  snapd in the job container - it installs and then fails to launch.
+- `browser-actions/setup-chrome` failed twice, for two different reasons. It unpacks the
+  `.deb` rather than installing it, so **nothing resolves Chrome's dependencies** and the
+  binary dies on its first run with `libnspr4.so: cannot open shared object file`. And
+  with `chrome-version: stable` it installed **Chrome 151 beside chromedriver 152**, which
+  refuses the session outright: *This version of ChromeDriver only supports Chrome
+  version 152*.
+
+One manifest naming both downloads cannot skew, because the driver is published beside the
+browser it was built for. The runtime libraries still come from apt - these are CI
+containers and Chrome links against a desktop's worth of them - and the E2E step prints
+both versions before running, so a future skew shows up as two numbers rather than as a
+stack trace three hundred lines down.
+
+### 9.1 What `package` actually asserts
+
+Starting the jar and pinging `/healthz` proves almost nothing. The job instead walks the
+whole user path against a one-part fixture library: scan, catalog, preprocess through
+LWJGL, poll `/part/*id` the way the browser does, and fetch the `.symesh` the trigger
+names. That covers three things no other job does.
+
+**LWJGL native extraction from inside the uberjar.** Picking the right classifier out of
+the shaded jar, unpacking it and dlopening it is a different code path from resolving a
+natives jar off the classpath, and it needs a writable temp dir. A runner without one
+fails here rather than later in something that reads like a mesh bug.
+
+**`Enable-Native-Access` in the manifest still works**, so the shipped jar needs no flag on
+the command line (issue #6). Worth knowing: **the manifest entry applies to `java -jar`
+only.** Launching the same jar with `-cp` ignores it and warns about restricted native
+access - which makes a `-cp` invocation useless as a check of it.
+
+**The frontend inside the jar is the one the shell asks for**, since the page is fetched
+and the response actually contains the island.
 
 ## 10. Testing
 

@@ -34,10 +34,16 @@
   JSON shape re-mapped by hand on the client.
 
   htmx wraps a non-object value as `{value: …}` before dispatching, so the
-  client reads the EDN at `event.detail.value`."
+  client reads the EDN at `event.detail.value`.
+
+  `:escape-slash false` because every payload here carries a URL and data.json
+  escapes `/` as `\\/` by default. `JSON.parse` unescapes it either way, so this
+  is legibility rather than correctness - but a header full of `\\/mesh\\/` is
+  unreadable in a log and unmatchable in a shell."
   [events]
   (json/write-str (into {} (map (fn [[event payload]] [(event-name event) (pr-str payload)]))
-                        events)))
+                        events)
+                  :escape-slash false))
 
 (defn html
   "Render hiccup to a string. Hiccup 2 escapes by default, which is what makes

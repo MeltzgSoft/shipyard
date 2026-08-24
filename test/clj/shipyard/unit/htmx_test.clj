@@ -21,12 +21,28 @@
       (is (= ["shipyard:load-mesh"] (keys parsed))))
     (testing "the payload is EDN, so keywords survive the trip unmapped"
       (is (= payload (edn/read-string (get parsed "shipyard:load-mesh")))))
+    (testing "and slashes are left alone - data.json escapes them by default,
+              which turns every mesh URL in a log into \\/mesh\\/"
+      (is (str/includes? header "/mesh/abc.0.symesh"))
+      (is (not (str/includes? header "\\/"))))
     (testing "a payload htmx would have flattened"
       (is (= {:state :failed :tiers #{0 1 2}}
              (-> (htmx/trigger {:status {:state :failed :tiers #{0 1 2}}})
                  (json/read-str)
                  (get "shipyard:status")
                  (edn/read-string)))))))
+
+(deftest trigger-survives-a-header
+  (testing "an HTTP header value is not reliably UTF-8, and this library has
+            folder names that are not ASCII"
+    (let [header (htmx/trigger {:load-mesh {:part-id "Caf\u00e9 Noir/Cruiser/Prow #2"}})]
+      (is (every? #(< (int %) 128) header)
+          (str "non-ASCII reached the header: " header))
+      (testing "and it still reads back as what went in - data.json escapes
+                non-ASCII by default, it does not drop it"
+        (is (= "Caf\u00e9 Noir/Cruiser/Prow #2"
+               (-> header json/read-str (get "shipyard:load-mesh")
+                   edn/read-string :part-id)))))))
 
 (deftest trigger-carries-several-events
   (let [parsed (json/read-str (htmx/trigger {:clear nil :status {:state :idle}}))]
