@@ -7,71 +7,58 @@
   namespace exists to prevent."
   (:require [babashka.fs :as fs]
             [clojure.edn :as edn]
+            [digest]
+            [clojure.string :as str]
             [clojure.tools.logging :as log]
             [integrant.core :as ig]
             [shipyard.library.scan :as scan]
             [shipyard.system :as system]))
 
-(def ^:const move-attempts
-  "Five tries with a linear backoff - 50, 100, 150, 200 ms. A scanner's hold on
-  a small file is milliseconds; anything still failing after three quarters of a
-  second is a real permission problem and should surface as one."
-  5)
-
 (defn index-file
-  "`cache-home` is injectable so a test can be hermetic: an E2E run scanning a
+  "The scan index for `root`.
+
+  **One file per library**, named by a digest of the root path. A single shared
+  file would have to be discarded every time the root changed, so alternating
+  between two libraries would re-hash both of them on every switch - and
+  re-hashing is the exact cost §5.4 exists to avoid. Per-root files make a
+  switch free in both directions.
+
+  The digest is of the path, not of anything in the library: it only has to be
+  stable across runs and safe as a filename, which a library-relative path full
+  of spaces is not.
+
+  `cache-home` is injectable so a test can be hermetic: an E2E run scanning a
   fixture tree must not write part ids from a temp directory into the index the
   developer's real library depends on."
-  ([] (index-file (system/cache-home)))
-  ([cache-home] (fs/file cache-home "shipyard" "index.edn")))
+  ([root] (index-file (system/cache-home) root))
+  ([cache-home root]
+   (fs/file cache-home "shipyard"
+            (str "index-" (subs (digest/sha-256 (str root)) 0 16) ".edn"))))
 
-(defn write-atomically!
-  "Write via a temp file and rename, so a concurrent reader never sees a partial
-  file.
+(defn load-index
+  "The stored entries, but only if they were scanned from `root`.
 
-  `:atomic-move` is not supported on every filesystem, so fall back rather than
-  fail: the consequence is a torn read under concurrency, not corruption, and
-  refusing to start is worse.
-
-  **And retry first, because Windows.** A file written moments ago can still be
-  held open by the search indexer or a virus scanner when the move fires, and
-  `Files.move` reports that as `AccessDeniedException` rather than as anything
-  that reads like `busy`. Windows CI caught it intermittently on the index write
-  that follows a preprocess - which is exactly the class of failure §9 says the
-  Windows job is there to find. The hold is short, so a few backed-off retries
-  clear it."
-  [target ^String content]
-  (fs/create-dirs (fs/parent target))
-  (let [tmp (fs/create-temp-file {:dir (fs/parent target) :prefix "shipyard-" :suffix ".tmp"})]
-    (spit (fs/file tmp) content)
-    (loop [attempt 1, atomic? true]
-      (let [outcome (try
-                      (fs/move tmp target (cond-> {:replace-existing true}
-                                            atomic? (assoc :atomic-move true)))
-                      :done
-                      ;; Must precede the FileSystemException catch: it is a
-                      ;; subclass, and this one is not worth retrying.
-                      (catch java.nio.file.AtomicMoveNotSupportedException _ :fallback)
-                      (catch java.nio.file.FileSystemException e
-                        (if (< attempt move-attempts)
-                          :retry
-                          (throw e))))]
-        (case outcome
-          :done     nil
-          :fallback (recur attempt false)
-          :retry    (do (Thread/sleep (* 50 (long attempt)))
-                        (recur (inc attempt) atomic?)))))))
-
-(defn load-index [f]
-  (if (fs/regular-file? f)
-    (try (edn/read-string (slurp f))
-         (catch Exception e
-           ;; Derived data: a corrupt index costs a rescan, never correctness.
-           (log/warn "discarding unreadable scan index:" (ex-message e))
-           {}))
+  **The stamp is not decoration.** Entries are keyed by library-relative part
+  id, which identified a part uniquely only while there was one root. Now that
+  the root is a setting (issue #35), two libraries can each hold
+  `Cruiser/Hull`, and serving one's cached mesh key for the other would hand
+  the viewport a mesh of the wrong ship. A mismatch costs a rescan; the
+  alternative costs correctness."
+  [f root]
+  (if (and f (fs/regular-file? f))
+    (try
+      (let [stored (edn/read-string (slurp f))]
+        (if (= (str root) (:root stored))
+          (:entries stored)
+          {}))
+      (catch Exception e
+        ;; Derived data: a corrupt index costs a rescan, never correctness.
+        (log/warn "discarding unreadable scan index:" (ex-message e))
+        {}))
     {}))
 
-(defn save-index! [f m] (write-atomically! f (pr-str m)))
+(defn save-index! [f root entries]
+  (system/write-atomically! f (pr-str {:root (str root) :entries entries})))
 
 (defn- stat [f] {:mtime (fs/file-time->millis (fs/last-modified-time f)) :size (fs/size f)})
 
@@ -111,33 +98,89 @@
   yet fed: it carries `:mesh-key` forward for any part whose source file is
   unchanged, so a restart can name a part's mesh URL without re-hashing the
   file. Writing the whole map each time is cheap next to what it saves - the
-  alternative is a SHA-256 over a 20 MB STL on every part you open."
-  [{:keys [index index-file]} part-id mesh-key tris]
-  (let [updated (swap! index update part-id
-                       (fn [entry]
-                         (cond-> (assoc entry :mesh-key mesh-key)
-                           tris (assoc :tris tris))))]
-    (save-index! index-file updated)
+  alternative is a SHA-256 over a 20 MB STL on every part you open.
+
+  A part the current library does not contain is dropped rather than recorded.
+  A preprocess job outlives the root that started it - the pool is still
+  running when the settings form points the library somewhere else - and
+  writing its result into the new library's index would file a mesh key under
+  another library's part."
+  [{:keys [state]} part-id mesh-key tris]
+  (let [updated (swap! state
+                       (fn [{:keys [entries] :as st}]
+                         (if (contains? entries part-id)
+                           (update-in st [:entries part-id]
+                                      (fn [entry]
+                                        (cond-> (assoc entry :mesh-key mesh-key)
+                                          tris (assoc :tris tris))))
+                           st)))]
+    (when (contains? (:entries updated) part-id)
+      (save-index! (:index-file updated) (:root updated) (:entries updated)))
     mesh-key))
 
 (defn mesh-key
   "The recorded mesh key for a part, or nil if it has never been preprocessed
   or its source file has changed since."
-  [{:keys [index]} part-id]
-  (:mesh-key (get @index part-id)))
+  [{:keys [state]} part-id]
+  (get-in @state [:entries part-id :mesh-key]))
+
+;; --- the component, and the root it can be pointed at ------------------------
+
+(defn root
+  "Where the library currently is, or nil when nobody has said yet."
+  [{:keys [state]}] (:root @state))
+
+(defn available?
+  "Whether the root is a directory that exists **now**. False is the normal
+  state of a fresh install, not an error.
+
+  Checked rather than remembered, and the difference is a stat per library
+  request. A drive can be unmounted, or a folder renamed, under a running
+  server; a remembered answer keeps listing that library's parts, and every row
+  in the list 404s when clicked. Reporting the missing folder is both true and
+  the only thing the user can act on."
+  [{:keys [state]}]
+  (let [{:keys [root]} @state]
+    (boolean (and root (fs/directory? (fs/file root))))))
+
+(defn parts [{:keys [state]}] (:parts @state))
+
+(defn- scan-state
+  "Scan `root` and build the component's whole value. Pure enough to be the one
+  place that knows what a library's state consists of, so starting and
+  relocating cannot drift apart."
+  [root cache-home]
+  (if (str/blank? (str root))
+    ;; Nothing set. Not a failure - the settings form exists for exactly this
+    ;; state, and there is nothing to scan, name a file for, or stamp until it
+    ;; is used.
+    {:root nil :parts [] :entries {} :index-file nil}
+    (let [f   (index-file cache-home root)
+          dir (fs/file root)]
+      (when-not (fs/directory? dir)
+        ;; Not fatal: the app must still start so the user can point it
+        ;; somewhere real. A hard failure here makes a fresh install unusable.
+        (log/warn "library root does not exist:" root))
+      (let [stored (load-index f root)
+            parts  (or (scan/scan dir) [])
+            idx    (refresh parts root stored)]
+        (log/infof "library: %d parts, %d with a cached mesh key"
+                   (count parts) (count (filter :mesh-key (vals idx))))
+        (when-not (= idx stored) (save-index! f root idx))
+        {:root (str root) :parts parts :entries idx :index-file f}))))
+
+(defn set-root!
+  "Point the library at `root` and rescan, in place.
+
+  In place, rather than by rebuilding the component, because the route table
+  closes over its dependencies at build time (`shipyard.http.routes/routes`).
+  Swapping this atom is what lets a running server serve a different library
+  without a restart; rebuilding the component would leave every handler holding
+  the old one."
+  [{:keys [cache-home state]} root]
+  (reset! state (scan-state root cache-home)))
 
 (defmethod ig/init-key :shipyard.library/index [_ {:keys [root cache-home]}]
-  (let [dir (fs/file root)]
-    (when-not (fs/directory? dir)
-      ;; Not fatal: the app must still start so the user can point it somewhere
-      ;; real. A hard failure here makes a fresh install unusable.
-      (log/warn "library root does not exist:" root))
-    (let [f      (index-file (or cache-home (system/cache-home)))
-          stored (load-index f)
-          parts  (or (scan/scan dir) [])
-          idx    (refresh parts root stored)]
-      (log/infof "library: %d parts, %d with a cached mesh key"
-                 (count parts) (count (filter :mesh-key (vals idx))))
-      (when-not (= idx stored) (save-index! f idx))
-      {:root root :available (fs/directory? dir) :parts parts
-       :index (atom idx) :index-file f})))
+  (let [cache-home (or cache-home (system/cache-home))]
+    {:cache-home cache-home
+     :state      (atom (scan-state root cache-home))}))

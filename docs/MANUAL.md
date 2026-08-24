@@ -32,22 +32,29 @@ To use a different port: `PORT=9000 java -jar shipyard-…jar`
 
 Shipyard reads an existing STL library. It never modifies, moves, or copies your files.
 
-The default location is `~/Documents/3D_models/BFG`. To use another, either set it once:
+Shipyard has no default location, because there is no location it could guess that
+would be right. The first time you open it, the library panel asks where your models
+are:
+
+1. Type or paste the folder that holds your bundles - the one whose sub-folders are
+   `Human Navy Fleet Bundle` and the like. `~` works.
+2. Press **Use this folder**.
+
+Shipyard scans it immediately and the parts appear; there is nothing to restart. The
+folder is remembered, so every run after this one starts with your library already
+loaded.
+
+To change it later, open **Library folder** at the top of the library panel. If the
+path is wrong - a typo, or a drive that is not mounted - Shipyard says so and keeps
+using the folder it already had.
+
+Your choice is stored in `$XDG_CONFIG_HOME/shipyard/library.edn` (usually
+`~/.config/shipyard/library.edn`). You can write it by hand if you prefer:
 
 ```bash
 mkdir -p ~/.config/shipyard
-cat > ~/.config/shipyard/config.edn <<'END'
-{:shipyard.library/index {:root "/path/to/your/models"}}
-END
+echo '{:root "/path/to/your/models"}' > ~/.config/shipyard/library.edn
 ```
-
-or override per run:
-
-```bash
-SHIPYARD_LIBRARY=/path/to/your/models java -jar shipyard-…jar
-```
-
-The environment variable wins if you use both.
 
 ### How your library should be organised
 

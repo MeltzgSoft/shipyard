@@ -50,7 +50,9 @@ Explicitly out of scope. These are deliberate exclusions, not deferred work.
 
 ## 4. Source material
 
-Library root: `~/Documents/3D_models/BFG`, ~15 bundles, 19 GB, 3,160 STLs.
+Measured against one real collection: ~15 bundles, 19 GB, 3,160 STLs. Every figure in this
+document and in TECHNICAL.md comes from it. Shipyard itself has no default library - the
+user says where theirs is (TECHNICAL.md §7.3).
 
 **One folder per part, holding all of that part's variants:**
 

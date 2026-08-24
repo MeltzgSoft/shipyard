@@ -11,7 +11,8 @@
   (:require [clojure.tools.logging :as log]
             [datascript.core :as d]
             [integrant.core :as ig]
-            [shipyard.catalog.sidecar :as sidecar]))
+            [shipyard.catalog.sidecar :as sidecar]
+            [shipyard.library.index :as index]))
 
 (def schema
   {:part/id          {:db/unique :db.unique/identity}
@@ -90,11 +91,21 @@
 
 ;; --- queries ----------------------------------------------------------------
 
+(defn conn
+  "The live connection. `snapshot` is what a handler wants; this is for the
+  writers, and for tests asserting on transactions."
+  [{:keys [state]}]
+  (:conn @state))
+
 (defn snapshot
   "The current value of the catalog. A query takes a db value, not a connection,
-  so a handler that reads several facets sees one consistent index."
-  [{:keys [conn]}]
-  (d/db conn))
+  so a handler that reads several facets sees one consistent index.
+
+  One deref, not two: a relocation replaces the whole state map, so reading it
+  once is what stops a handler pairing one library's connection with another's
+  root."
+  [{:keys [state]}]
+  (d/db (:conn @state)))
 
 (defn bundles [db]
   (sort (d/q '[:find [?b ...] :where [_ :part/bundle ?b]] db)))
@@ -136,15 +147,29 @@
 (defn save-mounts!
   "Persist a part's mounts. **File first**, then index: if the transact throws,
   the data is already safe on disk and the next restart picks it up."
-  [{:keys [conn root]} part-id mounts]
-  (sidecar/update-sidecar! root part-id assoc :mounts mounts)
-  (d/transact! conn [{:part/id part-id :part/mounts (vec mounts)}])
-  mounts)
+  [{:keys [state]} part-id mounts]
+  (let [{:keys [conn root]} @state]
+    (sidecar/update-sidecar! root part-id assoc :mounts mounts)
+    (d/transact! conn [{:part/id part-id :part/mounts (vec mounts)}])
+    mounts))
 
 ;; --- component --------------------------------------------------------------
 
+(defn reingest!
+  "Rebuild the catalog from `parts` scanned under `root`, in place.
+
+  Datascript is a derived index and never the durable layer, so there is
+  nothing to migrate here - the cheapest correct answer to \"the library
+  moved\" is a new connection. In place rather than a new component because the
+  route table closes over its dependencies; see
+  `shipyard.library.index/set-root!`."
+  [{:keys [state]} parts root]
+  (let [parts (or parts [])]
+    (log/infof "catalog: %d parts re-ingested" (count parts))
+    (reset! state {:conn (ingest parts root) :root root})))
+
 (defmethod ig/init-key :shipyard.catalog/db [_ {:keys [library]}]
-  (let [{:keys [parts root]} library
-        conn (ingest (or parts []) root)]
+  (let [parts (index/parts library)
+        root  (index/root library)]
     (log/infof "catalog: %d parts ingested" (count parts))
-    {:conn conn :root root}))
+    {:state (atom {:conn (ingest (or parts []) root) :root root})}))

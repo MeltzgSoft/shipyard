@@ -13,6 +13,7 @@
             [shipyard.catalog.db :as db]
             [shipyard.http.htmx :as htmx]
             [shipyard.http.jobs :as jobs]
+            [shipyard.http.settings :as settings]
             [shipyard.http.urls :as urls]
             [shipyard.http.views :as views]
             [shipyard.library.index :as index]
@@ -36,8 +37,8 @@
      :classes (db/classes db)
      :roles   (db/roles db)}))
 
-(defn- root [{:keys [catalog]} _]
-  (htmx/page (views/shell (facets catalog))))
+(defn- root [{:keys [catalog library]} _]
+  (htmx/page (views/shell (facets catalog) (index/root library))))
 
 ;; --- library ----------------------------------------------------------------
 
@@ -47,8 +48,10 @@
   "`GET /library`. An absent or empty parameter means no filter, which is what
   the \"All bundles\" option submits."
   [{:keys [catalog library]} {:keys [params]}]
-  (if-not (:available library)
-    (htmx/fragment (views/library-unavailable (:root library)))
+  (if-not (index/available? library)
+    (htmx/fragment (if (index/root library)
+                     (views/library-unavailable (index/root library))
+                     (views/library-needs-root)))
     (htmx/fragment
      (views/library-results
       (db/browse (db/snapshot catalog)
@@ -63,8 +66,8 @@
   "The STL the mesh pipeline should open. Derived from the catalog record, never
   from the URL: the id in the path only ever selects a part, it never names a
   file."
-  [{:keys [root]} {:part/keys [id source]}]
-  (fs/file root id (index/name-of source)))
+  [library {:part/keys [id source]}]
+  (fs/file (index/root library) id (index/name-of source)))
 
 (defn- ready
   "The mesh is on disk. The fragment says so and the `HX-Trigger` hands the
@@ -116,6 +119,24 @@
           (ready part cached)
           (preprocessing deps part))))))
 
+;; --- settings ---------------------------------------------------------------
+
+(defn- save-settings
+  "`POST /settings`. Applies a new library root, or explains why it did not.
+
+  A success answers `HX-Refresh` rather than a fragment. The library has been
+  replaced wholesale - the filter facets in the shell were built from the old
+  one, and so was every part id the detail panel and the viewport are holding -
+  and re-rendering only the results list would leave a page describing two
+  different libraries at once."
+  [deps {:keys [params]}]
+  (if-let [refused (settings/relocate! deps (get params "root"))]
+    (htmx/fragment [:p.detail__error refused] {:status 422})
+    {:status  204
+     :headers {"HX-Refresh"    "true"
+               "cache-control" htmx/fragment-cache-control}
+     :body    ""}))
+
 ;; --- mesh -------------------------------------------------------------------
 
 (defn- not-found [message]
@@ -144,6 +165,7 @@
   [["/"        {:get (partial root deps)}]
    ["/healthz" {:get healthz}]
    ["/library" {:get (partial library deps)}]
+   ["/settings" {:post (partial save-settings deps)}]
    ["/part/*id" {:get (partial part deps)}]
    ["/mesh/:file" {:get (partial mesh deps)}]])
 
@@ -154,7 +176,9 @@
   (ring/router (routes deps) {:data {:middleware [params/wrap-params]}}))
 
 (defn handler
-  "Build the ring handler. `deps` carries :library, :catalog, :cache and :jobs."
+  "Build the ring handler. `deps` carries :library, :catalog, :cache and :jobs,
+  and may carry :config-dir - injectable so a test can relocate the library
+  without writing into the developer's real config."
   [deps]
   (ring/ring-handler
    (router deps)

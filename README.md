@@ -37,10 +37,9 @@ clojure -T:build uber       # builds the CLJS bundle and the uberjar
 java -jar target/shipyard-0.1.0-SNAPSHOT.jar
 ```
 
-Then open <http://127.0.0.1:8080>.
-
-Point it at your STL library with `SHIPYARD_LIBRARY`, or set it once in
-`$XDG_CONFIG_HOME/shipyard/config.edn` - see the [user manual](docs/MANUAL.md).
+Then open <http://127.0.0.1:8080>. It has no library until you give it one: the
+library panel asks for the folder your models are in, remembers it, and scans it
+without a restart. See the [user manual](docs/MANUAL.md).
 
 ## Development
 

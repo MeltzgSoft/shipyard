@@ -60,8 +60,9 @@
 (def ^:private every-view
   "Every fragment the server can send, so the canvas rule can be asserted over
   all of them at once rather than one at a time."
-  [(views/shell {:bundles ["A"] :classes ["Cruiser"] :roles [:hull :prow]})
+  [(views/shell {:bundles ["A"] :classes ["Cruiser"] :roles [:hull :prow]} "/lib")
    (views/library-results [hull supported-only])
+   (views/library-needs-root)
    (views/library-unavailable "/nowhere")
    (views/detail-empty)
    (views/detail-missing "no/such/part")
@@ -71,7 +72,7 @@
    (views/detail-unrenderable supported-only (views/unrenderable-reason supported-only))])
 
 (deftest the-canvas-is-preserved-and-never-a-swap-target
-  (let [shell (render (views/shell {:bundles [] :classes [] :roles []}))]
+  (let [shell (render (views/shell {:bundles [] :classes [] :roles []} "/lib"))]
     (testing "hx-preserve keeps the WebGL context alive across every swap"
       (is (re-find #"<canvas[^>]*id=\"viewport\"" shell))
       (is (re-find #"<canvas[^>]*hx-preserve=\"true\"" shell))))
@@ -87,7 +88,8 @@
 (deftest the-shell-carries-the-filters
   (let [html (render (views/shell {:bundles ["Human Navy Fleet Bundle"]
                                    :classes ["Cruiser" "Escort"]
-                                   :roles   [:hull :prow]}))]
+                                   :roles   [:hull :prow]}
+                                  "/lib"))]
     (testing "all four filter parameters from the route table are present"
       (doseq [p ["bundle" "class" "role" "q"]]
         (is (str/includes? html (str "name=\"" p "\"")) p)))

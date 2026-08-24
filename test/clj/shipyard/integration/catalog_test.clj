@@ -29,11 +29,11 @@
    :mount/origin :picked})
 
 (defn- catalog [root]
-  {:conn (db/ingest (scan/scan root) root) :root root})
+  {:state (atom {:conn (db/ingest (scan/scan root) root) :root root})})
 
 (deftest schema-and-ingest
   (let [root (fixture-tree)
-        {:keys [conn]} (catalog root)]
+        conn (db/conn (catalog root))]
     (is (= 6 (count (db/browse @conn {}))))
     (testing ":part/id is an identity, so re-transacting updates rather than duplicating"
       (d/transact! conn [{:part/id "Human Navy Fleet Bundle/Cruiser/Hull" :part/tris 42}])
@@ -44,14 +44,14 @@
   (testing "a vertex buffer in the catalog would balloon the heap and make the DB
             non-derivable, so assert no geometry attribute exists anywhere"
     (let [root (fixture-tree)
-          {:keys [conn]} (catalog root)
+          conn (db/conn (catalog root))
           attrs (set (d/q '[:find [?a ...] :where [_ ?a]] @conn))]
       (is (empty? (set/intersection attrs db/geometry-keys)))
       (is (every? #(not (re-find #"position|normal|vertex|geometry|indices" (name %))) attrs)))))
 
 (deftest turret-metadata-survives-ingest
   (let [root (fixture-tree)
-        {:keys [conn]} (catalog root)
+        conn (db/conn (catalog root))
         db @conn]
     (testing "directory facts reach the catalog rather than being dropped"
       (let [t (db/part db "Human Navy Fleet Bundle/Cruiser/weapons/turrets/Lance Turret")]
@@ -68,7 +68,7 @@
 
 (deftest browse-queries
   (let [root (fixture-tree)
-        {:keys [conn]} (catalog root)
+        conn (db/conn (catalog root))
         db @conn]
     (is (= ["Human Navy Fleet Bundle" "Ork Fleet Bundle"] (db/bundles db)))
     (is (= ["Battleship" "Cruiser"] (db/classes db "Human Navy Fleet Bundle")))
@@ -101,7 +101,7 @@
       (is (thrown-with-msg? clojure.lang.ExceptionInfo #"malformed sidecar"
                             (sidecar/read-sidecar root id))))
     (testing "but one bad file must not make the whole library invisible"
-      (let [{:keys [conn]} (catalog root)]
+      (let [conn (db/conn (catalog root))]
         (is (= 6 (count (db/browse @conn {}))))))))
 
 (deftest write-through-is-file-first
@@ -110,10 +110,10 @@
         id   "Human Navy Fleet Bundle/Cruiser/Hull"]
     (db/save-mounts! cat id [a-mount])
     (is (= [a-mount] (:mounts (sidecar/read-sidecar root id))))
-    (is (= 1 (count (:part/mounts (db/part @(:conn cat) id)))))
+    (is (= 1 (count (:part/mounts (db/part @(db/conn cat) id)))))
 
     (testing "a failing transact still leaves the sidecar on disk"
-      (let [broken {:conn (d/create-conn db/schema) :root root}]   ; part not in this DB
+      (let [broken {:state (atom {:conn (d/create-conn db/schema) :root root})}]   ; part not in this DB
         (try (db/save-mounts! broken "Ork Fleet Bundle/Cruiser/Battle Krooza Hull" [a-mount])
              (catch Exception _ nil))
         (is (= [a-mount] (:mounts (sidecar/read-sidecar
@@ -126,8 +126,8 @@
           id   "Human Navy Fleet Bundle/Cruiser/Hull"
           c1   (catalog root)]
       (db/save-mounts! c1 id [a-mount])
-      (let [before (db/browse @(:conn c1) {})
-            after  (db/browse @(:conn (catalog root)) {})]
+      (let [before (db/browse @(db/conn c1) {})
+            after  (db/browse @(db/conn (catalog root)) {})]
         (is (= (map :part/id before) (map :part/id after)))
-        (is (= (count (:part/mounts (db/part @(:conn (catalog root)) id))) 1)
+        (is (= (count (:part/mounts (db/part @(db/conn (catalog root)) id))) 1)
             "mounts come back from the sidecar, not from the discarded DB")))))

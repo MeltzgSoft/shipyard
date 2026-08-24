@@ -47,7 +47,7 @@ can only be a derived index. The durable layer is plain EDN files.
      loadouts.edn  fleets.edn  schemes.edn ┘       fleets, schemes - all queryable
 
    $XDG_CACHE_HOME/shipyard/
-     index.edn        scan cache, mtime+size keyed
+     index-<digest>.edn  scan cache, mtime+size keyed - one per library (§7.3)
      mesh/<sha>.symesh  encoded meshes
 ```
 
@@ -173,7 +173,7 @@ no namespace exists to hold constants.
 ;; Component keys are namespaced to the namespace that implements them, so
 ;; integrant's load-namespaces finds each ig/init-key without a registry.
 {:shipyard.library/index
- {:root #or [#env SHIPYARD_LIBRARY "~/Documents/3D_models/BFG"]}
+ {:root nil}                      ; no default - §7.3
 
  :shipyard.mesh/cache
  {:crease-deg 35
@@ -202,16 +202,26 @@ shutdown hook.
 `load-config` takes `:config-dir` and `:env` so the layering is testable without
 mutating the process environment.
 
-**Three layers, later winning over earlier:**
+**Four layers, later winning over earlier:**
 
 1. `resources/config.edn` - defaults, shipped in the jar.
 2. `$XDG_CONFIG_HOME/shipyard/config.edn` - user preferences, deep-merged if present.
-3. Environment variables - `SHIPYARD_LIBRARY`, `PORT`, `SHIPYARD_THREADS`.
+3. `$XDG_CONFIG_HOME/shipyard/library.edn` - the library root, written by the settings
+   form (§7.3).
+4. Environment variables - `PORT`.
 
-The middle layer matters because **the library root is user data, not deployment
-configuration**. Which directory holds someone's models is a preference they set once and
-change rarely, so it belongs in a file they own rather than an env var they must remember
-to export.
+Layers 2 and 3 exist separately because **the library root is user data, not deployment
+configuration** - and because layer 3 is the only one Shipyard writes. Merging a saved
+root into the user's own `config.edn` would mean reading that file to rewrite it, and
+reading it means resolving it: aero would evaluate its `#env` and `#profile` tags and drop
+every comment, so saving a path from the UI would silently rewrite configuration the user
+hand-authored. A machine-owned file that nothing else edits cannot do that.
+
+**The library root is deliberately not an environment variable.** It was one, with
+`~/Documents/3D_models/BFG` behind it as a default, and both were wrong: the default is
+one developer's home directory, and an env var that outranks the settings form makes the
+form lie about what the application is using. There is now no default and no
+`SHIPYARD_LIBRARY` (issue #35).
 
 Tunables that spikes established live here rather than being hardcoded: the crease angle
 (§6.2), the LOD tier ratios (§6.3), and the cache cap (§6.5). All three were measured
@@ -585,10 +595,15 @@ Two keys, two purposes:
 - `:part/mesh-key` - SHA-256 of the source STL. Computed **only** when a part is first
   preprocessed, which is already lazy.
 
-`$XDG_CACHE_HOME/shipyard/index.edn` maps `path → {:mtime :size :mesh-key :tris}`. At
-scan, a part whose mtime and size are unchanged reuses its cached `mesh-key`; anything
-else has its entry invalidated and re-derives on next view. Re-pitting a hull changes
-mtime and size, so the cache self-invalidates.
+`$XDG_CACHE_HOME/shipyard/index-<digest>.edn` maps `path → {:mtime :size :mesh-key :tris}`
+under a `:root` stamp. At scan, a part whose mtime and size are unchanged reuses its cached
+`mesh-key`; anything else has its entry invalidated and re-derives on next view. Re-pitting
+a hull changes mtime and size, so the cache self-invalidates.
+
+`<digest>` is the first 16 hex of a SHA-256 of the library root - **one index per
+library**, because the root is a setting and can change (§7.3). Not one shared file: a
+part id is library-relative, so a shared index would have to be discarded on every switch,
+and re-hashing is precisely the cost this cache exists to avoid.
 
 Budget: full scan of 1,661 folders, cold, **under 2 s**. It stats files and reads small
 EDN; it opens no mesh.
@@ -864,6 +879,7 @@ Verified working practice (issue #6). These are the traps that cost real time.
 | `GET /library` | Hiccup fragment. Params `bundle` `class` `role` `q` |
 | `GET /part/*id` | Detail fragment + `HX-Trigger` to load the mesh |
 | `GET /mesh/:key.:tier.symesh` | Binary (§6.4). Immutable, content-addressed |
+| `POST /settings` | Relocates the library (§7.3). 204 + `HX-Refresh`, or 422 |
 | `GET /healthz` | Liveness |
 
 `:id` is the library-relative folder path, percent-encoded **per segment**: separators
@@ -1023,6 +1039,62 @@ scene that failed to build is indistinguishable from a machine with no GPU. Only
 **The environment is generated, not fetched.** A `MeshStandardMaterial` with no
 environment renders as a flat silhouette, and an HDR file would put a megabyte of asset in
 the jar. `RoomEnvironment` through `PMREMGenerator` costs nothing at build time.
+
+### 7.3 The library root, as a setting
+
+Shipyard has exactly one thing it cannot infer: where the STL library is. Everything else
+in `config.edn` is a measured tunable with a defensible default; this is a fact about the
+user's machine. So it has no default, `POST /settings` sets it, and layer 3 of §2.1
+remembers it.
+
+**Relocating mutates three components in place; it does not rebuild them.** The route
+table closes over its dependencies at build time - `routes` is a tree of
+`(partial handler deps)` - so a rebuilt component would be invisible to every handler
+already holding the old one. `shipyard.http.settings/relocate!` therefore:
+
+1. **persists first.** If the write throws, nothing has changed and the message the user
+   gets is true. Applying first would leave a running application whose library silently
+   reverts at the next restart - the failure nobody thinks to check for. It is the same
+   file-first rule §4 states for the catalog, for the same reason.
+2. rescans the library (`index/set-root!` resets one atom holding root, parts and index),
+3. re-ingests the catalog (`db/reingest!` - datascript is derived, so a new connection is
+   the cheapest correct answer to "the library moved"),
+4. clears the job table (`jobs/clear!`).
+
+**A success answers `HX-Refresh: true`, not a fragment.** The library has been replaced
+wholesale: the filter facets in the shell were built from the old one, and so was every
+part id the detail panel and the viewport are holding. Swapping only the results list
+would leave a page describing two libraries at once.
+
+**Two things outlive the root that created them**, and both are handled where they are
+observed rather than by trying to stop them:
+
+- *A preprocess job in flight.* Its part id is library-relative, so recording its result
+  after a relocation would file a mesh key under a different library's part.
+  `index/record-mesh-key!` drops results for part ids the current library does not
+  contain.
+- *The scan index on disk.* It is keyed by library-relative part id, which was unambiguous
+  only while there was one root. Two libraries can each hold `Cruiser/Hull`, and serving
+  one's cached mesh key for the other hands the viewport a mesh of the wrong ship. There
+  is therefore **one index file per library**, named by a digest of the root path (§5.4),
+  so switching between two libraries is free in both directions rather than re-hashing
+  both every time. Each file also carries a `:root` stamp and a mismatch reads as empty -
+  belt and braces, and it makes the file self-describing when you are looking at a cache
+  directory full of digests.
+
+  The cost is that index files for libraries you have stopped using are not collected.
+  One is a few hundred kilobytes against a mesh cache measured in gigabytes, so nothing
+  reclaims them yet; the `:root` stamp is what a future sweep would read.
+
+**Whether the root is there is checked, not remembered.** A drive can be unmounted, or a
+folder renamed, under a running server. The cost of asking is one `stat` per `/library`
+request; the cost of remembering is a panel that lists a library which is no longer
+mounted, every row of which 404s when clicked.
+
+**What the validator refuses is deliberately narrow**: a path that is blank, absent, not a
+directory, or unreadable. An empty folder is accepted, because "there is nothing here" is
+a true and fixable answer to *where is your library*, whereas refusing the path is
+Shipyard telling the user they are wrong about where their own files are.
 
 ## 8. Build
 

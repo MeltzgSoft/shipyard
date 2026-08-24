@@ -117,6 +117,43 @@
   [:div.detail.detail--empty
    [:p.detail__error "No such part: " [:code id]]])
 
+;; --- the library location ---------------------------------------------------
+
+(defn settings-form
+  "Where the library is, and how to change it (issue #35).
+
+  `id` because this form appears twice on a first run - collapsed in the panel
+  header, and open in the results area where the parts would have been - and
+  two elements cannot share one. htmx targets the message box by id, so the two
+  copies must not fight over it."
+  [{:keys [id root error]}]
+  [:form.settings__form
+   {:id        id
+    :hx-post   "/settings"
+    :hx-target (str "#" id "-message")
+    :hx-swap   "innerHTML"}
+   [:label.settings__field {:for (str id "-root")} "Library folder"
+    [:input {:type         "text"
+             :id           (str id "-root")
+             :name         "root"
+             :value        (or root "")
+             :placeholder  "/path/to/your/models"
+             :autocomplete "off"
+             :spellcheck   "false"}]]
+   [:button.settings__save {:type "submit"} "Use this folder"]
+   [:div.settings__message {:id (str id "-message")}
+    (when error [:p.detail__error error])]])
+
+(defn settings-panel
+  "The always-available copy, collapsed. A library you have already found is
+  not something you want a form about, but changing it must not require finding
+  a config file."
+  [root]
+  [:details.settings
+   [:summary.settings__summary "Library folder"]
+   [:p.settings__current (if root [:code root] [:span.muted "not set"])]
+   (settings-form {:id "settings" :root root})])
+
 ;; --- shell ------------------------------------------------------------------
 
 (defn- options [selected-label values]
@@ -148,7 +185,7 @@
   "`GET /`. The canvas is created once here and never again: it is an island
   holding a WebGL context and hundreds of megabytes of GPU buffers, so it is
   marked `hx-preserve` and is never the target of a swap (SPEC §6.1)."
-  [facets]
+  [facets root]
   [:html {:lang "en"}
    [:head
     [:meta {:charset "utf-8"}]
@@ -166,6 +203,7 @@
     [:main.layout
      [:section#library.panel
       [:h2.panel__title "Library"]
+      (settings-panel root)
       (filter-form facets)
       [:div#library-results.results
        [:p.muted "Loading the library…"]]]
@@ -173,10 +211,21 @@
       [:canvas#viewport.stage__canvas {:hx-preserve "true"}]
       [:aside#detail.panel.stage__detail (detail-empty)]]]]])
 
+(defn library-needs-root
+  "First run: no root has ever been set. Ask for one where the parts would have
+  been, rather than reporting an empty library - which would be true and
+  useless."
+  []
+  [:div#library-results.results
+   [:p "Shipyard does not know where your models are yet."]
+   (settings-form {:id "setup" :root nil})])
+
 (defn library-unavailable
-  "The root directory is missing. The process still starts - a hard failure here
-  makes a fresh install unusable - so say so where the parts would have been."
+  "A root was set, and it is not there any more - a renamed folder, or an
+  unmounted drive. The process still starts, so say so where the parts would
+  have been and offer the same form."
   [root]
   [:div#library-results.results
    [:p.detail__error "No library at " [:code root] "."]
-   [:p.muted "Set SHIPYARD_LIBRARY, or put the path in your config file, and restart."]])
+   [:p.muted "The folder may have moved, or the drive it is on may not be mounted."]
+   (settings-form {:id "setup" :root root})])

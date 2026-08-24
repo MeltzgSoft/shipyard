@@ -6,7 +6,7 @@
   travel with a part folder that gets copied elsewhere."
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
-            [shipyard.library.index :as index])
+            [shipyard.system :as system])
   (:import [java.io File]))
 
 (def filename "shipyard.edn")
@@ -35,7 +35,7 @@
   a failed transact leaves the data safe on disk (§1.2)."
   [root part-id data]
   (let [f (sidecar-file root part-id)]
-    (index/write-atomically! f (pr-str (assoc data :shipyard/version format-version)))
+    (system/write-atomically! f (pr-str (assoc data :shipyard/version format-version)))
     f))
 
 (defn update-sidecar!
