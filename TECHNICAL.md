@@ -1443,7 +1443,7 @@ Targets M1 must hold. Measured on the Human Navy Cruiser (SPEC §4).
 | Operation | Budget |
 |---|---|
 | Cold scan, 1,661 part folders | < 2 s |
-| Warm start from `index.edn` | < 500 ms |
+| Warm start from the scan index (§5.4) | < 500 ms |
 | Preprocess Cruiser hull (133k tris) | < 2 s |
 | Preprocess heaviest part (1.2M tris) | < 15 s |
 | Serve cached `.symesh` | < 50 ms |
