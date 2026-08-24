@@ -91,14 +91,24 @@ Tests come in three levels separated by **what they are allowed to touch**, not 
 unit touches nothing outside the process, integration gets the filesystem and natives,
 e2e drives a real browser. See TECHNICAL.md §10.
 
-The e2e suite needs Chrome or Chromium and a matching `chromedriver` on `PATH`, and it
-needs both gitignored front-end assets in place: the viewport bundle from the **dev**
-build - only that one defines the `window.__shipyard` introspection hook the assertions
-read - and htmx, which is copied out of `node_modules` rather than bundled. Without htmx
-the page renders and nothing ever loads the library, which reads exactly like a server
-bug; the suite checks for both up front and tells you which command to run. Set `SHIPYARD_CHROME` if your
-browser is not at one of the usual paths. The suite is hermetic: its library, mesh cache
-and scan index all live in a temp directory, so it never touches your real one.
+The e2e suite brings its own browser. Fetch it once per machine:
+
+```bash
+java -cp "$(clojure -Spath -M:test)" com.microsoft.playwright.CLI install --with-deps chromium
+```
+
+Playwright downloads a Chromium versioned with the library into
+`~/.cache/ms-playwright`, so nothing needs installing system-wide and there is no
+`chromedriver` to keep in step. `--with-deps` also installs the shared libraries Chromium
+needs, and wants `sudo`; drop it if they are already present.
+
+It also needs both gitignored front-end assets in place: the viewport bundle from the
+**dev** build - only that one defines the `window.__shipyard` introspection hook the
+assertions read - and htmx, which is copied out of `node_modules` rather than bundled.
+Without htmx the page renders and nothing ever loads the library, which reads exactly like
+a server bug; the suite checks for both up front and tells you which command to run. The
+suite is hermetic: its library, mesh cache and scan index all live in a temp directory, so
+it never touches your real one.
 
 ### Git hooks
 

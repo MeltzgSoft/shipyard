@@ -47,8 +47,12 @@
   ;; --- test ---------------------------------------------------------------
   :test
   {:extra-paths ["test/clj" "test/cljc"]
-   :extra-deps  {lambdaisland/kaocha {:mvn/version "1.91.1392"}
-                 etaoin/etaoin       {:mvn/version "1.1.43"}}
+   ;; Playwright rather than a WebDriver client: it ships the browser it drives,
+   ;; versioned with the library, so the E2E level needs no system Chrome and no
+   ;; separately-matched chromedriver (issue #49). `playwright install chromium`
+   ;; fetches it.
+   :extra-deps  {lambdaisland/kaocha            {:mvn/version "1.91.1392"}
+                 com.microsoft.playwright/playwright {:mvn/version "1.62.0"}}
    :jvm-opts    ["--enable-native-access=ALL-UNNAMED"
                  "--sun-misc-unsafe-memory-access=allow"]
    :main-opts   ["-m" "kaocha.runner"]}
