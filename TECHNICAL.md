@@ -1279,11 +1279,56 @@ But fixtures only contain problems we already know about. The ASCII STL (§6.1) 
 by scanning the real collection, and no fixture suite would ever have produced it. So
 there is a fourth thing, deliberately not a test level:
 
-**A library canary** - `clojure -M:canary` - runs the scanner and preprocessor across the
-whole real library and reports anomalies: files failing the `84 + 50n` check, welds
-breaching the V/T ceiling, empty or non-manifold meshes, parts with no renderable variant.
-Run on demand and after acquiring new bundles. It is a data-quality probe, not a pass/fail
-gate, and it belongs to no CI job.
+**A library canary** - `clojure -M:natives-linux:canary` - runs the scanner and
+preprocessor across the whole real library and reports anomalies. Run on demand and after
+acquiring new bundles.
+It is a data-quality probe, not a pass/fail gate, it belongs to no CI job, and it **always
+exits 0** - a non-zero exit invites somebody to wire it in, where it would fail on data
+the repository does not control.
+
+| Finding | What it means |
+|---|---|
+| `:no-renderable-variant` | Only `supported.stl` ships. 73 folders. |
+| `:header-size-mismatch` | `84 + 50n` does not hold, so the header is not to be trusted. |
+| `:empty-mesh` | A valid binary header declaring zero triangles. |
+| `:zero-volume` | Flat: an axis under 0.1 µm, or a signed volume near zero. |
+| `:vertex-ratio-breach` | Welding did not take: V/T at or above 2.5 (§6.2). |
+| `:high-vertex-ratio` | V/T above the 1.25 warning line but still welding. |
+| `:missing-tiers` | Fewer LOD tiers came back than were asked for. |
+| `:preprocess-failed` | Anything else, with the path and the message. |
+
+Every kind is printed even at zero. `0 header-size-mismatch` is information; a missing
+row is not.
+
+**It never writes, and that is checked by content.** It parses, welds and simplifies
+entirely in memory and never calls the mesh cache - filling a 10 GB cache as a side effect
+of auditing would evict everything the user actually looks at. The integration test hashes
+every file in a fixture library before and after a run and compares; a weaker check would
+miss a rewrite that preserved length.
+
+**Four threads, not `availableProcessors + 2`.** Each worker holds a parsed hull plus its
+welded and simplified derivatives, and the largest source here is 57.8 MB. A dozen at once
+blows the 2 GB peak budget (§11). The canary is allowed to be slow; it is not allowed to
+die three hours in. `--threads` overrides it.
+
+**Measured on the real library**, 1,661 parts across 19 GB, four threads: **65 s wall**,
+258 s CPU. It completes under `-Xmx1g`, well inside §11's 2 GB peak-heap budget - the
+3.4 GB RSS an unconstrained run shows is memory-mapped STL pages and LWJGL native buffers,
+not heap. The findings were 1 header mismatch (the known ASCII file), 73 supported-only
+folders, 31 welds above the 1.25 warning line, and nothing at all in the other five
+categories. A `find -printf '%P\t%s\t%T@'` snapshot of all 4,781 files was identical
+before and after.
+
+**Findings are classified from `ex-data`, never from the message text.** Both the parser
+and the weld guard say what went wrong in data. A canary that grepped their prose would
+silently reclassify everything the day somebody rewrote a sentence.
+
+It has already earned its place: a 0-triangle binary STL used to fail with
+`Value out of range for float: Infinity` - the bbox accumulators stay at their infinities
+when there is nothing to accumulate - which is true and tells the reader nothing. The
+parser now refuses that file by name, and only the binary path can make that call, since
+a truncated file reaches the ASCII fallback with zero vertices too and is corrupt rather
+than empty.
 
 ## 11. Performance budgets
 
@@ -1298,6 +1343,7 @@ Targets M1 must hold. Measured on the Human Navy Cruiser (SPEC §4).
 | Serve cached `.symesh` | < 50 ms |
 | Viewport, one ship (270k-600k tris) | 60 fps |
 | Peak heap, preprocessing | < 2 GB |
+| Canary, whole library, 4 threads | 65 s, and completes under `-Xmx1g` (§10.4) |
 
 If the cold preprocess budget fails, the lazy-cache design is what protects the user
 experience - it is paid once per part, ever.
