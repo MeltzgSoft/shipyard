@@ -281,12 +281,16 @@ JSON event that the viewport listens for.
     {:status  200
      :headers {"HX-Trigger"
                (json/write-str
-                 {:shipyard/set-part
-                  {:slot      "prow"
-                   :mesh      (str "/mesh/" (mesh-key loadout :prow) ".glb")
-                   :transform (mount-transform loadout :prow)}})}
+                 {"shipyard:set-part"
+                  (pr-str {:slot      "prow"
+                           :mesh      (str "/mesh/" (mesh-key loadout :prow) ".0.symesh")
+                           :transform (mount-transform loadout :prow)})})}
      :body    (h/html (picker-panel loadout))}))
 ```
+
+The outer object is JSON because htmx parses this header itself and dispatches one event
+per key; the payload inside is EDN. TECHNICAL.md §7.1 has the details and the client
+side.
 
 The server stays authoritative over loadouts, fleets and schemes - which is what we want,
 since all three are persisted anyway.
