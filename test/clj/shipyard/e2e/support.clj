@@ -64,17 +64,53 @@
   {"resources/public/js/viewport.js" "npx shadow-cljs compile viewport"
    "resources/public/js/htmx.min.js" "cp node_modules/htmx.org/dist/htmx.min.js resources/public/js/"})
 
+(def ^:private viewport-sources
+  "Everything the viewport bundle is compiled from."
+  ["src/cljs" "src/cljc"])
+
+(defn- newest-source
+  "The most recently modified source file, or nil if there are none."
+  []
+  (->> viewport-sources
+       (filter fs/directory?)
+       (mapcat #(fs/glob % "**.{cljs,cljc}"))
+       (map fs/file)
+       (sort-by #(.lastModified ^File %))
+       last))
+
 (defn assert-bundle!
   "Fail with the command to run rather than with a twenty-second wait for an
   element that was never going to appear.
 
   Missing htmx is the interesting one: the page renders, the canvas is there,
   and nothing ever loads the library - which reads exactly like a server bug
-  and is not one."
+  and is not one.
+
+  **And the bundle has to be newer than the source it was built from** (#51).
+  It is gitignored, so it survives `git switch`, and a suite that only checked
+  for its existence would test one branch's source against another branch's
+  bundle. That happened during #49 and reported failures for behaviour the
+  checked-out code did not have - which reads as an application bug, and would
+  have been worse the other way round: a stale bundle passing tests for code
+  that is not there.
+
+  mtime rather than a content hash, because a checkout updates the mtime of
+  every file it changes. Switching between branches whose viewport source is
+  identical touches nothing and the bundle stays valid; switching to one that
+  moved it does, and that is the case worth catching."
   []
   (doseq [[path fix] required-assets]
     (when-not (fs/regular-file? path)
-      (throw (ex-info (str "missing " path " - run `" fix "` first") {:path path})))))
+      (throw (ex-info (str "missing " path " - run `" fix "` first") {:path path}))))
+  (let [bundle  (fs/file "resources/public/js/viewport.js")
+        source  (newest-source)]
+    (when (and source (< (.lastModified bundle) (.lastModified ^File source)))
+      (throw (ex-info
+              (str "stale viewport bundle: " (str source) " is newer than "
+                   (str bundle) " - run `npx shadow-cljs compile viewport` first.\n"
+                   "The bundle is gitignored, so it survives a branch switch and would "
+                   "otherwise be tested against source it was not built from.")
+              {:bundle (str bundle) :source (str source)})))))
 
 (defn- config [root cache-home]
   {:shipyard.library/index {:root (str root) :cache-home (str cache-home)}
