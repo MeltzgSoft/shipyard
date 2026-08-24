@@ -1279,8 +1279,9 @@ But fixtures only contain problems we already know about. The ASCII STL (§6.1) 
 by scanning the real collection, and no fixture suite would ever have produced it. So
 there is a fourth thing, deliberately not a test level:
 
-**A library canary** - `clojure -M:canary` - runs the scanner and preprocessor across the
-whole real library and reports anomalies. Run on demand and after acquiring new bundles.
+**A library canary** - `clojure -M:natives-linux:canary` - runs the scanner and
+preprocessor across the whole real library and reports anomalies. Run on demand and after
+acquiring new bundles.
 It is a data-quality probe, not a pass/fail gate, it belongs to no CI job, and it **always
 exits 0** - a non-zero exit invites somebody to wire it in, where it would fail on data
 the repository does not control.
