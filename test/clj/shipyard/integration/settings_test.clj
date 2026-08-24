@@ -6,6 +6,7 @@
   claims is about the filesystem: what is on disk, what gets scanned, and what
   is still there after a restart."
   (:require [babashka.fs :as fs]
+            [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
@@ -182,11 +183,14 @@
       (is (= "f00d" (index/mesh-key library part-id))))
 
     (testing "the files are distinct, and each names the root it belongs to"
-      (let [files (->> (fs/list-dir (fs/file cache "shipyard"))
-                       (map (comp slurp fs/file)))]
-        (is (= 2 (count files)))
-        (is (some #(str/includes? % (str a)) files))
-        (is (some #(str/includes? % (str b)) files))))))
+      ;; Parsed, not grepped: `pr-str` escapes the backslashes in a Windows
+      ;; path, so the stamp on disk does not read back as the path that made
+      ;; it. The stamp is EDN and comparing it as anything else is a bug in
+      ;; the test.
+      (let [roots (->> (fs/list-dir (fs/file cache "shipyard"))
+                       (map (comp :root edn/read-string slurp fs/file))
+                       set)]
+        (is (= #{(str a) (str b)} roots))))))
 
 ;; --- what the validator refuses ---------------------------------------------
 
