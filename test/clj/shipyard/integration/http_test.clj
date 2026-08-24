@@ -8,11 +8,10 @@
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [integrant.core :as ig]
-            [shipyard.catalog.db :as db]
             [shipyard.fixtures :as f]
             [shipyard.http.jobs :as jobs]
             [shipyard.http.routes :as routes]
-            [shipyard.library.scan :as scan]
+            [shipyard.library.index :as index]
             [shipyard.wire :as wire])
   (:import [java.io File]))
 
@@ -41,19 +40,25 @@
     root))
 
 (defn- system
-  "The component map the router is handed, built the way integrant builds it."
+  "The component map the router is handed, built the way integrant builds it.
+
+  The library and catalog go through their real `init-key`s, pointed at a temp
+  cache home: they own a mutable state atom now that the root is a setting
+  (issue #35), and a hand-built stand-in would be free to drift out of the
+  shape the handlers read."
   [root]
-  (let [parts   (scan/scan root)
-        library {:root (str root) :available true :parts parts
-                 :index (atom {}) :index-file (io/file (temp-dir "shipyard-idx") "index.edn")}
+  (let [library (ig/init-key :shipyard.library/index
+                             {:root (str root) :cache-home (temp-dir "shipyard-idx")})
         ;; Built by hand rather than through init-key: that one parks the cache
         ;; under XDG_CACHE_HOME, and a test must not evict the developer's real
         ;; cache to prove a point.
         cache   {:dir (temp-dir "shipyard-http-cache") :crease-deg 35
                  :lod-tiers [1.0 0.25 0.05] :cap-bytes 64000000 :inflight (atom {})}
-        catalog {:conn (db/ingest parts (str root)) :root (str root)}
+        catalog (ig/init-key :shipyard.catalog/db {:library library})
         jobs    (ig/init-key :shipyard.http/jobs {:library library :cache cache})]
-    {:library library :catalog catalog :cache cache :jobs jobs}))
+    {:library library :catalog catalog :cache cache :jobs jobs
+     ;; Never the developer's real config dir: relocating writes a file.
+     :config-dir (temp-dir "shipyard-cfg")}))
 
 (defn- handler [sys] (routes/handler sys))
 
@@ -156,7 +161,7 @@
         h   (handler sys)]
     (await-ready h hull-id)
     (testing "the mesh key is written back to the scan index (§5.4)"
-      (is (re-matches #"[0-9a-f]{64}" (:mesh-key (get @(:index (:library sys)) hull-id)))))
+      (is (re-matches #"[0-9a-f]{64}" (index/mesh-key (:library sys) hull-id))))
     (testing "so a later request is answered without a poll"
       (let [r (GET h (str "/part/" (str/replace hull-id " " "%20")))]
         (is (get (triggers r) "shipyard:load-mesh"))
@@ -261,6 +266,8 @@
       (is (not= :failed (:state (jobs/status (:jobs sys) hull-id)))))))
 
 (deftest missing-library-root-says-so
-  (let [sys (assoc-in (system (library-tree)) [:library :available] false)
+  (let [sys (system (library-tree))
         h   (handler sys)]
+    ;; The folder is renamed, or its drive unmounted, under a running server.
+    (index/set-root! (:library sys) "/no/such/library")
     (is (str/includes? (:body (GET h "/library")) "No library at"))))

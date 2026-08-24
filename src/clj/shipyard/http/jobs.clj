@@ -41,6 +41,18 @@
   (swap! state dissoc part-id)
   nil)
 
+(defn clear!
+  "Forget every recorded result.
+
+  Used when the library relocates. The table is keyed by part id, and a part id
+  is library-relative: after a relocation a recorded `:ready` would hand the
+  viewport the previous library's mesh for whatever now sits at that path.
+  Jobs already in flight are left to finish - `index/record-mesh-key!` drops
+  results that no longer belong to the current library."
+  [{:keys [state]}]
+  (reset! state {})
+  nil)
+
 (defn- execute [{:keys [state library cache]} part-id source]
   (let [result (try
                  (let [{:keys [mesh-key tris]} (cache/ensure! cache source)]

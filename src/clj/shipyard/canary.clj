@@ -212,7 +212,7 @@
     (println)))
 
 (defn write-report! [file report]
-  (index/write-atomically! (fs/file file) (with-out-str (pp/pprint report)))
+  (system/write-atomically! (fs/file file) (with-out-str (pp/pprint report)))
   file)
 
 ;; --- entry point ------------------------------------------------------------
@@ -233,6 +233,12 @@
         cfg   (system/load-config)
         root  (or root (get-in cfg [:shipyard.library/index :root]))
         cache (get cfg :shipyard.mesh/cache)
+        _     (when-not root
+                ;; There is no default library any more (issue #35), and the
+                ;; server's setting may never have been made. Say which, rather
+                ;; than scanning nil and reporting a library of zero parts.
+                (println "No library root. Pass --root, or set one in Shipyard first.")
+                (System/exit 2))
         _     (println "scanning" root "...")
         all   (vec (scan/scan (fs/file root)))
         parts (if limit (subvec all 0 (min (long limit) (count all))) all)

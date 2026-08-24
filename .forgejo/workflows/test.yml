@@ -261,7 +261,15 @@ jobs:
           mkdir -p "$lib/Test Bundle/Cruiser/Cube"
           cp test/fixtures/cube-ascii-crlf.stl "$lib/Test Bundle/Cruiser/Cube/unsupported.stl"
 
-          SHIPYARD_LIBRARY="$lib" java -jar target/shipyard-0.1.0-SNAPSHOT.jar > run.log 2>&1 &
+          # There is no default library and no SHIPYARD_LIBRARY any more
+          # (issue #35). Point the jar at one the way the settings form does,
+          # by writing the file it writes - which makes this job a check on
+          # that format as well as on the jar.
+          cfg="$(mktemp -d)"
+          mkdir -p "$cfg/shipyard"
+          printf '{:root "%s"}\n' "$lib" > "$cfg/shipyard/library.edn"
+
+          XDG_CONFIG_HOME="$cfg" java -jar target/shipyard-0.1.0-SNAPSHOT.jar > run.log 2>&1 &
           jar_pid=$!
           trap 'kill "$jar_pid" 2>/dev/null || true' EXIT
 

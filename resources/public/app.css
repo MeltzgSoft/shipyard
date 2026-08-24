@@ -165,3 +165,41 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
   cursor: pointer;
 }
 .detail--empty { color: var(--ink-faint); }
+
+/* --- library location ---------------------------------------------------- */
+
+.settings { margin-bottom: 0.9rem; font-size: 0.8rem; }
+.settings__summary {
+  cursor: pointer;
+  color: var(--ink-dim);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.settings__current { margin: 0.35rem 0 0; font-size: 0.75rem; color: var(--ink-faint); word-break: break-word; }
+.settings__form { display: grid; gap: 0.4rem; margin-top: 0.5rem; }
+.settings__field { display: grid; gap: 0.25rem; font-size: 0.8rem; color: var(--ink-dim); }
+.settings__field input {
+  background: var(--panel-2);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.3rem 0.4rem;
+  font: inherit;
+  font-size: 0.85rem;
+  min-width: 0;
+}
+.settings__field input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.settings__save {
+  justify-self: start;
+  background: var(--panel-2);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.3rem 0.7rem;
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.settings__save:hover { border-color: var(--accent); }
+.settings__message:empty { display: none; }

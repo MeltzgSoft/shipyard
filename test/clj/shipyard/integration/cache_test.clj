@@ -5,7 +5,8 @@
             [clojure.test :refer [deftest is testing]]
             [shipyard.fixtures :as f]
             [shipyard.library.index :as index]
-            [shipyard.mesh.cache :as cache])
+            [shipyard.mesh.cache :as cache]
+            [shipyard.system :as system])
   (:import [java.io File]
            [java.util.concurrent Executors TimeUnit]))
 
@@ -54,20 +55,25 @@
     (is (not (index/fresh? nil src)))))
 
 (deftest index-roundtrips-and-survives-corruption
-  (let [f (io/file (temp-dir "shipyard-idx") "index.edn")]
-    (index/save-index! f {"a/b" {:mtime 1 :size 2 :mesh-key "k"}})
-    (is (= {"a/b" {:mtime 1 :size 2 :mesh-key "k"}} (index/load-index f)))
+  (let [f       (io/file (temp-dir "shipyard-idx") "index.edn")
+        entries {"a/b" {:mtime 1 :size 2 :mesh-key "k"}}]
+    (index/save-index! f "/lib" entries)
+    (is (= entries (index/load-index f "/lib")))
+    (testing "entries scanned from another root are not this library's"
+      ;; A part id is library-relative, so two libraries can hold the same one.
+      ;; Serving the stored mesh key would hand back a mesh of the wrong ship.
+      (is (= {} (index/load-index f "/somewhere-else"))))
     (testing "a corrupt index costs a rescan, never correctness"
       (spit f "{{{not edn")
-      (is (= {} (index/load-index f))))
+      (is (= {} (index/load-index f "/lib"))))
     (testing "a missing index is empty, not an error"
-      (is (= {} (index/load-index (io/file "/no/such/index.edn")))))))
+      (is (= {} (index/load-index (io/file "/no/such/index.edn") "/lib"))))))
 
 (deftest atomic-write-leaves-no-partial-file
   (let [target (io/file (temp-dir "shipyard-atomic") "out.edn")]
-    (index/write-atomically! target "first")
+    (system/write-atomically! target "first")
     (is (= "first" (slurp target)))
-    (index/write-atomically! target "second")
+    (system/write-atomically! target "second")
     (is (= "second" (slurp target)))
     (testing "no temp files left behind"
       (is (empty? (filter #(re-find #"\.tmp$" (.getName ^File %))
