@@ -92,6 +92,9 @@
           (str "camera target " (pr-str target) " should be near " (pr-str s/prow-offset))))))
 
 (deftest selecting-an-unpreviewable-part-clears-the-scene
+  ;; The other half of the selection story: `show-only!` decides what replaces
+  ;; what, `shipyard:clear` is what empties the scene when there is nothing to
+  ;; show at all.
   (open-app!)
   (select-part! "Cruiser Hull")
   (s/await-part *driver* s/hull-id)
@@ -101,39 +104,80 @@
   (testing "and the panel says why rather than going blank"
     (is (str/includes? (e/get-element-text *driver* {:css "#detail"}) "supported STL"))))
 
-(deftest repeated-loads-do-not-accumulate
-  (testing "twenty parts in sequence must not grow GPU memory without bound, so
-            a replaced part is disposed rather than merely removed"
+(deftest selecting-another-part-replaces-the-first
+  (testing "M1 is a single-part viewer (SPEC §10): picking a part shows that part"
     (open-app!)
+    (select-part! "Cruiser Hull")
+    (is (= [s/hull-id] (vec (:parts (s/await-part *driver* s/hull-id)))))
+
+    ;; **Both renderable.** That is the whole point: an unrenderable part fires
+    ;; `shipyard:clear` and empties the scene as a side effect, which is how
+    ;; #47 hid behind a green suite for a whole milestone.
+    (select-part! "Classic Ram Prow")
+    (let [stats (s/await-part *driver* s/prow-id)]
+      (is (= [s/prow-id] (vec (:parts stats)))
+          "the hull should be gone, not sitting behind the prow"))))
+
+(deftest repeated-loads-do-not-accumulate
+  (testing "parts in sequence must not grow GPU memory without bound, so a
+            replaced part is disposed rather than merely removed"
+    (open-app!)
+    ;; Alternating two *renderable* parts, so nothing here is cleared as a side
+    ;; effect - every replacement is `show-only!` doing its job.
     (dotimes [_ 3]
       (select-part! "Cruiser Hull")
       (s/await-part *driver* s/hull-id)
-      (select-part! "Supported Only Prow")
-      (s/wait-until #(empty? (s/loaded-parts *driver*))))
+      (select-part! "Classic Ram Prow")
+      (s/await-part *driver* s/prow-id))
     (select-part! "Cruiser Hull")
-    (is (= [s/hull-id] (vec (:parts (s/await-part *driver* s/hull-id)))))))
+    (let [stats (s/await-part *driver* s/hull-id)]
+      (is (= [s/hull-id] (vec (:parts stats)))))))
+
+(deftest a-replaced-part-is-disposed-not-merely-removed
+  (testing "`parts` is bookkeeping; it shrinks whether or not the GPU buffers
+            were released. three's own geometry count is what tells them apart."
+    (open-app!)
+    (select-part! "Cruiser Hull")
+    (let [baseline (:geometries (s/await-part *driver* s/hull-id))]
+      (is (pos? baseline) "the stats hook should be reporting live geometries")
+      (dotimes [_ 4]
+        (select-part! "Classic Ram Prow")
+        (s/await-part *driver* s/prow-id)
+        (select-part! "Cruiser Hull")
+        (s/await-part *driver* s/hull-id))
+      (let [after (:geometries (s/await-part *driver* s/hull-id))]
+        (is (<= after baseline)
+            (str "geometries grew from " baseline " to " after
+                 " over four selection cycles - a replaced part was removed "
+                 "from the scene without being disposed"))))))
 
 ;; --- the island -------------------------------------------------------------
 
 (deftest htmx-swaps-leave-the-webgl-context-alive
   (open-app!)
   (select-part! "Cruiser Hull")
-  (let [before (s/await-part *driver* s/hull-id)]
-    ;; Mark the live canvas from JS. If htmx ever replaces the element, the
-    ;; marker goes with it - which is exactly the failure hx-preserve prevents.
-    (e/js-execute *driver* "document.getElementById('viewport').__alive = 42;")
-    (testing "swap the library panel and the detail panel"
-      (e/select *driver* {:css "select[name=bundle]"} "Ork Fleet Bundle")
-      (is (s/wait-until #(= 1 (count (e/query-all *driver* {:css "#library-results .part"})))))
-      (select-part! "Ram Ship")
-      (s/await-part *driver* s/ork-id))
-    (testing "the canvas element survived both"
-      (is (= 42 (e/js-execute *driver* "return document.getElementById('viewport').__alive;"))))
-    (testing "and the hull is still on the GPU - nothing was re-uploaded"
-      (let [after (s/stats *driver*)]
-        (is (= #{s/hull-id s/ork-id} (set (:parts after))))
-        (is (> (:vertices after) (:vertices before))
-            "the second part was added to the live scene, not to a rebuilt one")))))
+  (s/await-part *driver* s/hull-id)
+  ;; Mark the live canvas from JS. If htmx ever replaces the element, the
+  ;; marker goes with it - which is exactly the failure hx-preserve prevents.
+  (e/js-execute *driver* "document.getElementById('viewport').__alive = 42;")
+  (testing "swap the library panel and the detail panel"
+    (e/select *driver* {:css "select[name=bundle]"} "Ork Fleet Bundle")
+    (is (s/wait-until #(= 1 (count (e/query-all *driver* {:css "#library-results .part"})))))
+    (select-part! "Ram Ship")
+    (s/await-part *driver* s/ork-id))
+  (testing "the canvas element survived both"
+    (is (= 42 (e/js-execute *driver* "return document.getElementById('viewport').__alive;"))))
+  (testing "and the surviving context is still drawing"
+    ;; This block used to assert the hull was **still in the scene** alongside
+    ;; the ork, and that vertices had grown - using accumulation as its proof
+    ;; that nothing had been rebuilt. #47 made a new selection replace the
+    ;; scene, so that proof is gone, and it was never the load-bearing one: the
+    ;; marker above is. A rebuilt canvas loses it.
+    (let [after (s/stats *driver*)]
+      (is (= [s/ork-id] (vec (:parts after)))
+          "the swap did not disturb the selection policy")
+      (is (pos? (:vertices after)))
+      (is (pos? (:draws after)) "the same context is still rendering"))))
 
 ;; --- pixels -----------------------------------------------------------------
 

@@ -80,13 +80,38 @@
 
 ;; --- scene bookkeeping ------------------------------------------------------
 
-(defn- put-part! [{:keys [^js scene parts] :as sys} part-id obj]
+(defn- put-part!
+  "Put `obj` in the scene as `part-id`, disposing whatever was there under that
+  id. The primitive: it replaces one part and leaves the rest alone, which is
+  what M3 assembly will want when a slot changes."
+  [{:keys [^js scene parts] :as sys} part-id obj]
   (when-let [old (get @parts part-id)]
     (.remove scene old)
     (dispose! old))
   (swap! parts assoc part-id obj)
   (.add scene obj)
   sys)
+
+(defn- show-only!
+  "Make `obj` the only thing in the scene.
+
+  M1 is a single-part viewer (SPEC §10) - picking a part shows that part - and
+  `put-part!` alone does not give you that. Keyed by part id, it replaces the
+  same part and adds a different one, so browsing the library accumulated a
+  mesh per part until the tab ran out of GPU memory (#47).
+
+  The keyed map stays, because M3 assembly holds several parts at once. This is
+  the M1 policy on top of it, and it lives on the client on purpose: the
+  alternative - having the server emit `shipyard:clear` alongside every
+  `shipyard:load-mesh` - makes correct behaviour depend on the dispatch order
+  of two htmx events, and empties the scene for a frame with nothing gained."
+  [{:keys [^js scene parts] :as sys} part-id obj]
+  (doseq [[id ^js old] @parts
+          :when (not= id part-id)]
+    (.remove scene old)
+    (dispose! old))
+  (swap! parts select-keys [part-id])
+  (put-part! sys part-id obj))
 
 (defn clear! [{:keys [^js scene parts]}]
   (doseq [[_ ^js obj] @parts]
@@ -107,7 +132,7 @@
                (let [{:keys [bbox-min bbox-max] :as mesh} (wire/decode buf)
                      obj (three/Mesh. (decode->geometry mesh) (material))]
                  (set! (.-name obj) (or part-id url))
-                 (put-part! sys part-id obj)
+                 (show-only! sys part-id obj)
                  (when frame (frame! sys bbox-min bbox-max))
                  (swap! (:status sys) assoc :state :loaded :part-id part-id)
                  scene)))
@@ -131,6 +156,12 @@
          :draws     (.. renderer -info -render -calls)
          :target    (let [t (.-target controls)] #js [(.-x t) (.-y t) (.-z t)])
          :materials (clj->js (mapv (fn [^js o] (.getHexString (.. o -material -color))) objs))
+         ;; three's own count of geometries live on the GPU, decremented by
+         ;; `geometry.dispose()`. The only thing here that is not derived from
+         ;; `parts`, and therefore the only one that can tell "removed from the
+         ;; scene" from "actually released" - which is what #47's test claimed
+         ;; to check and could not.
+         :geometries (.. renderer -info -memory -geometries)
          :status    (clj->js (:state @status))}))
 
 ;; --- lifecycle --------------------------------------------------------------
