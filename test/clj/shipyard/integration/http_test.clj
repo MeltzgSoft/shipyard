@@ -235,6 +235,23 @@
       (is (not (str/includes? (:body failed) "load delay:"))
           "a failed job must not be retried silently on the next poll"))))
 
+(defn- await-job-state
+  "Poll the job table until `part-id` settles on `state`.
+
+  `await-ready` is not enough to sample it: the route serves the mesh URL as
+  soon as `record-mesh-key!` has run, and `execute` records `:ready` only
+  *after* that. So a caller that waits on the HTTP response can observe the
+  worker mid-step - which is the same window the test below documents from the
+  other side."
+  [jobs part-id state]
+  (let [deadline (+ (System/currentTimeMillis) 30000)]
+    (loop []
+      (let [actual (:state (jobs/status jobs part-id))]
+        (cond
+          (= state actual)                        actual
+          (> (System/currentTimeMillis) deadline) actual
+          :else (do (Thread/sleep 50) (recur)))))))
+
 (deftest jobs-are-idempotent-under-concurrent-requests
   (let [sys (system (library-tree))
         h   (handler sys)
@@ -243,7 +260,7 @@
     (is (every? #(= 200 (:status %)) rs))
     (await-ready h hull-id)
     (testing "one job ran, not eight"
-      (is (= :ready (:state (jobs/status (:jobs sys) hull-id)))))))
+      (is (= :ready (await-job-state (:jobs sys) hull-id :ready))))))
 
 (deftest an-unwritable-index-does-not-fail-a-good-part
   (testing "recording the mesh key is an optimisation. Windows CI caught this:
