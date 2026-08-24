@@ -1167,7 +1167,7 @@ JVM refuses to start rather than ignoring it.
 
 Workflows live in `.forgejo/workflows/`: `lint.yml` (clj-kondo + cljfmt, one runner, since
 neither is platform-dependent), `pr-description.yml` (its own workflow because it triggers
-on `edited`), and `test.yml`, which holds five jobs:
+on `edited`), and `test.yml`, which holds six jobs:
 
 | Job | Runner | What it is for |
 |---|---|---|
@@ -1175,6 +1175,7 @@ on `edited`), and `test.yml`, which holds five jobs:
 | `test-windows` | windows | unit + integration - path separators, file locking, `Files.move` |
 | `test-cljs` | linux | the cljc tests on the browser runtime, proving encoder and decoder agree |
 | `test-e2e` | linux | headless Chrome (§10.3) |
+| `readme` | linux | runs README's own Development commands (§9.2) |
 | `package` | linux | the uberjar, and the only proof one runs |
 
 Level mapping (§10): **unit and integration run on both platforms**, since those are what
@@ -1226,6 +1227,39 @@ access - which makes a `-cp` invocation useless as a check of it.
 
 **The frontend inside the jar is the one the shell asks for**, since the page is fetched
 and the response actually contains the island.
+
+### 9.2 Why a job runs the README
+
+Everything else in this file is checked by running it. The README was not, and it drifted:
+#37 told people to start the server without copying htmx, so the page rendered and the
+library silently never loaded; #39 told them to run the server, the test suite and the
+canary without a platform alias, so LWJGL's natives were absent and anything touching
+geometry failed. All three were found by a person following the instructions.
+
+**CI could not have caught any of them, and staying green was the proof.** The workflows
+spelled every command correctly. Two lists have to agree - what the README prints and what
+CI runs - and only one of them was ever executed.
+
+So `readme` executes the other one. `.forgejo/scripts/check-readme-commands.sh` parses the
+fenced block under `## Development` out of README.md and runs it. **The commands are
+extracted, never restated in the script**, because a copy is exactly the failure being
+prevented.
+
+Two of them get assertions rather than an exit code, because both natives bugs let the
+process start:
+
+- *The server* is asked for the shell, for `/js/htmx.min.js`, for the library listing, and
+  for a rendered part. Only the last of those needs the natives, and only the second
+  catches a missing htmx - #37 and #39 are invisible to a health check.
+- *The canary* is checked for `liblwjgl` in its output, not for its exit code. Without the
+  natives it exits 0 and reports every part in the library as a finding, because
+  `canary.clj` catches per-part exceptions on purpose (§10.4). A probe that names broken
+  models instead names all of them, and an exit code cannot tell the difference.
+
+What cannot run is skipped **by name, with its reason, printed**: the watcher never exits,
+`:outdated` reaches the network and reports newer releases by design, and the suites that
+own their own jobs are not run twice. A silent skip is indistinguishable from a pass, and
+this job exists because things that looked like passes were not.
 
 ## 10. Testing
 
