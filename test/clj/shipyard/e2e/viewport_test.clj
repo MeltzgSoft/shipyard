@@ -92,6 +92,9 @@
           (str "camera target " (pr-str target) " should be near " (pr-str s/prow-offset))))))
 
 (deftest selecting-an-unpreviewable-part-clears-the-scene
+  ;; The other half of the selection story: `show-only!` decides what replaces
+  ;; what, `shipyard:clear` is what empties the scene when there is nothing to
+  ;; show at all.
   (open-app!)
   (select-part! "Cruiser Hull")
   (s/await-part *driver* s/hull-id)
@@ -101,17 +104,52 @@
   (testing "and the panel says why rather than going blank"
     (is (str/includes? (e/get-element-text *driver* {:css "#detail"}) "supported STL"))))
 
-(deftest repeated-loads-do-not-accumulate
-  (testing "twenty parts in sequence must not grow GPU memory without bound, so
-            a replaced part is disposed rather than merely removed"
+(deftest selecting-another-part-replaces-the-first
+  (testing "M1 is a single-part viewer (SPEC §10): picking a part shows that part"
     (open-app!)
+    (select-part! "Cruiser Hull")
+    (is (= [s/hull-id] (vec (:parts (s/await-part *driver* s/hull-id)))))
+
+    ;; **Both renderable.** That is the whole point: an unrenderable part fires
+    ;; `shipyard:clear` and empties the scene as a side effect, which is how
+    ;; #47 hid behind a green suite for a whole milestone.
+    (select-part! "Classic Ram Prow")
+    (let [stats (s/await-part *driver* s/prow-id)]
+      (is (= [s/prow-id] (vec (:parts stats)))
+          "the hull should be gone, not sitting behind the prow"))))
+
+(deftest repeated-loads-do-not-accumulate
+  (testing "parts in sequence must not grow GPU memory without bound, so a
+            replaced part is disposed rather than merely removed"
+    (open-app!)
+    ;; Alternating two *renderable* parts, so nothing here is cleared as a side
+    ;; effect - every replacement is `show-only!` doing its job.
     (dotimes [_ 3]
       (select-part! "Cruiser Hull")
       (s/await-part *driver* s/hull-id)
-      (select-part! "Supported Only Prow")
-      (s/wait-until #(empty? (s/loaded-parts *driver*))))
+      (select-part! "Classic Ram Prow")
+      (s/await-part *driver* s/prow-id))
     (select-part! "Cruiser Hull")
-    (is (= [s/hull-id] (vec (:parts (s/await-part *driver* s/hull-id)))))))
+    (let [stats (s/await-part *driver* s/hull-id)]
+      (is (= [s/hull-id] (vec (:parts stats)))))))
+
+(deftest a-replaced-part-is-disposed-not-merely-removed
+  (testing "`parts` is bookkeeping; it shrinks whether or not the GPU buffers
+            were released. three's own geometry count is what tells them apart."
+    (open-app!)
+    (select-part! "Cruiser Hull")
+    (let [baseline (:geometries (s/await-part *driver* s/hull-id))]
+      (is (pos? baseline) "the stats hook should be reporting live geometries")
+      (dotimes [_ 4]
+        (select-part! "Classic Ram Prow")
+        (s/await-part *driver* s/prow-id)
+        (select-part! "Cruiser Hull")
+        (s/await-part *driver* s/hull-id))
+      (let [after (:geometries (s/await-part *driver* s/hull-id))]
+        (is (<= after baseline)
+            (str "geometries grew from " baseline " to " after
+                 " over four selection cycles - a replaced part was removed "
+                 "from the scene without being disposed"))))))
 
 ;; --- the island -------------------------------------------------------------
 

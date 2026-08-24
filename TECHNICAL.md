@@ -992,6 +992,18 @@ Owns: renderer, scene, camera, `OrbitControls`, an IBL environment, a map of par
 `Object3D`, and the `.symesh` decoder. Listens for the `shipyard:*` events on
 `document.body`.
 
+**The map holds several parts; M1 shows one.** `put-part!` is the primitive - it replaces
+one part by id and leaves the rest alone, which is what M3 assembly wants when a slot
+changes. `show-only!` is the M1 policy on top of it: a new selection replaces the scene,
+because M1 is a single-part viewer (SPEC §10). Without it, selecting a second part simply
+added it, and browsing the library accumulated a mesh per part (#47).
+
+That policy lives on the client deliberately. The alternative - emitting `shipyard:clear`
+alongside every `shipyard:load-mesh` - makes correct behaviour depend on the dispatch order
+of two htmx events and empties the scene for a frame to no purpose. `shipyard:clear`
+remains what it was: the scene is emptied when there is nothing to show, not as a step in
+showing something.
+
 Materials are `MeshStandardMaterial` with a neutral studio environment. PBR from the
 start because M5 paint schemes depend on it, and retrofitting lighting is worse than
 building on it.
@@ -1330,6 +1342,7 @@ backed by the fixture library. Clojure end to end, no separate JS test stack.
 | Browse and filter | Library panel lists fixture parts; filters narrow correctly |
 | Load a part | Selecting a part fires `shipyard:load-mesh`; the viewport reports it loaded |
 | Canvas survives swaps | An htmx swap elsewhere leaves the WebGL context alive (`hx-preserve`, §6.1) |
+| Selecting another part | Exactly the new part is in the scene, and geometry count does not grow (§7.2) |
 | Mount wizard (M2) | Clicking a face returns a highlighted facet and a plausible frame |
 | Assembly (M3) | Choosing a prow places it at the socket transform |
 | Paint (M5) | Scrubbing a colour updates the material live; release persists it |
@@ -1339,8 +1352,15 @@ backed by the fixture library. Clojure end to end, no separate JS test stack.
 diffing a 3D scene is brittle - driver, antialiasing and timing all move it. Instead the
 viewport exposes a **test-only introspection hook**, `window.__shipyard.stats()`,
 returning scene facts: loaded part ids, vertex and draw counts, camera target, material
-colours. Assertions read that. It is compiled out of release builds via a `goog-define`,
-so it cannot ship.
+colours, and three's live geometry count. Assertions read that. It is compiled out of
+release builds via a `goog-define`, so it cannot ship.
+
+**One of those fields is not derived from the part map, and that is the point.** Everything
+else - part ids, vertices, materials - is computed from `parts`, so it shrinks the moment a
+part is removed from the map whether or not its GPU buffers were released. `:geometries`
+comes from `renderer.info.memory`, which `geometry.dispose()` decrements, so it is the only
+field that distinguishes *removed from the scene* from *actually freed*. Before #47 the
+suite had a test named for that distinction which could not observe it.
 
 One screenshot test remains, and it only asks the crudest question: **is the canvas
 non-blank?** Sample pixels and assert they are not uniform. That catches "nothing rendered
