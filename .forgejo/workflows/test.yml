@@ -187,47 +187,19 @@ jobs:
         with:
           node-version: '24'
 
-      - name: Chrome and chromedriver, matched by construction
-        # Chrome for Testing rather than browser-actions/setup-chrome, which
-        # failed here twice for two different reasons: it unpacks the .deb
-        # without resolving its dependencies, and with `chrome-version: stable`
-        # it installed Chrome 151 alongside chromedriver 152, which refuses the
-        # session outright. One manifest naming both downloads cannot skew - the
-        # driver is published beside the browser it was built for.
-        #
-        # The shared libraries still have to come from apt: these are CI
-        # containers, and Chrome links against a desktop's worth of them.
-        run: |
-          set -euo pipefail
-          sudo=""; [ "$(id -u)" -eq 0 ] || sudo=sudo
-          $sudo apt-get update -qq
-          $sudo apt-get install -y --no-install-recommends \
-            libnspr4 libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
-            libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
-            libgbm1 libasound2 libpango-1.0-0 libcairo2 libatspi2.0-0 \
-            libxshmfence1 fonts-liberation unzip
-
-          curl -sSfo /tmp/cft.json https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json
-          version=$(python3 -c 'import json; print(json.load(open("/tmp/cft.json"))["channels"]["Stable"]["version"])')
-          chrome_url=$(python3 -c 'import json; d = json.load(open("/tmp/cft.json"))["channels"]["Stable"]; print([x["url"] for x in d["downloads"]["chrome"] if x["platform"] == "linux64"][0])')
-          driver_url=$(python3 -c 'import json; d = json.load(open("/tmp/cft.json"))["channels"]["Stable"]; print([x["url"] for x in d["downloads"]["chromedriver"] if x["platform"] == "linux64"][0])')
-          echo "Chrome for Testing $version"
-
-          mkdir -p "$HOME/chrome"
-          curl -sSfo /tmp/chrome.zip "$chrome_url"
-          curl -sSfo /tmp/chromedriver.zip "$driver_url"
-          unzip -q /tmp/chrome.zip -d "$HOME/chrome"
-          unzip -q /tmp/chromedriver.zip -d "$HOME/chrome"
-          chmod +x "$HOME/chrome/chrome-linux64/chrome" "$HOME/chrome/chromedriver-linux64/chromedriver"
-          echo "$HOME/chrome/chromedriver-linux64" >> "$GITHUB_PATH"
-          echo "SHIPYARD_CHROME=$HOME/chrome/chrome-linux64/chrome" >> "$GITHUB_ENV"
-
       - name: Install Clojure CLI
         run: |
           curl -sLO https://download.clojure.org/install/linux-install-1.12.4.1618.sh
           chmod +x linux-install-1.12.4.1618.sh
           ./linux-install-1.12.4.1618.sh --prefix "$HOME/clojure"
           echo "$HOME/clojure/bin" >> "$GITHUB_PATH"
+
+      # Playwright ships the browser it drives, versioned with the library, so
+      # this replaces a Chrome-for-Testing version lookup and two zip downloads
+      # matched by hand (issue #49). `--with-deps` installs the shared libraries
+      # Chromium needs, which was the other half of that block.
+      - name: Playwright's browser
+        run: java -cp "$(clojure -Spath -M:test)" com.microsoft.playwright.CLI install --with-deps chromium
 
       - name: Install npm dependencies
         run: npm ci
@@ -245,13 +217,7 @@ jobs:
           cp node_modules/htmx.org/dist/htmx.min.js resources/public/js/
 
       - name: E2E tests
-        # SHIPYARD_CHROME and PATH were both set by the step above. Printing
-        # the two versions first means a skew shows up as two numbers rather
-        # than as a stack trace three hundred lines down.
-        run: |
-          "$SHIPYARD_CHROME" --version
-          chromedriver --version
-          clojure -M:test:natives-linux --focus :e2e
+        run: clojure -M:test:natives-linux --focus :e2e
 
   package:
     # The release artifact, and the only job that proves one exists. Linux

@@ -8,11 +8,14 @@
   (:require [babashka.fs :as fs]
             [clojure.java.io :as io]
             [clojure.test :refer [is]]
-            [etaoin.api :as e]
             [integrant.core :as ig]
             [ring.adapter.jetty :as jetty]
             [shipyard.fixtures :as f])
-  (:import [java.io File]
+  (:import [com.microsoft.playwright Browser Browser$NewPageOptions BrowserType$LaunchOptions
+            Locator$ScreenshotOptions Page Page$WaitForSelectorOptions
+            Playwright]
+           [com.microsoft.playwright.options SelectOption]
+           [java.io File]
            [org.eclipse.jetty.server Server ServerConnector]))
 
 ;; --- the fixture library ----------------------------------------------------
@@ -127,38 +130,108 @@
 
 ;; --- the browser ------------------------------------------------------------
 
-(defn- browser-binary
-  "Chromium under whichever name this machine installed it as. `SHIPYARD_CHROME`
-  wins, so CI can point at its own."
-  []
-  (or (not-empty (System/getenv "SHIPYARD_CHROME"))
-      (first (filter fs/regular-file?
-                     ["/usr/bin/google-chrome" "/usr/bin/google-chrome-stable"
-                      "/usr/bin/chromium" "/usr/bin/chromium-browser"]))))
-
 (def chrome-args
   "**WebGL in headless Chrome needs software rendering** - a runner with no GPU
   otherwise fails in a way that looks like an application bug (§10.3). ANGLE
   over SwiftShader is that renderer, and since Chrome 128 it must be asked for
   explicitly: without `--enable-unsafe-swiftshader` the context is refused and
   `WebGLRenderer` throws."
-  ["--headless=new"
-   "--use-gl=angle"
+  ["--use-gl=angle"
    "--use-angle=swiftshader"
    "--enable-unsafe-swiftshader"
    "--disable-dev-shm-usage"     ; small /dev/shm in a container crashes the tab
-   "--no-sandbox"                ; CI runs as root in a container
-   "--window-size=1280,900"])
+   "--no-sandbox"])              ; CI runs as root in a container
 
-(defn make-driver []
-  (e/chrome (cond-> {:args chrome-args}
-              (browser-binary) (assoc :path-browser (browser-binary)))))
+(defn make-driver
+  "A Playwright browser and a page on it.
+
+  **Playwright brings its own browser**, versioned with the library and fetched
+  by `playwright install chromium` (#49). The suite used to drive WebDriver,
+  which meant a Chrome binary and a chromedriver binary matched to each other
+  by hand - twenty-five lines of CI, and no way to run this level locally
+  without installing Chrome system-wide.
+
+  Returns a map rather than a bare page: teardown has to close all three
+  objects, and the page alone cannot reach the other two."
+  []
+  (let [pw      (Playwright/create)
+        browser (.launch (.chromium pw)
+                         (doto (BrowserType$LaunchOptions.)
+                           (.setHeadless true)
+                           (.setArgs chrome-args)))]
+    {:playwright pw
+     :browser    browser
+     :page       (.newPage browser (doto (Browser$NewPageOptions.)
+                                     (.setViewportSize 1280 900)))}))
+
+(defn quit! [{:keys [^Playwright playwright ^Browser browser]}]
+  (some-> browser .close)
+  (some-> playwright .close))
+
+;; --- driving it -------------------------------------------------------------
+;;
+;; Thin verbs over Playwright, so a test reads as what it is doing rather than
+;; as interop. They are here rather than inline because the suite changed
+;; drivers once already and may again; the tests should not have to care.
+
+(defn go! [{:keys [^Page page]} url] (.navigate page url))
+
+(defn wait-visible!
+  ([driver sel] (wait-visible! driver sel 20000))
+  ([{:keys [^Page page]} sel timeout-ms]
+   (.waitForSelector page sel (doto (Page$WaitForSelectorOptions.)
+                                (.setTimeout (double timeout-ms))))))
+
+(defn click! [{:keys [^Page page]} sel] (.click page sel))
+
+(defn fill!
+  "Type `value` into `sel`, key by key.
+
+  Not `.fill`, which sets the value and dispatches one `input` event. The filter
+  form triggers on `keyup changed delay:300ms` (§7), so a value that arrives
+  without keystrokes never fires the search - the box shows the text and the
+  list never narrows."
+  [{:keys [^Page page]} sel value]
+  (.pressSequentially (.locator page sel) value))
+
+(defn select-option!
+  "Pick an option by its **label**, not its value.
+
+  \"All bundles\" is the empty-value option the filter form emits, so selecting
+  by value cannot distinguish it from an unset select."
+  [{:keys [^Page page]} sel label]
+  (.selectOption page sel (doto (SelectOption.) (.setLabel label))))
+
+(defn count-els [{:keys [^Page page]} sel] (.count (.locator page sel)))
+
+(defn text [{:keys [^Page page]} sel] (or (.textContent page sel) ""))
+
+(defn screenshot-el! [{:keys [^Page page]} sel ^File target]
+  (.screenshot (.locator page sel)
+               (doto (Locator$ScreenshotOptions.) (.setPath (.toPath target)))))
+
+(defn- ->clj
+  "Playwright hands back java.util collections; the assertions want Clojure ones
+  with keyword keys."
+  [x]
+  (cond
+    (instance? java.util.Map x)  (into {} (map (fn [[k v]] [(keyword (str k)) (->clj v)])) x)
+    (instance? java.util.List x) (mapv ->clj x)
+    :else                        x))
+
+(defn js
+  "Evaluate `expr` in the page and return it as Clojure data.
+
+  Playwright evaluates an **expression or a function**, where WebDriver ran a
+  statement body - so these are `() => ...`, not `return ...`."
+  [{:keys [^Page page]} expr]
+  (->clj (.evaluate page expr)))
 
 ;; --- polling ----------------------------------------------------------------
 
 (defn wait-until
-  "Poll `f` until it returns something truthy. etaoin's own waits are about the
-  DOM; the viewport's readiness lives behind `window.__shipyard`."
+  "Poll `f` until it returns something truthy. Playwright's own waits are about
+  the DOM; the viewport's readiness lives behind `window.__shipyard`."
   ([f] (wait-until f 30000))
   ([f timeout-ms]
    (let [deadline (+ (System/currentTimeMillis) timeout-ms)]
@@ -170,10 +243,9 @@
            :else (do (Thread/sleep 100) (recur))))))))
 
 (defn stats
-  "The viewport's introspection hook, or nil before it exists. etaoin parses the
-  returned object with keyword keys."
+  "The viewport's introspection hook, or nil before it exists."
   [driver]
-  (e/js-execute driver "return window.__shipyard ? window.__shipyard.stats() : null;"))
+  (js driver "() => window.__shipyard ? window.__shipyard.stats() : null"))
 
 (defn loaded-parts [driver]
   (some-> (stats driver) :parts vec))

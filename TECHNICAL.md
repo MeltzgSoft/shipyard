@@ -265,8 +265,8 @@ call to make.
   :cljs  {:extra-paths ["src/cljs" "src/cljc"]
           :extra-deps {thheller/shadow-cljs {:mvn/version "3.4.12"}}}
   :test  {:extra-paths ["test/clj" "test/cljc"]
-          :extra-deps {lambdaisland/kaocha {:mvn/version "1.91.1392"}
-                       etaoin/etaoin       {:mvn/version "1.1.43"}}}}}
+          :extra-deps {lambdaisland/kaocha                  {:mvn/version "1.91.1392"}
+                       com.microsoft.playwright/playwright  {:mvn/version "1.62.0"}}}}}
 ```
 
 **Verified end to end** (issue #6): natives load, all calls execute, results are
@@ -1214,11 +1214,20 @@ browser and the driver together. Nothing else here is safe:
   refuses the session outright: *This version of ChromeDriver only supports Chrome
   version 152*.
 
-One manifest naming both downloads cannot skew, because the driver is published beside the
-browser it was built for. The runtime libraries still come from apt - these are CI
-containers and Chrome links against a desktop's worth of them - and the E2E step prints
-both versions before running, so a future skew shows up as two numbers rather than as a
-stack trace three hundred lines down.
+Downloading Chrome for Testing from its own manifest fixed the skew - the driver is
+published beside the browser it was built for - at the cost of twenty-five lines of
+version lookup, two zips and an apt block for the runtime libraries.
+
+**Playwright removed the problem rather than solving it** (issue #49). It ships the
+browser it drives, versioned with the library, so `playwright install --with-deps chromium`
+is the whole step: no manifest, no matching, and `--with-deps` covers the shared libraries
+that were the other half of that block. There is no driver binary to skew against, because
+Playwright speaks CDP rather than WebDriver.
+
+The same command works on a developer's machine, which is the part that matters. The old
+setup could only be reproduced locally by installing Chrome system-wide, so in practice
+nobody ran the E2E level before pushing - and an E2E failure discovered in CI is a round
+trip that the browser being one command away would have saved.
 
 ### 9.1 What `package` actually asserts
 
@@ -1334,8 +1343,17 @@ differs on the things this level exercises: path separators, file locking, and
 
 ### 10.3 E2E - headless browser
 
-**etaoin** driving headless Chrome against a real server started on an ephemeral port,
-backed by the fixture library. Clojure end to end, no separate JS test stack.
+**Playwright** driving its own Chromium against a real server started on an ephemeral
+port, backed by the fixture library. Clojure end to end, no separate JS test stack.
+
+The driver verbs live in `shipyard.e2e.support` - `go!`, `click!`, `select-option!`, `js`
+and the rest - rather than inline in the tests. The suite has changed drivers once and may
+again; a test should read as what it is doing, not as interop.
+
+**Typing is typing, not assignment.** `fill!` presses keys one at a time rather than
+setting `value` and firing one `input` event: the filter form triggers on
+`keyup changed delay:300ms` (§7), so a value that arrives without keystrokes leaves the
+box full and the list unfiltered.
 
 | Flow | Asserts |
 |---|---|
