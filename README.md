@@ -44,19 +44,39 @@ Point it at your STL library with `SHIPYARD_LIBRARY`, or set it once in
 
 ## Development
 
+Anything that touches the mesh pipeline needs **a platform alias for the LWJGL natives** -
+`:natives-linux` below; substitute `:natives-windows`, `:natives-macos` or
+`:natives-macos-arm64`. Commands without one below do not need one.
+
 ```bash
-clojure -M:run                          # server, no jar
+clojure -M:natives-linux:run            # server, no jar
 npx shadow-cljs watch viewport          # hot-reloaded CLJS, in a second terminal
 
-clojure -M:test                         # all suites
-clojure -M:test --focus :unit           # pure functions only, sub-second
-clojure -M:test --focus :integration    # filesystem, natives, HTTP
-clojure -M:test --focus :e2e            # headless browser
+clojure -M:test:natives-linux                       # all suites
+clojure -M:test --focus :unit                       # pure functions only, sub-second
+clojure -M:test:natives-linux --focus :integration  # filesystem, natives, HTTP
+clojure -M:test:natives-linux --focus :e2e          # headless browser
 
 clojure -M:cljfmt check src test build.clj    # `fix` to apply
 clojure -M:clj-kondo --lint src --lint test --lint build.clj
 clojure -M:outdated                     # dependency freshness, deps.edn + package.json
 ```
+
+`deps.edn` declares `org.lwjgl/lwjgl` and `org.lwjgl/lwjgl-meshoptimizer`, which are the
+Java API jars; the `.so`, `.dll` and `.dylib` are separate Maven artifacts carrying a
+platform classifier, and they live only in those aliases. Nothing fails to download - the
+classpath resolves cleanly and simply contains no native binary.
+
+**It fails late, which is what makes it confusing.** The natives load the first time a
+mesh is actually preprocessed, so a process starts, reports itself healthy, and only then
+dies on `Failed to locate library: liblwjgl.so` - deep in `shipyard.mesh.lod`, where it
+reads as a bad STL rather than as a missing command-line alias. Under `-M:test` that is 13
+failures across the cache and LOD suites; under `-M:run` it is whatever first asks for
+geometry.
+
+No alias is picked for you, because CI deliberately runs three of them. The uberjar is the
+exception and needs nothing: `clojure -T:build uber` bundles all four classifiers, which is
+why the Quick start above is a plain `java -jar`.
 
 Tests come in three levels separated by **what they are allowed to touch**, not by size:
 unit touches nothing outside the process, integration gets the filesystem and natives,
