@@ -70,9 +70,37 @@ pull request bases on it too; say which in the body. Independent work branches f
 #29 through #32 are a worked stack: `feat/15-http` <- `feat/16-viewport` <- `feat/17-ci` <-
 `feat/18-canary`.
 
-**A fix goes in on the branch that owns the bug and is merged forward through the stack** -
-never rebased. Rebasing rewrites branches that already carry review and CI. In that same
-stack, a Windows bug surfaced by #31 was fixed on #29 and merged up.
+**A fix goes in on the branch that owns the bug**, not on whichever branch happened to
+surface it - in that stack, a Windows bug found on #31 was fixed on #29. A Windows-only
+failure is still #29's bug if #29 wrote the code.
+
+**The stack is kept up to date by rebasing, not by merging forward.** When `main` moves,
+rebase `feat/<first>` onto it and then each branch onto its rebuilt parent, so the chain
+stays linear and each pull request's diff shows only its own work. The same applies after
+a fix lands on an earlier branch: rebase its descendants onto the new tip.
+
+```bash
+git update-ref refs/backup/feat/15-http origin/feat/15-http   # do this first, every time
+git rebase --onto origin/main <old-main> feat/15-http
+git rebase --onto feat/15-http <old-15-tip> feat/16-viewport   # ...and so on up the chain
+git push --force-with-lease origin feat/16-viewport:feat/16-viewport
+```
+
+Three things this costs, all of them manageable and none of them a surprise:
+
+- **Every rebased branch needs a force-push**, which re-runs its CI and can orphan review
+  comments anchored to the old commits. Use `--force-with-lease`, never `--force`.
+- **Back up first.** `git update-ref refs/backup/<branch> origin/<branch>` before touching
+  anything. A wrong `--onto` upstream silently drops commits rather than conflicting - pass
+  the *old tip of the parent branch*, not a merge commit's parent, or you can rebase a
+  branch into being empty and the only sign is a suspiciously short `git log`.
+- **Conflict resolution decides which fix survives**, so read both sides. Taking the
+  incoming side wholesale is how a merged fix gets quietly reverted by a branch that
+  predates it.
+
+Afterwards, check the rebase preserved the work rather than assuming it did:
+`git diff refs/backup/<branch> <branch> -- src test` should show nothing but what the new
+base contributed.
 
 ## Pull requests
 
