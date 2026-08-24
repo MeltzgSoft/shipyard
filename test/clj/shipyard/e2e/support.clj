@@ -51,16 +51,27 @@
 
 ;; --- the server -------------------------------------------------------------
 
-(def bundle "resources/public/js/viewport.js")
+(def required-assets
+  "What the page needs on disk before a browser can be pointed at it.
+
+  Both are gitignored build output. The viewport bundle must be the **dev**
+  build - only that one defines `window.__shipyard`, which every scene
+  assertion reads - and htmx is copied out of node_modules rather than bundled,
+  so a broken viewport build cannot take the whole UI down with it (§8)."
+  {"resources/public/js/viewport.js" "npx shadow-cljs compile viewport"
+   "resources/public/js/htmx.min.js" "cp node_modules/htmx.org/dist/htmx.min.js resources/public/js/"})
 
 (defn assert-bundle!
-  "The suite reads `window.__shipyard.stats()`, which only a dev build defines.
-  Fail with the command to run rather than with a confusing WebGL error."
+  "Fail with the command to run rather than with a twenty-second wait for an
+  element that was never going to appear.
+
+  Missing htmx is the interesting one: the page renders, the canvas is there,
+  and nothing ever loads the library - which reads exactly like a server bug
+  and is not one."
   []
-  (when-not (fs/regular-file? bundle)
-    (throw (ex-info (str "no viewport bundle at " bundle
-                         " - run `npx shadow-cljs compile viewport` first")
-                    {:bundle bundle}))))
+  (doseq [[path fix] required-assets]
+    (when-not (fs/regular-file? path)
+      (throw (ex-info (str "missing " path " - run `" fix "` first") {:path path})))))
 
 (defn- config [root cache-home]
   {:shipyard.library/index {:root (str root) :cache-home (str cache-home)}

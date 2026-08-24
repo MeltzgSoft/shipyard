@@ -90,8 +90,11 @@ unit touches nothing outside the process, integration gets the filesystem and na
 e2e drives a real browser. See TECHNICAL.md §10.
 
 The e2e suite needs Chrome or Chromium and a matching `chromedriver` on `PATH`, and it
-needs the viewport bundle built by the **dev** build - only that one defines the
-`window.__shipyard` introspection hook the assertions read. Set `SHIPYARD_CHROME` if your
+needs both gitignored front-end assets in place: the viewport bundle from the **dev**
+build - only that one defines the `window.__shipyard` introspection hook the assertions
+read - and htmx, which is copied out of `node_modules` rather than bundled. Without htmx
+the page renders and nothing ever loads the library, which reads exactly like a server
+bug; the suite checks for both up front and tells you which command to run. Set `SHIPYARD_CHROME` if your
 browser is not at one of the usual paths. The suite is hermetic: its library, mesh cache
 and scan index all live in a temp directory, so it never touches your real one.
 
