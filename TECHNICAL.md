@@ -1074,6 +1074,11 @@ observed rather than by trying to stop them:
   libraries can each hold `Cruiser/Hull`, and serving one's cached mesh key for the other
   hands the viewport a mesh of the wrong ship.
 
+**Whether the root is there is checked, not remembered.** A drive can be unmounted, or a
+folder renamed, under a running server. The cost of asking is one `stat` per `/library`
+request; the cost of remembering is a panel that lists a library which is no longer
+mounted, every row of which 404s when clicked.
+
 **What the validator refuses is deliberately narrow**: a path that is blank, absent, not a
 directory, or unreadable. An empty folder is accepted, because "there is nothing here" is
 a true and fixable answer to *where is your library*, whereas refusing the path is

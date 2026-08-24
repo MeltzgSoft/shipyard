@@ -116,9 +116,17 @@
   [{:keys [state]}] (:root @state))
 
 (defn available?
-  "Whether that root is a directory that exists. False is the normal state of a
-  fresh install, not an error."
-  [{:keys [state]}] (:available? @state))
+  "Whether the root is a directory that exists **now**. False is the normal
+  state of a fresh install, not an error.
+
+  Checked rather than remembered, and the difference is a stat per library
+  request. A drive can be unmounted, or a folder renamed, under a running
+  server; a remembered answer keeps listing that library's parts, and every row
+  in the list 404s when clicked. Reporting the missing folder is both true and
+  the only thing the user can act on."
+  [{:keys [state]}]
+  (let [{:keys [root]} @state]
+    (boolean (and root (fs/directory? (fs/file root))))))
 
 (defn parts [{:keys [state]}] (:parts @state))
 
@@ -131,10 +139,9 @@
     (if (str/blank? (str root))
       ;; Nothing set. Not a failure - the settings form exists for exactly this
       ;; state, and there is nothing to scan or stamp until it is used.
-      {:root nil :available? false :parts [] :entries {} :index-file f}
-      (let [dir        (fs/file root)
-            available? (fs/directory? dir)]
-        (when-not available?
+      {:root nil :parts [] :entries {} :index-file f}
+      (let [dir (fs/file root)]
+        (when-not (fs/directory? dir)
           ;; Not fatal: the app must still start so the user can point it
           ;; somewhere real. A hard failure here makes a fresh install unusable.
           (log/warn "library root does not exist:" root))
@@ -144,8 +151,7 @@
           (log/infof "library: %d parts, %d with a cached mesh key"
                      (count parts) (count (filter :mesh-key (vals idx))))
           (when-not (= idx stored) (save-index! f root idx))
-          {:root (str root) :available? available? :parts parts
-           :entries idx :index-file f})))))
+          {:root (str root) :parts parts :entries idx :index-file f})))))
 
 (defn set-root!
   "Point the library at `root` and rescan, in place.

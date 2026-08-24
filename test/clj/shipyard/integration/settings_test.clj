@@ -139,15 +139,20 @@
              (get-in (system/load-config {:config-dir (str (:config-dir sys)) :env {}})
                      [:shipyard.library/index :root]))))))
 
-(deftest a-root-that-has-gone-away-reports-itself
+(deftest a-root-that-goes-away-under-a-running-server-reports-itself
   (let [root (library-tree "Bundle/Cruiser/Hull")
         sys  (system)
         h    (routes/handler sys)]
     (POST h "/settings" {:root (str root)})
-    ;; The drive is unmounted, or the folder renamed, between runs.
-    (index/set-root! (:library sys) (str root "-gone"))
+    (is (str/includes? (:body (GET h "/library")) "Bundle/Cruiser/Hull"))
+
+    ;; The drive is unmounted, or the folder renamed, with the server running -
+    ;; no relocation and no restart to notice it.
+    (.renameTo ^File root (io/file (str root "-unplugged")))
+
     (let [body (:body (GET h "/library"))]
-      (is (str/includes? body "No library at"))
+      (is (str/includes? body "No library at")
+          "a remembered answer would list parts whose every row 404s")
       (is (str/includes? body "hx-post=\"/settings\"")
           "it must offer the way out, not just the diagnosis"))))
 
