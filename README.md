@@ -83,9 +83,11 @@ reads as a bad STL rather than as a missing command-line alias. Under `-M:test` 
 failures across the cache and LOD suites; under `-M:run` it is whatever first asks for
 geometry.
 
-No alias is picked for you, because CI deliberately runs three of them. The uberjar is the
-exception and needs nothing: `clojure -T:build uber` bundles all four classifiers, which is
-why the Quick start above is a plain `java -jar`.
+No alias is picked for you, because Forge CI deliberately executes the unit and integration
+suites with `:natives-linux`, `:natives-windows`, and `:natives-macos-arm64` on their native
+Linux, Windows, and Apple Silicon macOS runners. The uberjar is the exception and needs
+nothing: `clojure -T:build uber` bundles all four classifiers, which is why the Quick start
+above is a plain `java -jar`.
 
 Tests come in three levels separated by **what they are allowed to touch**, not by size:
 unit touches nothing outside the process, integration gets the filesystem and natives,
