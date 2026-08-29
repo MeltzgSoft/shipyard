@@ -1162,16 +1162,17 @@ JVM server for HTML and meshes. Only the JVM process is needed to serve a releas
 
 ## 9. CI
 
-Forgejo Actions, matrix over the `linux` and `windows` runner labels.
+Forgejo Actions, matrix over the `linux`, `windows` and `macos` runner labels.
 
 The JVM is portable; **LWJGL natives are not**. But the justification is narrower than it
 first appears (issue #6): the natives are prebuilt jars on Maven Central, so a Linux
-runner can resolve and package the Windows classifier without trouble. **Windows CI is
-needed only to *execute* tests on Windows, never to build or release.**
+runner can resolve and package the Windows and macOS classifiers without trouble.
+**Windows and macOS CI are needed only to *execute* tests on those platforms, never to
+build or release.**
 
-It still earns its place - running the pipeline against Windows natives is the only way
-to catch a platform-specific failure before a user does - but if CI minutes get tight,
-this is the job to cut, and cutting it does not endanger the release artifact.
+They still earn their place - running the pipeline against each platform's natives is the
+only way to catch a platform-specific failure before a user does - but if CI capacity gets
+tight, these are the jobs to cut, and cutting them does not endanger the release artifact.
 
 **Java 25, not 21.** The `:run` and `:test` aliases pass
 `--sun-misc-unsafe-memory-access=allow`, which does not exist before JDK 23 - an older
@@ -1179,28 +1180,29 @@ JVM refuses to start rather than ignoring it.
 
 Workflows live in `.forgejo/workflows/`: `lint.yml` (clj-kondo + cljfmt, one runner, since
 neither is platform-dependent), `pr-description.yml` (its own workflow because it triggers
-on `edited`), and `test.yml`, which holds six jobs:
+on `edited`), and `test.yml`, which holds seven jobs:
 
 | Job | Runner | What it is for |
 |---|---|---|
 | `test-linux` | linux | unit + integration |
 | `test-windows` | windows | unit + integration - path separators, file locking, `Files.move` |
+| `test-macos` | macos | unit + integration - Apple Silicon natives and macOS filesystem semantics |
 | `test-cljs` | linux | the cljc tests on the browser runtime, proving encoder and decoder agree |
 | `test-e2e` | linux | headless Chrome (§10.3) |
 | `readme` | linux | runs README's own Development commands (§9.2) |
 | `package` | linux | the uberjar, and the only proof one runs |
 
-Level mapping (§10): **unit and integration run on both platforms**, since those are what
-exercise natives and filesystem semantics. **E2E runs on Linux only** - it tests
+Level mapping (§10): **unit and integration run on all three platforms**, since those are
+what exercise natives and filesystem semantics. **E2E runs on Linux only** - it tests
 application behaviour, not platform behaviour, and paying for a second headless browser
 buys nothing. The library canary (§10.4) is not a CI job at all.
 
 **No `actions/cache`, and this is not an oversight.** The sketch above used to show a
 `~/.m2` cache step. It does not work on this forge: the runner serves its actions cache on
 a random port, so every restore dies with `getCacheEntry failed: connect EHOSTUNREACH`
-(#28). Each Linux job therefore downloads its dependencies cold; Windows is host mode and
-keeps `~/.m2` between jobs, so it downloads nothing. Reinstate the cache step when the
-runner pins its cache port, not before.
+(#28). Each Linux job therefore downloads its dependencies cold; Windows and macOS are
+host mode and keep `~/.m2` between jobs. Reinstate the cache step when the Linux runner
+pins its cache port, not before.
 
 **Chrome comes from Chrome for Testing**, downloaded from the manifest that names the
 browser and the driver together. Nothing else here is safe:
@@ -1337,9 +1339,10 @@ user's library.
 | meshoptimizer | Real native calls: simplify hits target, `optimizeVertexFetch` compacts, Prune is not enabled |
 | HTTP | Routes return expected fragments; `/mesh/*` sends immutable cache headers; `HX-Trigger` payloads parse |
 
-**This level is what the Windows runner is for.** Beyond the LWJGL natives (§9), Windows
-differs on the things this level exercises: path separators, file locking, and
-`Files.move` atomicity - and the cache depends on temp-file-plus-rename being atomic.
+**This level is what the Windows and macOS runners are for.** Beyond executing each
+platform's LWJGL natives (§9), the operating systems differ on the things this level
+exercises: path separators, file locking, and `Files.move` atomicity - and the cache
+depends on temp-file-plus-rename being atomic.
 
 ### 10.3 E2E - headless browser
 

@@ -511,12 +511,12 @@ scaling to 19 GB, and its pitted variant makes it a convenient test case for the
 
 ## 10.1 CI
 
-Forgejo Actions, Linux and Windows runners.
+Forgejo Actions, Linux, Windows and Apple Silicon macOS runners.
 
 The JVM is portable but **the native dependencies are not** - LWJGL ships
 platform-specific meshoptimizer natives, and that is precisely the layer most likely to
-break silently on one platform. A Windows runner earns its place by exercising the mesh
-pipeline end to end on Windows natives, not merely by compiling.
+break silently on one platform. Windows and macOS runners earn their place by exercising
+the mesh pipeline end to end on their actual natives, not merely by compiling.
 
 Per platform: build, unit tests, and a pipeline smoke test that parses a known STL, welds
 it, generates LOD tiers, encodes a `.glb`, and asserts triangle and vertex counts against

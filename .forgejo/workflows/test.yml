@@ -6,10 +6,10 @@ on:
   pull_request:
 
 env:
-  # Each Linux job runs in its own container with its own ~/.m2, and the Windows
-  # runner is host mode capacity 1, so exactly one process ever touches a local
-  # repository. Aether's cross-process locking therefore protects nothing and
-  # can only fail, as it did in #28.
+  # Each Linux job runs in its own container with its own ~/.m2. The Windows
+  # and macOS runners are host mode capacity 1, so exactly one process on each
+  # host ever touches its local repository. Aether's cross-process locking
+  # therefore protects nothing and can only fail, as it did in #28.
   CLJ_JVM_OPTS: "-Daether.syncContext.named.factory=noop"
 
   # NO actions/cache for ~/.m2 here, deliberately. It was tried and does not
@@ -21,8 +21,8 @@ env:
   # setting. Until it does, a cache step buys nothing and warns on every run.
   #
   # Cost of going without: each Linux job downloads ~182 artifacts cold.
-  # Windows is unaffected - host mode keeps ~/.m2 between jobs, and it
-  # downloads nothing.
+  # The host-mode Windows and macOS runners keep ~/.m2 between jobs and are
+  # unaffected after their first download.
 
 jobs:
   test-linux:
@@ -91,6 +91,29 @@ jobs:
       - name: Integration tests
         shell: pwsh
         run: clojure -M:test:natives-windows --focus :integration
+
+  test-macos:
+    # Apple Silicon earns its slot for the same reason as Windows: execute the
+    # mesh pipeline and filesystem tests against the actual platform natives,
+    # not merely resolve their prebuilt jars elsewhere. Host mode, capacity 1.
+    runs-on: macos
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: https://github.com/actions/setup-java@v5
+        with:
+          java-version: '25'
+          distribution: temurin
+
+      - name: Check the provisioned Clojure CLI
+        run: clojure -Sdescribe
+
+      - name: Unit tests
+        run: clojure -M:test:natives-macos-arm64 --focus :unit
+
+      - name: Integration tests
+        run: clojure -M:test:natives-macos-arm64 --focus :integration
 
   test-cljs:
     # The cljc tests again, on the browser runtime. A JVM-only pass proves the
