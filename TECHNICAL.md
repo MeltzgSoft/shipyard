@@ -1420,7 +1420,7 @@ the command to run rather than with a confusing WebGL error.
 Fixtures are small generated STLs committed to the repo, in a directory tree mirroring the
 real structure including its edge cases: an ASCII STL, a supported-only folder, an
 `other/` directory, a `weapons/` subdirectory, and a pitted variant. **CI never depends on
-the 19 GB library.**
+the real library.**
 
 But fixtures only contain problems we already know about. The ASCII STL (§6.1) was found
 by scanning the real collection, and no fixture suite would ever have produced it. So
@@ -1435,7 +1435,7 @@ the repository does not control.
 
 | Finding | What it means |
 |---|---|
-| `:no-renderable-variant` | Only `supported.stl` ships. 73 folders. |
+| `:no-renderable-variant` | Only `supported.stl` ships. |
 | `:header-size-mismatch` | `84 + 50n` does not hold, so the header is not to be trusted. |
 | `:empty-mesh` | A valid binary header declaring zero triangles. |
 | `:zero-volume` | Flat: an axis under 0.1 µm, or a signed volume near zero. |
@@ -1454,17 +1454,18 @@ every file in a fixture library before and after a run and compares; a weaker ch
 miss a rewrite that preserved length.
 
 **Four threads, not `availableProcessors + 2`.** Each worker holds a parsed hull plus its
-welded and simplified derivatives, and the largest source here is 57.8 MB. A dozen at once
-blows the 2 GB peak budget (§11). The canary is allowed to be slow; it is not allowed to
-die three hours in. `--threads` overrides it.
+welded and simplified derivatives. Source sizes change with the collection (34.0 MB is
+the current largest selected source; an earlier snapshot reached 57.8 MB), and a dozen
+large parts at once blows the 2 GB peak budget (§11). The canary is allowed to be slow;
+it is not allowed to die three hours in. `--threads` overrides it.
 
-**Measured on the real library**, 1,661 parts across 19 GB, four threads: **65 s wall**,
-258 s CPU. It completes under `-Xmx1g`, well inside §11's 2 GB peak-heap budget - the
-3.4 GB RSS an unconstrained run shows is memory-mapped STL pages and LWJGL native buffers,
-not heap. The findings were 1 header mismatch (the known ASCII file), 73 supported-only
-folders, 31 welds above the 1.25 warning line, and nothing at all in the other five
-categories. A `find -printf '%P\t%s\t%T@'` snapshot of all 4,781 files was identical
-before and after.
+**Measured on the current real-library snapshot** (2026-08-31), 1,142 parts across
+13.1 GB, four threads: **178.1 s wall** under `-Xmx1g`, with 898 MiB peak heap. The
+findings were 1 header mismatch (the known ASCII file), 57 supported-only folders, 23
+welds above the 1.25 warning line, and nothing in the other five categories. The earlier
+2026-08-24 run recorded 1,661 parts across 19 GB in 65 s; both the mounted collection and
+the reference machine changed, which is why that observation was not a portable budget.
+Issue #44 established the labelled, repeatable measurement in §11 instead.
 
 **Findings are classified from `ex-data`, never from the message text.** Both the parser
 and the weld guard say what went wrong in data. A canary that grepped their prose would
@@ -1479,18 +1480,50 @@ than empty.
 
 ## 11. Performance budgets
 
-Targets M1 must hold. Measured on the Human Navy Cruiser (SPEC §4).
+Targets M1 must hold. Issue #44 measured all eight on 2026-08-31:
 
-| Operation | Budget |
-|---|---|
-| Cold scan, 1,661 part folders | < 2 s |
-| Warm start from the scan index (§5.4) | < 500 ms |
-| Preprocess Cruiser hull (133k tris) | < 2 s |
-| Preprocess heaviest part (1.2M tris) | < 15 s |
-| Serve cached `.symesh` | < 50 ms |
-| Viewport, one ship (270k-600k tris) | 60 fps |
-| Peak heap, preprocessing | < 2 GB |
-| Canary, whole library, 4 threads | 65 s, and completes under `-Xmx1g` (§10.4) |
+- Intel Core i5-8400H (4 cores/8 threads), 32 GiB RAM, Java 25.0.4, Linux 7.0;
+- NVIDIA GeForce GTX 1050 Ti Mobile, Chromium WebGL 2 through ANGLE/OpenGL;
+- the read-only 13.1 GB library on a SanDisk USB 3.2 Gen1 exFAT drive;
+- generated indexes and mesh caches on the internal Samsung NVMe drive.
+
+The current collection contains 1,142 part folders, 1,085 renderable sources totalling
+4,002,733,230 bytes. This supersedes the earlier 1,661-part/19 GB snapshot. The largest
+renderable source is now the 679,380-triangle Battle Krooza hull; there is no 1.2M-triangle
+part in the mounted collection, so claiming to have measured one would be false.
+
+| Operation | Budget | Measured | Result |
+|---|---:|---:|:---:|
+| Cold start, fresh scan index (1,142 folders) | < 2 s | 183 ms median; 440 ms max | pass |
+| Warm start from the scan index (§5.4) | < 500 ms | 203 ms median; 329 ms max | pass |
+| Preprocess Cruiser hull (133,922 tris) | < 2 s | 520 ms median; 1.030 s max | pass |
+| Preprocess largest part (679,380 tris) | < 15 s | 2.418 s median; 2.436 s max | pass |
+| Serve cached 4,990,440-byte `.symesh` | < 50 ms | 22.1 ms median; 26.4 ms max | pass |
+| Hardware viewport, dense 679,380-triangle tier | >= 60 fps | 601 frames / 10.008 s = 60.052 fps | pass |
+| Peak heap, preprocessing | < 2 GiB | 525 MiB | pass |
+| Canary, whole library, 4 threads | < 4 min under `-Xmx1g` | 178.1 s; 898 MiB peak heap | pass |
+
+**Method.** Run `clojure -M:natives-linux:benchmark --root /path/to/library --machine
+"CPU; RAM; GPU; storage"`. The alias fixes the JVM at `-Xmx1g`. Scan/start,
+preprocessing and HTTP figures above are five samples from one JVM; the table reports the
+median and the maximum. A cold start gets a new empty Shipyard index directory; its warm
+partner immediately reopens that index. Each preprocess gets a new content cache, so SHA,
+parse, weld, all three LOD encodes and disk writes are included. Heap `used` is sampled
+from `MemoryMXBean` every 2 ms.
+
+The HTTP figure is a complete Java `HttpClient` body read over localhost through the real
+Jetty/reitit route, after one connection warm-up. The viewport loads the dense tier into
+the real three.js island, verifies that all 679,380 triangles arrived, identifies the GL
+renderer, then counts `requestAnimationFrame` callbacks for ten seconds. A short control
+run through CPU-only SwiftShader produced 5.61 fps; that is useful evidence that renderer
+identity matters, not a measurement of the hardware-GPU budget. The canary is one complete
+four-thread pass, including its initial scan.
+
+The old 65 s canary target failed on this reference machine. It mixed a throughput number
+from another machine/library snapshot with the `-Xmx1g` safety claim. The replacement
+four-minute budget gives the measured 178.1 s run operational headroom while retaining
+the part that matters: bounded memory on a deliberately non-interactive data-quality
+probe. No user request waits for the canary, and it remains outside CI (§10.4).
 
 If the cold preprocess budget fails, the lazy-cache design is what protects the user
 experience - it is paid once per part, ever.

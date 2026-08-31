@@ -68,6 +68,17 @@
    :jvm-opts  ["--enable-native-access=ALL-UNNAMED"
                "--sun-misc-unsafe-memory-access=allow"]}
 
+  ;; --- M1 performance benchmark (issue #44) -------------------------------
+  ;; Deliberately on-demand, like the canary: wall-clock and viewport figures
+  ;; are machine-dependent and would be flaky as CI gates. The 1 GB ceiling is
+  ;; part of the measurement, not merely a launcher preference.
+  :benchmark
+  {:extra-deps {com.microsoft.playwright/playwright {:mvn/version "1.62.0"}}
+   :main-opts  ["-m" "shipyard.benchmark"]
+   :jvm-opts   ["--enable-native-access=ALL-UNNAMED"
+                "--sun-misc-unsafe-memory-access=allow"
+                "-Xmx1g"]}
+
   ;; --- dependency freshness ------------------------------------------------
   ;; `clojure -M:outdated` reports newer versions for deps.edn AND package.json,
   ;; which matters here because three.js and htmx are pinned in npm rather than

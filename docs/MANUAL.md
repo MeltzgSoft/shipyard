@@ -7,7 +7,7 @@ look at it from every angle, and decide what to print before you commit resin to
 > that are specified but not implemented. Each becomes real as its milestone lands, and
 > this document is updated in the same change - never afterwards.
 
-**Current state:** M1 in progress. You can browse your library and view individual parts.
+**Current state:** M1 complete. You can browse your library and view individual parts.
 Assembling a whole ship is M3.
 
 ---
