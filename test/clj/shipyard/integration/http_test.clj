@@ -57,7 +57,10 @@
         ;; under XDG_CACHE_HOME, and a test must not evict the developer's real
         ;; cache to prove a point.
         cache   {:dir (temp-dir "shipyard-http-cache") :crease-deg 35
-                 :lod-tiers [1.0 0.25 0.05] :cap-bytes 64000000 :inflight (atom {})}
+                 :lod-tiers [1.0 0.25 0.05]
+                 :facet-angle-deg 1.0
+                 :facet-plane-epsilon-mm 0.01
+                 :cap-bytes 64000000 :inflight (atom {})}
         catalog (ig/init-key :shipyard.catalog/db {:library library})
         jobs    (ig/init-key :shipyard.http/jobs {:library library :cache cache})]
     {:library library :catalog catalog :cache cache :jobs jobs

@@ -36,6 +36,24 @@
   ;; always was - the button whose name span holds this text.
   (s/click! *driver* (format "//button[.//span[text()='%s']]" part-name)))
 
+(defn- viewport-center []
+  (s/js *driver*
+        "() => { const r = document.getElementById('viewport').getBoundingClientRect();
+                 return {x: r.left + r.width / 2, y: r.top + r.height / 2}; }"))
+
+(defn- close? [a b]
+  (< (abs (- (double a) (double b))) 0.08))
+
+(defn- vec-close? [got want]
+  (every? (fn [[a b]] (close? a b)) (map vector got want)))
+
+(defn- await-preview
+  ([] (await-preview -1))
+  ([after-revision]
+   (s/wait-until
+    #(let [p (:preview (s/stats *driver*))]
+       (when (and p (> (:revision p) after-revision)) p)))))
+
 ;; --- WebGL first, per the acceptance criteria -------------------------------
 
 (deftest webgl-works-in-this-browser
@@ -55,7 +73,7 @@
 
 (deftest browse-and-filter
   (open-app!)
-  (is (= 4 (s/count-els *driver* "#library-results .part")))
+  (is (= 5 (s/count-els *driver* "#library-results .part")))
   (testing "a supported-only part is greyed, with its reason, not hidden"
     (is (= 1 (s/count-els *driver* ".part--unrenderable")))
     (is (str/includes? (s/text *driver* ".part--unrenderable")
@@ -66,7 +84,7 @@
     (is (str/includes? (s/text *driver* "#library-results") "Ram Ship")))
   (testing "and All bundles widens it again"
     (s/select-option! *driver* "select[name=bundle]" "All bundles")
-    (is (s/wait-until #(= 4 (s/count-els *driver* "#library-results .part")))))
+    (is (s/wait-until #(= 5 (s/count-els *driver* "#library-results .part")))))
   (testing "free-text search matches names across bundles"
     (s/fill! *driver* "input[name=q]" "Ram")
     (is (s/wait-until #(= 2 (s/count-els *driver* "#library-results .part"))))))
@@ -157,6 +175,52 @@
                  " over four selection cycles - a replaced part was removed "
                  "from the scene without being disposed"))))))
 
+;; --- mount authoring --------------------------------------------------------
+
+(deftest mount-authoring-clicks-a-face-and-renders-a-preview
+  (open-app!)
+  (select-part! "Mount Test Plate")
+  (s/await-part *driver* s/mount-plate-id)
+  (s/click! *driver* "[data-authoring-toggle]")
+  (is (s/wait-until #(= s/mount-plate-id (get-in (s/stats *driver*) [:authoring :part-id])))
+      "authoring mode should be active for the loaded plate")
+  (let [{:keys [x y]} (viewport-center)
+        _ (s/click-point! *driver* x y)
+        first-preview (await-preview)]
+    (is (= 2 (:triangles first-preview)))
+    (is (vec-close? (:position first-preview) [2.0 1.0 0.0])
+        (str "preview position was " (pr-str (:position first-preview))))
+    (is (vec-close? (:axis first-preview) [0.0 0.0 1.0])
+        (str "preview axis was " (pr-str (:axis first-preview))))
+    (is (vec-close? (:roll first-preview) [1.0 0.0 0.0])
+        (str "preview roll was " (pr-str (:roll first-preview))))
+    (is (= 4 (:geometries first-preview))
+        "highlight, axis arrow and roll indicator should be observable")
+    (testing "a new pick replaces the previous preview instead of growing GPU geometry"
+      (let [baseline (:geometries (s/stats *driver*))
+            revision (:revision first-preview)]
+        (s/click-point! *driver* x y)
+        (is (some? (await-preview revision)))
+        (is (<= (:geometries (s/stats *driver*)) baseline)
+            "repeated picks should not leak Three.js geometries"))))
+  (testing "part changes clear authoring previews"
+    (select-part! "Cruiser Hull")
+    (s/await-part *driver* s/hull-id)
+    (is (s/wait-until #(nil? (:preview (s/stats *driver*))))
+        "the old facet preview should not survive a part change")))
+
+(deftest orbit-controls-work-outside-authoring-mode
+  (open-app!)
+  (select-part! "Mount Test Plate")
+  (s/await-part *driver* s/mount-plate-id)
+  (let [{:keys [x y]} (viewport-center)
+        before (:camera (s/stats *driver*))]
+    (s/drag! *driver* [x y] [(+ x 160) (+ y 30)])
+    (is (s/wait-until #(not (vec-close? before (:camera (s/stats *driver*)))))
+        "dragging the canvas should still orbit when authoring is inactive")
+    (is (nil? (:preview (s/stats *driver*)))
+        "ordinary orbiting should not create a facet preview")))
+
 ;; --- the island -------------------------------------------------------------
 
 (deftest htmx-swaps-leave-the-webgl-context-alive
@@ -222,7 +286,7 @@
         (s/wait-visible! driver "#library-results .part")
         (is (= "undefined" (s/js driver "() => typeof window.__shipyard"))
             "the island really is absent")
-        (is (= 4 (s/count-els driver "#library-results .part")))
+        (is (= 5 (s/count-els driver "#library-results .part")))
         (testing "filtering still works, because htmx is a separate file"
           (s/select-option! driver "select[name=bundle]" "Ork Fleet Bundle")
           (is (s/wait-until #(= 1 (s/count-els driver "#library-results .part")))))

@@ -108,11 +108,18 @@ library keeps working; one bad file never takes the browser down with it.
 
 ## 5. Defining how parts connect
 
-*Not yet built - milestone M2.*
+*Partially built - milestone M2. Mounts can be previewed but not saved yet.*
 
 You will tell Shipyard how two parts mate by clicking the flat face where they meet: the
 back of a weapon module, or a hull's weapon seat. One click gives Shipyard everything it
 needs - where the part sits, which way it faces, and how it is rotated.
+
+After a part has loaded, choose **Pick mount face**, then click the face in the viewport.
+Shipyard highlights the selected flat facet and draws the outward axis and in-plane roll
+direction it derived from that face. Choose **Done picking** to leave face-picking mode.
+
+This preview is temporary in the current build. The later M2 steps add naming,
+classification, mirroring and saving.
 
 Hulls are symmetrical, so defining a port-side mount will offer to create the matching
 starboard one automatically.

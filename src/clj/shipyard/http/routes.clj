@@ -78,9 +78,10 @@
   viewport the URL - the canvas is never swapped, so this header is the only
   channel to it (§7.1)."
   [part mesh-key]
-  (htmx/fragment (views/detail-ready part)
+  (htmx/fragment (views/detail-ready part mesh-key)
                  {:events {:load-mesh {:url     (urls/mesh-url mesh-key 0)
                                        :part-id (:part/id part)
+                                       :mesh-key mesh-key
                                        :frame   true}}}))
 
 (defn- preprocessing

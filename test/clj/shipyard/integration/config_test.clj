@@ -30,7 +30,9 @@
         "there is no default library: a fresh install must ask, not guess")
     (is (= 8080 (get-in cfg [:shipyard.http/server :port])))
     (is (= 35 (get-in cfg [:shipyard.mesh/cache :crease-deg])))
-    (is (= [1.0 0.25 0.05] (get-in cfg [:shipyard.mesh/cache :lod-tiers])))))
+    (is (= [1.0 0.25 0.05] (get-in cfg [:shipyard.mesh/cache :lod-tiers])))
+    (is (= 1.0 (get-in cfg [:shipyard.mesh/cache :facet-angle-deg])))
+    (is (= 0.01 (get-in cfg [:shipyard.mesh/cache :facet-plane-epsilon-mm])))))
 
 (deftest layer-2-user-config-beats-shipped
   (let [dir (with-user-config {:shipyard.http/server {:port 9999}})

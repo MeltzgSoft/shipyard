@@ -166,6 +166,27 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
 }
 .detail--empty { color: var(--ink-faint); }
 
+/* --- mount authoring ---------------------------------------------------- */
+
+.mount-wizard { margin-top: 0.65rem; }
+.mount-wizard__toggle {
+  background: var(--panel-2);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.3rem 0.7rem;
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.mount-wizard__toggle:hover { border-color: var(--accent); }
+.mount-wizard__toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.mount-wizard__toggle[aria-pressed="true"] {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.stage__canvas--authoring { cursor: crosshair; }
+
 /* --- library location ---------------------------------------------------- */
 
 .settings { margin-bottom: 0.9rem; font-size: 0.8rem; }

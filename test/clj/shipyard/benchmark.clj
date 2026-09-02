@@ -208,6 +208,8 @@
 (defn- system-config [root cache-home]
   {:shipyard.library/index {:root (str root) :cache-home (str cache-home)}
    :shipyard.mesh/cache    {:crease-deg 35 :lod-tiers [1.0 0.25 0.05]
+                            :facet-angle-deg 1.0
+                            :facet-plane-epsilon-mm 0.01
                             :cap-bytes 4294967296 :cache-home (str cache-home)}
    :shipyard.catalog/db    {:library (ig/ref :shipyard.library/index)}
    :shipyard.http/jobs     {:library (ig/ref :shipyard.library/index)

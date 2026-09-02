@@ -88,10 +88,19 @@
    [:p.detail__status "Preparing this part for display. A large hull takes a few seconds; it is cached afterwards."]
    (poll id)])
 
-(defn detail-ready [part]
+(defn detail-ready [part mesh-key]
   [:div.detail
    (detail-head part)
-   [:p.detail__status "Loaded."]])
+   [:p.detail__status "Loaded."]
+   [:div#mount-authoring.mount-wizard
+    [:button.mount-wizard__toggle
+     {:type                  "button"
+      :data-authoring-toggle "true"
+      :data-part-id          (:part/id part)
+      :data-mesh-key         mesh-key
+      :aria-pressed          "false"}
+     "Pick mount face"]
+    [:div#facet-preview]]])
 
 (defn detail-failed [{:part/keys [id] :as part} message]
   [:div.detail

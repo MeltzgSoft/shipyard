@@ -50,6 +50,14 @@
                                        [(p i j) (p (inc i) (inc j)) (p (inc i) j)]])]
            t))))
 
+(defn mount-plate
+  "A single rectangular authoring face, triangulated the same way the M2
+  contract examples are. The center ray in the E2E viewport hits this facet
+  deterministically."
+  []
+  [[[0.0 0.0 0.0] [4.0 0.0 0.0] [0.0 2.0 0.0]]
+   [[4.0 0.0 0.0] [4.0 2.0 0.0] [0.0 2.0 0.0]]])
+
 (defn triangle-count [tris] (count tris))
 
 (defn bbox [tris]

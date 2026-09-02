@@ -67,7 +67,7 @@
    (views/detail-empty)
    (views/detail-missing "no/such/part")
    (views/detail-preparing hull)
-   (views/detail-ready hull)
+   (views/detail-ready hull (apply str (repeat 64 "1")))
    (views/detail-failed hull "not a usable STL")
    (views/detail-unrenderable supported-only (views/unrenderable-reason supported-only))])
 
@@ -107,7 +107,7 @@
 
 (deftest preparing-polls-and-ready-does-not
   (is (str/includes? (render (views/detail-preparing hull)) "load delay:"))
-  (is (not (str/includes? (render (views/detail-ready hull)) "hx-trigger")))
+  (is (not (str/includes? (render (views/detail-ready hull (apply str (repeat 64 "1")))) "hx-trigger")))
   (testing "a failure is shown rather than retried behind the user's back"
     (let [html (render (views/detail-failed hull "not a usable STL"))]
       (is (not (str/includes? html "load delay:")))

@@ -44,13 +44,20 @@
   ;; lighting is worse than building on it (§7.2).
   (three/MeshStandardMaterial. #js {:color 0x9aa4af :metalness 0.05 :roughness 0.65}))
 
-(defn- dispose!
-  "Release a part's GPU buffers. Removing an `Object3D` from a scene does not
+(defn- dispose-material! [material]
+  (if (array? material)
+    (doseq [m material] (some-> m .dispose))
+    (some-> material .dispose)))
+
+(defn- dispose-object!
+  "Release an object's GPU buffers. Removing an `Object3D` from a scene does not
   free anything - loading twenty parts in sequence without this grows GPU
   memory without bound."
   [^js obj]
-  (some-> obj .-geometry .dispose)
-  (some-> obj .-material .dispose))
+  (when obj
+    (.traverse obj (fn [^js child]
+                     (some-> child .-geometry .dispose)
+                     (dispose-material! (.-material child))))))
 
 ;; --- camera -----------------------------------------------------------------
 
@@ -87,7 +94,7 @@
   [{:keys [^js scene parts] :as sys} part-id obj]
   (when-let [old (get @parts part-id)]
     (.remove scene old)
-    (dispose! old))
+    (dispose-object! old))
   (swap! parts assoc part-id obj)
   (.add scene obj)
   sys)
@@ -109,20 +116,196 @@
   (doseq [[id ^js old] @parts
           :when (not= id part-id)]
     (.remove scene old)
-    (dispose! old))
+    (dispose-object! old))
   (swap! parts select-keys [part-id])
   (put-part! sys part-id obj))
 
-(defn clear! [{:keys [^js scene parts]}]
+(defn- clear-preview! [{:keys [^js scene preview]}]
+  (when-let [{:keys [^js object]} @preview]
+    (.remove scene object)
+    (dispose-object! object))
+  (when-let [target (.getElementById js/document "facet-preview")]
+    (set! (.-innerHTML target) ""))
+  (reset! preview nil))
+
+(defn clear! [{:keys [^js scene ^js canvas parts authoring current] :as sys}]
+  (clear-preview! sys)
+  (reset! authoring nil)
+  (reset! current nil)
+  (.remove (.-classList canvas) "stage__canvas--authoring")
   (doseq [[_ ^js obj] @parts]
     (.remove scene obj)
-    (dispose! obj))
+    (dispose-object! obj))
   (reset! parts {}))
+
+;; --- mount authoring --------------------------------------------------------
+
+(defn- v3 [[x y z]] (three/Vector3. x y z))
+
+(defn- scaled-end [origin dir scale]
+  (doto (.clone (v3 origin))
+    (.addScaledVector (v3 dir) scale)))
+
+(defn- object-geometry-count [^js obj]
+  (let [n (atom 0)]
+    (when obj
+      (.traverse obj (fn [^js child] (when (.-geometry child) (swap! n inc)))))
+    @n))
+
+(defn- current-authoring? [{:keys [authoring]} part-id mesh-key]
+  (let [a @authoring]
+    (and (= part-id (:part-id a))
+         (= mesh-key (:mesh-key a)))))
+
+(defn- sync-authoring-button! [{:keys [authoring]}]
+  (when-let [button (.querySelector js/document "[data-authoring-toggle]")]
+    (let [active? (current-authoring? {:authoring authoring}
+                                      (.getAttribute button "data-part-id")
+                                      (.getAttribute button "data-mesh-key"))]
+      (.setAttribute button "aria-pressed" (if active? "true" "false"))
+      (set! (.-textContent button) (if active? "Done picking" "Pick mount face")))))
+
+(defn- enter-authoring! [{:keys [^js canvas parts authoring current] :as sys} part-id mesh-key]
+  (when (and (get @parts part-id)
+             (= {:part-id part-id :mesh-key mesh-key} @current))
+    (clear-preview! sys)
+    (reset! authoring {:part-id part-id :mesh-key mesh-key})
+    (.add (.-classList canvas) "stage__canvas--authoring")
+    (sync-authoring-button! sys)))
+
+(defn- exit-authoring! [{:keys [^js canvas authoring] :as sys}]
+  (clear-preview! sys)
+  (reset! authoring nil)
+  (.remove (.-classList canvas) "stage__canvas--authoring")
+  (sync-authoring-button! sys))
+
+(defn- authoring! [sys {:keys [state part-id mesh-key]}]
+  (case state
+    :enter (enter-authoring! sys part-id mesh-key)
+    :exit  (exit-authoring! sys)
+    nil))
+
+(defn- shipyard-event! [event payload]
+  (.dispatchEvent (.-body js/document)
+                  (js/CustomEvent. (str "shipyard:" event)
+                                   #js {:bubbles true
+                                        :detail  #js {:value (pr-str payload)}})))
+
+(defn- authoring-toggle! [sys ^js e]
+  (let [target (.-target e)
+        button (when (and target (.-closest target))
+                 (.closest target "[data-authoring-toggle]"))]
+    (when button
+      (.preventDefault e)
+      (let [part-id (.getAttribute button "data-part-id")
+            mesh-key (.getAttribute button "data-mesh-key")
+            state (if (current-authoring? sys part-id mesh-key) :exit :enter)]
+        (shipyard-event! "authoring" {:state state :part-id part-id :mesh-key mesh-key})))))
+
+(defn- facet-geometry [^js obj facet-indices axis]
+  (let [source (.-geometry obj)
+        position (.getAttribute source "position")
+        index (.-index source)
+        lift (v3 axis)
+        values (array)]
+    (doseq [triangle facet-indices
+            corner (range 3)]
+      (let [vertex-index (.getX index (+ (* triangle 3) corner))
+            p (three/Vector3.)]
+        (.fromBufferAttribute p position vertex-index)
+        (.addScaledVector p lift 0.002)
+        (.push values (.-x p) (.-y p) (.-z p))))
+    (doto (three/BufferGeometry.)
+      (.setAttribute "position" (three/BufferAttribute. (js/Float32Array. values) 3)))))
+
+(defn- preview-length [^js obj]
+  (let [g (.-geometry obj)]
+    (when-not (.-boundingSphere g) (.computeBoundingSphere g))
+    (max 0.25 (* 0.35 (.. g -boundingSphere -radius)))))
+
+(defn- line-preview [origin dir length color]
+  (let [geometry (doto (three/BufferGeometry.)
+                   (.setFromPoints #js [(v3 origin) (scaled-end origin dir length)]))
+        material (three/LineBasicMaterial. #js {:color color})]
+    (three/Line. geometry material)))
+
+(defn- preview-object [^js obj {:keys [facet-indices frame]}]
+  (let [axis (:mount/axis frame)
+        roll (:mount/roll frame)
+        pos (:mount/pos frame)
+        length (preview-length obj)
+        highlight (three/Mesh.
+                   (facet-geometry obj facet-indices axis)
+                   (three/MeshBasicMaterial. #js {:color 0xf0c65a
+                                                  :transparent true
+                                                  :opacity 0.56
+                                                  :side three/DoubleSide
+                                                  :depthWrite false
+                                                  :polygonOffset true
+                                                  :polygonOffsetFactor -1
+                                                  :polygonOffsetUnits -1}))
+        axis-line (three/ArrowHelper. (v3 axis) (v3 pos) length 0xf0c65a (* length 0.22) (* length 0.08))
+        roll-line (line-preview pos roll (* length 0.75) 0x69d2c0)]
+    (doto (three/Group.)
+      (.add highlight)
+      (.add axis-line)
+      (.add roll-line))))
+
+(defn- draw-preview! [{:keys [^js scene parts current authoring preview preview-revision] :as sys}
+                      {:keys [part-id mesh-key frame facet-indices] :as payload}]
+  (when (and (= {:part-id part-id :mesh-key mesh-key} @current)
+             (= {:part-id part-id :mesh-key mesh-key} @authoring))
+    (when-let [obj (get @parts part-id)]
+      (clear-preview! sys)
+      (let [object (preview-object obj payload)
+            revision (swap! preview-revision inc)]
+        (.add scene object)
+        (reset! preview {:object object
+                         :revision revision
+                         :part-id part-id
+                         :mesh-key mesh-key
+                         :facet-indices facet-indices
+                         :frame frame
+                         :roll-ambiguous? (:roll-ambiguous? payload)
+                         :roll-source (:roll-source payload)})))))
+
+(defn- canvas-pointer! [^js pointer ^js canvas ^js e]
+  (let [rect (.getBoundingClientRect canvas)
+        x (- (.-clientX e) (.-left rect))
+        y (- (.-clientY e) (.-top rect))]
+    (.set pointer
+          (- (* 2.0 (/ x (.-width rect))) 1.0)
+          (- 1.0 (* 2.0 (/ y (.-height rect)))))))
+
+(defn- post-facet! [{:keys [authoring]} triangle-index]
+  (let [h (.-htmx js/window)
+        source (.getElementById js/document "mount-authoring")
+        target (.getElementById js/document "facet-preview")
+        {:keys [part-id mesh-key]} @authoring]
+    (when (and h source target part-id mesh-key)
+      (.ajax h "POST" "/facet"
+             #js {:source source
+                  :target target
+                  :swap "innerHTML"
+                  :values #js {"part-id" part-id
+                               "mesh-key" mesh-key
+                               "triangle-index" (str triangle-index)}}))))
+
+(defn- pick-face! [{:keys [^js canvas ^js camera parts authoring ^js raycaster ^js pointer] :as sys} ^js e]
+  (when-let [{:keys [part-id]} @authoring]
+    (when-let [obj (get @parts part-id)]
+      (canvas-pointer! pointer canvas e)
+      (.setFromCamera raycaster pointer camera)
+      (let [hits (.intersectObject raycaster obj false)]
+        (when (pos? (.-length hits))
+          (let [face-index (.-faceIndex (aget hits 0))]
+            (when (some? face-index)
+              (post-facet! sys face-index))))))))
 
 (defn- load-mesh!
   "Fetch, decode, upload, and optionally reframe. Errors are reported and
   swallowed: a part that fails to load must not take the session with it."
-  [{:keys [^js scene] :as sys} {:keys [url part-id frame]}]
+  [{:keys [^js scene ^js canvas authoring current] :as sys} {:keys [url part-id mesh-key frame]}]
   (-> (js/fetch url)
       (.then (fn [^js res]
                (if (.-ok res)
@@ -132,9 +315,16 @@
                (let [{:keys [bbox-min bbox-max] :as mesh} (wire/decode buf)
                      obj (three/Mesh. (decode->geometry mesh) (material))]
                  (set! (.-name obj) (or part-id url))
+                 (set! (.. obj -userData -partId) part-id)
+                 (set! (.. obj -userData -meshKey) mesh-key)
+                 (clear-preview! sys)
+                 (reset! authoring nil)
+                 (reset! current {:part-id part-id :mesh-key mesh-key})
+                 (.remove (.-classList canvas) "stage__canvas--authoring")
                  (show-only! sys part-id obj)
                  (when frame (frame! sys bbox-min bbox-max))
                  (swap! (:status sys) assoc :state :loaded :part-id part-id)
+                 (sync-authoring-button! sys)
                  scene)))
       (.catch (fn [e]
                 (js/console.error "shipyard: could not load" url e)
@@ -142,19 +332,35 @@
 
 ;; --- test hook --------------------------------------------------------------
 
+(defn- preview-stats [{:keys [preview]}]
+  (when-let [{:keys [^js object revision part-id mesh-key facet-indices frame
+                     roll-ambiguous? roll-source]} @preview]
+    (clj->js {:revision revision
+              :part-id part-id
+              :mesh-key mesh-key
+              :facet-indices facet-indices
+              :triangles (count facet-indices)
+              :position (:mount/pos frame)
+              :axis (:mount/axis frame)
+              :roll (:mount/roll frame)
+              :roll-ambiguous? roll-ambiguous?
+              :roll-source (some-> roll-source name)
+              :geometries (object-geometry-count object)})))
+
 (defn stats
   "Scene facts for the E2E suite (§10.3).
 
   Asserting on WebGL through pixels is brittle - driver, antialiasing and
   timing all move it - so the tests read this instead. Compiled out of release
   builds by `TEST-HOOKS`, so it cannot ship."
-  [{:keys [^js renderer ^js controls parts status]}]
+  [{:keys [^js renderer ^js camera ^js controls parts status authoring] :as sys}]
   (let [objs (vals @parts)]
     #js {:parts     (clj->js (vec (keys @parts)))
          :vertices  (reduce + 0 (map (fn [^js o] (.. o -geometry -attributes -position -count)) objs))
          :triangles (reduce + 0 (map (fn [^js o] (/ (.. o -geometry -index -count) 3)) objs))
          :draws     (.. renderer -info -render -calls)
          :target    (let [t (.-target controls)] #js [(.-x t) (.-y t) (.-z t)])
+         :camera    (let [p (.-position camera)] #js [(.-x p) (.-y p) (.-z p)])
          :materials (clj->js (mapv (fn [^js o] (.getHexString (.. o -material -color))) objs))
          ;; three's own count of geometries live on the GPU, decremented by
          ;; `geometry.dispose()`. The only thing here that is not derived from
@@ -162,7 +368,9 @@
          ;; scene" from "actually released" - which is what #47's test claimed
          ;; to check and could not.
          :geometries (.. renderer -info -memory -geometries)
-         :status    (clj->js (:state @status))}))
+         :status    (clj->js (:state @status))
+         :authoring (clj->js @authoring)
+         :preview   (preview-stats sys)}))
 
 ;; --- lifecycle --------------------------------------------------------------
 
@@ -192,7 +400,12 @@
         payload (fn [^js e] (edn/read-string (.. e -detail -value)))]
     (.addEventListener body "shipyard:load-mesh" #(load-mesh! sys (payload %)))
     (.addEventListener body "shipyard:clear" (fn [_] (clear! sys)))
-    (.addEventListener body "shipyard:status" #(reset! (:status sys) (payload %)))))
+    (.addEventListener body "shipyard:status" #(reset! (:status sys) (payload %)))
+    (.addEventListener body "shipyard:authoring" #(authoring! sys (payload %)))
+    (.addEventListener body "shipyard:clear-preview" (fn [_] (clear-preview! sys)))
+    (.addEventListener body "shipyard:facet-preview" #(draw-preview! sys (payload %)))
+    (.addEventListener body "shipyard:facet-error" (fn [_] (clear-preview! sys)))
+    (.addEventListener body "click" #(authoring-toggle! sys %))))
 
 (defn- renderer!
   "nil rather than a throw when this browser cannot give us a WebGL context -
@@ -216,7 +429,10 @@
           camera   (three/PerspectiveCamera. 45 1 0.1 1000)
           controls (OrbitControls. camera canvas)
           sys      {:canvas canvas :renderer renderer :scene scene :camera camera
-                    :controls controls :parts (atom {}) :status (atom {:state :idle})}]
+                    :controls controls :parts (atom {}) :status (atom {:state :idle})
+                    :current (atom nil) :authoring (atom nil) :preview (atom nil)
+                    :preview-revision (atom 0)
+                    :raycaster (three/Raycaster.) :pointer (three/Vector2.)}]
       (set! (.-outputColorSpace renderer) three/SRGBColorSpace)
       (.setPixelRatio renderer (min 2 (.-devicePixelRatio js/window)))
       (set! (.-background scene) (three/Color. 0x14171c))
@@ -224,6 +440,7 @@
       (environment! renderer scene)
       (resize! sys)
       (.observe (js/ResizeObserver. #(resize! sys)) canvas)
+      (.addEventListener canvas "click" #(pick-face! sys %))
       (.setAnimationLoop renderer (fn [] (.update controls) (.render renderer scene camera)))
       (listen! sys)
       sys)))

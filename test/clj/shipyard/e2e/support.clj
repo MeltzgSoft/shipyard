@@ -22,6 +22,7 @@
 
 (def hull-id "Human Navy Fleet Bundle/Cruiser/Cruiser Hull")
 (def prow-id "Human Navy Fleet Bundle/Cruiser/Classic Ram Prow")
+(def mount-plate-id "Human Navy Fleet Bundle/Cruiser/Mount Test Plate")
 (def supported-id "Human Navy Fleet Bundle/Cruiser/Supported Only Prow")
 (def ork-id "Ork Fleet Bundle/Escort/Ram Ship")
 
@@ -48,6 +49,7 @@
   (let [root (temp-dir "shipyard-e2e-lib")]
     (write-stl! (io/file root hull-id) "unsupported.stl" (f/uv-sphere 1.0 10 20))
     (write-stl! (io/file root prow-id) "unsupported.stl" (translate (f/cube 2.0) prow-offset))
+    (write-stl! (io/file root mount-plate-id) "unsupported.stl" (f/mount-plate))
     (write-stl! (io/file root supported-id) "supported.stl" (f/cube 1.0))
     (write-stl! (io/file root ork-id) "unsupported.stl" (f/cube 3.0))
     root))
@@ -115,6 +117,8 @@
 (defn- config [root cache-home]
   {:shipyard.library/index {:root (str root) :cache-home (str cache-home)}
    :shipyard.mesh/cache    {:crease-deg 35 :lod-tiers [1.0 0.25 0.05]
+                            :facet-angle-deg 1.0
+                            :facet-plane-epsilon-mm 0.01
                             :cap-bytes 64000000 :cache-home (str cache-home)}
    :shipyard.catalog/db    {:library (ig/ref :shipyard.library/index)}
    :shipyard.http/jobs     {:library (ig/ref :shipyard.library/index)
@@ -219,6 +223,16 @@
                                 (.setTimeout (double timeout-ms))))))
 
 (defn click! [{:keys [^Page page]} sel] (.click page sel))
+
+(defn click-point! [{:keys [^Page page]} x y]
+  (.click (.mouse page) (double x) (double y)))
+
+(defn drag! [{:keys [^Page page]} [x1 y1] [x2 y2]]
+  (let [mouse (.mouse page)]
+    (.move mouse (double x1) (double y1))
+    (.down mouse)
+    (.move mouse (double x2) (double y2))
+    (.up mouse)))
 
 (defn fill!
   "Type `value` into `sel`, key by key.
