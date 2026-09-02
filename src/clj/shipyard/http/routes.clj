@@ -6,6 +6,7 @@
   handler tree is a pure function of its dependencies and can be exercised
   without a socket."
   (:require [babashka.fs :as fs]
+            [clojure.java.io :as io]
             [clojure.string :as str]
             [integrant.core :as ig]
             [reitit.ring :as ring]
@@ -17,7 +18,10 @@
             [shipyard.http.urls :as urls]
             [shipyard.http.views :as views]
             [shipyard.library.index :as index]
-            [shipyard.mesh.cache :as cache]))
+            [shipyard.mesh.cache :as cache]
+            [shipyard.mesh.facet :as facet]
+            [shipyard.wire :as wire])
+  (:import [java.io ByteArrayOutputStream FileInputStream]))
 
 (defn- healthz [_]
   {:status  200
@@ -119,6 +123,104 @@
           (ready part cached)
           (preprocessing deps part))))))
 
+;; --- facet preview ----------------------------------------------------------
+
+(def ^:private mesh-key-re #"[0-9a-f]{64}")
+
+(defn- parse-triangle-index [s]
+  (when (and (string? s) (re-matches #"[0-9]+" s))
+    (try
+      (parse-long s)
+      (catch NumberFormatException _ nil))))
+
+(defn- facet-error
+  ([code message] (facet-error code message nil 400))
+  ([code message part-id status]
+   (htmx/fragment (views/facet-error message)
+                  {:status status
+                   :events {:facet-error {:code code
+                                          :message message
+                                          :part-id part-id}}})))
+
+(defn- invalid-selection [part-id]
+  (facet-error :invalid-selection "Select a face from the loaded part." part-id 400))
+
+(defn- read-bytes [f]
+  (with-open [in (FileInputStream. (fs/file f))
+              out (ByteArrayOutputStream.)]
+    (io/copy in out)
+    (.toByteArray out)))
+
+(defn- fresh-entry? [entry source]
+  (try
+    (and source (index/fresh? entry source))
+    (catch Exception _
+      false)))
+
+(defn- facet-preview
+  "`POST /facet`. Turns a selected tier-0 triangle into a transient preview
+  event. Durable mount writes are a later M2 endpoint."
+  [{:keys [catalog library cache]} {:keys [params]}]
+  (let [part-id (get params "part-id")
+        mesh-key (get params "mesh-key")
+        triangle-index (parse-triangle-index (get params "triangle-index"))]
+    (if-not (and (seq part-id)
+                 (string? mesh-key)
+                 (re-matches mesh-key-re mesh-key)
+                 triangle-index)
+      (invalid-selection part-id)
+      (let [db (db/snapshot catalog)
+            part (db/part db part-id)]
+        (cond
+          (nil? (:part/id part))
+          (facet-error :part-not-found "That part is no longer in the library." part-id 404)
+
+          :else
+          (let [{:keys [root entry]} (index/part-state library part-id)
+                current-key (:mesh-key entry)
+                source (when (and root (:part/source part))
+                         (fs/file root part-id (index/name-of (:part/source part))))
+                tier0 (when current-key (cache/tier-file cache current-key 0))]
+            (cond
+              (nil? current-key)
+              (facet-error :mesh-not-ready "Open the part and wait for preprocessing to finish." part-id 409)
+
+              (not= mesh-key current-key)
+              (facet-error :stale-mesh "The mesh changed. Reopen the part before picking a face." part-id 409)
+
+              (not (fresh-entry? entry source))
+              (facet-error :stale-mesh "The source STL changed. Reopen the part before picking a face." part-id 409)
+
+              (not (fs/regular-file? tier0))
+              (facet-error :mesh-not-ready "Open the part and wait for preprocessing to finish." part-id 409)
+
+              :else
+              (try
+                (let [{:keys [facet-indices frame roll-ambiguous? roll-source]}
+                      (facet/select (wire/decode (read-bytes tier0)) triangle-index
+                                    (select-keys cache [:facet-angle-deg :facet-plane-epsilon-mm]))]
+                  (htmx/fragment
+                   (views/facet-preview)
+                   {:events {:facet-preview {:part-id part-id
+                                             :mesh-key mesh-key
+                                             :triangle-index triangle-index
+                                             :facet-indices facet-indices
+                                             :frame frame
+                                             :roll-ambiguous? roll-ambiguous?
+                                             :roll-source roll-source}}}))
+                (catch clojure.lang.ExceptionInfo e
+                  (case (:code (ex-data e))
+                    :triangle-out-of-range
+                    (facet-error :triangle-out-of-range "Pick a face on the loaded mesh." part-id 422)
+
+                    :degenerate-facet
+                    (facet-error :degenerate-facet "Pick a different face; that one cannot define a mount." part-id 422)
+
+                    :invalid-mesh-cache
+                    (facet-error :invalid-mesh-cache "The cached mesh is invalid. Reopen the part to rebuild it." part-id 500)
+
+                    (facet-error :invalid-mesh-cache "The cached mesh is invalid. Reopen the part to rebuild it." part-id 500)))))))))))
+
 ;; --- settings ---------------------------------------------------------------
 
 (defn- save-settings
@@ -166,6 +268,7 @@
    ["/healthz" {:get healthz}]
    ["/library" {:get (partial library deps)}]
    ["/settings" {:post (partial save-settings deps)}]
+   ["/facet" {:post (partial facet-preview deps)}]
    ["/part/*id" {:get (partial part deps)}]
    ["/mesh/:file" {:get (partial mesh deps)}]])
 

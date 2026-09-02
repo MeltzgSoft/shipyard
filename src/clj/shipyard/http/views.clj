@@ -117,6 +117,16 @@
   [:div.detail.detail--empty
    [:p.detail__error "No such part: " [:code id]]])
 
+;; --- facet preview ----------------------------------------------------------
+
+(defn facet-preview []
+  [:div.facet-preview
+   [:p.detail__status "Face selected."]])
+
+(defn facet-error [message]
+  [:div.facet-preview.facet-preview--error
+   [:p.detail__error message]])
+
 ;; --- the library location ---------------------------------------------------
 
 (defn settings-form

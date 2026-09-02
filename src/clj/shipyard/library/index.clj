@@ -124,6 +124,14 @@
   [{:keys [state]} part-id]
   (get-in @state [:entries part-id :mesh-key]))
 
+(defn part-state
+  "The current root and scan-index entry for `part-id`, read from one atom
+  snapshot. Selection handlers need this coherence: a settings change can swap
+  roots while a request is in flight."
+  [{:keys [state]} part-id]
+  (let [{:keys [root entries]} @state]
+    {:root root :entry (get entries part-id)}))
+
 ;; --- the component, and the root it can be pointed at ------------------------
 
 (defn root

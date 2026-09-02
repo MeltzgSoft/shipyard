@@ -7,13 +7,17 @@
             [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
+            [babashka.fs :as fs]
             [integrant.core :as ig]
             [shipyard.fixtures :as f]
             [shipyard.http.jobs :as jobs]
             [shipyard.http.routes :as routes]
+            [shipyard.mesh.cache :as cache]
             [shipyard.library.index :as index]
             [shipyard.wire :as wire])
-  (:import [java.io File]))
+  (:import [java.io File]
+           [java.net URLEncoder]
+           [java.nio.charset StandardCharsets]))
 
 ;; --- a library on disk ------------------------------------------------------
 
@@ -68,6 +72,17 @@
    (h (cond-> {:request-method :get :uri path}
         query (assoc :query-string query)))))
 
+(defn- POST
+  "A form post, the way htmx sends one."
+  [h path params]
+  (let [body (str/join "&" (for [[k v] params]
+                             (str (name k) "="
+                                  (URLEncoder/encode (str v) StandardCharsets/UTF_8))))]
+    (h {:request-method :post
+        :uri            path
+        :headers        {"content-type" "application/x-www-form-urlencoded"}
+        :body           (io/input-stream (.getBytes body StandardCharsets/UTF_8))})))
+
 (defn- triggers
   "The `HX-Trigger` header, decoded: JSON envelope, EDN payloads (§7.1)."
   [response]
@@ -85,6 +100,40 @@
           (get (triggers r) "shipyard:load-mesh") r
           (> (System/currentTimeMillis) deadline) (throw (ex-info "part never became ready" {:body (:body r)}))
           :else (do (Thread/sleep 50) (recur)))))))
+
+(defn- authoring-mesh
+  [triangles]
+  (let [positions (float-array (mapcat identity (apply concat triangles)))
+        indices (int-array (range (* 3 (count triangles))))]
+    {:positions positions
+     :indices indices
+     :vertex-count (* 3 (count triangles))
+     :bbox-min [0.0 0.0 0.0]
+     :bbox-max [4.0 2.0 0.0]}))
+
+(def ^:private facet-mesh
+  (authoring-mesh
+   [[[0 0 0] [4 0 0] [0 2 0]]
+    [[4 0 0] [4 2 0] [0 2 0]]]))
+
+(def ^:private degenerate-mesh
+  (authoring-mesh [[[0 0 0] [1 0 0] [1 0 0]]]))
+
+(defn- write-symesh! [cache mesh-key mesh]
+  (let [f (cache/tier-file cache mesh-key 0)]
+    (fs/create-dirs (fs/parent f))
+    (io/copy (wire/encode mesh) (fs/file f))
+    f))
+
+(defn- seed-authoring-cache!
+  ([sys] (seed-authoring-cache! sys (apply str (repeat 64 "1")) facet-mesh))
+  ([sys mesh-key mesh]
+   (write-symesh! (:cache sys) mesh-key mesh)
+   (swap! (:state (:library sys)) update-in [:entries hull-id] assoc :mesh-key mesh-key)
+   mesh-key))
+
+(defn- facet-post [h part-id mesh-key triangle-index]
+  (POST h "/facet" {:part-id part-id :mesh-key mesh-key :triangle-index triangle-index}))
 
 ;; --- the shell --------------------------------------------------------------
 
@@ -215,6 +264,103 @@
                   "/mesh/....%2F....%2Fetc%2Fpasswd.0.symesh"
                   (str "/mesh/" (apply str (repeat 64 "a")) ".0.symesh")]]
       (is (= 404 (:status (GET h path))) path))))
+
+;; --- facet preview ----------------------------------------------------------
+
+(deftest facet-preview-posts-a-triangle-selection
+  (let [sys (system (library-tree))
+        h (handler sys)
+        mesh-key (seed-authoring-cache! sys)
+        r (facet-post h hull-id mesh-key 0)
+        preview (get (triggers r) "shipyard:facet-preview")]
+    (is (= 200 (:status r)))
+    (is (str/includes? (:body r) "Face selected."))
+    (is (= hull-id (:part-id preview)))
+    (is (= mesh-key (:mesh-key preview)))
+    (is (= 0 (:triangle-index preview)))
+    (is (= [0 1] (:facet-indices preview)))
+    (is (= [2.0 1.0 0.0] (get-in preview [:frame :mount/pos])))
+    (is (= [0.0 0.0 1.0] (get-in preview [:frame :mount/axis])))
+    (is (= [1.0 0.0 0.0] (get-in preview [:frame :mount/roll])))
+    (is (false? (:roll-ambiguous? preview)))
+    (is (= :hull-edge (:roll-source preview)))))
+
+(deftest facet-preview-reports-documented-errors
+  (testing "missing or malformed fields"
+    (let [r (POST (handler (system (library-tree))) "/facet" {})]
+      (is (= 400 (:status r)))
+      (is (= :invalid-selection (:code (get (triggers r) "shipyard:facet-error"))))))
+
+  (testing "non-decimal triangle index"
+    (let [r (facet-post (handler (system (library-tree))) hull-id (apply str (repeat 64 "1")) "1e3")]
+      (is (= 400 (:status r)))
+      (is (= :invalid-selection (:code (get (triggers r) "shipyard:facet-error"))))))
+
+  (testing "part absent from the current catalog"
+    (let [r (facet-post (handler (system (library-tree))) "No/Such/Part" (apply str (repeat 64 "1")) 0)]
+      (is (= 404 (:status r)))
+      (is (= :part-not-found (:code (get (triggers r) "shipyard:facet-error"))))))
+
+  (testing "no current mesh key"
+    (let [r (facet-post (handler (system (library-tree))) hull-id (apply str (repeat 64 "1")) 0)]
+      (is (= 409 (:status r)))
+      (is (= :mesh-not-ready (:code (get (triggers r) "shipyard:facet-error"))))))
+
+  (testing "key mismatch"
+    (let [sys (system (library-tree))
+          h (handler sys)
+          _ (seed-authoring-cache! sys (apply str (repeat 64 "1")) facet-mesh)
+          r (facet-post h hull-id (apply str (repeat 64 "2")) 0)]
+      (is (= 409 (:status r)))
+      (is (= :stale-mesh (:code (get (triggers r) "shipyard:facet-error"))))))
+
+  (testing "source mtime or size changed"
+    (let [root (library-tree)
+          sys (system root)
+          h (handler sys)
+          mesh-key (seed-authoring-cache! sys)
+          _ (spit (io/file root hull-id "unsupported.stl") "changed")
+          r (facet-post h hull-id mesh-key 0)]
+      (is (= 409 (:status r)))
+      (is (= :stale-mesh (:code (get (triggers r) "shipyard:facet-error"))))))
+
+  (testing "tier-0 cache file missing"
+    (let [sys (system (library-tree))
+          h (handler sys)
+          mesh-key (apply str (repeat 64 "1"))
+          _ (swap! (:state (:library sys)) update-in [:entries hull-id] assoc :mesh-key mesh-key)
+          r (facet-post h hull-id mesh-key 0)]
+      (is (= 409 (:status r)))
+      (is (= :mesh-not-ready (:code (get (triggers r) "shipyard:facet-error"))))))
+
+  (testing "triangle outside the decoded mesh"
+    (let [sys (system (library-tree))
+          h (handler sys)
+          mesh-key (seed-authoring-cache! sys)
+          r (facet-post h hull-id mesh-key 2)]
+      (is (= 422 (:status r)))
+      (is (= :triangle-out-of-range (:code (get (triggers r) "shipyard:facet-error"))))))
+
+  (testing "selected triangle is degenerate"
+    (let [sys (system (library-tree))
+          h (handler sys)
+          mesh-key (seed-authoring-cache! sys (apply str (repeat 64 "3")) degenerate-mesh)
+          r (facet-post h hull-id mesh-key 0)]
+      (is (= 422 (:status r)))
+      (is (= :degenerate-facet (:code (get (triggers r) "shipyard:facet-error"))))))
+
+  (testing "cached bytes fail symesh validation"
+    (let [sys (system (library-tree))
+          h (handler sys)
+          mesh-key (apply str (repeat 64 "4"))
+          f (cache/tier-file (:cache sys) mesh-key 0)
+          _ (do (fs/create-dirs (fs/parent f))
+                (spit (fs/file f) "not a symesh")
+                (swap! (:state (:library sys)) update-in [:entries hull-id] assoc :mesh-key mesh-key))
+          r (facet-post h hull-id mesh-key 0)]
+      (is (= 500 (:status r)))
+      (is (= :invalid-mesh-cache (:code (get (triggers r) "shipyard:facet-error"))))
+      (is (not (str/includes? (:body r) (str (cache/tier-file (:cache sys) mesh-key 0))))))))
 
 ;; --- failures ---------------------------------------------------------------
 

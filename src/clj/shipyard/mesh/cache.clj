@@ -115,11 +115,14 @@
 ;; --- component --------------------------------------------------------------
 
 (defmethod ig/init-key :shipyard.mesh/cache
-  [_ {:keys [crease-deg lod-tiers cap-bytes cache-home]}]
+  [_ {:keys [crease-deg lod-tiers cap-bytes cache-home
+             facet-angle-deg facet-plane-epsilon-mm]}]
   ;; `cache-home` is injectable for the same reason the scan index's is: an
   ;; E2E run must not evict the developer's real cache to prove a point.
   (let [dir (fs/file (or cache-home (system/cache-home)) "shipyard" "mesh")]
     (fs/create-dirs dir)
     (log/infof "mesh cache at %s (cap %,d bytes)" (str dir) cap-bytes)
     {:dir dir :crease-deg crease-deg :lod-tiers lod-tiers
+     :facet-angle-deg facet-angle-deg
+     :facet-plane-epsilon-mm facet-plane-epsilon-mm
      :cap-bytes cap-bytes :inflight (atom {})}))
