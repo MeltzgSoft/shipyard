@@ -1,12 +1,12 @@
 # Shipyard - Technical Specification
 
 Implementation-level design. Scope: **M1** (library scan, catalog, mesh pipeline,
-single-part viewer) in full detail, plus the system-wide foundations M1 forces us to
-commit to - project layout, dependencies, storage, and the HTTP contract - which every
-later milestone inherits.
+single-part viewer) and **M2** (face selection and mount authoring) in full detail, plus
+the system-wide foundations M1 forced us to commit to - project layout, dependencies,
+storage, and the HTTP contract - which every later milestone inherits.
 
-M2-M6 are deliberately not specced at this depth. M1 will teach us things about the mesh
-pipeline that would invalidate the guesses.
+M3-M6 are deliberately not specced at this depth. M1 taught us the exact mesh identity
+and triangle-ordering constraints that M2 now specifies in §12.
 
 Companion to [SPEC.md](SPEC.md), which covers product scope and architecture rationale.
 
@@ -1528,7 +1528,272 @@ probe. No user request waits for the canary, and it remains outside CI (§10.4).
 If the cold preprocess budget fails, the lazy-cache design is what protects the user
 experience - it is paid once per part, ever.
 
-## 12. Open questions
+## 12. M2 mount-authoring contract
+
+M2 turns a triangle clicked in the browser into a durable mount frame. The apparently
+small word "triangle" crosses the mesh cache, meshoptimizer, Three.js, HTTP and the
+sidecar write path, so this section fixes that contract before any handler or viewport
+code grows its own interpretation. It does not specify assembly transforms or compatible
+part selection; those remain M3 work (SPEC §5.3 and §10).
+
+### 12.1 The authoring mesh and selection identity
+
+**Tier 0 of the cached `.symesh` is the authoritative authoring mesh.** More precisely,
+it is the exact byte stream served at `/mesh/<mesh-key>.0.symesh`, after tier 0 has been
+crease-split, reordered by `meshopt_optimizeVertexCache`, and compacted by
+`meshopt_optimizeVertexFetch` (§6.3). Three.js `Raycaster` reports `faceIndex` as the
+triangle ordinal in that indexed `BufferGeometry`, so only that file has the same
+triangle order the browser clicked.
+
+The server decodes that existing file with `shipyard.wire/decode`; it never reparses the
+STL or reruns `shipyard.mesh.lod/generate` to answer a selection. Regeneration would be
+wasted work and, across a meshoptimizer upgrade or different native build, is not a
+contract that the triangle order remains identical. Lower LOD tiers are never used for
+authoring: their triangles describe simplified geometry and do not map back to tier 0.
+
+A selection is the transient triple `(part-id, mesh-key, triangle-index)`:
+
+- `part-id` is resolved against the current catalog and current library root. No path or
+  root supplied by the browser is trusted.
+- `mesh-key` must equal the key currently recorded for that part, the recorded source
+  `mtime` and size must still match the selected source, and the tier-0 file must exist.
+  A mismatch is a stale selection, never an invitation to apply the old triangle index
+  to a new mesh.
+- `triangle-index` is zero-based and must be less than `indexCount / 3`. `indexCount`
+  must itself be divisible by three.
+
+The handler validates those facts against one coherent view of the world: read the
+catalog snapshot, the library root, and the scan-index entry once, then decide. It does
+not read the part from one catalog value and the mesh freshness from a later root after
+the settings form may have relocated the library. If the root changes mid-request, the
+old coherent view may still return a preview, but it belongs to the part and mesh named
+in the event; the next authoring action will be against the new root.
+
+This identity exists only for the life of a preview. Triangle order is derived cache
+state and may change when the STL or mesh pipeline changes, so neither this triple nor a
+triangle or facet index is written to a sidecar or Datascript.
+
+### 12.2 Geometric edges and facet growth
+
+Crease splitting deliberately gives one geometric point several vertex ids (§6.2), so
+adjacency cannot use index-buffer ids. A geometric point is keyed by the three exact
+float32 position bits, with `-0.0` folded onto `0.0`, exactly as the position weld does.
+A geometric edge is the unordered pair of those point keys. This is sufficient because
+the measured source collection welds on exact bits; adding an M2-only spatial snap would
+make authoring disagree with the mesh pipeline it is meant to describe.
+
+Build an edge-to-triangles table from the decoded tier-0 mesh. An edge with exactly two
+incident triangles makes those triangles neighbours. Boundary edges make no link, and
+non-manifold edges with three or more incident triangles make no link: there is no
+unambiguous surface to cross. Edge direction and crease-split vertex ids do not affect
+the lookup, but triangle winding still matters to the coplanarity test below.
+
+Starting at the selected triangle, flood through neighbours that satisfy both tests
+against the **starting triangle**, not against the most recently visited triangle:
+
+1. their oriented unit normals differ by at most **1.0 degree**
+   (`dot(candidate, start) >= cos(1 degree)`); and
+2. every candidate vertex is within **0.01 mm** of the starting triangle's plane
+   (`abs(dot(start-normal, vertex - start-point)) <= 0.01`).
+
+Comparing every candidate with the seed prevents a long, gently curved strip from
+entering one facet by tolerance creep. The angle admits exporter noise without joining a
+visible bevel; the distance is two orders of magnitude below the 1 mm features being
+picked in the reference collection. Both values live in `resources/config.edn` as
+`:facet-angle-deg` and `:facet-plane-epsilon-mm` under `:shipyard.mesh/cache` when the M2
+geometry component is added, so the real Cruiser probe can tune them without changing
+the algorithm.
+
+A triangle is degenerate when any coordinate is non-finite or the magnitude of its cross
+product (twice its area) is at most **1e-12 mm²**. A degenerate selected triangle is an
+error. Degenerate neighbours and triangles whose winding reverses their normal are not
+crossed. The returned facet indices are sorted ascending for repeatable tests and event
+payloads, although they remain transient.
+
+### 12.3 A stable mount frame
+
+Frame derivation is pure JVM geometry over the selected facet and proceeds in sorted
+triangle order:
+
+1. `:mount/pos` is the component-wise midpoint of the minimum and maximum coordinates of
+   all facet vertices. It is not a vertex average, which weights vertices by how often
+   triangulation happens to reference them.
+2. `:mount/axis` is the normalized sum of the facet triangles' unnormalized cross
+   products. It therefore weights by area and follows the mesh winding. A zero or
+   non-finite result is an error.
+3. Project the unique geometric points into the facet plane, compute their two-dimensional
+   monotone-chain convex hull, and consider only consecutive hull edges, including the
+   closing edge. `:mount/roll` is the normalized three-dimensional direction of the
+   longest hull **edge**, never a diagonal.
+
+An edge direction has two equivalent signs. Canonicalize it so its first component whose
+absolute value exceeds `1e-9` is positive, checking X, then Y, then Z. Opposite parallel
+edges therefore produce the same roll. Lengths within one percent of the maximum are
+tied; if tied maximum edges contain more than one direction (directions are considered
+parallel when `abs(dot) >= cos(1 degree)`), the facet is roll-ambiguous. It is also
+ambiguous when the two eigenvalues of the projected convex polygon's area covariance are
+within one percent. The covariance is over polygon area, not its sampled vertices, so an
+unevenly tessellated circular rim still has no invented preferred direction. These two
+tests catch squares, circles and near-circles without misclassifying the two opposite long
+edges of a rectangle.
+
+For an ambiguous facet, project the first usable world axis from the fixed order X, Y, Z
+onto the facet plane and normalize it; "usable" means a projected length greater than
+`1e-9`. Canonicalize its sign by the same rule. The preview reports
+`:roll-ambiguous? true` and `:roll-source :world-axis`, so the wizard exposes roll
+adjustment rather than pretending the fallback came from the model. An ordinary facet
+reports `:roll-source :hull-edge`.
+
+On every successful result, position and all vector components are finite, axis and roll
+are unit length within `1e-9`, and `abs(dot(axis, roll)) <= 1e-9`. The implicit +Y is
+`axis × roll`, making `(roll, +Y, axis)` a right-handed frame. Computation uses doubles;
+only the final durable vectors are ordinary EDN numbers.
+
+### 12.4 Symmetry plane and mirroring
+
+M2 supports the three axis-aligned planes in the part's own coordinates. A plane is the
+transient pair `{:axis :x|:y|:z :offset number}`. The UI defaults the offset to the dense
+mesh bounding-box midpoint on the chosen axis and defaults the axis to `:x`, but always
+shows both for confirmation; print layouts mean neither the origin nor a guessed axis is
+universally correct. The offset is editable, which covers parts whose symmetry plane is
+away from zero.
+
+For unit plane normal `n` and plane offset `d`, choose `q = d n`. Reflection is:
+
+```
+point'  = point - 2 n dot(point - q, n)
+vector' = vector - 2 n dot(vector, n)
+```
+
+Reflect `:mount/pos` as a point and both `:mount/axis` and `:mount/roll` as vectors, then
+renormalize and remove any accumulated roll component along the axis:
+
+```
+axis'' = normalize(axis')
+roll'' = normalize(roll' - axis'' dot(roll', axis'') axis'')
+```
+
+If that final roll length is not usable, fall back to the same world-axis projection rule
+used for an ambiguous picked facet, and keep the preview marked as manually adjustable.
+Reconstructing +Y as `axis'' × roll''` preserves a right-handed stored frame; applying a
+reflection matrix to all three basis vectors would instead create a left-handed frame. A
+position within the facet plane epsilon of the symmetry plane is a centreline mount and
+is not offered as a duplicate. Plane choice, offset, and suggested port/starboard ids
+remain wizard state; only an accepted mirrored mount is durable, with
+`:mount/origin :mirrored`.
+
+### 12.5 HTTP and htmx contract
+
+The endpoint is `POST /facet`, using the existing form parameter middleware. Its fields
+are `part-id`, `mesh-key`, and decimal `triangle-index`. The triangle field is an
+unsigned base-10 integer string; blanks, signs, decimals, exponents and negative values
+are malformed selections. A route outside `/part/*id` avoids the catch-all path and the
+encoded-separator ambiguity described in §7.
+
+A valid request returns status 200 and a small facet-preview fragment for the wizard. The
+handler passes this event map to the existing `htmx/fragment` helper:
+
+```clojure
+{:events
+ {:facet-preview
+  {:part-id "Human Navy Fleet Bundle/Cruiser/Hull"
+   :mesh-key "3f9a..."
+   :triangle-index 42
+   :facet-indices [40 41 42 43]
+   :frame {:mount/pos [0.0 2.0 4.0]
+           :mount/axis [0.0 0.0 1.0]
+           :mount/roll [1.0 0.0 0.0]}
+   :roll-ambiguous? false
+   :roll-source :hull-edge}}}
+```
+
+`htmx/fragment` names the event `shipyard:facet-preview`; on the wire it follows §7.1
+exactly, with JSON as the envelope and the event value as one EDN string. The browser must
+treat the returned `facet-indices` as indices into the mesh named by the same payload, not
+whichever mesh happens to be visible when an asynchronous response arrives.
+
+Errors return an explanatory HTML fragment and a `shipyard:facet-error` event whose EDN
+payload is `{:code keyword :message string :part-id string-or-nil}`. The viewport listener
+clears any existing preview when it handles this event, so correctness does not depend on
+the dispatch order of a second clear event.
+
+| Condition | Status | `:code` |
+|---|---:|---|
+| missing or malformed field | 400 | `:invalid-selection` |
+| part absent from the current catalog | 404 | `:part-not-found` |
+| part has no current mesh key or tier-0 cache file | 409 | `:mesh-not-ready` |
+| key mismatch or source mtime/size changed | 409 | `:stale-mesh` |
+| triangle index outside the decoded mesh | 422 | `:triangle-out-of-range` |
+| selected triangle or derived frame is degenerate | 422 | `:degenerate-facet` |
+| cached bytes fail `.symesh` validation | 500 | `:invalid-mesh-cache` |
+
+The 409 responses tell the user to reopen the part and wait for preprocessing; the 422
+responses tell them to pick another face. Internal exception text and filesystem paths
+never enter the response.
+
+Two additional viewport events complete the lifecycle. `shipyard:authoring` carries
+`{:state :enter|:exit :part-id ... :mesh-key ...}`; entering enables raycast selection and
+exiting restores ordinary orbit behaviour. `shipyard:clear-preview` has no payload and is
+sent on part change, wizard cancellation, or a successful save. A new preview replaces
+and disposes the previous highlight and gizmo before adding its replacements.
+
+### 12.6 Durable and transient values
+
+The sidecar remains the source of truth. A confirmed mount stores only durable authoring
+data:
+
+```clojure
+{:mount/id :port-weapon-1
+ :mount/kind :socket
+ :mount/accepts #{:weapon}
+ :mount/pos [0.0 2.0 4.0]
+ :mount/axis [0.0 0.0 1.0]
+ :mount/roll [1.0 0.0 0.0]
+ :mount/origin :picked}
+```
+
+`:mount/id`, kind, accepts, position, axis, roll and origin are durable. A manual
+`:part/role` override is durable at the sidecar top level and takes precedence over
+`:part/role-hint`; inferred role and its evidence remain derived catalog data. Once M2
+adds manual roles to the catalog transaction, browsing displays the manual role as
+authoritative and keeps the original hint only as evidence, never as a compatibility
+fact. Existing unknown sidecar keys are preserved on every edit.
+
+The selected triangle, facet indices, mesh key, ambiguity flag, roll source, symmetry
+plane, unsaved roll adjustment, repeated classification, form validation state and
+preview geometry are transient. None belongs in Datascript except a confirmed mount's
+durable fields after the sidecar has been atomically written first (§1.2). In particular,
+Datascript never receives positions, normals or index buffers used to derive a facet.
+
+### 12.7 Fixture that fixes the contract
+
+`test/fixtures/m2-facets.stl` is one small binary STL, generated by the fixture helpers
+and passed through the real tier-0 pipeline before selection tests. In millimetres it
+contains:
+
+- a 4 × 2 rectangle on Z=0, split into two triangles;
+- a vertical rectangle sharing the first rectangle's Y=2 edge, exercising a hard edge
+  and the distinct vertex ids created by crease splitting;
+- a second 2 × 1 rectangle on Z=0 beginning at X=6, coplanar but disconnected; and
+- a disconnected 2 × 2 square on Z=3, whose equal non-parallel hull edges require the
+  roll fallback.
+
+The first pick returns exactly the two triangles of the 4 × 2 rectangle, not the vertical
+or disconnected rectangles, with position `[2 1 0]`, axis `[0 0 1]`, roll `[1 0 0]`, and
+`:roll-ambiguous? false`. Picking the square returns its two triangles and
+`:roll-ambiguous? true`. Tests also construct reversed, non-manifold, invalid-index and
+degenerate cases in memory; they do not need more committed binary fixtures.
+
+### 12.8 M2/M3 boundary
+
+M2 may derive, preview, mirror, classify and persist frames. It may not place one part on
+another, evaluate `:mount/accepts`, choose compatible components, create loadout slots or
+apply `M = S . Tz(g) . Rx(pi) . P^-1`. Those are M3 behaviours even though the shared
+frame representation and `geom.cljc` make them technically possible earlier. The M2
+end-to-end proof stops after mounts reload from their sidecars and render plausibly on the
+individual parts that own them.
+
+## 13. Open questions
 
 - **Escort classification** (SPEC §11) blocks accurate role inference. Verify by
   inspecting geometry - a pre-combined escort should show one connected component with a
