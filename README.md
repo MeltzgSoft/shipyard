@@ -9,8 +9,8 @@ hours of resin to it - and prows are distinguished by silhouette details that on
 once mounted. Shipyard closes that loop: pick parts, see the assembled ship, decide
 before printing.
 
-**Status:** early. M1 (library scan, catalog, mesh pipeline, single-part viewer) is in
-progress. See the [milestones](https://forgejo.tail943578.ts.net/MeltzgSoft/shipyard/milestones).
+**Status:** early. M1 (library scan, catalog, mesh pipeline, single-part viewer) is
+complete. See the [milestones](https://forgejo.tail943578.ts.net/MeltzgSoft/shipyard/milestones).
 
 ## Requirements
 
@@ -59,10 +59,18 @@ npx shadow-cljs compile viewport                    # e2e needs the bundle, with
 clojure -M:test:natives-linux --focus :e2e          # headless browser
 
 clojure -M:natives-linux:canary         # data-quality probe over the real library
+clojure -M:natives-linux:benchmark --root /path/to/models --machine "CPU; RAM; GPU; storage"
 clojure -M:cljfmt check src test build.clj    # `fix` to apply
 clojure -M:clj-kondo --lint src --lint test --lint build.clj
 clojure -M:outdated                     # dependency freshness, deps.edn + package.json
 ```
+
+The benchmark is the on-demand, machine-labelled measurement behind TECHNICAL.md §11;
+it is deliberately not a CI gate. It creates fresh scan indexes and mesh caches under
+the system temp directory, drives a hardware Chromium window for ten seconds, runs the
+whole-library canary with four threads, and writes `benchmark.edn`. Build the dev viewport
+bundle first (`npx shadow-cljs compile viewport`). Use `--viewport-mode swiftshader` only
+for a CPU-renderer comparison; it does not measure the hardware viewport budget.
 
 **htmx is copied, not bundled** - `clojure -T:build uber` does it for you, but the dev
 commands above do not, so a fresh clone needs it once. The `mkdir` is not decoration:

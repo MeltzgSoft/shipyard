@@ -136,8 +136,9 @@
 
 (def ^:const default-threads
   "Four, not `availableProcessors + 2`. Each worker holds a parsed hull plus its
-  welded and simplified derivatives, and the largest source here is 57.8 MB -
-  a dozen of those at once blows the 2 GB peak budget (§11). The canary is
+  welded and simplified derivatives. The largest selected source changes with
+  the collection (currently 34.0 MB; an earlier snapshot reached 57.8 MB), and
+  a dozen large parts at once blows the 2 GB peak budget (§11). The canary is
   allowed to be slow; it is not allowed to die three hours in."
   4)
 

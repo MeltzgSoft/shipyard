@@ -133,6 +133,8 @@ while IFS= read -r cmd; do
       skip "$cmd" "a watcher never exits; the compile it wraps is covered below" ;;
     *":outdated"*)
       skip "$cmd" "reaches the network and reports newer releases by design, so it is never deterministically green" ;;
+    *":benchmark"*)
+      skip "$cmd" "requires the real library, a labelled machine and a hardware GPU; it is deliberately outside CI" ;;
     *"--focus :e2e"*)
       skip "$cmd" "has its own job (test-e2e), which owns the browser setup" ;;
     *"--focus :integration"*)
