@@ -1,7 +1,9 @@
 (ns shipyard.benchmark
   "On-demand measurements for the M1 performance budgets (issue #44).
 
-  This is deliberately not a test or a CI gate. Wall time and frame rate belong
+  This is deliberately not a test or a CI gate. It lives on the test source
+  path so its optional Playwright dependency cannot leak into the shipped jar.
+  Wall time and frame rate belong
   to the machine and model library they were measured on; the command records
   both beside the results so the numbers remain evidence rather than folklore.
 
