@@ -197,7 +197,7 @@
       (orient-object! wireframe normalized)
       (swap! orientation-guide assoc :orientation normalized))))
 
-(defn- put-part!
+(defn put-part!
   "Put `obj` in the scene as `part-id`, disposing whatever was there under that
   id. The primitive: it replaces one part and leaves the rest alone, which is
   what M3 assembly will want when a slot changes."
@@ -209,7 +209,7 @@
   (.add scene obj)
   sys)
 
-(defn- show-only!
+(defn show-only!
   "Make `obj` the only thing in the scene.
 
   M1 is a single-part viewer (SPEC §10) - picking a part shows that part - and

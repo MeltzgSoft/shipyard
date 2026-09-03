@@ -59,6 +59,7 @@ clojure -M:test --focus :unit                       # pure functions only, sub-s
 clojure -M:test:natives-linux --focus :integration  # filesystem, natives, HTTP
 npx shadow-cljs compile viewport                    # e2e needs the bundle, with test hooks
 clojure -M:test:natives-linux --focus :e2e          # headless browser
+npx shadow-cljs compile test && node target/js/node-tests.js  # CLJS node unit tests
 
 clojure -M:natives-linux:canary         # data-quality probe over the real library
 clojure -M:m2-human-navy-cruiser-proof --root /tmp/human-navy-cruiser-copy --out m2-human-navy-cruiser-proof.edn
@@ -137,10 +138,11 @@ Install once per clone - git does not do this for you:
 git config core.hooksPath .githooks
 ```
 
-`pre-commit` runs cljfmt, clj-kondo and the unit suite, so a red CI run is never the
-first you hear of a formatting problem. It runs every check before reporting, so one
-commit attempt tells you everything to fix. Integration and e2e stay in CI deliberately:
-a hook slow enough to be annoying is a hook people bypass with `--no-verify`.
+`pre-commit` runs cljfmt, clj-kondo, the JVM unit suite and the CLJS node unit suite,
+so a red CI run is never the first you hear of a formatting problem. It runs every
+check before reporting, so one commit attempt tells you everything to fix. Integration
+and e2e stay in CI deliberately: a hook slow enough to be annoying is a hook people
+bypass with `--no-verify`.
 
 ## Documentation
 

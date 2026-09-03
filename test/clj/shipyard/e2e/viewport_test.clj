@@ -248,21 +248,6 @@
       (is (= [s/prow-id] (vec (:parts stats)))
           "the hull should be gone, not sitting behind the prow"))))
 
-(deftest repeated-loads-do-not-accumulate
-  (testing "parts in sequence must not grow GPU memory without bound, so a
-            replaced part is disposed rather than merely removed"
-    (open-app!)
-    ;; Alternating two *renderable* parts, so nothing here is cleared as a side
-    ;; effect - every replacement is `show-only!` doing its job.
-    (dotimes [_ 3]
-      (select-part! "Cruiser Hull")
-      (s/await-part *driver* s/hull-id)
-      (select-part! "Classic Ram Prow")
-      (s/await-part *driver* s/prow-id))
-    (select-part! "Cruiser Hull")
-    (let [stats (s/await-part *driver* s/hull-id)]
-      (is (= [s/hull-id] (vec (:parts stats)))))))
-
 (deftest a-replaced-part-is-disposed-not-merely-removed
   (testing "`parts` is bookkeeping; it shrinks whether or not the GPU buffers
             were released. three's own geometry count is what tells them apart."

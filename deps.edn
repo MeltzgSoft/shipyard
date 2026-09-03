@@ -65,7 +65,7 @@
 
   ;; --- cljs ---------------------------------------------------------------
   :cljs
-  {:extra-paths ["src/cljs" "src/cljc" "test/cljc"]
+  {:extra-paths ["src/cljs" "src/cljc" "test/cljs" "test/cljc"]
    :extra-deps  {thheller/shadow-cljs {:mvn/version "3.4.12"}}}
 
   ;; --- canary (issue #18) --------------------------------------------------

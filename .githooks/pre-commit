@@ -25,6 +25,8 @@ run clojure -M:clj-kondo --lint src --lint test --lint build.clj
 # be annoying is a hook people bypass with --no-verify, which is worse than not
 # having one.
 run clojure -M:test --focus :unit
+run npx shadow-cljs compile test
+run node target/js/node-tests.js
 
 if [ ${#failed_cmds[@]} -gt 0 ]; then
   echo
