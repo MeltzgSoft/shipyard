@@ -41,6 +41,43 @@
         "() => { const r = document.getElementById('viewport').getBoundingClientRect();
                  return {x: r.left + r.width / 2, y: r.top + r.height / 2}; }"))
 
+(defn- detail-layout []
+  (s/js *driver*
+        "() => {
+           const stage = document.querySelector('.stage');
+           const detail = document.getElementById('detail');
+           const child = detail.firstElementChild;
+           const style = getComputedStyle(detail);
+           const stageRect = stage.getBoundingClientRect();
+           const detailRect = detail.getBoundingClientRect();
+           const childRect = child ? child.getBoundingClientRect() : null;
+           const detailInnerHeight = detail.clientHeight
+             - parseFloat(style.paddingTop)
+             - parseFloat(style.paddingBottom);
+
+           return {
+             childClass: child ? child.className : null,
+             childFills: childRect ? childRect.height >= detailInnerHeight - 2 : false,
+             childHeight: childRect ? childRect.height : null,
+             detailHeight: detailRect.height,
+             detailInnerHeight,
+             detailShare: detailRect.height / stageRect.height,
+             stageHeight: stageRect.height
+           };
+         }"))
+
+(defn- assert-detail-panel-fills! [state-label]
+  (let [layout (detail-layout)]
+    (is (>= (:detailHeight layout) 224)
+        (str state-label " detail panel should keep usable bottom height; layout was "
+             (pr-str layout)))
+    (is (>= (:detailShare layout) 0.25)
+        (str state-label " detail panel should claim the bottom stage row; layout was "
+             (pr-str layout)))
+    (is (:childFills layout)
+        (str state-label " detail content should fill its panel; layout was "
+             (pr-str layout)))))
+
 (defn- close? [a b]
   (< (abs (- (double a) (double b))) 0.08))
 
@@ -132,6 +169,19 @@
       "shipyard:clear should have emptied the scene")
   (testing "and the panel says why rather than going blank"
     (is (str/includes? (s/text *driver* "#detail") "supported STL"))))
+
+(deftest detail-panel-views-fill-the-bottom-row
+  (open-app!)
+  (testing "empty detail"
+    (assert-detail-panel-fills! "empty"))
+  (testing "loaded detail"
+    (select-part! "Cruiser Hull")
+    (s/await-part *driver* s/hull-id)
+    (assert-detail-panel-fills! "loaded"))
+  (testing "unrenderable detail"
+    (select-part! "Supported Only Prow")
+    (is (s/wait-until #(str/includes? (s/text *driver* "#detail") "supported STL")))
+    (assert-detail-panel-fills! "unrenderable")))
 
 (deftest selecting-another-part-replaces-the-first
   (testing "M1 is a single-part viewer (SPEC §10): picking a part shows that part"

@@ -75,27 +75,25 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
 .stage {
   position: relative;
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr) clamp(14rem, 30vh, 24rem);
   min-height: 0;
   background: var(--bg);
+}
+.stage:has(.mount-wizard__form) {
+  grid-template-rows: minmax(0, 1fr) clamp(24rem, 62vh, 36rem);
 }
 
 /* The canvas is an island: hx-preserve keeps the WebGL context alive across
    every swap on the page (SPEC §6.1). Nothing here may hide or replace it. */
 .stage__canvas { width: 100%; height: 100%; display: block; min-height: 0; }
 
-/* A minimum as well as a maximum. Without the floor the auto row collapses to
-   whatever is left after the canvas takes 1fr, and the part name, its path and
-   its status get clipped to two scrolled lines. */
+/* The stage grid owns the detail row height so every swapped detail view gets
+   the same amount of room. */
 .stage__detail {
   border-top: 1px solid var(--line);
-  height: clamp(9.5rem, 28vh, 22rem);
-  min-height: 9.5rem;
-  max-height: 40%;
-}
-.stage__detail:has(.mount-wizard__form) {
-  height: min(62vh, 36rem);
-  max-height: min(100%, 36rem);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 /* --- filters ------------------------------------------------------------ */
@@ -151,7 +149,10 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
 
 /* --- detail ------------------------------------------------------------- */
 
-.detail { min-height: 100%; }
+.detail {
+  flex: 1 1 auto;
+  min-height: 0;
+}
 .detail__head { margin-bottom: 0.4rem; }
 .detail__name { font-size: 1rem; margin: 0; }
 .detail__crumbs { margin: 0.1rem 0 0; font-size: 0.78rem; color: var(--ink-dim); }
