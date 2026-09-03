@@ -65,6 +65,11 @@
       (is (wizard/valid-frame? (select-keys mount [:mount/pos :mount/axis :mount/roll])))
       (is (vec-close? [0.0 0.0 1.0] (:mount/axis mount)))
       (is (vec-close? [1.0 0.0 0.0] (:mount/roll mount)))))
+  (testing "derives a fallback roll from older preview forms"
+    (let [stale-frame (dissoc frame :mount/roll)
+          {:keys [mount]} (wizard/save-request (params {"frame" (pr-str stale-frame)}) [])]
+      (is (wizard/valid-frame? (select-keys mount [:mount/pos :mount/axis :mount/roll])))
+      (is (vec-close? [1.0 0.0 0.0] (:mount/roll mount)))))
   (testing "rejects invalid socket capacities"
     (is (:error (wizard/save-request (params {"capacity" "0"}) [])))
     (is (:error (wizard/save-request (params {"capacity" "1.5"}) []))))

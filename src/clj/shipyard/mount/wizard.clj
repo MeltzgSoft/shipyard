@@ -72,10 +72,19 @@
     (when (> len 1e-12)
       (scale (/ 1.0 len) v))))
 
+(defn- project-onto-plane [axis v]
+  (v+ v (scale (- (dot axis v)) axis)))
+
+(defn- fallback-roll [axis]
+  (some #(normalize (project-onto-plane axis %))
+        [[1.0 0.0 0.0] [0.0 1.0 0.0] [0.0 0.0 1.0]]))
+
 (defn- normalize-frame [{:mount/keys [pos axis roll] :as frame}]
-  (when (and (vec3? pos) (vec3? axis) (vec3? roll))
+  (when (and (vec3? pos) (vec3? axis))
     (when-let [axis (normalize axis)]
-      (when-let [roll (normalize (v+ roll (scale (- (dot axis roll)) axis)))]
+      (when-let [roll (or (when (vec3? roll)
+                            (normalize (project-onto-plane axis roll)))
+                          (fallback-roll axis))]
         (assoc frame :mount/axis axis :mount/roll roll)))))
 
 (defn valid-frame? [{:mount/keys [pos axis roll]}]
@@ -97,7 +106,7 @@
                     (scale s [(- (* (axis 1) (roll 2)) (* (axis 2) (roll 1)))
                               (- (* (axis 2) (roll 0)) (* (axis 0) (roll 2)))
                               (- (* (axis 0) (roll 1)) (* (axis 1) (roll 0)))]))
-        without-axis (v+ rotated (scale (- (dot axis rotated)) axis))]
+        without-axis (project-onto-plane axis rotated)]
     (normalize without-axis)))
 
 (defn adjusted-frame [frame roll-deg]
