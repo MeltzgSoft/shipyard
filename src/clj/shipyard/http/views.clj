@@ -90,12 +90,14 @@
       [:section.mounts
        [:h3.mounts__title "Mounts"]
        [:ul.mounts__list
-        (for [{:mount/keys [kind accepts] :as mount} mounts]
+        (for [{:mount/keys [kind accepts capacity] :as mount} mounts]
           [:li.mounts__row
            [:span.mounts__summary
             [:code (name (:mount/id mount))] " " (name kind)
             (when (seq accepts)
               [:span.mounts__accepts " -> " (str/join ", " (map name accepts))])
+            (when (and (= :socket kind) (> (long (or capacity 1)) 1))
+              [:span.mounts__accepts " x" capacity])
             [:span.mounts__accepts " / " (name (or (:mount/origin mount) :picked))]]
            [:form.mounts__delete
             {:hx-post   "/mounts/delete"
@@ -169,6 +171,7 @@
   (let [kind (or (:kind values) (default-kind part))
         part-role (or (:part-role values) (:part/role-hint part) :unknown)
         accepts (or (:accepts values) #{:weapon})
+        capacity (or (:capacity values) 1)
         mount-id (or (:mount-id values) "mount-1")
         mirror-id (some-> mount-id (keyword) (wizard/suggest-mirror-id) (name))]
     [:form.mount-wizard__form
@@ -191,6 +194,9 @@
          [:input {:type "checkbox" :name "accepts" :value (name role)
                   :checked (contains? accepts role)}]
          (name role)])]
+     [:label.mount-wizard__field "Capacity"
+      [:input {:type "number" :name "capacity" :value capacity
+               :min "1" :step "1"}]]
      [:label.mount-wizard__field "Part role"
       [:select {:name "part-role"}
        (map (partial role-choice part-role) wizard/role-options)]]

@@ -26,14 +26,18 @@
    :lance-turret "Human Navy Fleet Bundle/Cruiser/weapons/turrets/Lance Turret"
    :dorsal-turret "Human Navy Fleet Bundle/Cruiser/weapons/turrets/Dorsal Turret"})
 
-(defn mount [id kind accepts pos axis roll origin]
-  (cond-> {:mount/id id
-           :mount/kind kind
-           :mount/pos pos
-           :mount/axis axis
-           :mount/roll roll
-           :mount/origin origin}
-    accepts (assoc :mount/accepts accepts)))
+(defn mount
+  ([id kind accepts pos axis roll origin]
+   (mount id kind accepts pos axis roll origin 1))
+  ([id kind accepts pos axis roll origin capacity]
+   (cond-> {:mount/id id
+            :mount/kind kind
+            :mount/pos pos
+            :mount/axis axis
+            :mount/roll roll
+            :mount/origin origin}
+     accepts (assoc :mount/accepts accepts
+                    :mount/capacity capacity))))
 
 (def authoring
   {(:hull parts)
@@ -41,8 +45,8 @@
     :mounts [(mount :prow :socket #{:prow} [0.0 0.0 86.76601] [0.0 0.0 1.0] [1.0 0.0 0.0] :picked)
              (mount :bridge :socket #{:bridge} [0.0 18.87 52.0] [0.0 1.0 0.0] [1.0 0.0 0.0] :picked)
              (mount :antenna :socket #{:antenna} [0.0 18.87 46.0] [0.0 1.0 0.0] [1.0 0.0 0.0] :picked)
-             (mount :port-1 :socket #{:weapon} [-19.061 0.0 48.0] [-1.0 0.0 0.0] [0.0 0.0 1.0] :picked)
-             (mount :starboard-1 :socket #{:weapon} [19.061 0.0 48.0] [1.0 0.0 0.0] [0.0 0.0 1.0] :mirrored)
+             (mount :port-1 :socket #{:weapon} [-19.061 0.0 48.0] [-1.0 0.0 0.0] [0.0 0.0 1.0] :picked 2)
+             (mount :starboard-1 :socket #{:weapon} [19.061 0.0 48.0] [1.0 0.0 0.0] [0.0 0.0 1.0] :mirrored 2)
              (mount :turret-1 :socket #{:turret} [0.0 18.87 38.0] [0.0 1.0 0.0] [1.0 0.0 0.0] :picked)
              (mount :turret-2 :socket #{:turret} [0.0 18.87 58.0] [0.0 1.0 0.0] [1.0 0.0 0.0] :picked)]}
 
@@ -130,7 +134,8 @@
 
 (defn- mount-summary [bbox mount]
   (assoc (select-keys mount [:mount/id :mount/kind :mount/accepts
-                             :mount/pos :mount/axis :mount/roll :mount/origin])
+                             :mount/capacity :mount/pos :mount/axis :mount/roll
+                             :mount/origin])
          :bbox-face-span-mm (bbox-face-span bbox (:mount/axis mount))))
 
 (defn- part-summary [root scanned-by-id reloaded timings [part-id {:keys [mounts part-role]}]]
@@ -153,6 +158,8 @@
      :mounts (count mounts)
      :plugs (count (filter #(= :plug (:mount/kind %)) mounts))
      :sockets (count (filter #(= :socket (:mount/kind %)) mounts))
+     :socket-capacity (reduce + 0 (map #(long (or (:mount/capacity %) 1))
+                                       (filter #(= :socket (:mount/kind %)) mounts)))
      :mirrored-sockets (count (filter #(= :mirrored (:mount/origin %)) mounts))
      :turret-sockets (count (filter #(contains? (:mount/accepts %) :turret) mounts))}))
 

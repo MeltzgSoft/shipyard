@@ -309,6 +309,7 @@
                      :mount-id "port-1"
                      :kind "socket"
                      :accepts "weapon"
+                     :capacity "2"
                      :part-role "hull"
                      :frame (pr-str (:frame preview))
                      :roll-deg "0"
@@ -318,12 +319,14 @@
     (is (contains? (triggers saved) "shipyard:clear-preview"))
     (is (= :exit (:state (get (triggers saved) "shipyard:authoring"))))
     (is (str/includes? (:body saved) "port-1"))
+    (is (str/includes? (:body saved) "x2"))
     (let [sidecar (sidecar/read-sidecar root hull-id)
           mount (first (:mounts sidecar))]
       (is (= :hull (:part/role sidecar)))
       (is (= :port-1 (:mount/id mount)))
       (is (= :socket (:mount/kind mount)))
       (is (= #{:weapon} (:mount/accepts mount)))
+      (is (= 2 (:mount/capacity mount)))
       (is (= [2.0 1.0 0.0] (:mount/pos mount)))
       (is (nil? (:facet-indices mount))))
     (testing "duplicate ids require deliberate replacement"
@@ -352,6 +355,7 @@
                              :mount-id "port-1"
                              :kind "socket"
                              :accepts "turret"
+                             :capacity "2"
                              :part-role "hull"
                              :frame (pr-str (:frame preview))
                              :roll-deg "0"
@@ -371,10 +375,13 @@
     (is (= {:mount-id "port-2"
             :kind "socket"
             :accepts #{:turret}
+            :capacity 2
             :part-role "hull"}
            (get events "shipyard:mount-repeat")))
     (is (= :picked (get-in by-id [:port-1 :mount/origin])))
     (is (= :mirrored (get-in by-id [:starboard-1 :mount/origin])))
+    (is (= 2 (get-in by-id [:port-1 :mount/capacity])))
+    (is (= 2 (get-in by-id [:starboard-1 :mount/capacity])))
     (is (= [-2.0 1.0 0.0] (get-in by-id [:starboard-1 :mount/pos])))
     (is (nil? (get-in by-id [:starboard-1 :facet-indices])))
     (testing "the next preview is prefilled from the repeated classification"
@@ -382,8 +389,10 @@
                                         {"mount-id" "port-2"
                                          "kind" "socket"
                                          "accepts" "turret"
+                                         "capacity" "2"
                                          "part-role" "hull"}))]
         (is (str/includes? repeated "value=\"port-2\""))
+        (is (re-find #"name=\"capacity\"[^>]+value=\"2\"" repeated))
         (is (re-find #"checked=\"checked\"[^>]+value=\"turret\"" repeated))))))
 
 (deftest mount-wizard-reports-validation-errors
@@ -399,6 +408,19 @@
                              :action "create"})]
         (is (= 200 (:status r)))
         (is (str/includes? (:body r) "valid frame"))))
+    (testing "bad capacity"
+      (let [r (mount-post h {:part-id hull-id
+                             :mount-id "port-1"
+                             :kind "socket"
+                             :accepts "weapon"
+                             :capacity "0"
+                             :part-role "hull"
+                             :frame (pr-str {:mount/pos [0 0 0]
+                                             :mount/axis [0 0 1]
+                                             :mount/roll [1 0 0]})
+                             :action "create"})]
+        (is (= 200 (:status r)))
+        (is (str/includes? (:body r) "Capacity"))))
     (testing "bad mount ids"
       (let [r (mount-post h {:part-id hull-id
                              :mount-id "1 bad"

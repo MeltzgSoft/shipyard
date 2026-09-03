@@ -127,6 +127,8 @@ When the preview looks right, fill in the mount form:
 - **Kind** is `plug` for the back face of a module and `socket` for a place something
   attaches.
 - **Accepts** is used for sockets; choose at least one role that can attach there.
+- **Capacity** is used for sockets whose selected face can hold more than one part.
+  Human Navy Cruiser weapon sockets use capacity `2`.
 - **Part role** is the role Shipyard should trust for this part from now on. It replaces
   the inferred role shown by browsing.
 - **Roll** rotates the in-plane direction before saving when the automatic direction is
@@ -141,7 +143,8 @@ When the preview looks right, fill in the mount form:
 **Save mount** creates a new id. If that id already exists, Shipyard reports it instead
 of overwriting silently; use **Replace** only when you mean to update that mount. A part
 can have multiple sockets, but only one plug. Existing mounts appear below the loaded
-status with their picked or mirrored origin and can be deleted deliberately.
+status with their picked or mirrored origin, plus capacity when it is greater than one,
+and can be deleted deliberately.
 
 If the source mesh changes, the picked frame is malformed, a socket has no accepted role,
 the mirror would overwrite an existing id, a centreline face has no mirrored counterpart,

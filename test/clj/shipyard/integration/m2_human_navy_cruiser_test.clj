@@ -31,6 +31,7 @@
               :mounts 15
               :plugs 7
               :sockets 8
+              :socket-capacity 10
               :mirrored-sockets 1
               :turret-sockets 3}
              (:totals report)))
@@ -42,6 +43,11 @@
         (is (= part-role reloaded-role))
         (is (= sidecar/format-version
                (:shipyard/version (sidecar/read-sidecar root part-id))))))
+    (testing "Cruiser weapon faces record two-module capacity"
+      (let [hull (get-in report [:authored (:hull proof/parts)])
+            by-id (into {} (map (juxt :mount/id identity)) (:mounts hull))]
+        (is (= 2 (get-in by-id [:port-1 :mount/capacity])))
+        (is (= 2 (get-in by-id [:starboard-1 :mount/capacity])))))
     (testing "facet-size evidence is recorded with each mount"
       (is (every? (fn [{:keys [bbox-face-span-mm]}]
                     (= 2 (count bbox-face-span-mm)))

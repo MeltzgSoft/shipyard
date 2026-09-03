@@ -32,14 +32,15 @@ manual role and mount count came back from sidecars.
 | mounts | 15 |
 | plugs | 7 |
 | sockets | 8 |
+| socket capacity | 10 |
 | mirrored sockets | 1 |
 | turret sockets | 3 |
 | ambiguous roll cases | 0 |
 
 The workflow covers every M2 mount kind and origin used by Cruiser authoring:
-picked plugs, picked sockets, a mirrored port/starboard weapon socket, repeated turret
-sockets on the hull, and a turret socket authored on the Weapon Battery component. It
-does not exercise M3 assembly or compatibility filtering.
+picked plugs, picked sockets, capacity-2 weapon sockets, a mirrored port/starboard
+weapon socket, repeated turret sockets on the hull, and a turret socket authored on the
+Weapon Battery component. It does not exercise M3 assembly or compatibility filtering.
 
 ## Geometry
 
@@ -66,26 +67,26 @@ Part sizes from the real STL files:
 Mount face spans are recorded as the two bbox extents perpendicular to the saved mount
 axis:
 
-| part | mount | origin | bbox face span |
-|---|---|---|---|
-| Hull | prow | picked | `[38.122 37.74]` |
-| Hull | bridge | picked | `[38.122 81.766]` |
-| Hull | antenna | picked | `[38.122 81.766]` |
-| Hull | port-1 | picked | `[37.74 81.766]` |
-| Hull | starboard-1 | mirrored | `[37.74 81.766]` |
-| Hull | turret-1 | picked | `[38.122 81.766]` |
-| Hull | turret-2 | picked | `[38.122 81.766]` |
-| Classic Ram Prow | plug | picked | `[25.884 15.386]` |
-| Bridge | plug | picked | `[14.418 19.158]` |
-| Antenna 1 | plug | picked | `[3.425 16.586]` |
-| Lance Battery | plug | picked | `[8.626 8.918]` |
-| Weapon Battery | plug | picked | `[8.624 4.263]` |
-| Weapon Battery | turret-pit | picked | `[17.052 8.624]` |
-| Lance Turret | plug | picked | `[4.008 5.271]` |
-| Dorsal Turret | plug | picked | `[4.016 2.939]` |
+| part | mount | origin | capacity | bbox face span |
+|---|---|---|---:|---|
+| Hull | prow | picked | 1 | `[38.122 37.74]` |
+| Hull | bridge | picked | 1 | `[38.122 81.766]` |
+| Hull | antenna | picked | 1 | `[38.122 81.766]` |
+| Hull | port-1 | picked | 2 | `[37.74 81.766]` |
+| Hull | starboard-1 | mirrored | 2 | `[37.74 81.766]` |
+| Hull | turret-1 | picked | 1 | `[38.122 81.766]` |
+| Hull | turret-2 | picked | 1 | `[38.122 81.766]` |
+| Classic Ram Prow | plug | picked | - | `[25.884 15.386]` |
+| Bridge | plug | picked | - | `[14.418 19.158]` |
+| Antenna 1 | plug | picked | - | `[3.425 16.586]` |
+| Lance Battery | plug | picked | - | `[8.626 8.918]` |
+| Weapon Battery | plug | picked | - | `[8.624 4.263]` |
+| Weapon Battery | turret-pit | picked | 1 | `[17.052 8.624]` |
+| Lance Turret | plug | picked | - | `[4.008 5.271]` |
+| Dorsal Turret | plug | picked | - | `[4.016 2.939]` |
 
 ## Timing
 
 The checked run wrote sidecars and updated the in-memory catalog in a few milliseconds
-per part. The hull was the largest authoring write at 37.358 ms total, or 5.337 ms per
-mount. Other parts ranged from 2.409 ms to 4.436 ms per mount.
+per part. The hull was the largest authoring write at 38.013 ms total, or 5.43 ms per
+mount. Other parts ranged from 2.214 ms to 4.163 ms per mount.

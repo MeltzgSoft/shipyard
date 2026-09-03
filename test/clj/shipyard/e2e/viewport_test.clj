@@ -169,11 +169,12 @@
         (s/await-part *driver* s/prow-id)
         (select-part! "Cruiser Hull")
         (s/await-part *driver* s/hull-id))
-      (let [after (:geometries (s/await-part *driver* s/hull-id))]
-        (is (<= after baseline)
-            (str "geometries grew from " baseline " to " after
-                 " over four selection cycles - a replaced part was removed "
-                 "from the scene without being disposed"))))))
+      (s/await-part *driver* s/hull-id)
+      (is (s/wait-until #(<= (:geometries (s/stats *driver*)) baseline))
+          (str "geometries grew from " baseline " to "
+               (:geometries (s/stats *driver*))
+               " over four selection cycles - a replaced part was removed "
+               "from the scene without being disposed")))))
 
 ;; --- mount authoring --------------------------------------------------------
 
@@ -232,10 +233,13 @@
   (is (some? (await-preview)))
   (s/select-option! *driver* "select[name=kind]" "socket")
   (s/select-option! *driver* "select[name=part-role]" "hull")
+  (s/js *driver* "() => { document.querySelector('input[name=capacity]').value = '2'; }")
   (s/click! *driver* ".mount-wizard__actions button[value=create]")
   (is (s/wait-until #(str/includes? (s/text *driver* "#detail") "mount-1"))
       (str "the saved mount should appear in the detail panel; got "
            (pr-str (s/text *driver* "#detail"))))
+  (is (str/includes? (s/text *driver* "#detail") "x2")
+      "the saved socket capacity should appear in the detail panel")
   (is (s/wait-until #(nil? (:preview (s/stats *driver*))))
       "saving clears the transient preview")
   (s/select-option! *driver* "select[name=class]" "Cruiser")
@@ -260,6 +264,7 @@
   (s/select-option! *driver* "select[name=part-role]" "hull")
   (s/click! *driver* "input[name=accepts][value=weapon]")
   (s/click! *driver* "input[name=accepts][value=turret]")
+  (s/js *driver* "() => { document.querySelector('input[name=capacity]').value = '2'; }")
   (s/click! *driver* "input[name=mirror]")
   (s/click! *driver* "input[name=repeat]")
   (s/js *driver* "() => {
@@ -278,6 +283,7 @@
   (is (s/wait-until
        #(= "port-2" (s/js *driver* "() => document.querySelector('.mount-wizard__form input[name=mount-id]').value"))))
   (is (= "socket" (s/js *driver* "() => document.querySelector('.mount-wizard__form select[name=kind]').value")))
+  (is (= "2" (s/js *driver* "() => document.querySelector('.mount-wizard__form input[name=capacity]').value")))
   (is (s/wait-until
        #(true? (s/js *driver* "() => document.querySelector('.mount-wizard__form input[name=accepts][value=turret]').checked"))))
   (s/click! *driver* ".mount-wizard__actions button[value=create]")

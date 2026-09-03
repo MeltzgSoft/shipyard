@@ -38,6 +38,12 @@
       (when (Double/isFinite n) n))
     (catch Exception _ nil)))
 
+(defn- parse-positive-long [s]
+  (try
+    (let [n (Long/parseLong (str/trim (str s)))]
+      (when (pos? n) n))
+    (catch Exception _ nil)))
+
 (defn- checked? [x]
   (contains? #{"true" "on" "yes" "1"} (str/lower-case (str x))))
 
@@ -152,17 +158,20 @@
   {:mount-id (some->> (:mount/id mount) (suggest-repeat-id mounts) (name))
    :kind (some-> (:mount/kind mount) (name))
    :accepts (:mount/accepts mount)
+   :capacity (:mount/capacity mount)
    :part-role (some-> part-role (name))})
 
 (defn preview-values [params]
   (let [mount-id (parse-mount-id (get params "mount-id"))
         kind (parse-keyword (get params "kind") kind-options)
         part-role (parse-keyword (get params "part-role") role-options)
-        accepts (set (keep #(parse-keyword % role-options) (many (get params "accepts"))))]
+        accepts (set (keep #(parse-keyword % role-options) (many (get params "accepts"))))
+        capacity (parse-positive-long (get params "capacity"))]
     (cond-> {}
       mount-id (assoc :mount-id (name mount-id))
       kind (assoc :kind kind)
       part-role (assoc :part-role part-role)
+      capacity (assoc :capacity capacity)
       (seq accepts) (assoc :accepts accepts))))
 
 (defn save-request [params existing-mounts]
@@ -171,6 +180,7 @@
         action (parse-keyword (get params "action") [:create :replace])
         part-role (parse-keyword (get params "part-role") role-options)
         accepts (set (keep #(parse-keyword % role-options) (many (get params "accepts"))))
+        capacity (or (parse-positive-long (get params "capacity")) 1)
         roll-deg (or (parse-finite-double (get params "roll-deg")) 0.0)
         frame (adjusted-frame (parse-edn (get params "frame")) roll-deg)
         mirror? (checked? (get params "mirror"))
@@ -194,6 +204,9 @@
 
       (and (= :socket kind) (empty? accepts))
       {:error "Choose at least one role this socket accepts."}
+
+      (and (= :socket kind) (contains? params "capacity") (nil? (parse-positive-long (get params "capacity"))))
+      {:error "Capacity must be a whole number of at least 1."}
 
       (and (= :create action) (mount-by-id existing-mounts mount-id))
       {:error "A mount with that id already exists. Use replace when you mean to overwrite it."}
@@ -226,7 +239,8 @@
                            :mount/axis (:mount/axis frame)
                            :mount/roll (:mount/roll frame)
                            :mount/origin :picked}
-                    (= :socket kind) (assoc :mount/accepts accepts))]
+                    (= :socket kind) (assoc :mount/accepts accepts
+                                            :mount/capacity capacity))]
         (if mirror?
           (if-let [mirrored (mirror-mount mount mirror-plane mirror-offset mirror-id)]
             (let [mounts (-> existing-mounts
