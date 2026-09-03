@@ -72,6 +72,12 @@
     (when (> len 1e-12)
       (scale (/ 1.0 len) v))))
 
+(defn- normalize-frame [{:mount/keys [pos axis roll] :as frame}]
+  (when (and (vec3? pos) (vec3? axis) (vec3? roll))
+    (when-let [axis (normalize axis)]
+      (when-let [roll (normalize (v+ roll (scale (- (dot axis roll)) axis)))]
+        (assoc frame :mount/axis axis :mount/roll roll)))))
+
 (defn valid-frame? [{:mount/keys [pos axis roll]}]
   (and (vec3? pos)
        (vec3? axis)
@@ -95,7 +101,7 @@
     (normalize without-axis)))
 
 (defn adjusted-frame [frame roll-deg]
-  (when (valid-frame? frame)
+  (when-let [frame (normalize-frame frame)]
     (let [roll (rotate-roll (:mount/axis frame) (:mount/roll frame) roll-deg)]
       (when roll
         (assoc frame :mount/roll roll)))))

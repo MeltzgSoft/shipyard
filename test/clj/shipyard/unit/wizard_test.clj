@@ -57,6 +57,14 @@
   (testing "records socket capacity when one face holds multiple parts"
     (let [{:keys [mount]} (wizard/save-request (params {"capacity" "2"}) [])]
       (is (= 2 (:mount/capacity mount)))))
+  (testing "normalizes finite geometry frames before saving"
+    (let [drifty-frame (assoc frame
+                              :mount/axis [0.0 0.0 0.999998]
+                              :mount/roll [1.0 0.0 1.0e-5])
+          {:keys [mount]} (wizard/save-request (params {"frame" (pr-str drifty-frame)}) [])]
+      (is (wizard/valid-frame? (select-keys mount [:mount/pos :mount/axis :mount/roll])))
+      (is (vec-close? [0.0 0.0 1.0] (:mount/axis mount)))
+      (is (vec-close? [1.0 0.0 0.0] (:mount/roll mount)))))
   (testing "rejects invalid socket capacities"
     (is (:error (wizard/save-request (params {"capacity" "0"}) [])))
     (is (:error (wizard/save-request (params {"capacity" "1.5"}) []))))
