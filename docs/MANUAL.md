@@ -108,8 +108,8 @@ library keeps working; one bad file never takes the browser down with it.
 
 ## 5. Defining how parts connect
 
-*Partially built - milestone M2. Mounts can be picked, saved, replaced and
-deleted. Mirroring and repeated classifications are still later M2 work.*
+*Partially built - milestone M2. Mounts can be picked, mirrored, saved,
+replaced and deleted. Assembly remains later M3 work.*
 
 You will tell Shipyard how two parts mate by clicking the flat face where they meet: the
 back of a weapon module, or a hull's weapon seat. One click gives Shipyard everything it
@@ -130,18 +130,22 @@ When the preview looks right, fill in the mount form:
   the inferred role shown by browsing.
 - **Roll** rotates the in-plane direction before saving when the automatic direction is
   ambiguous or intentionally needs adjustment.
+- **Mirror** creates a second socket by reflecting the picked frame across a symmetry
+  plane. Human Navy Cruiser hulls use the X plane at offset `0`; change the plane or
+  offset only when the part's centreline is different.
+- **Repeat classification** keeps the kind, accepted roles and part role ready for the
+  next picked face. The next mount is still shown in the form and must be saved
+  deliberately.
 
 **Save mount** creates a new id. If that id already exists, Shipyard reports it instead
 of overwriting silently; use **Replace** only when you mean to update that mount. A part
 can have multiple sockets, but only one plug. Existing mounts appear below the loaded
-status and can be deleted deliberately.
+status with their picked or mirrored origin and can be deleted deliberately.
 
 If the source mesh changes, the picked frame is malformed, a socket has no accepted role,
-or a mount id is not valid, Shipyard keeps the problem recoverable: pick the face again or
-correct the field and save once more.
-
-When mirroring lands, hull symmetry will let a port-side mount offer the matching
-starboard mount automatically.
+the mirror would overwrite an existing id, a centreline face has no mirrored counterpart,
+or a mount id is not valid, Shipyard keeps the problem recoverable: pick the face again
+or correct the field and save once more.
 
 This information is saved beside the part, in the same folder as its STL, so it survives
 if you reorganise or move your library.

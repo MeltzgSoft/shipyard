@@ -244,9 +244,45 @@
     return card ? card.querySelector('.part__role').textContent : null;
   }")))
       "the manual role is visible as the part's authoritative role")
-  (s/click! *driver* ".mounts__delete button")
+  (s/click! *driver* "form:has(input[name=mount-id][value='mount-1']) button")
   (is (s/wait-until #(not (str/includes? (s/text *driver* "#detail") "mount-1")))
       "deleting removes the mount from the detail panel"))
+
+(deftest mount-wizard-mirrors-and-repeats-a-socket-classification
+  (open-app!)
+  (select-part! "Mount Test Plate")
+  (s/await-part *driver* s/mount-plate-id)
+  (s/click! *driver* "[data-authoring-toggle]")
+  (let [{:keys [x y]} (viewport-center)]
+    (s/click-point! *driver* x y))
+  (is (some? (await-preview)))
+  (s/select-option! *driver* "select[name=kind]" "socket")
+  (s/select-option! *driver* "select[name=part-role]" "hull")
+  (s/click! *driver* "input[name=accepts][value=weapon]")
+  (s/click! *driver* "input[name=accepts][value=turret]")
+  (s/click! *driver* "input[name=mirror]")
+  (s/click! *driver* "input[name=repeat]")
+  (s/js *driver* "() => {
+    document.querySelector('input[name=mount-id]').value = 'port-1';
+    document.querySelector('input[name=mirror-id]').value = 'starboard-1';
+  }")
+  (s/click! *driver* ".mount-wizard__actions button[value=create]")
+  (is (s/wait-until #(and (str/includes? (s/text *driver* "#detail") "port-1")
+                          (str/includes? (s/text *driver* "#detail") "starboard-1")))
+      "saving with mirror should persist both sockets")
+  (is (s/wait-until #(= s/mount-plate-id (get-in (s/stats *driver*) [:authoring :part-id])))
+      "repeat keeps face-picking active for the next socket")
+  (let [{:keys [x y]} (viewport-center)]
+    (s/click-point! *driver* x y))
+  (is (some? (await-preview)))
+  (is (s/wait-until
+       #(= "port-2" (s/js *driver* "() => document.querySelector('.mount-wizard__form input[name=mount-id]').value"))))
+  (is (= "socket" (s/js *driver* "() => document.querySelector('.mount-wizard__form select[name=kind]').value")))
+  (is (s/wait-until
+       #(true? (s/js *driver* "() => document.querySelector('.mount-wizard__form input[name=accepts][value=turret]').checked"))))
+  (s/click! *driver* ".mount-wizard__actions button[value=create]")
+  (is (s/wait-until #(str/includes? (s/text *driver* "#detail") "port-2"))
+      "the repeated classification still waits for an explicit save"))
 
 ;; --- the island -------------------------------------------------------------
 

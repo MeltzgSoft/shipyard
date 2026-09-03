@@ -68,6 +68,65 @@
     (is (:error (wizard/save-request (params {"mount-id" "1 bad"}) [])))
     (is (:error (wizard/save-request (params {"frame" "{:not :a-frame}"}) [])))))
 
+(deftest suggest-mirror-id-test
+  (testing "uses deterministic port and starboard counterparts"
+    (is (= :starboard-1 (wizard/suggest-mirror-id :port-1)))
+    (is (= :port-2 (wizard/suggest-mirror-id :starboard-2))))
+  (testing "falls back to a deterministic mirror suffix"
+    (is (= :prow-mirror (wizard/suggest-mirror-id :prow)))))
+
+(deftest suggest-repeat-id-test
+  (testing "increments numeric suffixes without colliding"
+    (is (= :port-3 (wizard/suggest-repeat-id [{:mount/id :port-2}] :port-1))))
+  (testing "adds a numeric suffix when there is none"
+    (is (= :socket-2 (wizard/suggest-repeat-id [] :socket)))))
+
+(deftest mirror-frame-test
+  (testing "mirrors all supported coordinate planes"
+    (is (= {:mount/pos [-2.0 1.0 0.0]
+            :mount/axis [-0.0 0.0 1.0]
+            :mount/roll [-1.0 0.0 0.0]}
+           (wizard/mirror-frame frame :x 0.0)))
+    (is (= {:mount/pos [2.0 -1.0 0.0]
+            :mount/axis [0.0 -0.0 1.0]
+            :mount/roll [1.0 -0.0 0.0]}
+           (wizard/mirror-frame frame :y 0.0)))
+    (is (= {:mount/pos [2.0 1.0 4.0]
+            :mount/axis [0.0 0.0 -1.0]
+            :mount/roll [1.0 0.0 -0.0]}
+           (wizard/mirror-frame frame :z 2.0))))
+  (testing "off-origin planes and orientation validity"
+    (let [mirrored (wizard/mirror-frame frame :x 1.0)]
+      (is (= [0.0 1.0 0.0] (:mount/pos mirrored)))
+      (is (true? (wizard/valid-frame? mirrored))))))
+
+(deftest mirrored-save-request-test
+  (testing "creates picked and mirrored sockets"
+    (let [{:keys [mount mirrored-mount mounts repeat-values]}
+          (wizard/save-request (params {"mount-id" "port-1"
+                                        "mirror" "true"
+                                        "mirror-plane" "x"
+                                        "mirror-offset" "0"
+                                        "mirror-id" "starboard-1"
+                                        "repeat" "true"})
+                               [])]
+      (is (= :picked (:mount/origin mount)))
+      (is (= :mirrored (:mount/origin mirrored-mount)))
+      (is (= [:port-1 :starboard-1] (mapv :mount/id mounts)))
+      (is (= "port-2" (:mount-id repeat-values)))))
+  (testing "rejects centerline mounts and id conflicts"
+    (is (:error (wizard/save-request (params {"mount-id" "port-1"
+                                              "mirror" "true"
+                                              "mirror-plane" "x"
+                                              "mirror-offset" "2"
+                                              "mirror-id" "starboard-1"})
+                                     [])))
+    (is (:error (wizard/save-request (params {"mount-id" "port-1"
+                                              "mirror" "true"
+                                              "mirror-plane" "x"
+                                              "mirror-id" "starboard-1"})
+                                     [(assoc socket :mount/id :starboard-1)])))))
+
 (deftest delete-request-test
   (testing "removes the named mount"
     (is (= [] (:mounts (wizard/delete-request {"mount-id" "port-1"} [socket])))))

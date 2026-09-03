@@ -202,7 +202,9 @@
                       (facet/select (wire/decode (read-bytes tier0)) triangle-index
                                     (select-keys cache [:facet-angle-deg :facet-plane-epsilon-mm]))]
                   (htmx/fragment
-                   (views/facet-preview {:part part :frame frame})
+                   (views/facet-preview {:part part
+                                         :frame frame
+                                         :values (wizard/preview-values params)})
                    {:events {:facet-preview {:part-id part-id
                                              :mesh-key mesh-key
                                              :triangle-index triangle-index
@@ -228,16 +230,18 @@
 (defn- durable-mounts [part]
   (mapv #(dissoc % :db/id) (:part/mounts part)))
 
-(defn- mount-response [{:keys [catalog library]} part-id events]
-  (let [part (db/part (db/snapshot catalog) part-id)
-        mesh-key (index/mesh-key library part-id)]
-    (if (and (:part/id part) mesh-key)
-      (htmx/fragment (views/detail-ready part mesh-key)
-                     {:events events})
-      (facet-error :part-not-found "That part is no longer in the library." part-id 404))))
+(defn- mount-response
+  ([deps part-id events] (mount-response deps part-id events nil))
+  ([{:keys [catalog library]} part-id events view-options]
+   (let [part (db/part (db/snapshot catalog) part-id)
+         mesh-key (index/mesh-key library part-id)]
+     (if (and (:part/id part) mesh-key)
+       (htmx/fragment (views/detail-ready part mesh-key view-options)
+                      {:events events})
+       (facet-error :part-not-found "That part is no longer in the library." part-id 404)))))
 
 (defn- save-mount
-  [{:keys [catalog] :as deps} {:keys [params]}]
+  [{:keys [catalog library] :as deps} {:keys [params]}]
   (let [part-id (get params "part-id")
         part (db/part (db/snapshot catalog) part-id)]
     (cond
@@ -250,8 +254,15 @@
           (htmx/fragment (views/facet-error error))
           (try
             (db/save-authoring! catalog part-id (select-keys result [:mounts :part-role]))
-            (mount-response deps part-id {:clear-preview nil
-                                          :authoring {:state :exit}})
+            (if-let [repeat-values (:repeat-values result)]
+              (mount-response deps part-id {:clear-preview nil
+                                            :authoring {:state :enter
+                                                        :part-id part-id
+                                                        :mesh-key (index/mesh-key library part-id)}
+                                            :mount-repeat repeat-values}
+                              {:repeat-values repeat-values})
+              (mount-response deps part-id {:clear-preview nil
+                                            :authoring {:state :exit}}))
             (catch Exception _
               (facet-error :mount-save-failed
                            "The mount was written, but the catalog did not update. Restart Shipyard to re-ingest it."

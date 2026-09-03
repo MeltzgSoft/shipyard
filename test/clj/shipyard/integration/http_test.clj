@@ -136,8 +136,12 @@
    (swap! (:state (:library sys)) update-in [:entries hull-id] assoc :mesh-key mesh-key)
    mesh-key))
 
-(defn- facet-post [h part-id mesh-key triangle-index]
-  (POST h "/facet" {:part-id part-id :mesh-key mesh-key :triangle-index triangle-index}))
+(defn- facet-post
+  ([h part-id mesh-key triangle-index]
+   (facet-post h part-id mesh-key triangle-index nil))
+  ([h part-id mesh-key triangle-index params]
+   (POST h "/facet" (merge {:part-id part-id :mesh-key mesh-key :triangle-index triangle-index}
+                           params))))
 
 (defn- mount-post [h params]
   (POST h "/mounts" params))
@@ -337,6 +341,50 @@
         (is (= 200 (:status deleted)))
         (is (empty? (:mounts (sidecar/read-sidecar root hull-id))))
         (is (not (str/includes? (:body deleted) "port-1")))))))
+
+(deftest mount-wizard-mirrors-and-repeats
+  (let [root (library-tree)
+        sys (system root)
+        h (handler sys)
+        mesh-key (seed-authoring-cache! sys)
+        preview (get (triggers (facet-post h hull-id mesh-key 0)) "shipyard:facet-preview")
+        saved (mount-post h {:part-id hull-id
+                             :mount-id "port-1"
+                             :kind "socket"
+                             :accepts "turret"
+                             :part-role "hull"
+                             :frame (pr-str (:frame preview))
+                             :roll-deg "0"
+                             :mirror "true"
+                             :mirror-plane "x"
+                             :mirror-offset "0"
+                             :mirror-id "starboard-1"
+                             :repeat "true"
+                             :action "create"})
+        events (triggers saved)
+        mounts (:mounts (sidecar/read-sidecar root hull-id))
+        by-id (into {} (map (juxt :mount/id identity)) mounts)]
+    (is (= 200 (:status saved)))
+    (is (str/includes? (:body saved) "port-1"))
+    (is (str/includes? (:body saved) "starboard-1"))
+    (is (= :enter (:state (get events "shipyard:authoring"))))
+    (is (= {:mount-id "port-2"
+            :kind "socket"
+            :accepts #{:turret}
+            :part-role "hull"}
+           (get events "shipyard:mount-repeat")))
+    (is (= :picked (get-in by-id [:port-1 :mount/origin])))
+    (is (= :mirrored (get-in by-id [:starboard-1 :mount/origin])))
+    (is (= [-2.0 1.0 0.0] (get-in by-id [:starboard-1 :mount/pos])))
+    (is (nil? (get-in by-id [:starboard-1 :facet-indices])))
+    (testing "the next preview is prefilled from the repeated classification"
+      (let [repeated (:body (facet-post h hull-id mesh-key 0
+                                        {"mount-id" "port-2"
+                                         "kind" "socket"
+                                         "accepts" "turret"
+                                         "part-role" "hull"}))]
+        (is (str/includes? repeated "value=\"port-2\""))
+        (is (re-find #"checked=\"checked\"[^>]+value=\"turret\"" repeated))))))
 
 (deftest mount-wizard-reports-validation-errors
   (let [sys (system (library-tree))

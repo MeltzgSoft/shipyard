@@ -134,10 +134,11 @@
   (clear-preview! sys)
   (clear-preview-fragment!))
 
-(defn clear! [{:keys [^js scene ^js canvas parts authoring current] :as sys}]
+(defn clear! [{:keys [^js scene ^js canvas parts authoring current repeat] :as sys}]
   (clear-authoring-preview! sys)
   (reset! authoring nil)
   (reset! current nil)
+  (reset! repeat nil)
   (.remove (.-classList canvas) "stage__canvas--authoring")
   (doseq [[_ ^js obj] @parts]
     (.remove scene obj)
@@ -179,9 +180,10 @@
     (.add (.-classList canvas) "stage__canvas--authoring")
     (sync-authoring-button! sys)))
 
-(defn- exit-authoring! [{:keys [^js canvas authoring] :as sys}]
+(defn- exit-authoring! [{:keys [^js canvas authoring repeat] :as sys}]
   (clear-authoring-preview! sys)
   (reset! authoring nil)
+  (reset! repeat nil)
   (.remove (.-classList canvas) "stage__canvas--authoring")
   (sync-authoring-button! sys))
 
@@ -283,11 +285,23 @@
           (- (* 2.0 (/ x (.-width rect))) 1.0)
           (- 1.0 (* 2.0 (/ y (.-height rect)))))))
 
+(defn- append-form-value! [^js body k v]
+  (let [field (if (keyword? k) (name k) (str k))]
+    (if (and (coll? v) (not (map? v)))
+      (doseq [item v]
+        (.append body field (if (keyword? item) (name item) (str item))))
+      (.append body field (if (keyword? v) (name v) (str v))))))
+
 (defn- form-body [values]
   (let [body (js/URLSearchParams.)]
     (doseq [[k v] values]
-      (.append body k v))
+      (append-form-value! body k v))
     body))
+
+(defn- dom-repeat-values []
+  (some-> (.getElementById js/document "mount-authoring")
+          (.getAttribute "data-repeat-values")
+          (edn/read-string)))
 
 (defn- trigger-header! [header]
   (when header
@@ -298,16 +312,18 @@
                                          #js {:bubbles true
                                               :detail  #js {:value (aget events event)}}))))))
 
-(defn- post-facet! [{:keys [authoring]} triangle-index]
+(defn- post-facet! [{:keys [authoring repeat]} triangle-index]
   (let [target (.getElementById js/document "facet-preview")
         {:keys [part-id mesh-key]} @authoring]
     (when (and target part-id mesh-key)
       (-> (js/fetch "/facet"
                     #js {:method "POST"
                          :headers #js {"Content-Type" "application/x-www-form-urlencoded"}
-                         :body (form-body {"part-id" part-id
-                                           "mesh-key" mesh-key
-                                           "triangle-index" (str triangle-index)})})
+                         :body (form-body (merge @repeat
+                                                 (dom-repeat-values)
+                                                 {"part-id" part-id
+                                                  "mesh-key" mesh-key
+                                                  "triangle-index" (str triangle-index)}))})
           (.then (fn [^js res]
                    (let [trigger (.get (.-headers res) "HX-Trigger")]
                      (-> (.text res)
@@ -317,6 +333,30 @@
                                   (some-> js/window .-htmx (.process target))))))))
           (.catch (fn [e]
                     (js/console.error "shipyard: facet selection failed" e)))))))
+
+(defn- input-value [^js form selector]
+  (some-> (.querySelector form selector) .-value))
+
+(defn- checked? [^js form selector]
+  (boolean (some-> (.querySelector form selector) .-checked)))
+
+(defn- checked-values [^js form selector]
+  (mapv #(.-value %) (array-seq (.querySelectorAll form selector))))
+
+(defn- suggest-repeat-id [id]
+  (if-let [[_ prefix digits] (re-matches #"^(.*?)(\d+)$" id)]
+    (str prefix (inc (js/parseInt digits 10)))
+    (str id "-2")))
+
+(defn- remember-repeat-from-submit! [{:keys [repeat]} ^js e]
+  (let [form (.-target e)]
+    (when (some-> form .-classList (.contains "mount-wizard__form"))
+      (if (checked? form "input[name=repeat]")
+        (reset! repeat {:mount-id (suggest-repeat-id (input-value form "input[name=mount-id]"))
+                        :kind (input-value form "select[name=kind]")
+                        :accepts (checked-values form "input[name=accepts]:checked")
+                        :part-role (input-value form "select[name=part-role]")})
+        (reset! repeat nil)))))
 
 (defn- pick-face! [{:keys [^js canvas ^js camera parts authoring ^js raycaster ^js pointer] :as sys} ^js e]
   (when-let [{:keys [part-id]} @authoring]
@@ -332,7 +372,7 @@
 (defn- load-mesh!
   "Fetch, decode, upload, and optionally reframe. Errors are reported and
   swallowed: a part that fails to load must not take the session with it."
-  [{:keys [^js scene ^js canvas authoring current] :as sys} {:keys [url part-id mesh-key frame]}]
+  [{:keys [^js scene ^js canvas authoring current repeat] :as sys} {:keys [url part-id mesh-key frame]}]
   (-> (js/fetch url)
       (.then (fn [^js res]
                (if (.-ok res)
@@ -347,6 +387,7 @@
                  (clear-authoring-preview! sys)
                  (reset! authoring nil)
                  (reset! current {:part-id part-id :mesh-key mesh-key})
+                 (reset! repeat nil)
                  (.remove (.-classList canvas) "stage__canvas--authoring")
                  (show-only! sys part-id obj)
                  (when frame (frame! sys bbox-min bbox-max))
@@ -397,6 +438,7 @@
          :geometries (.. renderer -info -memory -geometries)
          :status    (clj->js (:state @status))
          :authoring (clj->js @authoring)
+         :repeat    (clj->js @(:repeat sys))
          :preview   (preview-stats sys)}))
 
 ;; --- lifecycle --------------------------------------------------------------
@@ -432,6 +474,8 @@
     (.addEventListener body "shipyard:clear-preview" (fn [_] (clear-authoring-preview! sys)))
     (.addEventListener body "shipyard:facet-preview" #(draw-preview! sys (payload %)))
     (.addEventListener body "shipyard:facet-error" (fn [_] (clear-authoring-preview! sys)))
+    (.addEventListener body "shipyard:mount-repeat" #(reset! (:repeat sys) (payload %)))
+    (.addEventListener body "submit" #(remember-repeat-from-submit! sys %))
     (.addEventListener body "click" #(authoring-toggle! sys %))))
 
 (defn- renderer!
@@ -458,6 +502,7 @@
           sys      {:canvas canvas :renderer renderer :scene scene :camera camera
                     :controls controls :parts (atom {}) :status (atom {:state :idle})
                     :current (atom nil) :authoring (atom nil) :preview (atom nil)
+                    :repeat (atom nil)
                     :preview-revision (atom 0)
                     :raycaster (three/Raycaster.) :pointer (three/Vector2.)}]
       (set! (.-outputColorSpace renderer) three/SRGBColorSpace)

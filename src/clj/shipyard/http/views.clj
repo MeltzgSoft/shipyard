@@ -95,7 +95,8 @@
            [:span.mounts__summary
             [:code (name (:mount/id mount))] " " (name kind)
             (when (seq accepts)
-              [:span.mounts__accepts " -> " (str/join ", " (map name accepts))])]
+              [:span.mounts__accepts " -> " (str/join ", " (map name accepts))])
+            [:span.mounts__accepts " / " (name (or (:mount/origin mount) :picked))]]
            [:form.mounts__delete
             {:hx-post   "/mounts/delete"
              :hx-target "#detail"
@@ -110,20 +111,24 @@
    [:p.detail__status "Preparing this part for display. A large hull takes a few seconds; it is cached afterwards."]
    (poll id)])
 
-(defn detail-ready [part mesh-key]
-  [:div.detail
-   (detail-head part)
-   [:p.detail__status "Loaded."]
-   (mount-list part)
-   [:div#mount-authoring.mount-wizard
-    [:button.mount-wizard__toggle
-     {:type                  "button"
-      :data-authoring-toggle "true"
-      :data-part-id          (:part/id part)
-      :data-mesh-key         mesh-key
-      :aria-pressed          "false"}
-     "Pick mount face"]
-    [:div#facet-preview]]])
+(defn detail-ready
+  ([part mesh-key] (detail-ready part mesh-key nil))
+  ([part mesh-key {:keys [repeat-values]}]
+   [:div.detail
+    (detail-head part)
+    [:p.detail__status "Loaded."]
+    (mount-list part)
+    [:div#mount-authoring.mount-wizard
+     (cond-> {}
+       repeat-values (assoc :data-repeat-values (pr-str repeat-values)))
+     [:button.mount-wizard__toggle
+      {:type                  "button"
+       :data-authoring-toggle "true"
+       :data-part-id          (:part/id part)
+       :data-mesh-key         mesh-key
+       :aria-pressed          "false"}
+      "Pick mount face"]
+     [:div#facet-preview]]]))
 
 (defn detail-failed [{:part/keys [id] :as part} message]
   [:div.detail
@@ -154,13 +159,18 @@
 (defn- role-choice [selected role]
   [:option {:value (name role) :selected (= selected role)} (name role)])
 
+(defn- plane-choice [selected plane]
+  [:option {:value (name plane) :selected (= selected plane)} (name plane)])
+
 (defn- default-kind [part]
   (if (#{:hull :hull-section} (:part/role-hint part)) :socket :plug))
 
 (defn- mount-form [{:keys [part frame values]}]
   (let [kind (or (:kind values) (default-kind part))
         part-role (or (:part-role values) (:part/role-hint part) :unknown)
-        accepts (or (:accepts values) #{:weapon})]
+        accepts (or (:accepts values) #{:weapon})
+        mount-id (or (:mount-id values) "mount-1")
+        mirror-id (some-> mount-id (keyword) (wizard/suggest-mirror-id) (name))]
     [:form.mount-wizard__form
      {:hx-post   "/mounts"
       :hx-target "#detail"
@@ -168,7 +178,7 @@
      [:input {:type "hidden" :name "part-id" :value (:part/id part)}]
      [:input {:type "hidden" :name "frame" :value (pr-str frame)}]
      [:label.mount-wizard__field "Mount id"
-      [:input {:type "text" :name "mount-id" :value (or (:mount-id values) "mount-1")
+      [:input {:type "text" :name "mount-id" :value mount-id
                :autocomplete "off" :spellcheck "false"}]]
      [:label.mount-wizard__field "Kind"
       [:select {:name "kind"}
@@ -187,6 +197,22 @@
      [:label.mount-wizard__field "Roll"
       [:input {:type "number" :name "roll-deg" :value (or (:roll-deg values) "0")
                :step "1"}]]
+     [:fieldset.mount-wizard__mirror
+      [:legend "Mirror"]
+      [:label.mount-wizard__check
+       [:input {:type "checkbox" :name "mirror" :value "true"}]
+       "Mirror socket"]
+      [:label.mount-wizard__field "Plane"
+       [:select {:name "mirror-plane"}
+        (map (partial plane-choice :x) wizard/symmetry-plane-options)]]
+      [:label.mount-wizard__field "Offset"
+       [:input {:type "number" :name "mirror-offset" :value "0" :step "0.01"}]]
+      [:label.mount-wizard__field "Mirrored id"
+       [:input {:type "text" :name "mirror-id" :value mirror-id
+                :autocomplete "off" :spellcheck "false"}]]]
+     [:label.mount-wizard__check
+      [:input {:type "checkbox" :name "repeat" :value "true"}]
+      "Repeat classification"]
      [:div.mount-wizard__actions
       [:button {:type "submit" :name "action" :value "create"} "Save mount"]
       [:button {:type "submit" :name "action" :value "replace"} "Replace"]]]))

@@ -144,6 +144,26 @@
         (is (= :weapon (:part/role-hint part)))
         (is (= :manual (:part/role-source part)))))))
 
+(deftest mirrored-mounts-round-trip-through-sidecars
+  (let [root (fixture-tree)
+        cat  (catalog root)
+        id   "Human Navy Fleet Bundle/Cruiser/Hull"
+        mirrored (assoc a-mount
+                        :mount/id :starboard-prow
+                        :mount/pos [-1.0 0.0 86.77]
+                        :mount/axis [-1.0 0.0 0.0]
+                        :mount/roll [0.0 0.0 1.0]
+                        :mount/origin :mirrored)
+        mounts [a-mount mirrored]]
+    (db/save-authoring! cat id {:mounts mounts :part-role :hull})
+    (is (= mounts (:mounts (sidecar/read-sidecar root id))))
+    (let [part (db/part @(db/conn (catalog root)) id)]
+      (is (= (mapv #(select-keys % [:mount/id :mount/pos :mount/axis :mount/roll :mount/origin])
+                   mounts)
+             (mapv #(select-keys % [:mount/id :mount/pos :mount/axis :mount/roll :mount/origin])
+                   (:part/mounts part))))
+      (is (= :manual (:part/role-source part))))))
+
 (deftest authoring-is-file-first-when-the-index-write-fails
   (let [root (fixture-tree)
         cat  (catalog root)
