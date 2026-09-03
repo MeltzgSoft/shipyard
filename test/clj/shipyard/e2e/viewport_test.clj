@@ -231,6 +231,23 @@
   (let [{:keys [x y]} (viewport-center)]
     (s/click-point! *driver* x y))
   (is (some? (await-preview)))
+  (let [layout (s/js *driver* "() => {
+    const detail = document.getElementById('detail');
+    const actions = document.querySelector('.mount-wizard__actions');
+    const detailRect = detail.getBoundingClientRect();
+    const actionRect = actions.getBoundingClientRect();
+    return {
+      fits: actionRect.bottom <= detailRect.bottom,
+      detailHeight: detailRect.height,
+      detailBottom: detailRect.bottom,
+      actionsBottom: actionRect.bottom,
+      scrollHeight: detail.scrollHeight,
+      clientHeight: detail.clientHeight
+    };
+  }")]
+    (is (:fits layout)
+        (str "the mount wizard should use the detail panel width instead of "
+             "hiding actions below the fold; layout was " (pr-str layout))))
   (s/select-option! *driver* "select[name=kind]" "socket")
   (s/select-option! *driver* "select[name=part-role]" "hull")
   (s/js *driver* "() => { document.querySelector('input[name=capacity]').value = '2'; }")

@@ -116,10 +116,11 @@
 (defn detail-ready
   ([part mesh-key] (detail-ready part mesh-key nil))
   ([part mesh-key {:keys [repeat-values]}]
-   [:div.detail
-    (detail-head part)
-    [:p.detail__status "Loaded."]
-    (mount-list part)
+   [:div.detail.detail--ready
+    [:div.detail__summary
+     (detail-head part)
+     [:p.detail__status "Loaded."]
+     (mount-list part)]
     [:div#mount-authoring.mount-wizard
      (cond-> {}
        repeat-values (assoc :data-repeat-values (pr-str repeat-values)))
