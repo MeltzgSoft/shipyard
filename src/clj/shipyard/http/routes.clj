@@ -254,7 +254,12 @@
       :else
       (let [result (wizard/save-request params (durable-mounts part))]
         (if-let [error (:error result)]
-          (htmx/fragment (views/facet-error error))
+          (mount-response deps
+                          part-id
+                          {:authoring {:state :enter
+                                       :part-id part-id
+                                       :mesh-key (index/mesh-key library part-id)}}
+                          {:preview (wizard/error-preview part params error)})
           (try
             (db/save-authoring! catalog part-id (select-keys result [:mounts :part-role]))
             (if-let [repeat-values (:repeat-values result)]
@@ -285,10 +290,10 @@
             result (wizard/delete-request params existing)]
         (cond
           (:error result)
-          (htmx/fragment (views/facet-error (:error result)))
+          (mount-response deps part-id {} {:error (:error result)})
 
           (= existing (:mounts result))
-          (htmx/fragment (views/facet-error "No mount with that id exists."))
+          (mount-response deps part-id {} {:error "No mount with that id exists."})
 
           :else
           (try

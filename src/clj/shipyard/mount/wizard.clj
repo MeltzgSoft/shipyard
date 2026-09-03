@@ -174,6 +174,14 @@
       capacity (assoc :capacity capacity)
       (seq accepts) (assoc :accepts accepts))))
 
+(defn error-preview [part params error]
+  (let [roll-deg (or (parse-finite-double (get params "roll-deg")) 0.0)
+        frame (adjusted-frame (parse-edn (get params "frame")) roll-deg)]
+    (cond-> {:part part
+             :values (preview-values params)
+             :error error}
+      frame (assoc :frame frame))))
+
 (defn save-request [params existing-mounts]
   (let [mount-id (parse-mount-id (get params "mount-id"))
         kind (parse-keyword (get params "kind") kind-options)

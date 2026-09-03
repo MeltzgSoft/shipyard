@@ -756,7 +756,9 @@
     (.addEventListener body "shipyard:facet-error" (fn [_] (clear-authoring-preview! sys)))
     (.addEventListener body "shipyard:mount-repeat" #(reset! (:repeat sys) (payload %)))
     (.addEventListener body "shipyard:interfaces" #(draw-interfaces! sys (payload %)))
-    (.addEventListener body "htmx:afterSwap" (fn [_] (sync-interfaces-from-dom! sys)))
+    (.addEventListener body "htmx:afterSwap" (fn [_]
+                                               (sync-authoring-button! sys)
+                                               (sync-interfaces-from-dom! sys)))
     (.addEventListener body "input" #(refresh-preview-from-form! sys %))
     (.addEventListener body "change" #(refresh-preview-from-form! sys %))
     (.addEventListener body "submit" #(remember-repeat-from-submit! sys %))

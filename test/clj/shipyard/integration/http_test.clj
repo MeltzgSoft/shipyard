@@ -362,7 +362,13 @@
     (testing "duplicate ids require deliberate replacement"
       (let [duplicate (mount-post h save-params)]
         (is (= 200 (:status duplicate)))
-        (is (str/includes? (:body duplicate) "already exists"))))
+        (is (str/includes? (:body duplicate) "already exists"))
+        (is (str/includes? (:body duplicate) "Pick mount face"))
+        (is (str/includes? (:body duplicate) "Replace"))
+        (is (str/includes? (:body duplicate) "Dismiss"))
+        (is (str/includes? (:body duplicate) "value=\"port-1\""))
+        (is (= {:state :enter :part-id hull-id :mesh-key mesh-key}
+               (get (triggers duplicate) "shipyard:authoring")))))
     (testing "replace updates the durable mount instead of accumulating"
       (let [replaced (mount-post h (assoc save-params :accepts "prow" :action "replace"))
             mounts (:mounts (sidecar/read-sidecar root hull-id))]

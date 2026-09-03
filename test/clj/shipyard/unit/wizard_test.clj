@@ -84,6 +84,24 @@
     (is (:error (wizard/save-request (params {"mount-id" "1 bad"}) [])))
     (is (:error (wizard/save-request (params {"frame" "{:not :a-frame}"}) [])))))
 
+(deftest error-preview-test
+  (testing "preserves the selected face and valid form choices after a save error"
+    (let [preview (wizard/error-preview {:part/id "part-1"}
+                                        (params {"capacity" "2"
+                                                 "roll-deg" "90"})
+                                        "Already exists")]
+      (is (= "Already exists" (:error preview)))
+      (is (= "port-1" (get-in preview [:values :mount-id])))
+      (is (= 2 (get-in preview [:values :capacity])))
+      (is (vec-close? [0.0 1.0 0.0] (get-in preview [:frame :mount/roll])))))
+  (testing "still returns the form values when the frame itself is invalid"
+    (let [preview (wizard/error-preview {:part/id "part-1"}
+                                        (params {"frame" "{:not :a-frame}"})
+                                        "Pick it again")]
+      (is (= "Pick it again" (:error preview)))
+      (is (= "port-1" (get-in preview [:values :mount-id])))
+      (is (nil? (:frame preview))))))
+
 (deftest suggest-mirror-id-test
   (testing "uses deterministic port and starboard counterparts"
     (is (= :starboard-1 (wizard/suggest-mirror-id :port-1)))

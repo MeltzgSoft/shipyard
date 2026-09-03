@@ -54,6 +54,11 @@
     #(let [p (:preview (s/stats *driver*))]
        (when (and p (> (:revision p) after-revision)) p)))))
 
+(defn- enter-authoring! [part-id]
+  (when-not (= part-id (get-in (s/stats *driver*) [:authoring :part-id]))
+    (s/click! *driver* "[data-authoring-toggle]"))
+  (s/wait-until #(= part-id (get-in (s/stats *driver*) [:authoring :part-id]))))
+
 ;; --- WebGL first, per the acceptance criteria -------------------------------
 
 (deftest webgl-works-in-this-browser
@@ -182,8 +187,7 @@
   (open-app!)
   (select-part! "Mount Test Plate")
   (s/await-part *driver* s/mount-plate-id)
-  (s/click! *driver* "[data-authoring-toggle]")
-  (is (s/wait-until #(= s/mount-plate-id (get-in (s/stats *driver*) [:authoring :part-id])))
+  (is (enter-authoring! s/mount-plate-id)
       "authoring mode should be active for the loaded plate")
   (let [{:keys [x y]} (viewport-center)
         _ (s/click-point! *driver* x y)
@@ -227,7 +231,7 @@
   (open-app!)
   (select-part! "Mount Test Plate")
   (s/await-part *driver* s/mount-plate-id)
-  (s/click! *driver* "[data-authoring-toggle]")
+  (enter-authoring! s/mount-plate-id)
   (let [{:keys [x y]} (viewport-center)]
     (s/click-point! *driver* x y))
   (is (some? (await-preview)))
@@ -269,6 +273,20 @@
              (pr-str last-interfaces))))
   (is (s/wait-until #(nil? (:preview (s/stats *driver*))))
       "saving clears the transient preview")
+  (is (enter-authoring! s/mount-plate-id)
+      "authoring mode should be active before picking another face")
+  (let [{:keys [x y]} (viewport-center)]
+    (s/click-point! *driver* x y))
+  (is (some? (await-preview)))
+  (s/click! *driver* ".mount-wizard__actions button[value=create]")
+  (is (s/wait-until #(str/includes? (s/text *driver* "#detail") "already exists"))
+      "duplicate ids should report the validation error in the detail panel")
+  (is (s/wait-until #(true? (s/js *driver* "() => !!document.querySelector('.mount-wizard__form button[value=replace]')")))
+      "the error state should keep the form available so Replace is reachable")
+  (s/click! *driver* ".detail__dismiss")
+  (is (s/wait-until #(and (str/includes? (s/text *driver* "#detail") "mount-1")
+                          (not (str/includes? (s/text *driver* "#detail") "already exists"))))
+      "dismissing the error should restore the normal loaded detail")
   (s/select-option! *driver* "select[name=class]" "Cruiser")
   (is (s/wait-until #(= "hull" (s/js *driver* "() => {
     const card = [...document.querySelectorAll('.part')].find((el) => el.textContent.includes('Mount Test Plate'));
@@ -286,7 +304,7 @@
   (open-app!)
   (select-part! "Mount Test Plate")
   (s/await-part *driver* s/mount-plate-id)
-  (s/click! *driver* "[data-authoring-toggle]")
+  (enter-authoring! s/mount-plate-id)
   (let [{:keys [x y]} (viewport-center)]
     (s/click-point! *driver* x y))
   (is (some? (await-preview)))

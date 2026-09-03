@@ -123,6 +123,16 @@
 (defn- durable-mounts [mounts]
   (mapv #(dissoc % :db/id) mounts))
 
+(declare facet-preview facet-error)
+
+(defn- dismiss-error-button [{:part/keys [id]}]
+  [:button.detail__dismiss
+   {:type      "button"
+    :hx-get    (urls/part-url id)
+    :hx-target "#detail"
+    :hx-swap   "innerHTML"}
+   "Dismiss"])
+
 (defn detail-preparing [{:part/keys [id] :as part}]
   [:div.detail
    (detail-head part)
@@ -131,7 +141,7 @@
 
 (defn detail-ready
   ([part mesh-key] (detail-ready part mesh-key nil))
-  ([part mesh-key {:keys [repeat-values]}]
+  ([part mesh-key {:keys [error preview repeat-values]}]
    [:div.detail.detail--ready
     [:div.detail__summary
      (detail-head part)
@@ -150,7 +160,10 @@
        :data-mesh-key         mesh-key
        :aria-pressed          "false"}
       "Pick mount face"]
-     [:div#facet-preview]]]))
+     [:div#facet-preview
+      (cond
+        preview (facet-preview preview)
+        error (facet-error error part))]]]))
 
 (defn detail-failed [{:part/keys [id] :as part} message]
   [:div.detail
@@ -246,16 +259,26 @@
 (defn facet-preview
   ([] [:div.facet-preview
        [:p.detail__status "Face selected."]])
-  ([preview]
+  ([{:keys [frame part] :as preview}]
    [:div.facet-preview
     (when-let [error (:error preview)]
-      [:p.detail__error error])
-    [:p.detail__status "Face selected."]
-    (mount-form preview)]))
+      [:div.facet-preview__message
+       [:p.detail__error error]
+       (when part
+         (dismiss-error-button part))])
+    (when frame
+      [:p.detail__status "Face selected."])
+    (when frame
+      (mount-form preview))]))
 
-(defn facet-error [message]
-  [:div.facet-preview.facet-preview--error
-   [:p.detail__error message]])
+(defn facet-error
+  ([message] (facet-error message nil))
+  ([message part]
+   [:div.facet-preview.facet-preview--error
+    [:div.facet-preview__message
+     [:p.detail__error message]
+     (when part
+       (dismiss-error-button part))]]))
 
 (defn mount-saved []
   [:div.facet-preview
