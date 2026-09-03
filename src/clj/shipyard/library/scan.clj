@@ -140,6 +140,7 @@
       weapons?            [:weapon :class]
       (= c "ordinance")   [:ordinance :class]
       (= c "terrain")     [:terrain :class]
+      (escort-class? c)    [:unknown :inferred]
       (hull-section? name) [:hull-section :inferred]
       :else
       (or (some (fn [[re role]]

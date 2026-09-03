@@ -74,6 +74,12 @@
    :jvm-opts  ["--enable-native-access=ALL-UNNAMED"
                "--sun-misc-unsafe-memory-access=allow"]}
 
+  ;; --- escort classifier probe (issue #62) --------------------------------
+  :escort-probe
+  {:main-opts ["-m" "shipyard.library.escort"]
+   :jvm-opts  ["--enable-native-access=ALL-UNNAMED"
+               "--sun-misc-unsafe-memory-access=allow"]}
+
   ;; --- M1 performance benchmark (issue #44) -------------------------------
   ;; Deliberately on-demand, like the canary: wall-clock and viewport figures
   ;; are machine-dependent and would be flaky as CI gates. The 1 GB ceiling is

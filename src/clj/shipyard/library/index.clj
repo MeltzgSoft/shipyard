@@ -87,7 +87,7 @@
          (assoc acc id
                 (merge (stat f)
                        (when (fresh? old f)
-                         (select-keys old [:mesh-key :tris])))))))
+                         (select-keys old [:mesh-key :tris :escort-analysis])))))))
    {}
    parts))
 
@@ -131,6 +131,26 @@
   [{:keys [state]} part-id]
   (let [{:keys [root entries]} @state]
     {:root root :entry (get entries part-id)}))
+
+(defn escort-analysis
+  "Cached escort geometry analysis for a part, if its source file is unchanged."
+  [{:keys [state]} part-id]
+  (get-in @state [:entries part-id :escort-analysis]))
+
+(defn record-escort-analysis!
+  "Persist on-demand escort analysis beside the scan index.
+
+  Startup still does not open STL geometry; this is called only by the explicit
+  escort probe/classifier path."
+  [{:keys [state]} part-id analysis]
+  (let [updated (swap! state
+                       (fn [{:keys [entries] :as st}]
+                         (if (contains? entries part-id)
+                           (assoc-in st [:entries part-id :escort-analysis] analysis)
+                           st)))]
+    (when (contains? (:entries updated) part-id)
+      (save-index! (:index-file updated) (:root updated) (:entries updated)))
+    analysis))
 
 ;; --- the component, and the root it can be pointed at ------------------------
 

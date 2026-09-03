@@ -63,6 +63,7 @@ npx shadow-cljs compile test && node target/js/node-tests.js  # CLJS node unit t
 
 clojure -M:natives-linux:canary         # data-quality probe over the real library
 clojure -M:m2-human-navy-cruiser-proof --root /tmp/human-navy-cruiser-copy --out m2-human-navy-cruiser-proof.edn
+clojure -M:natives-linux:escort-probe   # on-demand escort geometry classifier report
 clojure -M:natives-linux:benchmark --root /path/to/models --machine "CPU; RAM; GPU; storage"
 clojure -M:cljfmt check src test dev build.clj    # `fix` to apply
 clojure -M:clj-kondo --lint src --lint test --lint dev --lint build.clj

@@ -91,6 +91,12 @@
     (is (= :detail (role "Acid Insert")))
     (is (= :unknown (role "Hyena")))))
 
+(deftest escort-names-are-not-role-facts
+  (testing "escort parts wait for geometry classification rather than name fallback"
+    (is (= :unknown (role "Cyanide Prow Python" :class "Escort")))
+    (is (= :unknown (role "Mercury hull and prow" :class "Escort")))
+    (is (= :inferred (source "Cyanide Prow Python" :class "Escort")))))
+
 (deftest substring-matching-not-word-bounded
   (testing "14 folders are CamelCase or underscore-joined; word boundaries drop them all"
     (is (= :hull (role "Metis_Hull")))

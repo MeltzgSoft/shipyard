@@ -77,7 +77,14 @@
     (is (= "second" (slurp target)))
     (testing "no temp files left behind"
       (is (empty? (filter #(re-find #"\.tmp$" (.getName ^File %))
-                          (file-seq (.getParentFile target))))))))
+                          (file-seq (.getParentFile target))))))
+    (testing "a filename without a parent writes in the current directory"
+      (let [target (io/file (str "shipyard-atomic-" (random-uuid) ".edn"))]
+        (try
+          (system/write-atomically! target "relative")
+          (is (= "relative" (slurp target)))
+          (finally
+            (.delete target)))))))
 
 (deftest concurrent-requests-produce-one-job
   (let [c (test-cache), src (write-stl (temp-dir "shipyard-src") 10)
