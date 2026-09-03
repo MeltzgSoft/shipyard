@@ -607,8 +607,7 @@
       (if (checked? form "input[name=repeat]")
         (reset! repeat {:mount-id (suggest-repeat-id (input-value form "input[name=mount-id]"))
                         :kind (input-value form "select[name=kind]")
-                        :accepts (checked-values form "input[name=accepts]:checked")
-                        :part-role (input-value form "select[name=part-role]")})
+                        :accepts (checked-values form "input[name=accepts]:checked")})
         (reset! repeat nil)))))
 
 (defn- pick-face! [{:keys [^js canvas ^js camera parts authoring ^js raycaster ^js pointer] :as sys} ^js e]

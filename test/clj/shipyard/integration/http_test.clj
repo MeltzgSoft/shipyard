@@ -149,6 +149,9 @@
 (defn- mount-delete [h params]
   (POST h "/mounts/delete" params))
 
+(defn- part-role-post [h params]
+  (POST h "/parts/role" params))
+
 ;; --- the shell --------------------------------------------------------------
 
 (deftest shell-is-a-document-with-the-canvas-island
@@ -328,7 +331,6 @@
                      :kind "socket"
                      :accepts "weapon"
                      :capacity "2"
-                     :part-role "hull"
                      :frame (pr-str (:frame preview))
                      :roll-deg "0"
                      :action "create"}
@@ -352,7 +354,7 @@
     (is (str/includes? (:body saved) "Interface colors"))
     (let [sidecar (sidecar/read-sidecar root hull-id)
           mount (first (:mounts sidecar))]
-      (is (= :hull (:part/role sidecar)))
+      (is (nil? (:part/role sidecar)))
       (is (= :port-1 (:mount/id mount)))
       (is (= :socket (:mount/kind mount)))
       (is (= #{:weapon} (:mount/accepts mount)))
@@ -394,7 +396,6 @@
                              :kind "socket"
                              :accepts "turret"
                              :capacity "2"
-                             :part-role "hull"
                              :frame (pr-str (:frame preview))
                              :roll-deg "0"
                              :mirror "true"
@@ -413,8 +414,7 @@
     (is (= {:mount-id "port-2"
             :kind "socket"
             :accepts #{:turret}
-            :capacity 2
-            :part-role "hull"}
+            :capacity 2}
            (get events "shipyard:mount-repeat")))
     (is (= :picked (get-in by-id [:port-1 :mount/origin])))
     (is (= :mirrored (get-in by-id [:starboard-1 :mount/origin])))
@@ -427,11 +427,35 @@
                                         {"mount-id" "port-2"
                                          "kind" "socket"
                                          "accepts" "turret"
-                                         "capacity" "2"
-                                         "part-role" "hull"}))]
+                                         "capacity" "2"}))]
         (is (str/includes? repeated "value=\"port-2\""))
         (is (re-find #"name=\"capacity\"[^>]+value=\"2\"" repeated))
         (is (re-find #"checked=\"checked\"[^>]+value=\"turret\"" repeated))))))
+
+(deftest part-role-is-edited-outside-the-mount-wizard
+  (let [root (library-tree)
+        sys (system root)
+        h (handler sys)
+        mesh-key (seed-authoring-cache! sys)
+        preview (get (triggers (facet-post h hull-id mesh-key 0)) "shipyard:facet-preview")
+        saved (mount-post h {:part-id hull-id
+                             :mount-id "port-1"
+                             :kind "socket"
+                             :accepts "weapon"
+                             :capacity "2"
+                             :part-role "weapon"
+                             :frame (pr-str (:frame preview))
+                             :action "create"})]
+    (testing "mount saves ignore any stray part-role field"
+      (is (= 200 (:status saved)))
+      (is (nil? (:part/role (sidecar/read-sidecar root hull-id)))))
+    (testing "the standalone metadata form persists the role override"
+      (let [role-saved (part-role-post h {:part-id hull-id :part-role "hull"})
+            sidecar (sidecar/read-sidecar root hull-id)]
+        (is (= 200 (:status role-saved)))
+        (is (= :hull (:part/role sidecar)))
+        (is (str/includes? (:body role-saved) "Part metadata"))
+        (is (str/includes? (:body role-saved) "Manual"))))))
 
 (deftest mount-wizard-reports-validation-errors
   (let [sys (system (library-tree))
@@ -441,7 +465,6 @@
                              :mount-id "port-1"
                              :kind "socket"
                              :accepts "weapon"
-                             :part-role "hull"
                              :frame "{:not :a-frame}"
                              :action "create"})]
         (is (= 200 (:status r)))
@@ -452,7 +475,6 @@
                              :kind "socket"
                              :accepts "weapon"
                              :capacity "0"
-                             :part-role "hull"
                              :frame (pr-str {:mount/pos [0 0 0]
                                              :mount/axis [0 0 1]
                                              :mount/roll [1 0 0]})
@@ -464,7 +486,6 @@
                              :mount-id "1 bad"
                              :kind "socket"
                              :accepts "weapon"
-                             :part-role "hull"
                              :frame (pr-str {:mount/pos [0 0 0]
                                              :mount/axis [0 0 1]
                                              :mount/roll [1 0 0]})

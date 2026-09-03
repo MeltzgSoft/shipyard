@@ -133,6 +133,27 @@
     :hx-swap   "innerHTML"}
    "Dismiss"])
 
+(defn- role-choice [selected role]
+  [:option {:value (name role) :selected (= selected role)} (name role)])
+
+(defn- part-metadata [{:part/keys [id role-hint role-source]}]
+  [:section.part-metadata
+   [:h3.part-metadata__title "Part metadata"]
+   [:form.part-metadata__form
+    {:hx-post   "/parts/role"
+     :hx-target "#detail"
+     :hx-swap   "innerHTML"}
+    [:input {:type "hidden" :name "part-id" :value id}]
+    [:label.part-metadata__field "Role"
+     [:select {:name "part-role"}
+      (map (partial role-choice (or role-hint :unknown)) wizard/role-options)]]
+    [:button {:type "submit"} "Save role"]]
+   [:p.part-metadata__source
+    (case role-source
+      :manual "Manual"
+      :class "From folder"
+      "Inferred")]])
+
 (defn detail-preparing [{:part/keys [id] :as part}]
   [:div.detail
    (detail-head part)
@@ -146,6 +167,7 @@
     [:div.detail__summary
      (detail-head part)
      [:p.detail__status "Loaded."]
+     (part-metadata part)
      (interface-legend part)
      (mount-list part)]
     [:div#mount-authoring.mount-wizard
@@ -191,9 +213,6 @@
 
 ;; --- facet preview ----------------------------------------------------------
 
-(defn- role-choice [selected role]
-  [:option {:value (name role) :selected (= selected role)} (name role)])
-
 (defn- plane-choice [selected plane]
   [:option {:value (name plane) :selected (= selected plane)} (name plane)])
 
@@ -202,7 +221,6 @@
 
 (defn- mount-form [{:keys [part frame values]}]
   (let [kind (or (:kind values) (default-kind part))
-        part-role (or (:part-role values) (:part/role-hint part) :unknown)
         accepts (or (:accepts values) #{:weapon})
         capacity (or (:capacity values) 1)
         mount-id (or (:mount-id values) "mount-1")
@@ -230,9 +248,6 @@
      [:label.mount-wizard__field "Capacity"
       [:input {:type "number" :name "capacity" :value capacity
                :min "1" :step "1"}]]
-     [:label.mount-wizard__field "Part role"
-      [:select {:name "part-role"}
-       (map (partial role-choice part-role) wizard/role-options)]]
      [:label.mount-wizard__field "Roll"
       [:input {:type "number" :name "roll-deg" :value (or (:roll-deg values) "0")
                :step "1"}]]

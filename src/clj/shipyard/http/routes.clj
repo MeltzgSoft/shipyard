@@ -241,7 +241,15 @@
                       {:events (assoc events :interfaces {:part-id part-id
                                                           :mesh-key mesh-key
                                                           :mounts (durable-mounts part)})})
-       (facet-error :part-not-found "That part is no longer in the library." part-id 404)))))
+       (if (:part/id part)
+         (facet-error :mesh-not-ready "Open the part and wait for preprocessing to finish." part-id 409)
+         (facet-error :part-not-found "That part is no longer in the library." part-id 404))))))
+
+(defn- mount-error-response
+  [{:keys [library] :as deps} part-id error events view-options]
+  (if (index/mesh-key library part-id)
+    (mount-response deps part-id events view-options)
+    (htmx/fragment (views/facet-error error))))
 
 (defn- save-mount
   [{:keys [catalog library] :as deps} {:keys [params]}]
@@ -254,14 +262,16 @@
       :else
       (let [result (wizard/save-request params (durable-mounts part))]
         (if-let [error (:error result)]
-          (mount-response deps
-                          part-id
-                          {:authoring {:state :enter
-                                       :part-id part-id
-                                       :mesh-key (index/mesh-key library part-id)}}
-                          {:preview (wizard/error-preview part params error)})
+          (mount-error-response
+           deps
+           part-id
+           error
+           {:authoring {:state :enter
+                        :part-id part-id
+                        :mesh-key (index/mesh-key library part-id)}}
+           {:preview (wizard/error-preview part params error)})
           (try
-            (db/save-authoring! catalog part-id (select-keys result [:mounts :part-role]))
+            (db/save-authoring! catalog part-id (select-keys result [:mounts]))
             (if-let [repeat-values (:repeat-values result)]
               (mount-response deps part-id {:clear-preview nil
                                             :authoring {:state :enter
@@ -274,6 +284,27 @@
             (catch Exception _
               (facet-error :mount-save-failed
                            "The mount was written, but the catalog did not update. Restart Shipyard to re-ingest it."
+                           part-id
+                           500))))))))
+
+(defn- save-part-role
+  [{:keys [catalog] :as deps} {:keys [params]}]
+  (let [part-id (get params "part-id")
+        part (db/part (db/snapshot catalog) part-id)]
+    (cond
+      (nil? (:part/id part))
+      (facet-error :part-not-found "That part is no longer in the library." part-id 404)
+
+      :else
+      (let [result (wizard/part-role-request params)]
+        (if-let [error (:error result)]
+          (mount-response deps part-id {} {:error error})
+          (try
+            (db/save-part-role! catalog part-id (:part-role result))
+            (mount-response deps part-id {})
+            (catch Exception _
+              (facet-error :part-role-save-failed
+                           "The part role was written, but the catalog did not update. Restart Shipyard to re-ingest it."
                            part-id
                            500))))))))
 
@@ -290,10 +321,14 @@
             result (wizard/delete-request params existing)]
         (cond
           (:error result)
-          (mount-response deps part-id {} {:error (:error result)})
+          (mount-error-response deps part-id (:error result) {} {:error (:error result)})
 
           (= existing (:mounts result))
-          (mount-response deps part-id {} {:error "No mount with that id exists."})
+          (mount-error-response deps
+                                part-id
+                                "No mount with that id exists."
+                                {}
+                                {:error "No mount with that id exists."})
 
           :else
           (try
@@ -355,6 +390,7 @@
    ["/facet" {:post (partial facet-preview deps)}]
    ["/mounts" {:post (partial save-mount deps)}]
    ["/mounts/delete" {:post (partial delete-mount deps)}]
+   ["/parts/role" {:post (partial save-part-role deps)}]
    ["/part/*id" {:get (partial part deps)}]
    ["/mesh/:file" {:get (partial mesh deps)}]])
 

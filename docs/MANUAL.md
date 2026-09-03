@@ -131,17 +131,18 @@ When the preview looks right, fill in the mount form:
 - **Accepts** is used for sockets; choose at least one role that can attach there.
 - **Capacity** is used for sockets whose selected face can hold more than one part.
   Human Navy Cruiser weapon sockets use capacity `2`.
-- **Part role** is the role Shipyard should trust for this part from now on. It replaces
-  the inferred role shown by browsing.
 - **Roll** rotates the in-plane direction before saving when the automatic direction is
   ambiguous or intentionally needs adjustment.
 - **Mirror** creates a second socket by reflecting the picked frame across a symmetry
   plane. Human Navy Cruiser hulls use the X plane at offset `0`; change the plane or
   offset only when the part's centreline is different. When mirror is selected,
   Shipyard highlights the reflected face in blue before you save.
-- **Repeat classification** keeps the kind, accepted roles and part role ready for the
-  next picked face. The next mount is still shown in the form and must be saved
-  deliberately.
+- **Repeat classification** keeps the kind and accepted roles ready for the next picked
+  face. The next mount is still shown in the form and must be saved deliberately.
+
+Part-level metadata is edited outside the mount picker. Use **Part metadata** in the
+detail panel to set the role Shipyard should trust for that part from now on. It
+replaces the inferred role shown by browsing.
 
 **Save mount** creates a new id. If that id already exists, Shipyard reports it instead
 of overwriting silently; use **Replace** only when you mean to update that mount. A part

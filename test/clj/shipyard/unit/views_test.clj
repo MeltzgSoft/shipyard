@@ -128,6 +128,8 @@
 
 (deftest configured-interface-legend-matches-mount-types
   (let [html (render (views/detail-ready hull-with-mounts (apply str (repeat 64 "1"))))]
+    (is (str/includes? html "Part metadata"))
+    (is (str/includes? html "hx-post=\"/parts/role\""))
     (is (str/includes? html "Interface colors"))
     (is (str/includes? html "plug"))
     (is (str/includes? html "weapon socket"))
@@ -149,6 +151,7 @@
       (is (str/includes? html "Dismiss"))
       (is (str/includes? html "name=\"mount-id\""))
       (is (str/includes? html "value=\"mount-1\""))
+      (is (not (str/includes? html "class=\"mount-wizard__field\">Part role")))
       (is (str/includes? html "Pick mount face"))))
   (testing "delete errors keep the part detail rather than replacing it"
     (let [html (render (views/detail-ready hull

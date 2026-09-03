@@ -185,6 +185,54 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
 
 .mount-wizard { margin-top: 0.65rem; min-width: 0; }
 .detail--ready .mount-wizard { margin-top: 0; }
+.part-metadata {
+  margin-top: 0.65rem;
+}
+.part-metadata__title {
+  margin: 0 0 0.3rem;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-dim);
+}
+.part-metadata__form {
+  display: grid;
+  grid-template-columns: minmax(8rem, 1fr) auto;
+  gap: 0.4rem;
+  align-items: end;
+}
+.part-metadata__field {
+  display: grid;
+  gap: 0.2rem;
+  font-size: 0.78rem;
+  color: var(--ink-dim);
+}
+.part-metadata__field select {
+  min-width: 0;
+  background: var(--panel-2);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.25rem 0.35rem;
+  font: inherit;
+  font-size: 0.82rem;
+}
+.part-metadata__form button {
+  background: var(--panel-2);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.25rem 0.6rem;
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.part-metadata__source {
+  margin: 0.25rem 0 0;
+  color: var(--ink-faint);
+  font-size: 0.72rem;
+}
 .facet-preview__message {
   display: flex;
   align-items: center;
@@ -314,7 +362,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
   font-size: 0.78rem;
   cursor: pointer;
 }
-.mount-wizard__actions button:hover, .mounts__delete button:hover, .detail__dismiss:hover { border-color: var(--accent); }
+.mount-wizard__actions button:hover, .mounts__delete button:hover, .part-metadata__form button:hover, .detail__dismiss:hover { border-color: var(--accent); }
 .stage__canvas--authoring { cursor: crosshair; }
 
 @media (min-width: 72rem) {

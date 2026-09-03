@@ -21,7 +21,6 @@
           "kind" "socket"
           "accepts" "weapon"
           "capacity" "1"
-          "part-role" "hull"
           "frame" (pr-str frame)
           "roll-deg" "0"
           "action" "create"}
@@ -50,8 +49,7 @@
 
 (deftest save-request-test
   (testing "creates a durable socket without facet indices"
-    (let [{:keys [mount mounts part-role]} (wizard/save-request (params {}) [])]
-      (is (= :hull part-role))
+    (let [{:keys [mount mounts]} (wizard/save-request (params {}) [])]
       (is (= [mount] mounts))
       (is (= #{:weapon} (:mount/accepts mount)))
       (is (= 1 (:mount/capacity mount)))
@@ -65,20 +63,17 @@
   (testing "ignores capacity on plugs"
     (let [{:keys [mount]} (wizard/save-request (params {"mount-id" "plug"
                                                         "kind" "plug"
-                                                        "part-role" "weapon"
                                                         "capacity" "2"})
                                                [])]
       (is (= :plug (:mount/kind mount)))
       (is (nil? (:mount/capacity mount)))))
   (testing "requires replace for duplicate ids"
     (is (:error (wizard/save-request (params {}) [socket])))
-    (is (= 1 (count (:mounts (wizard/save-request (params {"action" "replace"
-                                                           "part-role" "weapon"})
+    (is (= 1 (count (:mounts (wizard/save-request (params {"action" "replace"})
                                                   [socket]))))))
   (testing "allows only one plug at a time"
     (let [plug (assoc socket :mount/id :plug :mount/kind :plug)]
-      (is (:error (wizard/save-request (params {"mount-id" "second" "kind" "plug"
-                                                "part-role" "weapon"})
+      (is (:error (wizard/save-request (params {"mount-id" "second" "kind" "plug"})
                                        [plug])))))
   (testing "rejects bad ids and malformed frames"
     (is (:error (wizard/save-request (params {"mount-id" "1 bad"}) [])))
@@ -101,6 +96,13 @@
       (is (= "Pick it again" (:error preview)))
       (is (= "port-1" (get-in preview [:values :mount-id])))
       (is (nil? (:frame preview))))))
+
+(deftest part-role-request-test
+  (testing "parses a valid part role separately from mount authoring"
+    (is (= {:part-role :hull} (wizard/part-role-request {"part-role" "hull"}))))
+  (testing "rejects missing or unsupported part roles"
+    (is (:error (wizard/part-role-request {})))
+    (is (:error (wizard/part-role-request {"part-role" "spaceship"})))))
 
 (deftest suggest-mirror-id-test
   (testing "uses deterministic port and starboard counterparts"
@@ -148,7 +150,11 @@
       (is (= :mirrored (:mount/origin mirrored-mount)))
       (is (= [:port-1 :starboard-1] (mapv :mount/id mounts)))
       (is (= [1 1] (mapv :mount/capacity mounts)))
-      (is (= "port-2" (:mount-id repeat-values)))))
+      (is (= {:mount-id "port-2"
+              :kind "socket"
+              :accepts #{:weapon}
+              :capacity 1}
+             repeat-values))))
   (testing "mirrors and repeats capacity"
     (let [{:keys [mounts repeat-values]}
           (wizard/save-request (params {"capacity" "2"

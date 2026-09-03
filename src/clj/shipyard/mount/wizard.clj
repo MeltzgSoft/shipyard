@@ -154,25 +154,27 @@
            {:mount/id mirror-id
             :mount/origin :mirrored})))
 
-(defn repeat-values [mount mounts part-role]
+(defn repeat-values [mount mounts]
   {:mount-id (some->> (:mount/id mount) (suggest-repeat-id mounts) (name))
    :kind (some-> (:mount/kind mount) (name))
    :accepts (:mount/accepts mount)
-   :capacity (:mount/capacity mount)
-   :part-role (some-> part-role (name))})
+   :capacity (:mount/capacity mount)})
 
 (defn preview-values [params]
   (let [mount-id (parse-mount-id (get params "mount-id"))
         kind (parse-keyword (get params "kind") kind-options)
-        part-role (parse-keyword (get params "part-role") role-options)
         accepts (set (keep #(parse-keyword % role-options) (many (get params "accepts"))))
         capacity (parse-positive-long (get params "capacity"))]
     (cond-> {}
       mount-id (assoc :mount-id (name mount-id))
       kind (assoc :kind kind)
-      part-role (assoc :part-role part-role)
       capacity (assoc :capacity capacity)
       (seq accepts) (assoc :accepts accepts))))
+
+(defn part-role-request [params]
+  (if-let [role (parse-keyword (get params "part-role") role-options)]
+    {:part-role role}
+    {:error "Choose the role this part should use from now on."}))
 
 (defn error-preview [part params error]
   (let [roll-deg (or (parse-finite-double (get params "roll-deg")) 0.0)
@@ -186,7 +188,6 @@
   (let [mount-id (parse-mount-id (get params "mount-id"))
         kind (parse-keyword (get params "kind") kind-options)
         action (parse-keyword (get params "action") [:create :replace])
-        part-role (parse-keyword (get params "part-role") role-options)
         accepts (set (keep #(parse-keyword % role-options) (many (get params "accepts"))))
         capacity (or (parse-positive-long (get params "capacity")) 1)
         roll-deg (or (parse-finite-double (get params "roll-deg")) 0.0)
@@ -203,9 +204,6 @@
 
       (nil? kind)
       {:error "Choose whether this mount is a plug or a socket."}
-
-      (nil? part-role)
-      {:error "Choose the role this part should use from now on."}
 
       (nil? frame)
       {:error "The selected face no longer has a valid frame. Pick it again."}
@@ -256,15 +254,13 @@
                              (replace-mount mirrored))]
               (cond-> {:mount mount
                        :mirrored-mount mirrored
-                       :part-role part-role
                        :mounts mounts}
-                repeat? (assoc :repeat-values (repeat-values mount mounts part-role))))
+                repeat? (assoc :repeat-values (repeat-values mount mounts))))
             {:error "The mirrored socket frame is invalid. Pick the face again."})
           (let [mounts (replace-mount existing-mounts mount)]
             (cond-> {:mount mount
-                     :part-role part-role
                      :mounts mounts}
-              repeat? (assoc :repeat-values (repeat-values mount mounts part-role)))))))))
+              repeat? (assoc :repeat-values (repeat-values mount mounts)))))))))
 
 (defn delete-request [params existing-mounts]
   (if-let [mount-id (parse-mount-id (get params "mount-id"))]

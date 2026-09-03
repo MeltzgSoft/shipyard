@@ -252,9 +252,11 @@
     (is (:fits layout)
         (str "the mount wizard should use the detail panel width instead of "
              "hiding actions below the fold; layout was " (pr-str layout))))
-  (s/select-option! *driver* "select[name=kind]" "socket")
-  (s/select-option! *driver* "select[name=part-role]" "hull")
-  (s/js *driver* "() => { document.querySelector('input[name=capacity]').value = '2'; }")
+  (is (s/wait-until
+       #(false? (s/js *driver* "() => !!document.querySelector('.mount-wizard__form select[name=part-role]')")))
+      "part role should be edited outside the mount wizard")
+  (s/select-option! *driver* ".mount-wizard__form select[name=kind]" "socket")
+  (s/js *driver* "() => { document.querySelector('.mount-wizard__form input[name=capacity]').value = '2'; }")
   (s/click! *driver* ".mount-wizard__actions button[value=create]")
   (is (s/wait-until #(str/includes? (s/text *driver* "#detail") "mount-1"))
       (str "the saved mount should appear in the detail panel; got "
@@ -287,6 +289,10 @@
   (is (s/wait-until #(and (str/includes? (s/text *driver* "#detail") "mount-1")
                           (not (str/includes? (s/text *driver* "#detail") "already exists"))))
       "dismissing the error should restore the normal loaded detail")
+  (s/select-option! *driver* ".part-metadata__form select[name=part-role]" "hull")
+  (s/click! *driver* ".part-metadata__form button")
+  (is (s/wait-until #(str/includes? (s/text *driver* "#detail") "Manual"))
+      "part-level role edits should live in the metadata form")
   (s/select-option! *driver* "select[name=class]" "Cruiser")
   (is (s/wait-until #(= "hull" (s/js *driver* "() => {
     const card = [...document.querySelectorAll('.part')].find((el) => el.textContent.includes('Mount Test Plate'));
@@ -308,11 +314,10 @@
   (let [{:keys [x y]} (viewport-center)]
     (s/click-point! *driver* x y))
   (is (some? (await-preview)))
-  (s/select-option! *driver* "select[name=kind]" "socket")
-  (s/select-option! *driver* "select[name=part-role]" "hull")
+  (s/select-option! *driver* ".mount-wizard__form select[name=kind]" "socket")
   (s/click! *driver* "input[name=accepts][value=weapon]")
   (s/click! *driver* "input[name=accepts][value=turret]")
-  (s/js *driver* "() => { document.querySelector('input[name=capacity]').value = '2'; }")
+  (s/js *driver* "() => { document.querySelector('.mount-wizard__form input[name=capacity]').value = '2'; }")
   (s/click! *driver* "input[name=mirror]")
   (let [mirrored (s/wait-until
                   #(let [preview (:preview (s/stats *driver*))]

@@ -185,6 +185,16 @@
                               [part-tx]))
     {:mounts mounts :part-role part-role}))
 
+(defn save-part-role!
+  "Persist a part-level role override without changing mount authoring data."
+  [{:keys [state]} part-id part-role]
+  (let [{:keys [conn root]} @state]
+    (sidecar/update-sidecar! root part-id assoc :part/role part-role)
+    (d/transact! conn [{:part/id part-id
+                        :part/role-hint part-role
+                        :part/role-source :manual}])
+    part-role))
+
 ;; --- component --------------------------------------------------------------
 
 (defn reingest!
