@@ -149,6 +149,34 @@
 
 (defn- v3 [[x y z]] (three/Vector3. x y z))
 
+(def ^:private mirror-plane-index {"x" 0 "y" 1 "z" 2})
+
+(defn- parse-finite-double [s]
+  (let [n (js/Number s)]
+    (when (js/Number.isFinite n) n)))
+
+(defn- reflect-coordinate [x offset]
+  (- (* 2.0 offset) x))
+
+(defn- reflect-pos [idx offset v]
+  (assoc v idx (reflect-coordinate (v idx) offset)))
+
+(defn- reflect-dir [idx v]
+  (update v idx -))
+
+(defn- reflect-frame [{:mount/keys [pos axis roll]} {:keys [idx offset]}]
+  {:mount/pos (reflect-pos idx offset pos)
+   :mount/axis (reflect-dir idx axis)
+   :mount/roll (reflect-dir idx roll)})
+
+(defn- reflect-point! [^js p {:keys [idx offset]}]
+  (case idx
+    0 (set! (.-x p) (reflect-coordinate (.-x p) offset))
+    1 (set! (.-y p) (reflect-coordinate (.-y p) offset))
+    2 (set! (.-z p) (reflect-coordinate (.-z p) offset))
+    nil)
+  p)
+
 (defn- scaled-end [origin dir scale]
   (doto (.clone (v3 origin))
     (.addScaledVector (v3 dir) scale)))
@@ -210,7 +238,7 @@
             state (if (current-authoring? sys part-id mesh-key) :exit :enter)]
         (shipyard-event! "authoring" {:state state :part-id part-id :mesh-key mesh-key})))))
 
-(defn- facet-geometry [^js obj facet-indices axis]
+(defn- facet-geometry [^js obj facet-indices axis mirror]
   (let [source (.-geometry obj)
         position (.getAttribute source "position")
         index (.-index source)
@@ -221,6 +249,7 @@
       (let [vertex-index (.getX index (+ (* triangle 3) corner))
             p (three/Vector3.)]
         (.fromBufferAttribute p position vertex-index)
+        (when mirror (reflect-point! p mirror))
         (.addScaledVector p lift 0.002)
         (.push values (.-x p) (.-y p) (.-z p))))
     (doto (three/BufferGeometry.)
@@ -237,45 +266,75 @@
         material (three/LineBasicMaterial. #js {:color color})]
     (three/Line. geometry material)))
 
-(defn- preview-object [^js obj {:keys [facet-indices frame]}]
+(declare input-value checked?)
+
+(defn- face-highlight [^js obj facet-indices frame mirror color opacity]
+  (three/Mesh.
+   (facet-geometry obj facet-indices (:mount/axis frame) mirror)
+   (three/MeshBasicMaterial. #js {:color color
+                                  :transparent true
+                                  :opacity opacity
+                                  :side three/DoubleSide
+                                  :depthWrite false
+                                  :polygonOffset true
+                                  :polygonOffsetFactor -1
+                                  :polygonOffsetUnits -1})))
+
+(defn- preview-object [^js obj {:keys [facet-indices frame]} mirror]
   (let [axis (:mount/axis frame)
         roll (:mount/roll frame)
         pos (:mount/pos frame)
         length (preview-length obj)
-        highlight (three/Mesh.
-                   (facet-geometry obj facet-indices axis)
-                   (three/MeshBasicMaterial. #js {:color 0xf0c65a
-                                                  :transparent true
-                                                  :opacity 0.56
-                                                  :side three/DoubleSide
-                                                  :depthWrite false
-                                                  :polygonOffset true
-                                                  :polygonOffsetFactor -1
-                                                  :polygonOffsetUnits -1}))
+        highlight (face-highlight obj facet-indices frame nil 0xf0c65a 0.56)
         axis-line (three/ArrowHelper. (v3 axis) (v3 pos) length 0xf0c65a (* length 0.22) (* length 0.08))
-        roll-line (line-preview pos roll (* length 0.75) 0x69d2c0)]
-    (doto (three/Group.)
-      (.add highlight)
-      (.add axis-line)
-      (.add roll-line))))
+        roll-line (line-preview pos roll (* length 0.75) 0x69d2c0)
+        mirrored-frame (when mirror (reflect-frame frame mirror))
+        group (doto (three/Group.)
+                (.add highlight)
+                (.add axis-line)
+                (.add roll-line))]
+    (when mirrored-frame
+      (.add group (face-highlight obj facet-indices mirrored-frame mirror 0x79a9ff 0.48))
+      (.add group (three/ArrowHelper. (v3 (:mount/axis mirrored-frame))
+                                      (v3 (:mount/pos mirrored-frame))
+                                      length 0x79a9ff (* length 0.22) (* length 0.08)))
+      (.add group (line-preview (:mount/pos mirrored-frame)
+                                (:mount/roll mirrored-frame)
+                                (* length 0.75) 0x8fd8ff)))
+    {:object group :mirror-frame mirrored-frame}))
 
-(defn- draw-preview! [{:keys [^js scene parts current authoring preview preview-revision] :as sys}
-                      {:keys [part-id mesh-key frame facet-indices] :as payload}]
+(defn- mirror-form-values []
+  (when-let [form (.querySelector js/document ".mount-wizard__form")]
+    (let [plane (input-value form "select[name=mirror-plane]")
+          idx (get mirror-plane-index plane)
+          offset (parse-finite-double (or (input-value form "input[name=mirror-offset]") "0"))]
+      (when (and (checked? form "input[name=mirror]")
+                 (= "socket" (input-value form "select[name=kind]"))
+                 idx
+                 offset)
+        {:plane plane :idx idx :offset offset}))))
+
+(defn- install-preview! [{:keys [^js scene parts current authoring preview preview-revision]}
+                         {:keys [part-id mesh-key] :as data}]
   (when (and (= {:part-id part-id :mesh-key mesh-key} @current)
              (= {:part-id part-id :mesh-key mesh-key} @authoring))
     (when-let [obj (get @parts part-id)]
-      (clear-preview! sys)
-      (let [object (preview-object obj payload)
+      (when-let [{:keys [^js object]} @preview]
+        (.remove scene object)
+        (dispose-object! object))
+      (let [mirror (mirror-form-values)
+            {:keys [object mirror-frame]} (preview-object obj data mirror)
             revision (swap! preview-revision inc)]
         (.add scene object)
-        (reset! preview {:object object
-                         :revision revision
-                         :part-id part-id
-                         :mesh-key mesh-key
-                         :facet-indices facet-indices
-                         :frame frame
-                         :roll-ambiguous? (:roll-ambiguous? payload)
-                         :roll-source (:roll-source payload)})))))
+        (reset! preview (assoc data
+                               :object object
+                               :revision revision
+                               :mirror mirror
+                               :mirror-frame mirror-frame))))))
+
+(defn- draw-preview! [sys payload]
+  (install-preview! sys (select-keys payload [:part-id :mesh-key :facet-indices :frame
+                                              :roll-ambiguous? :roll-source])))
 
 (defn- canvas-pointer! [^js pointer ^js canvas ^js e]
   (let [rect (.getBoundingClientRect canvas)
@@ -343,6 +402,17 @@
 (defn- checked-values [^js form selector]
   (mapv #(.-value %) (array-seq (.querySelectorAll form selector))))
 
+(defn- preview-data [preview-record]
+  (select-keys preview-record [:part-id :mesh-key :facet-indices :frame
+                               :roll-ambiguous? :roll-source]))
+
+(defn- refresh-preview-from-form! [sys ^js e]
+  (let [target (.-target e)
+        form (when (and target (.-closest target))
+               (.closest target ".mount-wizard__form"))]
+    (when (and form @(:preview sys))
+      (install-preview! sys (preview-data @(:preview sys))))))
+
 (defn- suggest-repeat-id [id]
   (if-let [[_ prefix digits] (re-matches #"^(.*?)(\d+)$" id)]
     (str prefix (inc (js/parseInt digits 10)))
@@ -402,7 +472,7 @@
 
 (defn- preview-stats [{:keys [preview]}]
   (when-let [{:keys [^js object revision part-id mesh-key facet-indices frame
-                     roll-ambiguous? roll-source]} @preview]
+                     mirror mirror-frame roll-ambiguous? roll-source]} @preview]
     (clj->js {:revision revision
               :part-id part-id
               :mesh-key mesh-key
@@ -411,6 +481,12 @@
               :position (:mount/pos frame)
               :axis (:mount/axis frame)
               :roll (:mount/roll frame)
+              :mirror-visible? (boolean mirror-frame)
+              :mirror-plane (:plane mirror)
+              :mirror-offset (:offset mirror)
+              :mirror-position (:mount/pos mirror-frame)
+              :mirror-axis (:mount/axis mirror-frame)
+              :mirror-roll (:mount/roll mirror-frame)
               :roll-ambiguous? roll-ambiguous?
               :roll-source (some-> roll-source name)
               :geometries (object-geometry-count object)})))
@@ -475,6 +551,8 @@
     (.addEventListener body "shipyard:facet-preview" #(draw-preview! sys (payload %)))
     (.addEventListener body "shipyard:facet-error" (fn [_] (clear-authoring-preview! sys)))
     (.addEventListener body "shipyard:mount-repeat" #(reset! (:repeat sys) (payload %)))
+    (.addEventListener body "input" #(refresh-preview-from-form! sys %))
+    (.addEventListener body "change" #(refresh-preview-from-form! sys %))
     (.addEventListener body "submit" #(remember-repeat-from-submit! sys %))
     (.addEventListener body "click" #(authoring-toggle! sys %))))
 

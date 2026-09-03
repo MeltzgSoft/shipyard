@@ -283,6 +283,16 @@
   (s/click! *driver* "input[name=accepts][value=turret]")
   (s/js *driver* "() => { document.querySelector('input[name=capacity]').value = '2'; }")
   (s/click! *driver* "input[name=mirror]")
+  (let [mirrored (s/wait-until
+                  #(let [preview (:preview (s/stats *driver*))]
+                     (when (:mirror-visible? preview) preview)))]
+    (is (some? mirrored) "checking Mirror should show the reflected face before save")
+    (is (vec-close? (:mirror-position mirrored) [-2.0 1.0 0.0])
+        (str "mirrored preview position was " (pr-str (:mirror-position mirrored))))
+    (is (vec-close? (:mirror-axis mirrored) [0.0 0.0 1.0])
+        (str "mirrored preview axis was " (pr-str (:mirror-axis mirrored))))
+    (is (vec-close? (:mirror-roll mirrored) [-1.0 0.0 0.0])
+        (str "mirrored preview roll was " (pr-str (:mirror-roll mirrored)))))
   (s/click! *driver* "input[name=repeat]")
   (s/js *driver* "() => {
     document.querySelector('input[name=mount-id]').value = 'port-1';

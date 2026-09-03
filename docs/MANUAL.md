@@ -135,7 +135,8 @@ When the preview looks right, fill in the mount form:
   ambiguous or intentionally needs adjustment.
 - **Mirror** creates a second socket by reflecting the picked frame across a symmetry
   plane. Human Navy Cruiser hulls use the X plane at offset `0`; change the plane or
-  offset only when the part's centreline is different.
+  offset only when the part's centreline is different. When mirror is selected,
+  Shipyard highlights the reflected face in blue before you save.
 - **Repeat classification** keeps the kind, accepted roles and part role ready for the
   next picked face. The next mount is still shown in the form and must be saved
   deliberately.
