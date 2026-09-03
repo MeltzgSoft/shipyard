@@ -87,6 +87,19 @@
       (is (true? roll-ambiguous?))
       (is (= :world-axis roll-source)))))
 
+(deftest roll-fallback-test
+  (testing "a numerically bad hull projection still yields a selectable frame"
+    (let [projected-points (ns-resolve 'shipyard.mesh.facet 'projected-points)
+          {:keys [frame roll-ambiguous? roll-source]}
+          (with-redefs-fn {projected-points (fn [_axis _points]
+                                              (throw (NullPointerException. "bad projection")))}
+            #(facet/select contract-mesh 0))]
+      (is (vec-close? [2.0 1.0 0.0] (:mount/pos frame)))
+      (is (vec-close? [0.0 0.0 1.0] (:mount/axis frame)))
+      (is (vec-close? [1.0 0.0 0.0] (:mount/roll frame)))
+      (is (true? roll-ambiguous?))
+      (is (= :world-axis roll-source)))))
+
 (deftest invalid-selection-test
   (testing "negative triangle indices are rejected"
     (is (= :triangle-out-of-range (code-of #(facet/select contract-mesh -1)))))

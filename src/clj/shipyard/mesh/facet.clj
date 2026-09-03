@@ -279,23 +279,34 @@
         (or (<= m component-epsilon)
             (<= (Math/abs (- l1 l2)) (* 0.01 m)))))))
 
+(defn- world-axis-roll [axis]
+  {:roll (fallback-roll axis)
+   :roll-ambiguous? true
+   :roll-source :world-axis})
+
 (defn- roll-from-hull [axis points facet-angle-deg]
-  (let [hull (convex-hull (projected-points axis points))
-        edges (remove #(or (nil? (:direction %)) (<= (:length %) component-epsilon))
-                      (hull-edges hull))
-        max-length (reduce max 0.0 (map :length edges))
-        longest (filter #(>= (:length %) (* 0.99 max-length)) edges)
-        cos-angle (Math/cos (Math/toRadians (double facet-angle-deg)))
-        ambiguous? (or (empty? longest)
-                       (distinct-directions? (map :direction longest) cos-angle)
-                       (polygon-covariance-ambiguous? hull))]
-    (if ambiguous?
-      {:roll (fallback-roll axis)
-       :roll-ambiguous? true
-       :roll-source :world-axis}
-      {:roll (canonicalize-sign (normalize (project-onto-plane axis (:direction (first longest)))))
-       :roll-ambiguous? false
-       :roll-source :hull-edge})))
+  (try
+    (let [hull (convex-hull (projected-points axis points))
+          edges (remove #(or (nil? (:direction %)) (<= (:length %) component-epsilon))
+                        (hull-edges hull))
+          max-length (reduce max 0.0 (map :length edges))
+          longest (filter #(>= (:length %) (* 0.99 max-length)) edges)
+          cos-angle (Math/cos (Math/toRadians (double facet-angle-deg)))
+          ambiguous? (or (empty? longest)
+                         (distinct-directions? (map :direction longest) cos-angle)
+                         (polygon-covariance-ambiguous? hull))]
+      (if ambiguous?
+        (world-axis-roll axis)
+        (if-let [roll (some->> (:direction (first longest))
+                               (project-onto-plane axis)
+                               (normalize)
+                               (canonicalize-sign))]
+          {:roll roll
+           :roll-ambiguous? false
+           :roll-source :hull-edge}
+          (world-axis-roll axis))))
+    (catch NullPointerException _
+      (world-axis-roll axis))))
 
 (defn- frame [mesh indices opts]
   (let [points (vec (unique-points mesh indices))
