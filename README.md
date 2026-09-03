@@ -9,8 +9,9 @@ hours of resin to it - and prows are distinguished by silhouette details that on
 once mounted. Shipyard closes that loop: pick parts, see the assembled ship, decide
 before printing.
 
-**Status:** early. M1 (library scan, catalog, mesh pipeline, single-part viewer) is
-complete. See the [milestones](https://forgejo.tail943578.ts.net/MeltzgSoft/shipyard/milestones).
+**Status:** early. M1 (library scan, catalog, mesh pipeline, single-part viewer) and
+M2 (mount picking, mirroring, repeated authoring, and sidecar persistence) are complete.
+See the [milestones](https://forgejo.tail943578.ts.net/MeltzgSoft/shipyard/milestones).
 
 ## Requirements
 
@@ -60,11 +61,18 @@ npx shadow-cljs compile viewport                    # e2e needs the bundle, with
 clojure -M:test:natives-linux --focus :e2e          # headless browser
 
 clojure -M:natives-linux:canary         # data-quality probe over the real library
+clojure -M:m2-human-navy-cruiser-proof --root /tmp/human-navy-cruiser-copy --out m2-human-navy-cruiser-proof.edn
 clojure -M:natives-linux:benchmark --root /path/to/models --machine "CPU; RAM; GPU; storage"
 clojure -M:cljfmt check src test dev build.clj    # `fix` to apply
 clojure -M:clj-kondo --lint src --lint test --lint dev --lint build.clj
 clojure -M:outdated                     # dependency freshness, deps.edn + package.json
 ```
+
+The M2 Human Navy Cruiser proof is an on-demand check over proprietary user-owned STL
+data, so it is not a CI gate and it should not run against your only copy. Materialize a
+temporary Shipyard-style Cruiser library first; the proof command writes `shipyard.edn`
+sidecars into that copy, reloads a fresh catalog, and writes an EDN report. See
+[docs/M2_HUMAN_NAVY_CRUISER_PROOF.md](docs/M2_HUMAN_NAVY_CRUISER_PROOF.md).
 
 The benchmark is the on-demand, machine-labelled measurement behind TECHNICAL.md §11;
 it is deliberately not a CI gate. It creates fresh scan indexes and mesh caches under
@@ -139,6 +147,7 @@ a hook slow enough to be annoying is a hook people bypass with `--no-verify`.
 | document | audience |
 |---|---|
 | [docs/MANUAL.md](docs/MANUAL.md) | **Users.** How to run Shipyard and get a ship on screen. |
+| [docs/M2_HUMAN_NAVY_CRUISER_PROOF.md](docs/M2_HUMAN_NAVY_CRUISER_PROOF.md) | M2 proof notes from the real Human Navy Cruiser target. |
 | [SPEC.md](SPEC.md) | What Shipyard is for, what it deliberately is not, and why. |
 | [TECHNICAL.md](TECHNICAL.md) | Implementation design: layout, storage, mesh pipeline, HTTP, testing. |
 

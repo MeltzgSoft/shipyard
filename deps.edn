@@ -86,6 +86,12 @@
                  "--sun-misc-unsafe-memory-access=allow"
                  "-Xmx1g"]}
 
+  ;; --- M2 real Cruiser proof -----------------------------------------------
+  ;; On-demand because the Human Navy Cruiser STLs are user-owned data, not test
+  ;; fixtures. Run it against a temporary copy; it writes proof sidecars there.
+  :m2-human-navy-cruiser-proof
+  {:main-opts ["-m" "shipyard.proof.m2-human-navy-cruiser"]}
+
   ;; --- dependency freshness ------------------------------------------------
   ;; `clojure -M:outdated` reports newer versions for deps.edn AND package.json,
   ;; which matters here because three.js and htmx are pinned in npm rather than

@@ -7,8 +7,9 @@ look at it from every angle, and decide what to print before you commit resin to
 > that are specified but not implemented. Each becomes real as its milestone lands, and
 > this document is updated in the same change - never afterwards.
 
-**Current state:** M1 complete. You can browse your library and view individual parts.
-Assembling a whole ship is M3.
+**Current state:** M1 and M2 complete. You can browse your library, view individual
+parts, and save the mount frames that describe how parts connect. Assembling a whole
+ship is M3.
 
 ---
 
@@ -108,7 +109,7 @@ library keeps working; one bad file never takes the browser down with it.
 
 ## 5. Defining how parts connect
 
-*Partially built - milestone M2. Mounts can be picked, mirrored, saved,
+*Built - milestone M2. Mounts can be picked, mirrored, repeated, saved,
 replaced and deleted. Assembly remains later M3 work.*
 
 You will tell Shipyard how two parts mate by clicking the flat face where they meet: the
@@ -149,6 +150,9 @@ or correct the field and save once more.
 
 This information is saved beside the part, in the same folder as its STL, so it survives
 if you reorganise or move your library.
+
+M2 records authoring data only. It does not yet build a ship on screen, filter a module
+list by compatibility, or enforce a complete loadout; those behaviours begin in M3.
 
 ## 6. Assembling a ship
 
