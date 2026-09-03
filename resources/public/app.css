@@ -169,6 +169,25 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
 /* --- mount authoring ---------------------------------------------------- */
 
 .mount-wizard { margin-top: 0.65rem; }
+.mounts { margin-top: 0.65rem; }
+.mounts__title {
+  margin: 0 0 0.3rem;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-dim);
+}
+.mounts__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.25rem; }
+.mounts__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+}
+.mounts__summary { min-width: 0; color: var(--ink-dim); }
+.mounts__accepts { color: var(--ink-faint); }
+.mounts__delete { margin: 0; }
 .mount-wizard__toggle {
   background: var(--panel-2);
   color: var(--ink);
@@ -185,6 +204,51 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
   border-color: var(--accent);
   box-shadow: inset 0 0 0 1px var(--accent);
 }
+.mount-wizard__form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+  margin-top: 0.55rem;
+}
+.mount-wizard__field { display: grid; gap: 0.2rem; font-size: 0.78rem; color: var(--ink-dim); }
+.mount-wizard__field input, .mount-wizard__field select {
+  min-width: 0;
+  background: var(--panel-2);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.25rem 0.35rem;
+  font: inherit;
+  font-size: 0.82rem;
+}
+.mount-wizard__roles {
+  grid-column: 1 / -1;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.35rem 0.45rem;
+  margin: 0;
+}
+.mount-wizard__roles legend { color: var(--ink-dim); font-size: 0.78rem; padding: 0 0.25rem; }
+.mount-wizard__check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  margin: 0.15rem 0.55rem 0.15rem 0;
+  color: var(--ink-dim);
+  font-size: 0.78rem;
+}
+.mount-wizard__actions { grid-column: 1 / -1; display: flex; gap: 0.4rem; flex-wrap: wrap; }
+.mount-wizard__actions button, .mounts__delete button {
+  background: var(--panel-2);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.25rem 0.6rem;
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.mount-wizard__actions button:hover, .mounts__delete button:hover { border-color: var(--accent); }
 .stage__canvas--authoring { cursor: crosshair; }
 
 /* --- library location ---------------------------------------------------- */

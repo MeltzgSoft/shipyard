@@ -14,6 +14,7 @@
             [shipyard.http.routes :as routes]
             [shipyard.mesh.cache :as cache]
             [shipyard.library.index :as index]
+            [shipyard.catalog.sidecar :as sidecar]
             [shipyard.wire :as wire])
   (:import [java.io File]
            [java.net URLEncoder]
@@ -137,6 +138,12 @@
 
 (defn- facet-post [h part-id mesh-key triangle-index]
   (POST h "/facet" {:part-id part-id :mesh-key mesh-key :triangle-index triangle-index}))
+
+(defn- mount-post [h params]
+  (POST h "/mounts" params))
+
+(defn- mount-delete [h params]
+  (POST h "/mounts/delete" params))
 
 ;; --- the shell --------------------------------------------------------------
 
@@ -287,6 +294,75 @@
     (is (= [1.0 0.0 0.0] (get-in preview [:frame :mount/roll])))
     (is (false? (:roll-ambiguous? preview)))
     (is (= :hull-edge (:roll-source preview)))))
+
+(deftest mount-wizard-saves-replaces-and-deletes
+  (let [root (library-tree)
+        sys (system root)
+        h (handler sys)
+        mesh-key (seed-authoring-cache! sys)
+        preview (get (triggers (facet-post h hull-id mesh-key 0)) "shipyard:facet-preview")
+        save-params {:part-id hull-id
+                     :mount-id "port-1"
+                     :kind "socket"
+                     :accepts "weapon"
+                     :part-role "hull"
+                     :frame (pr-str (:frame preview))
+                     :roll-deg "0"
+                     :action "create"}
+        saved (mount-post h save-params)]
+    (is (= 200 (:status saved)))
+    (is (contains? (triggers saved) "shipyard:clear-preview"))
+    (is (= :exit (:state (get (triggers saved) "shipyard:authoring"))))
+    (is (str/includes? (:body saved) "port-1"))
+    (let [sidecar (sidecar/read-sidecar root hull-id)
+          mount (first (:mounts sidecar))]
+      (is (= :hull (:part/role sidecar)))
+      (is (= :port-1 (:mount/id mount)))
+      (is (= :socket (:mount/kind mount)))
+      (is (= #{:weapon} (:mount/accepts mount)))
+      (is (= [2.0 1.0 0.0] (:mount/pos mount)))
+      (is (nil? (:facet-indices mount))))
+    (testing "duplicate ids require deliberate replacement"
+      (let [duplicate (mount-post h save-params)]
+        (is (= 200 (:status duplicate)))
+        (is (str/includes? (:body duplicate) "already exists"))))
+    (testing "replace updates the durable mount instead of accumulating"
+      (let [replaced (mount-post h (assoc save-params :accepts "prow" :action "replace"))
+            mounts (:mounts (sidecar/read-sidecar root hull-id))]
+        (is (= 200 (:status replaced)))
+        (is (= 1 (count mounts)))
+        (is (= #{:prow} (:mount/accepts (first mounts))))))
+    (testing "delete removes the mount deliberately"
+      (let [deleted (mount-delete h {:part-id hull-id :mount-id "port-1"})]
+        (is (= 200 (:status deleted)))
+        (is (empty? (:mounts (sidecar/read-sidecar root hull-id))))
+        (is (not (str/includes? (:body deleted) "port-1")))))))
+
+(deftest mount-wizard-reports-validation-errors
+  (let [sys (system (library-tree))
+        h (handler sys)]
+    (testing "malformed frames"
+      (let [r (mount-post h {:part-id hull-id
+                             :mount-id "port-1"
+                             :kind "socket"
+                             :accepts "weapon"
+                             :part-role "hull"
+                             :frame "{:not :a-frame}"
+                             :action "create"})]
+        (is (= 200 (:status r)))
+        (is (str/includes? (:body r) "valid frame"))))
+    (testing "bad mount ids"
+      (let [r (mount-post h {:part-id hull-id
+                             :mount-id "1 bad"
+                             :kind "socket"
+                             :accepts "weapon"
+                             :part-role "hull"
+                             :frame (pr-str {:mount/pos [0 0 0]
+                                             :mount/axis [0 0 1]
+                                             :mount/roll [1 0 0]})
+                             :action "create"})]
+        (is (= 200 (:status r)))
+        (is (str/includes? (:body r) "Mount ids"))))))
 
 (deftest facet-preview-reports-documented-errors
   (testing "missing or malformed fields"

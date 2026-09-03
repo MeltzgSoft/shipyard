@@ -6,7 +6,8 @@
   `shipyard.http.routes` do the looking-up; this namespace only decides what a
   thing looks like."
   (:require [clojure.string :as str]
-            [shipyard.http.urls :as urls]))
+            [shipyard.http.urls :as urls]
+            [shipyard.mount.wizard :as wizard]))
 
 ;; --- parts ------------------------------------------------------------------
 
@@ -25,10 +26,11 @@
 
 (defn- role-label [{:part/keys [role-hint role-source]}]
   [:span.part__role
-   {:title (if (= :class role-source)
-             "Taken from the folder layout."
+   {:title (case role-source
+             :class "Taken from the folder layout."
+             :manual "Set in this part's sidecar."
              "Guessed from the part name - roughly one in ten is wrong.")
-    :class (when (not= :class role-source) "part__role--guessed")}
+    :class (when (= :inferred role-source) "part__role--guessed")}
    (name (or role-hint :unknown))])
 
 (defn part-card
@@ -82,6 +84,26 @@
     :hx-target  "#detail"
     :hx-swap    "innerHTML"}])
 
+(defn- mount-list [{:part/keys [id mounts]}]
+  (when (seq mounts)
+    (let [part-id id]
+      [:section.mounts
+       [:h3.mounts__title "Mounts"]
+       [:ul.mounts__list
+        (for [{:mount/keys [kind accepts] :as mount} mounts]
+          [:li.mounts__row
+           [:span.mounts__summary
+            [:code (name (:mount/id mount))] " " (name kind)
+            (when (seq accepts)
+              [:span.mounts__accepts " -> " (str/join ", " (map name accepts))])]
+           [:form.mounts__delete
+            {:hx-post   "/mounts/delete"
+             :hx-target "#detail"
+             :hx-swap   "innerHTML"}
+            [:input {:type "hidden" :name "part-id" :value part-id}]
+            [:input {:type "hidden" :name "mount-id" :value (name (:mount/id mount))}]
+            [:button {:type "submit"} "Delete"]]])]])))
+
 (defn detail-preparing [{:part/keys [id] :as part}]
   [:div.detail
    (detail-head part)
@@ -92,6 +114,7 @@
   [:div.detail
    (detail-head part)
    [:p.detail__status "Loaded."]
+   (mount-list part)
    [:div#mount-authoring.mount-wizard
     [:button.mount-wizard__toggle
      {:type                  "button"
@@ -128,13 +151,63 @@
 
 ;; --- facet preview ----------------------------------------------------------
 
-(defn facet-preview []
-  [:div.facet-preview
-   [:p.detail__status "Face selected."]])
+(defn- role-choice [selected role]
+  [:option {:value (name role) :selected (= selected role)} (name role)])
+
+(defn- default-kind [part]
+  (if (#{:hull :hull-section} (:part/role-hint part)) :socket :plug))
+
+(defn- mount-form [{:keys [part frame values]}]
+  (let [kind (or (:kind values) (default-kind part))
+        part-role (or (:part-role values) (:part/role-hint part) :unknown)
+        accepts (or (:accepts values) #{:weapon})]
+    [:form.mount-wizard__form
+     {:hx-post   "/mounts"
+      :hx-target "#detail"
+      :hx-swap   "innerHTML"}
+     [:input {:type "hidden" :name "part-id" :value (:part/id part)}]
+     [:input {:type "hidden" :name "frame" :value (pr-str frame)}]
+     [:label.mount-wizard__field "Mount id"
+      [:input {:type "text" :name "mount-id" :value (or (:mount-id values) "mount-1")
+               :autocomplete "off" :spellcheck "false"}]]
+     [:label.mount-wizard__field "Kind"
+      [:select {:name "kind"}
+       (for [k wizard/kind-options]
+         [:option {:value (name k) :selected (= k kind)} (name k)])]]
+     [:fieldset.mount-wizard__roles
+      [:legend "Accepts"]
+      (for [role wizard/role-options]
+        [:label.mount-wizard__check
+         [:input {:type "checkbox" :name "accepts" :value (name role)
+                  :checked (contains? accepts role)}]
+         (name role)])]
+     [:label.mount-wizard__field "Part role"
+      [:select {:name "part-role"}
+       (map (partial role-choice part-role) wizard/role-options)]]
+     [:label.mount-wizard__field "Roll"
+      [:input {:type "number" :name "roll-deg" :value (or (:roll-deg values) "0")
+               :step "1"}]]
+     [:div.mount-wizard__actions
+      [:button {:type "submit" :name "action" :value "create"} "Save mount"]
+      [:button {:type "submit" :name "action" :value "replace"} "Replace"]]]))
+
+(defn facet-preview
+  ([] [:div.facet-preview
+       [:p.detail__status "Face selected."]])
+  ([preview]
+   [:div.facet-preview
+    (when-let [error (:error preview)]
+      [:p.detail__error error])
+    [:p.detail__status "Face selected."]
+    (mount-form preview)]))
 
 (defn facet-error [message]
   [:div.facet-preview.facet-preview--error
    [:p.detail__error message]])
+
+(defn mount-saved []
+  [:div.facet-preview
+   [:p.detail__status "Mount saved."]])
 
 ;; --- the library location ---------------------------------------------------
 

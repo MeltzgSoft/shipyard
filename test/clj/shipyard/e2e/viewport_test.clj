@@ -198,8 +198,9 @@
         "highlight, axis arrow and roll indicator should be observable")
     (testing "a new pick replaces the previous preview instead of growing GPU geometry"
       (let [baseline (:geometries (s/stats *driver*))
-            revision (:revision first-preview)]
-        (s/click-point! *driver* x y)
+            revision (:revision first-preview)
+            center (viewport-center)]
+        (s/click-point! *driver* (:x center) (:y center))
         (is (some? (await-preview revision)))
         (is (<= (:geometries (s/stats *driver*)) baseline)
             "repeated picks should not leak Three.js geometries"))))
@@ -220,6 +221,32 @@
         "dragging the canvas should still orbit when authoring is inactive")
     (is (nil? (:preview (s/stats *driver*)))
         "ordinary orbiting should not create a facet preview")))
+
+(deftest mount-wizard-saves-and-deletes-a-preview
+  (open-app!)
+  (select-part! "Mount Test Plate")
+  (s/await-part *driver* s/mount-plate-id)
+  (s/click! *driver* "[data-authoring-toggle]")
+  (let [{:keys [x y]} (viewport-center)]
+    (s/click-point! *driver* x y))
+  (is (some? (await-preview)))
+  (s/select-option! *driver* "select[name=kind]" "socket")
+  (s/select-option! *driver* "select[name=part-role]" "hull")
+  (s/click! *driver* ".mount-wizard__actions button[value=create]")
+  (is (s/wait-until #(str/includes? (s/text *driver* "#detail") "mount-1"))
+      (str "the saved mount should appear in the detail panel; got "
+           (pr-str (s/text *driver* "#detail"))))
+  (is (s/wait-until #(nil? (:preview (s/stats *driver*))))
+      "saving clears the transient preview")
+  (s/select-option! *driver* "select[name=class]" "Cruiser")
+  (is (s/wait-until #(= "hull" (s/js *driver* "() => {
+    const card = [...document.querySelectorAll('.part')].find((el) => el.textContent.includes('Mount Test Plate'));
+    return card ? card.querySelector('.part__role').textContent : null;
+  }")))
+      "the manual role is visible as the part's authoritative role")
+  (s/click! *driver* ".mounts__delete button")
+  (is (s/wait-until #(not (str/includes? (s/text *driver* "#detail") "mount-1")))
+      "deleting removes the mount from the detail panel"))
 
 ;; --- the island -------------------------------------------------------------
 

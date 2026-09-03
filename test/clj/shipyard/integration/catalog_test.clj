@@ -120,6 +120,44 @@
                                    root "Ork Fleet Bundle/Cruiser/Battle Krooza Hull")))
             "the durable write happened before the index write")))))
 
+(deftest authoring-writes-mounts-and-manual-role
+  (let [root (fixture-tree)
+        cat  (catalog root)
+        id   "Human Navy Fleet Bundle/Cruiser/Classic Ram Prow"]
+    (sidecar/write-sidecar! root id {:kept "yes"})
+    (db/save-authoring! cat id {:mounts [a-mount] :part-role :weapon})
+    (let [sidecar (sidecar/read-sidecar root id)
+          part (db/part @(db/conn cat) id)]
+      (is (= "yes" (:kept sidecar)) "unknown sidecar fields survive")
+      (is (= :weapon (:part/role sidecar)))
+      (is (= :weapon (:part/role-hint part)))
+      (is (= :manual (:part/role-source part)))
+      (is (= 1 (count (:part/mounts part)))))
+    (testing "replace and delete update the derived component refs rather than accumulating"
+      (db/save-authoring! cat id {:mounts [(assoc a-mount :mount/id :weapon-back)]
+                                  :part-role :weapon})
+      (is (= [:weapon-back] (mapv :mount/id (:part/mounts (db/part @(db/conn cat) id)))))
+      (db/save-authoring! cat id {:mounts []})
+      (is (empty? (:part/mounts (db/part @(db/conn cat) id)))))
+    (testing "restart re-ingests the manual role from the sidecar"
+      (let [part (db/part @(db/conn (catalog root)) id)]
+        (is (= :weapon (:part/role-hint part)))
+        (is (= :manual (:part/role-source part)))))))
+
+(deftest authoring-is-file-first-when-the-index-write-fails
+  (let [root (fixture-tree)
+        cat  (catalog root)
+        id   "Human Navy Fleet Bundle/Cruiser/Hull"]
+    (with-redefs [d/transact! (fn [& _] (throw (ex-info "index failed" {})))]
+      (try
+        (db/save-authoring! cat id {:mounts [a-mount] :part-role :hull})
+        (catch Exception _ nil)))
+    (let [sidecar (sidecar/read-sidecar root id)]
+      (is (= [a-mount] (:mounts sidecar))
+          "the durable mount write happened before the index write")
+      (is (= :hull (:part/role sidecar))
+          "the durable role write happened before the index write"))))
+
 (deftest db-is-genuinely-derived
   (testing "deleting the whole DB and re-ingesting reproduces identical state"
     (let [root (fixture-tree)

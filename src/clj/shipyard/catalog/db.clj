@@ -59,9 +59,16 @@
   buffer in here would balloon the heap and make the DB non-derivable."
   #{:part/positions :part/normals :part/indices :part/vertices :part/geometry})
 
+(defn- apply-sidecar
+  "Manual sidecar facts beat scan inference; scan facts remain only hints."
+  [part sidecar]
+  (if-let [role (:part/role sidecar)]
+    (assoc part :part/role-hint role :part/role-source :manual)
+    part))
+
 (defn part->tx
-  "Part record plus its sidecar mounts -> a transaction map."
-  [part mounts]
+  "Part record plus its sidecar data -> a transaction map."
+  [part sidecar]
   (cond-> (into {} (remove (comp nil? val)) (select-keys part
                                                          [:part/id :part/bundle :part/class :part/name
                                                           :part/role-hint :part/role-source :part/source
@@ -69,7 +76,7 @@
                                                           :part/weapons? :part/turrets?
                                                           :part/accepts-turrets?]))
     (seq (:part/variants part)) (assoc :part/variants (vec (:part/variants part)))
-    (seq mounts)                (assoc :part/mounts (vec mounts))))
+    (seq (:mounts sidecar))     (assoc :part/mounts (vec (:mounts sidecar)))))
 
 (defn ingest
   "Build a fresh DB from scanned parts, reading each part's sidecar.
@@ -79,12 +86,12 @@
   [parts root]
   (let [conn (d/create-conn schema)
         tx   (reduce (fn [acc part]
-                       (let [mounts (try
-                                      (:mounts (sidecar/read-sidecar root (:part/id part)))
-                                      (catch Exception e
-                                        (log/warn (ex-message e))
-                                        nil))]
-                         (conj acc (part->tx part mounts))))
+                       (let [sc (try
+                                  (sidecar/read-sidecar root (:part/id part))
+                                  (catch Exception e
+                                    (log/warn (ex-message e))
+                                    nil))]
+                         (conj acc (part->tx (apply-sidecar part sc) sc))))
                      [] parts)]
     (d/transact! conn tx)
     conn))
@@ -144,14 +151,38 @@
 
 ;; --- write-through ----------------------------------------------------------
 
+(defn- retract-current-mounts [db part-id]
+  (mapv (fn [eid] [:db.fn/retractEntity eid])
+        (d/q '[:find [?m ...]
+               :in $ ?id
+               :where [?p :part/id ?id]
+               [?p :part/mounts ?m]]
+             db part-id)))
+
 (defn save-mounts!
   "Persist a part's mounts. **File first**, then index: if the transact throws,
   the data is already safe on disk and the next restart picks it up."
   [{:keys [state]} part-id mounts]
   (let [{:keys [conn root]} @state]
     (sidecar/update-sidecar! root part-id assoc :mounts mounts)
-    (d/transact! conn [{:part/id part-id :part/mounts (vec mounts)}])
+    (d/transact! conn (concat (retract-current-mounts @conn part-id)
+                              [{:part/id part-id :part/mounts (vec mounts)}]))
     mounts))
+
+(defn save-authoring!
+  "Persist mounts and an optional manual role override, file first."
+  [{:keys [state]} part-id {:keys [mounts part-role]}]
+  (let [{:keys [conn root]} @state
+        update-sidecar (fn [data]
+                         (cond-> (assoc data :mounts (vec mounts))
+                           part-role (assoc :part/role part-role)))
+        part-tx (cond-> {:part/id part-id :part/mounts (vec mounts)}
+                  part-role (assoc :part/role-hint part-role
+                                   :part/role-source :manual))]
+    (sidecar/update-sidecar! root part-id update-sidecar)
+    (d/transact! conn (concat (retract-current-mounts @conn part-id)
+                              [part-tx]))
+    {:mounts mounts :part-role part-role}))
 
 ;; --- component --------------------------------------------------------------
 

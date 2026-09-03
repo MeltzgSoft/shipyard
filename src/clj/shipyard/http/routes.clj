@@ -20,6 +20,7 @@
             [shipyard.library.index :as index]
             [shipyard.mesh.cache :as cache]
             [shipyard.mesh.facet :as facet]
+            [shipyard.mount.wizard :as wizard]
             [shipyard.wire :as wire])
   (:import [java.io ByteArrayOutputStream FileInputStream]))
 
@@ -201,7 +202,7 @@
                       (facet/select (wire/decode (read-bytes tier0)) triangle-index
                                     (select-keys cache [:facet-angle-deg :facet-plane-epsilon-mm]))]
                   (htmx/fragment
-                   (views/facet-preview)
+                   (views/facet-preview {:part part :frame frame})
                    {:events {:facet-preview {:part-id part-id
                                              :mesh-key mesh-key
                                              :triangle-index triangle-index
@@ -221,6 +222,69 @@
                     (facet-error :invalid-mesh-cache "The cached mesh is invalid. Reopen the part to rebuild it." part-id 500)
 
                     (facet-error :invalid-mesh-cache "The cached mesh is invalid. Reopen the part to rebuild it." part-id 500)))))))))))
+
+;; --- durable mounts ---------------------------------------------------------
+
+(defn- durable-mounts [part]
+  (mapv #(dissoc % :db/id) (:part/mounts part)))
+
+(defn- mount-response [{:keys [catalog library]} part-id events]
+  (let [part (db/part (db/snapshot catalog) part-id)
+        mesh-key (index/mesh-key library part-id)]
+    (if (and (:part/id part) mesh-key)
+      (htmx/fragment (views/detail-ready part mesh-key)
+                     {:events events})
+      (facet-error :part-not-found "That part is no longer in the library." part-id 404))))
+
+(defn- save-mount
+  [{:keys [catalog] :as deps} {:keys [params]}]
+  (let [part-id (get params "part-id")
+        part (db/part (db/snapshot catalog) part-id)]
+    (cond
+      (nil? (:part/id part))
+      (facet-error :part-not-found "That part is no longer in the library." part-id 404)
+
+      :else
+      (let [result (wizard/save-request params (durable-mounts part))]
+        (if-let [error (:error result)]
+          (htmx/fragment (views/facet-error error))
+          (try
+            (db/save-authoring! catalog part-id (select-keys result [:mounts :part-role]))
+            (mount-response deps part-id {:clear-preview nil
+                                          :authoring {:state :exit}})
+            (catch Exception _
+              (facet-error :mount-save-failed
+                           "The mount was written, but the catalog did not update. Restart Shipyard to re-ingest it."
+                           part-id
+                           500))))))))
+
+(defn- delete-mount
+  [{:keys [catalog] :as deps} {:keys [params]}]
+  (let [part-id (get params "part-id")
+        part (db/part (db/snapshot catalog) part-id)]
+    (cond
+      (nil? (:part/id part))
+      (facet-error :part-not-found "That part is no longer in the library." part-id 404)
+
+      :else
+      (let [existing (durable-mounts part)
+            result (wizard/delete-request params existing)]
+        (cond
+          (:error result)
+          (htmx/fragment (views/facet-error (:error result)))
+
+          (= existing (:mounts result))
+          (htmx/fragment (views/facet-error "No mount with that id exists."))
+
+          :else
+          (try
+            (db/save-authoring! catalog part-id (select-keys result [:mounts]))
+            (mount-response deps part-id {:clear-preview nil})
+            (catch Exception _
+              (facet-error :mount-save-failed
+                           "The mount deletion was written, but the catalog did not update. Restart Shipyard to re-ingest it."
+                           part-id
+                           500))))))))
 
 ;; --- settings ---------------------------------------------------------------
 
@@ -270,6 +334,8 @@
    ["/library" {:get (partial library deps)}]
    ["/settings" {:post (partial save-settings deps)}]
    ["/facet" {:post (partial facet-preview deps)}]
+   ["/mounts" {:post (partial save-mount deps)}]
+   ["/mounts/delete" {:post (partial delete-mount deps)}]
    ["/part/*id" {:get (partial part deps)}]
    ["/mesh/:file" {:get (partial mesh deps)}]])
 

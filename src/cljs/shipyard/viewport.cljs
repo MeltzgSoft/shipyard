@@ -124,12 +124,18 @@
   (when-let [{:keys [^js object]} @preview]
     (.remove scene object)
     (dispose-object! object))
-  (when-let [target (.getElementById js/document "facet-preview")]
-    (set! (.-innerHTML target) ""))
   (reset! preview nil))
 
-(defn clear! [{:keys [^js scene ^js canvas parts authoring current] :as sys}]
+(defn- clear-preview-fragment! []
+  (when-let [target (.getElementById js/document "facet-preview")]
+    (set! (.-innerHTML target) "")))
+
+(defn- clear-authoring-preview! [sys]
   (clear-preview! sys)
+  (clear-preview-fragment!))
+
+(defn clear! [{:keys [^js scene ^js canvas parts authoring current] :as sys}]
+  (clear-authoring-preview! sys)
   (reset! authoring nil)
   (reset! current nil)
   (.remove (.-classList canvas) "stage__canvas--authoring")
@@ -168,13 +174,13 @@
 (defn- enter-authoring! [{:keys [^js canvas parts authoring current] :as sys} part-id mesh-key]
   (when (and (get @parts part-id)
              (= {:part-id part-id :mesh-key mesh-key} @current))
-    (clear-preview! sys)
+    (clear-authoring-preview! sys)
     (reset! authoring {:part-id part-id :mesh-key mesh-key})
     (.add (.-classList canvas) "stage__canvas--authoring")
     (sync-authoring-button! sys)))
 
 (defn- exit-authoring! [{:keys [^js canvas authoring] :as sys}]
-  (clear-preview! sys)
+  (clear-authoring-preview! sys)
   (reset! authoring nil)
   (.remove (.-classList canvas) "stage__canvas--authoring")
   (sync-authoring-button! sys))
@@ -277,19 +283,40 @@
           (- (* 2.0 (/ x (.-width rect))) 1.0)
           (- 1.0 (* 2.0 (/ y (.-height rect)))))))
 
+(defn- form-body [values]
+  (let [body (js/URLSearchParams.)]
+    (doseq [[k v] values]
+      (.append body k v))
+    body))
+
+(defn- trigger-header! [header]
+  (when header
+    (let [events (js/JSON.parse header)]
+      (doseq [event (js/Object.keys events)]
+        (.dispatchEvent (.-body js/document)
+                        (js/CustomEvent. event
+                                         #js {:bubbles true
+                                              :detail  #js {:value (aget events event)}}))))))
+
 (defn- post-facet! [{:keys [authoring]} triangle-index]
-  (let [h (.-htmx js/window)
-        source (.getElementById js/document "mount-authoring")
-        target (.getElementById js/document "facet-preview")
+  (let [target (.getElementById js/document "facet-preview")
         {:keys [part-id mesh-key]} @authoring]
-    (when (and h source target part-id mesh-key)
-      (.ajax h "POST" "/facet"
-             #js {:source source
-                  :target target
-                  :swap "innerHTML"
-                  :values #js {"part-id" part-id
-                               "mesh-key" mesh-key
-                               "triangle-index" (str triangle-index)}}))))
+    (when (and target part-id mesh-key)
+      (-> (js/fetch "/facet"
+                    #js {:method "POST"
+                         :headers #js {"Content-Type" "application/x-www-form-urlencoded"}
+                         :body (form-body {"part-id" part-id
+                                           "mesh-key" mesh-key
+                                           "triangle-index" (str triangle-index)})})
+          (.then (fn [^js res]
+                   (let [trigger (.get (.-headers res) "HX-Trigger")]
+                     (-> (.text res)
+                         (.then (fn [html]
+                                  (trigger-header! trigger)
+                                  (set! (.-innerHTML target) html)
+                                  (some-> js/window .-htmx (.process target))))))))
+          (.catch (fn [e]
+                    (js/console.error "shipyard: facet selection failed" e)))))))
 
 (defn- pick-face! [{:keys [^js canvas ^js camera parts authoring ^js raycaster ^js pointer] :as sys} ^js e]
   (when-let [{:keys [part-id]} @authoring]
@@ -317,7 +344,7 @@
                  (set! (.-name obj) (or part-id url))
                  (set! (.. obj -userData -partId) part-id)
                  (set! (.. obj -userData -meshKey) mesh-key)
-                 (clear-preview! sys)
+                 (clear-authoring-preview! sys)
                  (reset! authoring nil)
                  (reset! current {:part-id part-id :mesh-key mesh-key})
                  (.remove (.-classList canvas) "stage__canvas--authoring")
@@ -402,9 +429,9 @@
     (.addEventListener body "shipyard:clear" (fn [_] (clear! sys)))
     (.addEventListener body "shipyard:status" #(reset! (:status sys) (payload %)))
     (.addEventListener body "shipyard:authoring" #(authoring! sys (payload %)))
-    (.addEventListener body "shipyard:clear-preview" (fn [_] (clear-preview! sys)))
+    (.addEventListener body "shipyard:clear-preview" (fn [_] (clear-authoring-preview! sys)))
     (.addEventListener body "shipyard:facet-preview" #(draw-preview! sys (payload %)))
-    (.addEventListener body "shipyard:facet-error" (fn [_] (clear-preview! sys)))
+    (.addEventListener body "shipyard:facet-error" (fn [_] (clear-authoring-preview! sys)))
     (.addEventListener body "click" #(authoring-toggle! sys %))))
 
 (defn- renderer!

@@ -108,7 +108,8 @@ library keeps working; one bad file never takes the browser down with it.
 
 ## 5. Defining how parts connect
 
-*Partially built - milestone M2. Mounts can be previewed but not saved yet.*
+*Partially built - milestone M2. Mounts can be picked, saved, replaced and
+deleted. Mirroring and repeated classifications are still later M2 work.*
 
 You will tell Shipyard how two parts mate by clicking the flat face where they meet: the
 back of a weapon module, or a hull's weapon seat. One click gives Shipyard everything it
@@ -118,11 +119,29 @@ After a part has loaded, choose **Pick mount face**, then click the face in the 
 Shipyard highlights the selected flat facet and draws the outward axis and in-plane roll
 direction it derived from that face. Choose **Done picking** to leave face-picking mode.
 
-This preview is temporary in the current build. The later M2 steps add naming,
-classification, mirroring and saving.
+When the preview looks right, fill in the mount form:
 
-Hulls are symmetrical, so defining a port-side mount will offer to create the matching
-starboard one automatically.
+- **Mount id** names this connection point within the part. It must start with a letter
+  and may contain letters, numbers, dashes and underscores.
+- **Kind** is `plug` for the back face of a module and `socket` for a place something
+  attaches.
+- **Accepts** is used for sockets; choose at least one role that can attach there.
+- **Part role** is the role Shipyard should trust for this part from now on. It replaces
+  the inferred role shown by browsing.
+- **Roll** rotates the in-plane direction before saving when the automatic direction is
+  ambiguous or intentionally needs adjustment.
+
+**Save mount** creates a new id. If that id already exists, Shipyard reports it instead
+of overwriting silently; use **Replace** only when you mean to update that mount. A part
+can have multiple sockets, but only one plug. Existing mounts appear below the loaded
+status and can be deleted deliberately.
+
+If the source mesh changes, the picked frame is malformed, a socket has no accepted role,
+or a mount id is not valid, Shipyard keeps the problem recoverable: pick the face again or
+correct the field and save once more.
+
+When mirroring lands, hull symmetry will let a port-side mount offer the matching
+starboard mount automatically.
 
 This information is saved beside the part, in the same folder as its STL, so it survives
 if you reorganise or move your library.
