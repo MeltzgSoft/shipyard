@@ -219,6 +219,24 @@
       (testing "and the ready fragment stops polling"
         (is (not (str/includes? (:body ready) "load delay:")))))))
 
+(deftest configured-mounts-are-sent-to-the-viewer
+  (let [root (library-tree)
+        mount {:mount/id :weapon-1
+               :mount/kind :socket
+               :mount/accepts #{:weapon}
+               :mount/capacity 2
+               :mount/pos [0.0 0.0 1.0]
+               :mount/axis [0.0 0.0 1.0]
+               :mount/roll [1.0 0.0 0.0]
+               :mount/origin :picked}
+        _ (sidecar/write-sidecar! root hull-id {:mounts [mount] :part/role :hull})
+        h (handler (system root))
+        ready (await-ready h hull-id)
+        load-mesh (get (triggers ready) "shipyard:load-mesh")]
+    (is (= [(update mount :mount/accepts vec)] (:mounts load-mesh)))
+    (is (str/includes? (:body ready) "Interface colors"))
+    (is (str/includes? (:body ready) "weapon socket"))))
+
 (deftest a-known-part-skips-the-job-entirely
   (let [sys (system (library-tree))
         h   (handler sys)]
@@ -318,8 +336,20 @@
     (is (= 200 (:status saved)))
     (is (contains? (triggers saved) "shipyard:clear-preview"))
     (is (= :exit (:state (get (triggers saved) "shipyard:authoring"))))
+    (is (= {:part-id hull-id
+            :mesh-key mesh-key
+            :mounts [{:mount/id :port-1
+                      :mount/kind :socket
+                      :mount/accepts [:weapon]
+                      :mount/capacity 2
+                      :mount/pos [2.0 1.0 0.0]
+                      :mount/axis [0.0 0.0 1.0]
+                      :mount/roll [1.0 0.0 0.0]
+                      :mount/origin :picked}]}
+           (get (triggers saved) "shipyard:interfaces")))
     (is (str/includes? (:body saved) "port-1"))
     (is (str/includes? (:body saved) "x2"))
+    (is (str/includes? (:body saved) "Interface colors"))
     (let [sidecar (sidecar/read-sidecar root hull-id)
           mount (first (:mounts sidecar))]
       (is (= :hull (:part/role sidecar)))
@@ -342,6 +372,8 @@
     (testing "delete removes the mount deliberately"
       (let [deleted (mount-delete h {:part-id hull-id :mount-id "port-1"})]
         (is (= 200 (:status deleted)))
+        (is (= {:part-id hull-id :mesh-key mesh-key :mounts []}
+               (get (triggers deleted) "shipyard:interfaces")))
         (is (empty? (:mounts (sidecar/read-sidecar root hull-id))))
         (is (not (str/includes? (:body deleted) "port-1")))))))
 

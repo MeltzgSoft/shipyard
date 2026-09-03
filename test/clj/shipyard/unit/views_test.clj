@@ -16,6 +16,19 @@
          :variants [:supported]
          :renderable false :role-hint :prow :role-source :inferred})
 
+(def ^:private hull-with-mounts
+  (assoc hull :part/mounts [{:mount/id :weapon-1
+                             :mount/kind :socket
+                             :mount/accepts #{:weapon}
+                             :mount/pos [1.0 0.0 0.0]
+                             :mount/axis [1.0 0.0 0.0]
+                             :mount/roll [0.0 1.0 0.0]}
+                            {:mount/id :plug
+                             :mount/kind :plug
+                             :mount/pos [0.0 0.0 -1.0]
+                             :mount/axis [0.0 0.0 -1.0]
+                             :mount/roll [0.0 1.0 0.0]}]))
+
 (defn- render [hiccup] (htmx/html hiccup))
 
 ;; --- supported-only parts ---------------------------------------------------
@@ -112,3 +125,12 @@
     (let [html (render (views/detail-failed hull "not a usable STL"))]
       (is (not (str/includes? html "load delay:")))
       (is (str/includes? html "retry=1")))))
+
+(deftest configured-interface-legend-matches-mount-types
+  (let [html (render (views/detail-ready hull-with-mounts (apply str (repeat 64 "1"))))]
+    (is (str/includes? html "Interface colors"))
+    (is (str/includes? html "plug"))
+    (is (str/includes? html "weapon socket"))
+    (is (str/includes? html "--interface-color:#69d2c0"))
+    (is (str/includes? html "--interface-color:#ff7a90"))
+    (is (str/includes? html "data-interface-mounts"))))

@@ -257,6 +257,16 @@
            (pr-str (s/text *driver* "#detail"))))
   (is (str/includes? (s/text *driver* "#detail") "x2")
       "the saved socket capacity should appear in the detail panel")
+  (is (str/includes? (s/text *driver* "#detail") "Interface colors")
+      "configured interfaces should get a color legend")
+  (let [interfaces (s/wait-until
+                    #(let [interfaces (:interfaces (s/stats *driver*))]
+                       (when (= 1 (:count interfaces)) interfaces)))
+        last-interfaces (:interfaces (s/stats *driver*))]
+    (is (= [{:type "weapon" :mount-id "mount-1" :triangles 2 :candidates 2}]
+           (:items interfaces))
+        (str "saved socket should color its configured face; interfaces were "
+             (pr-str last-interfaces))))
   (is (s/wait-until #(nil? (:preview (s/stats *driver*))))
       "saving clears the transient preview")
   (s/select-option! *driver* "select[name=class]" "Cruiser")
@@ -267,7 +277,10 @@
       "the manual role is visible as the part's authoritative role")
   (s/click! *driver* "form:has(input[name=mount-id][value='mount-1']) button")
   (is (s/wait-until #(not (str/includes? (s/text *driver* "#detail") "mount-1")))
-      "deleting removes the mount from the detail panel"))
+      "deleting removes the mount from the detail panel")
+  (is (s/wait-until #(let [count (get-in (s/stats *driver*) [:interfaces :count])]
+                       (or (nil? count) (zero? count))))
+      "deleting removes the configured interface highlight"))
 
 (deftest mount-wizard-mirrors-and-repeats-a-socket-classification
   (open-app!)

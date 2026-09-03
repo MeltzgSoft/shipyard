@@ -7,6 +7,7 @@
   thing looks like."
   (:require [clojure.string :as str]
             [shipyard.http.urls :as urls]
+            [shipyard.interface-colors :as interface-colors]
             [shipyard.mount.wizard :as wizard]))
 
 ;; --- parts ------------------------------------------------------------------
@@ -107,6 +108,21 @@
             [:input {:type "hidden" :name "mount-id" :value (name (:mount/id mount))}]
             [:button {:type "submit"} "Delete"]]])]])))
 
+(defn- interface-legend [{:part/keys [mounts]}]
+  (when (seq mounts)
+    [:section.interface-legend
+     [:h3.interface-legend__title "Interface colors"]
+     [:ul.interface-legend__list
+      (for [{:keys [type label color]} (interface-colors/legend-items mounts)]
+        [:li.interface-legend__item
+         [:span.interface-legend__swatch
+          {:style (str "--interface-color:" color)
+           :aria-hidden "true"}]
+         [:span {:data-interface-type (name type)} label]])]]))
+
+(defn- durable-mounts [mounts]
+  (mapv #(dissoc % :db/id) mounts))
+
 (defn detail-preparing [{:part/keys [id] :as part}]
   [:div.detail
    (detail-head part)
@@ -120,9 +136,12 @@
     [:div.detail__summary
      (detail-head part)
      [:p.detail__status "Loaded."]
+     (interface-legend part)
      (mount-list part)]
     [:div#mount-authoring.mount-wizard
-     (cond-> {}
+     (cond-> {:data-part-id (:part/id part)
+              :data-mesh-key mesh-key
+              :data-interface-mounts (pr-str (durable-mounts (:part/mounts part)))}
        repeat-values (assoc :data-repeat-values (pr-str repeat-values)))
      [:button.mount-wizard__toggle
       {:type                  "button"

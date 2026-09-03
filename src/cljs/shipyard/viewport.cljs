@@ -16,6 +16,7 @@
             ["three/examples/jsm/controls/OrbitControls.js" :refer [OrbitControls]]
             ["three/examples/jsm/environments/RoomEnvironment.js" :refer [RoomEnvironment]]
             [cljs.reader :as edn]
+            [shipyard.interface-colors :as interface-colors]
             [shipyard.wire :as wire]))
 
 (goog-define ^boolean TEST-HOOKS false)
@@ -134,8 +135,15 @@
   (clear-preview! sys)
   (clear-preview-fragment!))
 
+(defn- clear-interface-highlights! [{:keys [^js scene interfaces]}]
+  (when-let [{:keys [^js object]} @interfaces]
+    (.remove scene object)
+    (dispose-object! object))
+  (reset! interfaces nil))
+
 (defn clear! [{:keys [^js scene ^js canvas parts authoring current repeat] :as sys}]
   (clear-authoring-preview! sys)
+  (clear-interface-highlights! sys)
   (reset! authoring nil)
   (reset! current nil)
   (reset! repeat nil)
@@ -176,6 +184,116 @@
     2 (set! (.-z p) (reflect-coordinate (.-z p) offset))
     nil)
   p)
+
+(def ^:private interface-plane-epsilon 0.08)
+(def ^:private interface-normal-cos 0.999)
+
+(defn- v- [[ax ay az] [bx by bz]]
+  [(- ax bx) (- ay by) (- az bz)])
+
+(defn- dot [[ax ay az] [bx by bz]]
+  (+ (* ax bx) (* ay by) (* az bz)))
+
+(defn- cross [[ax ay az] [bx by bz]]
+  [(- (* ay bz) (* az by))
+   (- (* az bx) (* ax bz))
+   (- (* ax by) (* ay bx))])
+
+(defn- length-sq [v]
+  (dot v v))
+
+(defn- normalize [[x y z :as v]]
+  (let [len (Math/sqrt (length-sq v))]
+    (when (pos? len)
+      [(/ x len) (/ y len) (/ z len)])))
+
+(defn- triangle-count [^js obj]
+  (quot (.. obj -geometry -index -count) 3))
+
+(defn- triangle-points [^js obj triangle-index]
+  (let [source (.-geometry obj)
+        position (.getAttribute source "position")
+        index (.-index source)]
+    (mapv (fn [corner]
+            (let [vertex-index (.getX index (+ (* triangle-index 3) corner))
+                  p (three/Vector3.)]
+              (.fromBufferAttribute p position vertex-index)
+              [(.-x p) (.-y p) (.-z p)]))
+          (range 3))))
+
+(defn- triangle-normal [[a b c]]
+  (normalize (cross (v- b a) (v- c a))))
+
+(defn- triangle-center [points]
+  (mapv (fn [idx] (/ (reduce + (map #(nth % idx) points)) 3.0))
+        (range 3)))
+
+(defn- point-on-mount-plane? [pos axis p]
+  (<= (Math/abs (dot axis (v- p pos))) interface-plane-epsilon))
+
+(defn- interface-triangle? [pos axis points]
+  (when-let [normal (triangle-normal points)]
+    (and (every? #(point-on-mount-plane? pos axis %) points)
+         (>= (Math/abs (dot normal axis)) interface-normal-cos))))
+
+(defn- quantized [x]
+  (js/Math.round (* 100000.0 x)))
+
+(defn- point-key [[x y z]]
+  (str (quantized x) ":" (quantized y) ":" (quantized z)))
+
+(defn- edge-key [a b]
+  (let [ak (point-key a)
+        bk (point-key b)]
+    (if (neg? (compare ak bk))
+      (str ak "|" bk)
+      (str bk "|" ak))))
+
+(defn- triangle-edge-keys [[a b c]]
+  [(edge-key a b) (edge-key b c) (edge-key c a)])
+
+(defn- adjacency [triangles]
+  (let [edges (reduce
+               (fn [by-edge [triangle-index points]]
+                 (reduce #(update %1 %2 (fnil conj #{}) triangle-index)
+                         by-edge
+                         (triangle-edge-keys points)))
+               {}
+               triangles)]
+    (reduce
+     (fn [adj [_ neighbours]]
+       (if (> (count neighbours) 1)
+         (reduce (fn [a n]
+                   (update a n (fnil into #{}) (disj neighbours n)))
+                 adj
+                 neighbours)
+         adj))
+     {}
+     edges)))
+
+(defn- connected-indices [adjacency start]
+  (loop [queue (list start)
+         seen #{}]
+    (if-let [triangle-index (first queue)]
+      (if (contains? seen triangle-index)
+        (recur (rest queue) seen)
+        (recur (concat (rest queue) (get adjacency triangle-index))
+               (conj seen triangle-index)))
+      (vec (sort seen)))))
+
+(defn- interface-facet [^js obj {:mount/keys [pos axis]}]
+  (when (and pos axis)
+    (let [triangles (keep (fn [triangle-index]
+                            (let [points (triangle-points obj triangle-index)]
+                              (when (interface-triangle? pos axis points)
+                                [triangle-index points])))
+                          (range (triangle-count obj)))]
+      (when (seq triangles)
+        (let [start (first (first (sort-by (fn [[_ points]]
+                                             (length-sq (v- (triangle-center points) pos)))
+                                           triangles)))]
+          {:indices (connected-indices (adjacency triangles) start)
+           :candidates (count triangles)})))))
 
 (defn- scaled-end [origin dir scale]
   (doto (.clone (v3 origin))
@@ -280,6 +398,39 @@
                                   :polygonOffsetFactor -1
                                   :polygonOffsetUnits -1})))
 
+(defn- color-int [interface-type]
+  (js/parseInt (subs (interface-colors/color interface-type) 1) 16))
+
+(defn- interface-highlight-object [^js obj mount]
+  (let [interface-type (interface-colors/type-of mount)]
+    (if-let [{:keys [indices candidates]} (interface-facet obj mount)]
+      (let [facet-indices (seq indices)]
+        {:type interface-type
+         :mount-id (:mount/id mount)
+         :triangles (count facet-indices)
+         :candidates candidates
+         :object (face-highlight obj
+                                 facet-indices
+                                 mount
+                                 nil
+                                 (color-int interface-type)
+                                 0.42)})
+      {:type interface-type
+       :mount-id (:mount/id mount)
+       :triangles 0
+       :candidates 0
+       :object nil})))
+
+(defn- interface-highlights [^js obj mounts]
+  (let [items (keep #(interface-highlight-object obj %) mounts)
+        group (three/Group.)]
+    (doseq [{:keys [^js object]} items]
+      (when object
+        (.add group object)))
+    {:object group
+     :items (mapv #(dissoc % :object) (filter :object items))
+     :misses (mapv #(dissoc % :object) (remove :object items))}))
+
 (defn- preview-object [^js obj {:keys [facet-indices frame]} mirror]
   (let [axis (:mount/axis frame)
         roll (:mount/roll frame)
@@ -336,6 +487,27 @@
   (install-preview! sys (select-keys payload [:part-id :mesh-key :facet-indices :frame
                                               :roll-ambiguous? :roll-source])))
 
+(defn- draw-interfaces! [{:keys [^js scene parts current interfaces] :as sys}
+                         {:keys [part-id mesh-key mounts]}]
+  (when (= {:part-id part-id :mesh-key mesh-key} @current)
+    (clear-interface-highlights! sys)
+    (when-let [obj (get @parts part-id)]
+      (try
+        (let [{:keys [^js object items misses]} (interface-highlights obj mounts)]
+          (when (seq items)
+            (.add scene object))
+          (reset! interfaces {:object object
+                              :part-id part-id
+                              :mesh-key mesh-key
+                              :items items
+                              :misses misses}))
+        (catch :default e
+          (js/console.error "shipyard: interface highlights failed" e)
+          (reset! interfaces {:part-id part-id
+                              :mesh-key mesh-key
+                              :items []
+                              :error (str e)}))))))
+
 (defn- canvas-pointer! [^js pointer ^js canvas ^js e]
   (let [rect (.getBoundingClientRect canvas)
         x (- (.-clientX e) (.-left rect))
@@ -361,6 +533,13 @@
   (some-> (.getElementById js/document "mount-authoring")
           (.getAttribute "data-repeat-values")
           (edn/read-string)))
+
+(defn- dom-interface-values []
+  (when-let [authoring (.getElementById js/document "mount-authoring")]
+    (when-let [mounts (.getAttribute authoring "data-interface-mounts")]
+      {:part-id (.getAttribute authoring "data-part-id")
+       :mesh-key (.getAttribute authoring "data-mesh-key")
+       :mounts (edn/read-string mounts)})))
 
 (defn- trigger-header! [header]
   (when header
@@ -413,6 +592,10 @@
     (when (and form @(:preview sys))
       (install-preview! sys (preview-data @(:preview sys))))))
 
+(defn- sync-interfaces-from-dom! [sys]
+  (when-let [values (dom-interface-values)]
+    (draw-interfaces! sys values)))
+
 (defn- suggest-repeat-id [id]
   (if-let [[_ prefix digits] (re-matches #"^(.*?)(\d+)$" id)]
     (str prefix (inc (js/parseInt digits 10)))
@@ -442,7 +625,8 @@
 (defn- load-mesh!
   "Fetch, decode, upload, and optionally reframe. Errors are reported and
   swallowed: a part that fails to load must not take the session with it."
-  [{:keys [^js scene ^js canvas authoring current repeat] :as sys} {:keys [url part-id mesh-key frame]}]
+  [{:keys [^js scene ^js canvas authoring current repeat] :as sys}
+   {:keys [url part-id mesh-key frame mounts]}]
   (-> (js/fetch url)
       (.then (fn [^js res]
                (if (.-ok res)
@@ -455,11 +639,15 @@
                  (set! (.. obj -userData -partId) part-id)
                  (set! (.. obj -userData -meshKey) mesh-key)
                  (clear-authoring-preview! sys)
+                 (clear-interface-highlights! sys)
                  (reset! authoring nil)
                  (reset! current {:part-id part-id :mesh-key mesh-key})
                  (reset! repeat nil)
                  (.remove (.-classList canvas) "stage__canvas--authoring")
                  (show-only! sys part-id obj)
+                 (draw-interfaces! sys {:part-id part-id
+                                        :mesh-key mesh-key
+                                        :mounts mounts})
                  (when frame (frame! sys bbox-min bbox-max))
                  (swap! (:status sys) assoc :state :loaded :part-id part-id)
                  (sync-authoring-button! sys)
@@ -491,6 +679,21 @@
               :roll-source (some-> roll-source name)
               :geometries (object-geometry-count object)})))
 
+(defn- interface-stats [{:keys [interfaces]}]
+  (when-let [{:keys [part-id mesh-key items misses error]} @interfaces]
+    (let [item-stats (fn [{:keys [type mount-id triangles candidates]}]
+                       {:type (name type)
+                        :mount-id (name mount-id)
+                        :triangles triangles
+                        :candidates candidates})]
+      (clj->js {:part-id part-id
+                :mesh-key mesh-key
+                :count (count items)
+                :misses (count misses)
+                :error error
+                :items (mapv item-stats items)
+                :miss-items (mapv item-stats misses)}))))
+
 (defn stats
   "Scene facts for the E2E suite (§10.3).
 
@@ -515,6 +718,7 @@
          :status    (clj->js (:state @status))
          :authoring (clj->js @authoring)
          :repeat    (clj->js @(:repeat sys))
+         :interfaces (interface-stats sys)
          :preview   (preview-stats sys)}))
 
 ;; --- lifecycle --------------------------------------------------------------
@@ -551,6 +755,8 @@
     (.addEventListener body "shipyard:facet-preview" #(draw-preview! sys (payload %)))
     (.addEventListener body "shipyard:facet-error" (fn [_] (clear-authoring-preview! sys)))
     (.addEventListener body "shipyard:mount-repeat" #(reset! (:repeat sys) (payload %)))
+    (.addEventListener body "shipyard:interfaces" #(draw-interfaces! sys (payload %)))
+    (.addEventListener body "htmx:afterSwap" (fn [_] (sync-interfaces-from-dom! sys)))
     (.addEventListener body "input" #(refresh-preview-from-form! sys %))
     (.addEventListener body "change" #(refresh-preview-from-form! sys %))
     (.addEventListener body "submit" #(remember-repeat-from-submit! sys %))
@@ -580,7 +786,7 @@
           sys      {:canvas canvas :renderer renderer :scene scene :camera camera
                     :controls controls :parts (atom {}) :status (atom {:state :idle})
                     :current (atom nil) :authoring (atom nil) :preview (atom nil)
-                    :repeat (atom nil)
+                    :interfaces (atom nil) :repeat (atom nil)
                     :preview-revision (atom 0)
                     :raycaster (three/Raycaster.) :pointer (three/Vector2.)}]
       (set! (.-outputColorSpace renderer) three/SRGBColorSpace)

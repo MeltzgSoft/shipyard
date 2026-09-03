@@ -119,6 +119,8 @@ needs - where the part sits, which way it faces, and how it is rotated.
 After a part has loaded, choose **Pick mount face**, then click the face in the viewport.
 Shipyard highlights the selected flat facet and draws the outward axis and in-plane roll
 direction it derived from that face. Choose **Done picking** to leave face-picking mode.
+Configured interfaces are always colored in the viewer when the part is loaded; the
+detail panel shows a legend for the plug and socket types present on that part.
 
 When the preview looks right, fill in the mount form:
 

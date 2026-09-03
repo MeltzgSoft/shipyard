@@ -67,6 +67,9 @@
 
 ;; --- part detail ------------------------------------------------------------
 
+(defn- durable-mounts [part]
+  (mapv #(dissoc % :db/id) (:part/mounts part)))
+
 (defn- source-file
   "The STL the mesh pipeline should open. Derived from the catalog record, never
   from the URL: the id in the path only ever selects a part, it never names a
@@ -83,6 +86,7 @@
                  {:events {:load-mesh {:url     (urls/mesh-url mesh-key 0)
                                        :part-id (:part/id part)
                                        :mesh-key mesh-key
+                                       :mounts  (durable-mounts part)
                                        :frame   true}}}))
 
 (defn- preprocessing
@@ -227,9 +231,6 @@
 
 ;; --- durable mounts ---------------------------------------------------------
 
-(defn- durable-mounts [part]
-  (mapv #(dissoc % :db/id) (:part/mounts part)))
-
 (defn- mount-response
   ([deps part-id events] (mount-response deps part-id events nil))
   ([{:keys [catalog library]} part-id events view-options]
@@ -237,7 +238,9 @@
          mesh-key (index/mesh-key library part-id)]
      (if (and (:part/id part) mesh-key)
        (htmx/fragment (views/detail-ready part mesh-key view-options)
-                      {:events events})
+                      {:events (assoc events :interfaces {:part-id part-id
+                                                          :mesh-key mesh-key
+                                                          :mounts (durable-mounts part)})})
        (facet-error :part-not-found "That part is no longer in the library." part-id 404)))))
 
 (defn- save-mount
