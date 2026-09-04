@@ -182,8 +182,9 @@ physical standoff introduced by magnets if that turns out to matter visually.
 The primary authoring interaction. Two flows, differing only in how many faces are picked.
 
 **For a module** (weapon, prow, bridge, antenna) - pick **one** face, its mating back
-surface. Shipyard shows the derived axis as an arrow and the roll as an in-plane
-indicator; the user confirms or adjusts, names it, saves. One plug per module.
+surface. Shipyard shows the complete frame as arrows: outward normal `+Z`, roll reference
+`+X`, and derived up `+Y`; the user confirms or adjusts, names it, saves. One plug per
+module.
 
 **For a hull** - pick **N** faces, one per seat: each weapon shelf, the prow cap, the
 bridge deck. Each gets an id and an `accepts` role. Multiple sockets per hull.
@@ -221,7 +222,7 @@ reasoning stays on the JVM:
 2. It POSTs that index. The server groups coplanar adjacent triangles into a **facet**,
    computes the frame, and returns the facet's triangle list plus the derived frame in an
    `HX-Trigger` event.
-3. The viewport draws the highlight overlay and the axis/roll indicators.
+3. The viewport draws the highlight overlay and all three orientation-frame indicators.
 
 One round trip per click, which is entirely acceptable for a deliberate authoring action,
 and it means no facet-grouping or convex-hull code has to exist in JavaScript.

@@ -380,6 +380,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
 }
 .mount-wizard__swatch--axis { background: #f0c65a; }
 .mount-wizard__swatch--roll { background: #69d2c0; }
+.mount-wizard__swatch--up { background: #ff7a90; }
 .mount-wizard__actions { grid-column: 1 / -1; display: flex; gap: 0.4rem; flex-wrap: wrap; }
 .mount-wizard__actions button, .mounts__action button {
   background: var(--panel-2);

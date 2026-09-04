@@ -117,8 +117,9 @@ back of a weapon module, or a hull's weapon seat. One click gives Shipyard every
 needs - where the part sits, which way it faces, and how it is rotated.
 
 After a part has loaded, choose **Pick mount face**, then click the face in the viewport.
-Shipyard highlights the selected flat facet and draws the outward axis and in-plane roll
-direction it derived from that face. Choose **Done picking** to leave face-picking mode.
+Shipyard highlights the selected flat facet and draws its complete orientation frame:
+the outward normal (`+Z`), in-plane roll direction (`+X`), and derived up direction (`+Y`).
+Choose **Done picking** to leave face-picking mode.
 Configured interfaces are always colored in the viewer when the part is loaded; the
 detail panel shows a legend for the plug and socket types present on that part.
 
@@ -131,8 +132,8 @@ When the preview looks right, fill in the mount form:
 - **Accepts** is used for sockets; choose at least one role that can attach there.
 - **Capacity** is used for sockets whose selected face can hold more than one part.
   Human Navy Cruiser weapon sockets use capacity `2`.
-- **Roll** rotates the in-plane direction before saving when the automatic direction is
-  ambiguous or intentionally needs adjustment.
+- **Roll** rotates the `+X` and `+Y` directions around the fixed outward `+Z` normal before
+  saving when the automatic orientation is ambiguous or intentionally needs adjustment.
 - **Mirror** creates a second socket by reflecting the picked frame across a symmetry
   plane. Human Navy Cruiser hulls use the X plane at offset `0`; change the plane or
   offset only when the part's centreline is different. When mirror is selected,

@@ -1645,9 +1645,10 @@ adjustment rather than pretending the fallback came from the model. An ordinary 
 reports `:roll-source :hull-edge`.
 
 On every successful result, position and all vector components are finite, axis and roll
-are unit length within `1e-9`, and `abs(dot(axis, roll)) <= 1e-9`. The implicit +Y is
-`axis × roll`, making `(roll, +Y, axis)` a right-handed frame. Computation uses doubles;
-only the final durable vectors are ordinary EDN numbers.
+are unit length within `1e-9`, and `abs(dot(axis, roll)) <= 1e-9`. The derived +Y is
+`axis × roll`, making `(roll, +Y, axis)` a right-handed frame; the authoring preview draws
+all three directions. Computation uses doubles; only the final durable vectors are
+ordinary EDN numbers.
 
 ### 12.4 Symmetry plane and mirroring
 

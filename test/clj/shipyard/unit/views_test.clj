@@ -153,8 +153,9 @@
       (is (str/includes? html "Dismiss"))
       (is (str/includes? html "name=\"mount-id\""))
       (is (str/includes? html "value=\"mount-1\""))
-      (is (str/includes? html "Axis"))
-      (is (str/includes? html "Roll"))
+      (is (str/includes? html "Normal (+Z)"))
+      (is (str/includes? html "Roll (+X)"))
+      (is (str/includes? html "Up (+Y)"))
       (is (not (str/includes? html "class=\"mount-wizard__field\">Part role")))
       (is (str/includes? html "Pick mount face"))))
   (testing "delete errors keep the part detail rather than replacing it"

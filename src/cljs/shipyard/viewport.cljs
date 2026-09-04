@@ -436,10 +436,14 @@
                   (.applyAxisAngle (v3 axis) (* degrees (/ js/Math.PI 180.0))))]
     [(.-x rotated) (.-y rotated) (.-z rotated)]))
 
+(defn- frame-up [{:mount/keys [axis roll]}]
+  (cross axis roll))
+
 (defn- preview-object [^js obj {:keys [facet-indices frame]} mirror]
   (let [frame (assoc frame :mount/roll (roll-for-preview frame))
         axis (:mount/axis frame)
         roll (:mount/roll frame)
+        up (frame-up frame)
         pos (:mount/pos frame)
         length (preview-length obj)
         facet-indices (preview-facet-indices obj facet-indices frame)
@@ -447,10 +451,12 @@
                     (face-highlight obj facet-indices frame nil 0xf0c65a 0.56))
         axis-line (three/ArrowHelper. (v3 axis) (v3 pos) length 0xf0c65a (* length 0.22) (* length 0.08))
         roll-line (three/ArrowHelper. (v3 roll) (v3 pos) (* length 0.75) 0x69d2c0 (* length 0.16) (* length 0.06))
+        up-line (three/ArrowHelper. (v3 up) (v3 pos) (* length 0.75) 0xff7a90 (* length 0.16) (* length 0.06))
         mirrored-frame (when mirror (reflect-frame frame mirror))
         group (doto (three/Group.)
                 (.add axis-line)
-                (.add roll-line))]
+                (.add roll-line)
+                (.add up-line))]
     (when highlight
       (.add group highlight))
     (when mirrored-frame
@@ -461,7 +467,10 @@
                                       length 0x79a9ff (* length 0.22) (* length 0.08)))
       (.add group (three/ArrowHelper. (v3 (:mount/roll mirrored-frame))
                                       (v3 (:mount/pos mirrored-frame))
-                                      (* length 0.75) 0x8fd8ff (* length 0.16) (* length 0.06))))
+                                      (* length 0.75) 0x8fd8ff (* length 0.16) (* length 0.06)))
+      (.add group (three/ArrowHelper. (v3 (frame-up mirrored-frame))
+                                      (v3 (:mount/pos mirrored-frame))
+                                      (* length 0.75) 0xffa7b7 (* length 0.16) (* length 0.06))))
     {:object group
      :frame frame
      :mirror-frame mirrored-frame
@@ -704,12 +713,14 @@
               :position (:mount/pos frame)
               :axis (:mount/axis frame)
               :roll (:mount/roll frame)
+              :up (frame-up frame)
               :mirror-visible? (boolean mirror-frame)
               :mirror-plane (:plane mirror)
               :mirror-offset (:offset mirror)
               :mirror-position (:mount/pos mirror-frame)
               :mirror-axis (:mount/axis mirror-frame)
               :mirror-roll (:mount/roll mirror-frame)
+              :mirror-up (some-> mirror-frame (frame-up))
               :roll-ambiguous? roll-ambiguous?
               :roll-source (some-> roll-source name)
               :geometries (object-geometry-count object)})))

@@ -249,8 +249,10 @@
         (str "preview axis was " (pr-str (:axis first-preview))))
     (is (vec-close? (:roll first-preview) [1.0 0.0 0.0])
         (str "preview roll was " (pr-str (:roll first-preview))))
-    (is (= 5 (:geometries first-preview))
-        "highlight, axis arrow and roll arrow should be observable")
+    (is (vec-close? (:up first-preview) [0.0 1.0 0.0])
+        (str "preview up was " (pr-str (:up first-preview))))
+    (is (= 7 (:geometries first-preview))
+        "highlight and all three frame arrows should be observable")
     (testing "a new pick replaces the previous preview instead of growing GPU geometry"
       (let [baseline (:geometries (s/stats *driver*))
             revision (:revision first-preview)
@@ -344,7 +346,9 @@
       input.dispatchEvent(new Event('input', {bubbles: true}));
     }")
     (is (s/wait-until #(vec-close? (:roll (:preview (s/stats *driver*))) [0.0 1.0 0.0]))
-        "changing Roll should rotate the cyan preview arrow immediately"))
+        "changing Roll should rotate the cyan +X arrow immediately")
+    (is (s/wait-until #(vec-close? (:up (:preview (s/stats *driver*))) [-1.0 0.0 0.0]))
+        "changing Roll should rotate the pink +Y arrow with it"))
   (s/js *driver* "() => { document.querySelector('.mount-wizard__form input[name=capacity]').value = '3'; }")
   (s/click! *driver* ".mount-wizard__actions button[value=update]")
   (is (s/wait-until #(str/includes? (s/text *driver* "#detail") "x3"))

@@ -281,8 +281,9 @@
         [:input {:type "checkbox" :name "repeat" :value "true"}]
         "Repeat classification"])
      [:ul.mount-wizard__orientation
-      [:li [:span.mount-wizard__swatch.mount-wizard__swatch--axis] "Axis"]
-      [:li [:span.mount-wizard__swatch.mount-wizard__swatch--roll] "Roll"]]
+      [:li [:span.mount-wizard__swatch.mount-wizard__swatch--axis] "Normal (+Z)"]
+      [:li [:span.mount-wizard__swatch.mount-wizard__swatch--roll] "Roll (+X)"]
+      [:li [:span.mount-wizard__swatch.mount-wizard__swatch--up] "Up (+Y)"]]
      [:div.mount-wizard__actions
       (if edit?
         [:button {:type "submit" :name "action" :value "update"} "Save changes"]
