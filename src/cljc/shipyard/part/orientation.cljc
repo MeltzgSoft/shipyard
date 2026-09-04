@@ -1,5 +1,6 @@
 (ns shipyard.part.orientation
-  "Pure part-orientation math shared by the server and Three.js viewport.")
+  "Pure part-orientation math shared by the server and Three.js viewport."
+  (:require [clojure.string :as str]))
 
 (def identity-quaternion [0.0 0.0 0.0 1.0])
 
@@ -168,13 +169,14 @@
     (- (dot normal point) offset)))
 
 (defn- parse-degrees [value]
-  (try
-    (let [number #?(:clj  (Double/parseDouble (str value))
-                    :cljs (js/Number value))]
-      (when (and (finite-number? number)
-                 (<= (#?(:clj Math/abs :cljs js/Math.abs) number) max-degrees))
-        number))
-    (catch #?(:clj Exception :cljs :default) _ nil)))
+  (when-not (str/blank? (str value))
+    (try
+      (let [number #?(:clj  (Double/parseDouble (str value))
+                      :cljs (js/Number value))]
+        (when (and (finite-number? number)
+                   (<= (#?(:clj Math/abs :cljs js/Math.abs) number) max-degrees))
+          number))
+      (catch #?(:clj Exception :cljs :default) _ nil))))
 
 (defn save-request [params]
   (case (get params "action")

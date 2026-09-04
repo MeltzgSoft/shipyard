@@ -139,6 +139,10 @@
   (testing "rejects missing, non-finite and unknown requests"
     (is (:error (orientation/save-request {"action" "save"})))
     (is (:error (orientation/save-request {"action" "save"
+                                           "part-yaw-deg" " "
+                                           "part-pitch-deg" "0"
+                                           "part-roll-deg" "0"})))
+    (is (:error (orientation/save-request {"action" "save"
                                            "part-yaw-deg" "NaN"
                                            "part-pitch-deg" "0"
                                            "part-roll-deg" "0"})))
