@@ -44,6 +44,12 @@
    :jvm-opts   ["--enable-native-access=ALL-UNNAMED"
                 "--sun-misc-unsafe-memory-access=allow"]}
 
+  ;; --- REPL-driven development -------------------------------------------
+  :dev
+  {:extra-paths ["dev/src/clj" "dev/src/cljs"]
+   :extra-deps  {nrepl/nrepl    {:mvn/version "1.7.0"}
+                 integrant/repl {:mvn/version "0.5.1"}}}
+
   ;; --- test ---------------------------------------------------------------
   :test
   {:extra-paths ["test/clj" "test/cljc"]

@@ -51,6 +51,7 @@ Anything that touches the mesh pipeline needs **a platform alias for the LWJGL n
 mkdir -p resources/public/js && cp node_modules/htmx.org/dist/htmx.min.js resources/public/js/   # once per clone - see below
 clojure -M:natives-linux:run            # server, no jar
 npx shadow-cljs watch viewport          # hot-reloaded CLJS, in a second terminal
+clojure -M:dev:natives-linux -m nrepl.cmdline  # REPL; then (go), (reset), or (halt)
 
 clojure -M:test:natives-linux                       # all suites
 clojure -M:test --focus :unit                       # pure functions only, sub-second
@@ -60,8 +61,8 @@ clojure -M:test:natives-linux --focus :e2e          # headless browser
 
 clojure -M:natives-linux:canary         # data-quality probe over the real library
 clojure -M:natives-linux:benchmark --root /path/to/models --machine "CPU; RAM; GPU; storage"
-clojure -M:cljfmt check src test build.clj    # `fix` to apply
-clojure -M:clj-kondo --lint src --lint test --lint build.clj
+clojure -M:cljfmt check src test dev build.clj    # `fix` to apply
+clojure -M:clj-kondo --lint src --lint test --lint dev --lint build.clj
 clojure -M:outdated                     # dependency freshness, deps.edn + package.json
 ```
 
