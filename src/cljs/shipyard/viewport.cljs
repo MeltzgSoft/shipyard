@@ -295,10 +295,6 @@
           {:indices (connected-indices (adjacency triangles) start)
            :candidates (count triangles)})))))
 
-(defn- scaled-end [origin dir scale]
-  (doto (.clone (v3 origin))
-    (.addScaledVector (v3 dir) scale)))
-
 (defn- object-geometry-count [^js obj]
   (let [n (atom 0)]
     (when obj
@@ -378,13 +374,7 @@
     (when-not (.-boundingSphere g) (.computeBoundingSphere g))
     (max 0.25 (* 0.35 (.. g -boundingSphere -radius)))))
 
-(defn- line-preview [origin dir length color]
-  (let [geometry (doto (three/BufferGeometry.)
-                   (.setFromPoints #js [(v3 origin) (scaled-end origin dir length)]))
-        material (three/LineBasicMaterial. #js {:color color})]
-    (three/Line. geometry material)))
-
-(declare input-value checked?)
+(declare input-value checked? checked-values)
 
 (defn- face-highlight [^js obj facet-indices frame mirror color opacity]
   (three/Mesh.
@@ -431,28 +421,51 @@
      :items (mapv #(dissoc % :object) (filter :object items))
      :misses (mapv #(dissoc % :object) (remove :object items))}))
 
+(defn- preview-facet-indices [^js obj facet-indices frame]
+  (or (seq facet-indices)
+      (some-> (interface-facet obj frame) :indices seq)))
+
+(defn- form-roll-degrees []
+  (some-> (.querySelector js/document ".mount-wizard__form input[name=roll-deg]")
+          .-value
+          (parse-finite-double)))
+
+(defn- roll-for-preview [{:mount/keys [axis roll]}]
+  (let [degrees (or (form-roll-degrees) 0.0)
+        rotated (doto (v3 roll)
+                  (.applyAxisAngle (v3 axis) (* degrees (/ js/Math.PI 180.0))))]
+    [(.-x rotated) (.-y rotated) (.-z rotated)]))
+
 (defn- preview-object [^js obj {:keys [facet-indices frame]} mirror]
-  (let [axis (:mount/axis frame)
+  (let [frame (assoc frame :mount/roll (roll-for-preview frame))
+        axis (:mount/axis frame)
         roll (:mount/roll frame)
         pos (:mount/pos frame)
         length (preview-length obj)
-        highlight (face-highlight obj facet-indices frame nil 0xf0c65a 0.56)
+        facet-indices (preview-facet-indices obj facet-indices frame)
+        highlight (when facet-indices
+                    (face-highlight obj facet-indices frame nil 0xf0c65a 0.56))
         axis-line (three/ArrowHelper. (v3 axis) (v3 pos) length 0xf0c65a (* length 0.22) (* length 0.08))
-        roll-line (line-preview pos roll (* length 0.75) 0x69d2c0)
+        roll-line (three/ArrowHelper. (v3 roll) (v3 pos) (* length 0.75) 0x69d2c0 (* length 0.16) (* length 0.06))
         mirrored-frame (when mirror (reflect-frame frame mirror))
         group (doto (three/Group.)
-                (.add highlight)
                 (.add axis-line)
                 (.add roll-line))]
+    (when highlight
+      (.add group highlight))
     (when mirrored-frame
-      (.add group (face-highlight obj facet-indices mirrored-frame mirror 0x79a9ff 0.48))
+      (when facet-indices
+        (.add group (face-highlight obj facet-indices mirrored-frame mirror 0x79a9ff 0.48)))
       (.add group (three/ArrowHelper. (v3 (:mount/axis mirrored-frame))
                                       (v3 (:mount/pos mirrored-frame))
                                       length 0x79a9ff (* length 0.22) (* length 0.08)))
-      (.add group (line-preview (:mount/pos mirrored-frame)
-                                (:mount/roll mirrored-frame)
-                                (* length 0.75) 0x8fd8ff)))
-    {:object group :mirror-frame mirrored-frame}))
+      (.add group (three/ArrowHelper. (v3 (:mount/roll mirrored-frame))
+                                      (v3 (:mount/pos mirrored-frame))
+                                      (* length 0.75) 0x8fd8ff (* length 0.16) (* length 0.06))))
+    {:object group
+     :frame frame
+     :mirror-frame mirrored-frame
+     :facet-indices (vec facet-indices)}))
 
 (defn- mirror-form-values []
   (when-let [form (.querySelector js/document ".mount-wizard__form")]
@@ -474,10 +487,15 @@
         (.remove scene object)
         (dispose-object! object))
       (let [mirror (mirror-form-values)
-            {:keys [object mirror-frame]} (preview-object obj data mirror)
+            base-frame (or (:base-frame data) (:frame data))
+            {:keys [object frame mirror-frame facet-indices]}
+            (preview-object obj (assoc data :frame base-frame) mirror)
             revision (swap! preview-revision inc)]
         (.add scene object)
         (reset! preview (assoc data
+                               :base-frame base-frame
+                               :frame frame
+                               :facet-indices facet-indices
                                :object object
                                :revision revision
                                :mirror mirror
@@ -550,6 +568,16 @@
                                          #js {:bubbles true
                                               :detail  #js {:value (aget events event)}}))))))
 
+(defn- dom-edit-values []
+  (when-let [form (.querySelector js/document ".mount-wizard__form")]
+    (when-let [original-mount-id (input-value form "input[name=original-mount-id]")]
+      {"original-mount-id" original-mount-id
+       "mount-id" (input-value form "input[name=mount-id]")
+       "kind" (input-value form "select[name=kind]")
+       "accepts" (checked-values form "input[name=accepts]:checked")
+       "capacity" (input-value form "input[name=capacity]")
+       "roll-deg" (input-value form "input[name=roll-deg]")})))
+
 (defn- post-facet! [{:keys [authoring repeat]} triangle-index]
   (let [target (.getElementById js/document "facet-preview")
         {:keys [part-id mesh-key]} @authoring]
@@ -559,6 +587,7 @@
                          :headers #js {"Content-Type" "application/x-www-form-urlencoded"}
                          :body (form-body (merge @repeat
                                                  (dom-repeat-values)
+                                                 (dom-edit-values)
                                                  {"part-id" part-id
                                                   "mesh-key" mesh-key
                                                   "triangle-index" (str triangle-index)}))})
@@ -582,8 +611,10 @@
   (mapv #(.-value %) (array-seq (.querySelectorAll form selector))))
 
 (defn- preview-data [preview-record]
-  (select-keys preview-record [:part-id :mesh-key :facet-indices :frame
-                               :roll-ambiguous? :roll-source]))
+  (-> (select-keys preview-record [:part-id :mesh-key :facet-indices
+                                   :roll-ambiguous? :roll-source])
+      (assoc :base-frame (:base-frame preview-record)
+             :frame (:base-frame preview-record))))
 
 (defn- refresh-preview-from-form! [sys ^js e]
   (let [target (.-target e)
@@ -591,6 +622,11 @@
                (.closest target ".mount-wizard__form"))]
     (when (and form @(:preview sys))
       (install-preview! sys (preview-data @(:preview sys))))))
+
+(defn- refresh-preview-after-swap! [sys]
+  (when (and (.querySelector js/document ".mount-wizard__form")
+             @(:preview sys))
+    (install-preview! sys (preview-data @(:preview sys)))))
 
 (defn- sync-interfaces-from-dom! [sys]
   (when-let [values (dom-interface-values)]
@@ -757,7 +793,8 @@
     (.addEventListener body "shipyard:interfaces" #(draw-interfaces! sys (payload %)))
     (.addEventListener body "htmx:afterSwap" (fn [_]
                                                (sync-authoring-button! sys)
-                                               (sync-interfaces-from-dom! sys)))
+                                               (sync-interfaces-from-dom! sys)
+                                               (refresh-preview-after-swap! sys)))
     (.addEventListener body "input" #(refresh-preview-from-form! sys %))
     (.addEventListener body "change" #(refresh-preview-from-form! sys %))
     (.addEventListener body "submit" #(remember-repeat-from-submit! sys %))

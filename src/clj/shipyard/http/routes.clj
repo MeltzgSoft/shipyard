@@ -204,11 +204,19 @@
               (try
                 (let [{:keys [facet-indices frame roll-ambiguous? roll-source]}
                       (facet/select (wire/decode (read-bytes tier0)) triangle-index
-                                    (select-keys cache [:facet-angle-deg :facet-plane-epsilon-mm]))]
+                                    (select-keys cache [:facet-angle-deg :facet-plane-epsilon-mm]))
+                      edit (when-let [original-mount-id (get params "original-mount-id")]
+                             (wizard/edit-request {"mount-id" original-mount-id}
+                                                  (durable-mounts part)))
+                      preview (cond-> {:part part
+                                       :frame frame
+                                       :values (merge (:values edit)
+                                                      (wizard/preview-values params))}
+                                (:mount edit)
+                                (assoc :mode :edit
+                                       :original-mount-id (:original-mount-id edit)))]
                   (htmx/fragment
-                   (views/facet-preview {:part part
-                                         :frame frame
-                                         :values (wizard/preview-values params)})
+                   (views/facet-preview preview)
                    {:events {:facet-preview {:part-id part-id
                                              :mesh-key mesh-key
                                              :triangle-index triangle-index
@@ -286,6 +294,43 @@
                            "The mount was written, but the catalog did not update. Restart Shipyard to re-ingest it."
                            part-id
                            500))))))))
+
+(defn- edit-mount
+  [{:keys [catalog library] :as deps} {:keys [params]}]
+  (let [part-id (get params "part-id")
+        part (db/part (db/snapshot catalog) part-id)
+        mesh-key (index/mesh-key library part-id)]
+    (cond
+      (nil? (:part/id part))
+      (facet-error :part-not-found "That part is no longer in the library." part-id 404)
+
+      (nil? mesh-key)
+      (facet-error :mesh-not-ready "Open the part and wait for preprocessing to finish." part-id 409)
+
+      :else
+      (let [result (wizard/edit-request params (durable-mounts part))]
+        (if-let [error (:error result)]
+          (mount-error-response deps
+                                part-id
+                                error
+                                {}
+                                {:error error})
+          (let [frame (:frame result)]
+            (mount-response
+             deps
+             part-id
+             {:authoring {:state :enter
+                          :part-id part-id
+                          :mesh-key mesh-key}
+              :facet-preview {:part-id part-id
+                              :mesh-key mesh-key
+                              :frame frame
+                              :roll-source :saved-mount}}
+             {:preview {:part part
+                        :frame frame
+                        :mode :edit
+                        :original-mount-id (:original-mount-id result)
+                        :values (:values result)}})))))))
 
 (defn- save-part-role
   [{:keys [catalog] :as deps} {:keys [params]}]
@@ -389,6 +434,7 @@
    ["/settings" {:post (partial save-settings deps)}]
    ["/facet" {:post (partial facet-preview deps)}]
    ["/mounts" {:post (partial save-mount deps)}]
+   ["/mounts/edit" {:post (partial edit-mount deps)}]
    ["/mounts/delete" {:post (partial delete-mount deps)}]
    ["/parts/role" {:post (partial save-part-role deps)}]
    ["/part/*id" {:get (partial part deps)}]

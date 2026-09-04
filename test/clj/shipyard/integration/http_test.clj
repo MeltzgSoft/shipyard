@@ -146,6 +146,9 @@
 (defn- mount-post [h params]
   (POST h "/mounts" params))
 
+(defn- mount-edit [h params]
+  (POST h "/mounts/edit" params))
+
 (defn- mount-delete [h params]
   (POST h "/mounts/delete" params))
 
@@ -431,6 +434,64 @@
         (is (str/includes? repeated "value=\"port-2\""))
         (is (re-find #"name=\"capacity\"[^>]+value=\"2\"" repeated))
         (is (re-find #"checked=\"checked\"[^>]+value=\"turret\"" repeated))))))
+
+(deftest mount-wizard-edits-existing-mounts
+  (let [root (library-tree)
+        sys (system root)
+        h (handler sys)
+        mesh-key (seed-authoring-cache! sys)
+        preview (get (triggers (facet-post h hull-id mesh-key 0)) "shipyard:facet-preview")
+        _saved (mount-post h {:part-id hull-id
+                              :mount-id "port-1"
+                              :kind "socket"
+                              :accepts "weapon"
+                              :capacity "2"
+                              :frame (pr-str (:frame preview))
+                              :roll-deg "0"
+                              :action "create"})
+        edit (mount-edit h {:part-id hull-id :mount-id "port-1"})
+        edit-events (triggers edit)
+        edit-preview (get edit-events "shipyard:facet-preview")]
+    (is (= 200 (:status edit)))
+    (is (str/includes? (:body edit) "Save changes"))
+    (is (str/includes? (:body edit) "name=\"original-mount-id\""))
+    (is (str/includes? (:body edit) "value=\"port-1\""))
+    (is (str/includes? (:body edit) "Axis"))
+    (is (str/includes? (:body edit) "Roll"))
+    (is (= {:state :enter :part-id hull-id :mesh-key mesh-key}
+           (get edit-events "shipyard:authoring")))
+    (is (= (:frame preview) (:frame edit-preview)))
+    (is (= :saved-mount (:roll-source edit-preview)))
+    (testing "picking another face preserves edit mode and current values"
+      (let [repicked (facet-post h hull-id mesh-key 0
+                                 {"original-mount-id" "port-1"
+                                  "mount-id" "port-1"
+                                  "kind" "socket"
+                                  "accepts" "weapon"
+                                  "capacity" "3"
+                                  "roll-deg" "90"})]
+        (is (= 200 (:status repicked)))
+        (is (str/includes? (:body repicked) "Save changes"))
+        (is (str/includes? (:body repicked) "name=\"original-mount-id\""))
+        (is (re-find #"name=\"capacity\"[^>]+value=\"3\"" (:body repicked)))))
+    (testing "update changes the existing mount instead of leaving the old id behind"
+      (let [updated (mount-post h {:part-id hull-id
+                                   :original-mount-id "port-1"
+                                   :mount-id "prow-socket"
+                                   :kind "socket"
+                                   :accepts "prow"
+                                   :capacity "1"
+                                   :frame (pr-str (:frame edit-preview))
+                                   :roll-deg "90"
+                                   :action "update"})
+            mounts (:mounts (sidecar/read-sidecar root hull-id))
+            mount (first mounts)]
+        (is (= 200 (:status updated)))
+        (is (= 1 (count mounts)))
+        (is (= :prow-socket (:mount/id mount)))
+        (is (= #{:prow} (:mount/accepts mount)))
+        (is (< (Math/abs (- 1.0 (double (second (:mount/roll mount)))))
+               1.0e-6))))))
 
 (deftest part-role-is-edited-outside-the-mount-wizard
   (let [root (library-tree)

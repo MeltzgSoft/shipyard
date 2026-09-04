@@ -133,6 +133,8 @@
     (is (str/includes? html "Interface colors"))
     (is (str/includes? html "plug"))
     (is (str/includes? html "weapon socket"))
+    (is (str/includes? html "hx-post=\"/mounts/edit\""))
+    (is (str/includes? html ">Edit<"))
     (is (str/includes? html "--interface-color:#69d2c0"))
     (is (str/includes? html "--interface-color:#ff7a90"))
     (is (str/includes? html "data-interface-mounts"))))
@@ -151,6 +153,8 @@
       (is (str/includes? html "Dismiss"))
       (is (str/includes? html "name=\"mount-id\""))
       (is (str/includes? html "value=\"mount-1\""))
+      (is (str/includes? html "Axis"))
+      (is (str/includes? html "Roll"))
       (is (not (str/includes? html "class=\"mount-wizard__field\">Part role")))
       (is (str/includes? html "Pick mount face"))))
   (testing "delete errors keep the part detail rather than replacing it"

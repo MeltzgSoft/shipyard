@@ -249,8 +249,8 @@
         (str "preview axis was " (pr-str (:axis first-preview))))
     (is (vec-close? (:roll first-preview) [1.0 0.0 0.0])
         (str "preview roll was " (pr-str (:roll first-preview))))
-    (is (= 4 (:geometries first-preview))
-        "highlight, axis arrow and roll indicator should be observable")
+    (is (= 5 (:geometries first-preview))
+        "highlight, axis arrow and roll arrow should be observable")
     (testing "a new pick replaces the previous preview instead of growing GPU geometry"
       (let [baseline (:geometries (s/stats *driver*))
             revision (:revision first-preview)
@@ -325,6 +325,30 @@
              (pr-str last-interfaces))))
   (is (s/wait-until #(nil? (:preview (s/stats *driver*))))
       "saving clears the transient preview")
+  (s/click! *driver* "form:has(input[name=mount-id][value='mount-1']) button:has-text('Edit')")
+  (is (s/wait-until #(true? (s/js *driver* "() => !!document.querySelector('.mount-wizard__form button[value=update]')")))
+      "Edit should open the mount with an update action")
+  (let [edit-preview (await-preview)]
+    (is (= 2 (:triangles edit-preview))
+        "editing should recover and highlight the saved mount face")
+    (let [revision (:revision edit-preview)
+          {:keys [x y]} (viewport-center)]
+      (s/click-point! *driver* x y)
+      (is (some? (await-preview revision))
+          "an edited mount should allow its face to be picked again")
+      (is (s/wait-until #(true? (s/js *driver* "() => !!document.querySelector('.mount-wizard__form button[value=update]')")))
+          "picking another face should preserve edit mode"))
+    (s/js *driver* "() => {
+      const input = document.querySelector('.mount-wizard__form input[name=roll-deg]');
+      input.value = '90';
+      input.dispatchEvent(new Event('input', {bubbles: true}));
+    }")
+    (is (s/wait-until #(vec-close? (:roll (:preview (s/stats *driver*))) [0.0 1.0 0.0]))
+        "changing Roll should rotate the cyan preview arrow immediately"))
+  (s/js *driver* "() => { document.querySelector('.mount-wizard__form input[name=capacity]').value = '3'; }")
+  (s/click! *driver* ".mount-wizard__actions button[value=update]")
+  (is (s/wait-until #(str/includes? (s/text *driver* "#detail") "x3"))
+      "saving an edit should update the existing mount")
   (is (enter-authoring! s/mount-plate-id)
       "authoring mode should be active before picking another face")
   (let [{:keys [x y]} (viewport-center)]
@@ -349,7 +373,7 @@
     return card ? card.querySelector('.part__role').textContent : null;
   }")))
       "the manual role is visible as the part's authoritative role")
-  (s/click! *driver* "form:has(input[name=mount-id][value='mount-1']) button")
+  (s/click! *driver* "form:has(input[name=mount-id][value='mount-1']) button:has-text('Delete')")
   (is (s/wait-until #(not (str/includes? (s/text *driver* "#detail") "mount-1")))
       "deleting removes the mount from the detail panel")
   (is (s/wait-until #(let [count (get-in (s/stats *driver*) [:interfaces :count])]

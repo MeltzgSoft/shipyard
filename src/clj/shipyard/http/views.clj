@@ -100,13 +100,21 @@
             (when (and (= :socket kind) (> (long (or capacity 1)) 1))
               [:span.mounts__accepts " x" capacity])
             [:span.mounts__accepts " / " (name (or (:mount/origin mount) :picked))]]
-           [:form.mounts__delete
-            {:hx-post   "/mounts/delete"
-             :hx-target "#detail"
-             :hx-swap   "innerHTML"}
-            [:input {:type "hidden" :name "part-id" :value part-id}]
-            [:input {:type "hidden" :name "mount-id" :value (name (:mount/id mount))}]
-            [:button {:type "submit"} "Delete"]]])]])))
+           [:div.mounts__actions
+            [:form.mounts__action
+             {:hx-post   "/mounts/edit"
+              :hx-target "#detail"
+              :hx-swap   "innerHTML"}
+             [:input {:type "hidden" :name "part-id" :value part-id}]
+             [:input {:type "hidden" :name "mount-id" :value (name (:mount/id mount))}]
+             [:button {:type "submit"} "Edit"]]
+            [:form.mounts__action
+             {:hx-post   "/mounts/delete"
+              :hx-target "#detail"
+              :hx-swap   "innerHTML"}
+             [:input {:type "hidden" :name "part-id" :value part-id}]
+             [:input {:type "hidden" :name "mount-id" :value (name (:mount/id mount))}]
+             [:button {:type "submit"} "Delete"]]]])]])))
 
 (defn- interface-legend [{:part/keys [mounts]}]
   (when (seq mounts)
@@ -219,18 +227,21 @@
 (defn- default-kind [part]
   (if (#{:hull :hull-section} (:part/role-hint part)) :socket :plug))
 
-(defn- mount-form [{:keys [part frame values]}]
+(defn- mount-form [{:keys [part frame mode original-mount-id values]}]
   (let [kind (or (:kind values) (default-kind part))
         accepts (or (:accepts values) #{:weapon})
         capacity (or (:capacity values) 1)
         mount-id (or (:mount-id values) "mount-1")
-        mirror-id (some-> mount-id (keyword) (wizard/suggest-mirror-id) (name))]
+        mirror-id (some-> mount-id (keyword) (wizard/suggest-mirror-id) (name))
+        edit? (= :edit mode)]
     [:form.mount-wizard__form
      {:hx-post   "/mounts"
       :hx-target "#detail"
       :hx-swap   "innerHTML"}
      [:input {:type "hidden" :name "part-id" :value (:part/id part)}]
      [:input {:type "hidden" :name "frame" :value (pr-str frame)}]
+     (when edit?
+       [:input {:type "hidden" :name "original-mount-id" :value (name original-mount-id)}])
      [:label.mount-wizard__field "Mount id"
       [:input {:type "text" :name "mount-id" :value mount-id
                :autocomplete "off" :spellcheck "false"}]]
@@ -251,25 +262,38 @@
      [:label.mount-wizard__field "Roll"
       [:input {:type "number" :name "roll-deg" :value (or (:roll-deg values) "0")
                :step "1"}]]
-     [:fieldset.mount-wizard__mirror
-      [:legend "Mirror"]
-      [:label.mount-wizard__check
-       [:input {:type "checkbox" :name "mirror" :value "true"}]
-       "Mirror socket"]
-      [:label.mount-wizard__field "Plane"
-       [:select {:name "mirror-plane"}
-        (map (partial plane-choice :x) wizard/symmetry-plane-options)]]
-      [:label.mount-wizard__field "Offset"
-       [:input {:type "number" :name "mirror-offset" :value "0" :step "0.01"}]]
-      [:label.mount-wizard__field "Mirrored id"
-       [:input {:type "text" :name "mirror-id" :value mirror-id
-                :autocomplete "off" :spellcheck "false"}]]]
-     [:label.mount-wizard__check
-      [:input {:type "checkbox" :name "repeat" :value "true"}]
-      "Repeat classification"]
+     (when-not edit?
+       [:fieldset.mount-wizard__mirror
+        [:legend "Mirror"]
+        [:label.mount-wizard__check
+         [:input {:type "checkbox" :name "mirror" :value "true"}]
+         "Mirror socket"]
+        [:label.mount-wizard__field "Plane"
+         [:select {:name "mirror-plane"}
+          (map (partial plane-choice :x) wizard/symmetry-plane-options)]]
+        [:label.mount-wizard__field "Offset"
+         [:input {:type "number" :name "mirror-offset" :value "0" :step "0.01"}]]
+        [:label.mount-wizard__field "Mirrored id"
+         [:input {:type "text" :name "mirror-id" :value mirror-id
+                  :autocomplete "off" :spellcheck "false"}]]])
+     (when-not edit?
+       [:label.mount-wizard__check
+        [:input {:type "checkbox" :name "repeat" :value "true"}]
+        "Repeat classification"])
+     [:ul.mount-wizard__orientation
+      [:li [:span.mount-wizard__swatch.mount-wizard__swatch--axis] "Axis"]
+      [:li [:span.mount-wizard__swatch.mount-wizard__swatch--roll] "Roll"]]
      [:div.mount-wizard__actions
-      [:button {:type "submit" :name "action" :value "create"} "Save mount"]
-      [:button {:type "submit" :name "action" :value "replace"} "Replace"]]]))
+      (if edit?
+        [:button {:type "submit" :name "action" :value "update"} "Save changes"]
+        (for [[action label] [[:create "Save mount"] [:replace "Replace"]]]
+          [:button {:type "submit" :name "action" :value (name action)} label]))
+      [:button.detail__dismiss
+       {:type      "button"
+        :hx-get    (urls/part-url (:part/id part))
+        :hx-target "#detail"
+        :hx-swap   "innerHTML"}
+       "Cancel"]]]))
 
 (defn facet-preview
   ([] [:div.facet-preview

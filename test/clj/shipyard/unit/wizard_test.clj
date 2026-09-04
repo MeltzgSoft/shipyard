@@ -47,6 +47,49 @@
     (is (< (Math/abs (- 1.0 (Math/sqrt (reduce + (map #(* % %) (wizard/rotate-roll [0 0 1] [1 0 0] 33))))))
            1.0e-9))))
 
+(deftest replace-mount-by-id-test
+  (testing "replaces the original id when an edited mount is renamed"
+    (let [renamed (assoc socket :mount/id :prow-socket)]
+      (is (= [renamed]
+             (wizard/replace-mount-by-id [socket] :port-1 renamed)))))
+  (testing "keeps unrelated mounts"
+    (let [other (assoc socket :mount/id :starboard-1)
+          renamed (assoc socket :mount/id :prow-socket)]
+      (is (= #{:starboard-1 :prow-socket}
+             (set (map :mount/id
+                       (wizard/replace-mount-by-id [socket other] :port-1 renamed))))))))
+
+(deftest mount-values-test
+  (testing "returns editable socket fields"
+    (is (= {:mount-id "port-1"
+            :kind :socket
+            :accepts #{:weapon}
+            :capacity 2}
+           (wizard/mount-values (assoc socket :mount/capacity 2)))))
+  (testing "omits socket-only fields from a plug"
+    (is (= {:mount-id "plug" :kind :plug}
+           (wizard/mount-values {:mount/id :plug :mount/kind :plug})))))
+
+(deftest mount-frame-test
+  (testing "normalizes a saved frame"
+    (is (wizard/valid-frame?
+         (wizard/mount-frame (assoc socket :mount/axis [0.0 0.0 0.999998])))))
+  (testing "rejects a mount without a position and axis"
+    (is (nil? (wizard/mount-frame {:mount/id :broken})))))
+
+(deftest edit-request-test
+  (testing "loads a saved mount into an edit form"
+    (let [result (wizard/edit-request {"mount-id" "port-1"} [socket])]
+      (is (= socket (:mount result)))
+      (is (= :port-1 (:original-mount-id result)))
+      (is (= "port-1" (get-in result [:values :mount-id])))
+      (is (wizard/valid-frame? (:frame result)))))
+  (testing "rejects missing, unknown, and invalid mounts"
+    (is (:error (wizard/edit-request {} [socket])))
+    (is (:error (wizard/edit-request {"mount-id" "missing"} [socket])))
+    (is (:error (wizard/edit-request {"mount-id" "broken"}
+                                     [{:mount/id :broken :mount/kind :socket}])))))
+
 (deftest save-request-test
   (testing "creates a durable socket without facet indices"
     (let [{:keys [mount mounts]} (wizard/save-request (params {}) [])]
@@ -84,6 +127,24 @@
     (is (:error (wizard/save-request (params {}) [socket])))
     (is (= 1 (count (:mounts (wizard/save-request (params {"action" "replace"})
                                                   [socket]))))))
+  (testing "updates and renames the selected mount"
+    (let [other (assoc socket :mount/id :starboard-1)
+          result (wizard/save-request
+                  (params {"original-mount-id" "port-1"
+                           "mount-id" "prow-socket"
+                           "accepts" "prow"
+                           "action" "update"})
+                  [socket other])]
+      (is (= #{:prow-socket :starboard-1}
+             (set (map :mount/id (:mounts result)))))
+      (is (= #{:prow} (:mount/accepts (:mount result))))))
+  (testing "does not rename an edited mount over another id"
+    (let [other (assoc socket :mount/id :starboard-1)]
+      (is (:error (wizard/save-request
+                   (params {"original-mount-id" "port-1"
+                            "mount-id" "starboard-1"
+                            "action" "update"})
+                   [socket other])))))
   (testing "allows only one plug at a time"
     (let [plug (assoc socket :mount/id :plug :mount/kind :plug)]
       (is (:error (wizard/save-request (params {"mount-id" "second" "kind" "plug"})
@@ -101,14 +162,21 @@
       (is (= "Already exists" (:error preview)))
       (is (= "port-1" (get-in preview [:values :mount-id])))
       (is (= 2 (get-in preview [:values :capacity])))
-      (is (vec-close? [0.0 1.0 0.0] (get-in preview [:frame :mount/roll])))))
+      (is (vec-close? [1.0 0.0 0.0] (get-in preview [:frame :mount/roll])))))
   (testing "still returns the form values when the frame itself is invalid"
     (let [preview (wizard/error-preview {:part/id "part-1"}
                                         (params {"frame" "{:not :a-frame}"})
                                         "Pick it again")]
       (is (= "Pick it again" (:error preview)))
       (is (= "port-1" (get-in preview [:values :mount-id])))
-      (is (nil? (:frame preview))))))
+      (is (nil? (:frame preview)))))
+  (testing "keeps update mode after a validation error"
+    (let [preview (wizard/error-preview {:part/id "part-1"}
+                                        (params {"original-mount-id" "port-1"
+                                                 "action" "update"})
+                                        "Already exists")]
+      (is (= :edit (:mode preview)))
+      (is (= :port-1 (:original-mount-id preview))))))
 
 (deftest part-role-request-test
   (testing "parses a valid part role separately from mount authoring"

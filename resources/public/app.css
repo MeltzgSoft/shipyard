@@ -260,7 +260,13 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
 }
 .mounts__summary { min-width: 0; color: var(--ink-dim); }
 .mounts__accepts { color: var(--ink-faint); }
-.mounts__delete { margin: 0; }
+.mounts__actions {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.mounts__action { margin: 0; }
 .interface-legend {
   margin-top: 0.65rem;
 }
@@ -352,8 +358,30 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
   color: var(--ink-dim);
   font-size: 0.78rem;
 }
+.mount-wizard__orientation {
+  grid-column: 1 / -1;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: 0.75rem;
+  color: var(--ink-dim);
+  font-size: 0.78rem;
+}
+.mount-wizard__orientation li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.mount-wizard__swatch {
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 999px;
+}
+.mount-wizard__swatch--axis { background: #f0c65a; }
+.mount-wizard__swatch--roll { background: #69d2c0; }
 .mount-wizard__actions { grid-column: 1 / -1; display: flex; gap: 0.4rem; flex-wrap: wrap; }
-.mount-wizard__actions button, .mounts__delete button {
+.mount-wizard__actions button, .mounts__action button {
   background: var(--panel-2);
   color: var(--ink);
   border: 1px solid var(--line);
@@ -363,7 +391,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
   font-size: 0.78rem;
   cursor: pointer;
 }
-.mount-wizard__actions button:hover, .mounts__delete button:hover, .part-metadata__form button:hover, .detail__dismiss:hover { border-color: var(--accent); }
+.mount-wizard__actions button:hover, .mounts__action button:hover, .part-metadata__form button:hover, .detail__dismiss:hover { border-color: var(--accent); }
 .stage__canvas--authoring { cursor: crosshair; }
 
 @media (min-width: 72rem) {

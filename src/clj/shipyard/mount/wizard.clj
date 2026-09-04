@@ -118,11 +118,14 @@
 (defn mount-by-id [mounts id]
   (first (filter #(= id (:mount/id %)) mounts)))
 
-(defn plug-exists? [mounts id]
-  (boolean (some #(and (= :plug (:mount/kind %)) (not= id (:mount/id %))) mounts)))
+(defn plug-exists? [mounts]
+  (boolean (some #(= :plug (:mount/kind %)) mounts)))
 
 (defn replace-mount [mounts mount]
   (conj (vec (remove #(= (:mount/id mount) (:mount/id %)) mounts)) mount))
+
+(defn replace-mount-by-id [mounts old-id mount]
+  (conj (vec (remove #(= old-id (:mount/id %)) mounts)) mount))
 
 (defn delete-mount [mounts id]
   (vec (remove #(= id (:mount/id %)) mounts)))
@@ -186,27 +189,65 @@
       capacity (assoc :capacity capacity)
       (seq accepts) (assoc :accepts accepts))))
 
+(defn mount-values [mount]
+  (cond-> {:mount-id (some-> (:mount/id mount) (name))
+           :kind (:mount/kind mount)}
+    (seq (:mount/accepts mount)) (assoc :accepts (:mount/accepts mount))
+    (:mount/capacity mount) (assoc :capacity (:mount/capacity mount))))
+
+(defn mount-frame [mount]
+  (normalize-frame (select-keys mount [:mount/pos :mount/axis :mount/roll])))
+
+(defn edit-request [params existing-mounts]
+  (let [mount-id (parse-mount-id (get params "mount-id"))
+        mount (mount-by-id existing-mounts mount-id)
+        frame (mount-frame mount)]
+    (cond
+      (nil? mount-id)
+      {:error "Choose a mount to edit."}
+
+      (nil? mount)
+      {:error "No mount with that id exists."}
+
+      (nil? frame)
+      {:error "That mount no longer has a valid frame. Pick the face again."}
+
+      :else
+      {:mount mount
+       :original-mount-id mount-id
+       :frame frame
+       :values (mount-values mount)})))
+
 (defn part-role-request [params]
   (if-let [role (parse-keyword (get params "part-role") role-options)]
     {:part-role role}
     {:error "Choose the role this part should use from now on."}))
 
 (defn error-preview [part params error]
-  (let [roll-deg (or (parse-finite-double (get params "roll-deg")) 0.0)
-        frame (adjusted-frame (parse-edn (get params "frame")) roll-deg)]
+  (let [frame (normalize-frame (parse-edn (get params "frame")))
+        original-mount-id (parse-mount-id (get params "original-mount-id"))]
     (cond-> {:part part
              :values (preview-values params)
              :error error}
-      frame (assoc :frame frame))))
+      frame (assoc :frame frame)
+      original-mount-id (assoc :mode :edit
+                               :original-mount-id original-mount-id))))
 
 (defn save-request [params existing-mounts]
   (let [mount-id (parse-mount-id (get params "mount-id"))
+        original-mount-id (parse-mount-id (get params "original-mount-id"))
         kind (parse-keyword (get params "kind") kind-options)
-        action (parse-keyword (get params "action") [:create :replace])
+        action (parse-keyword (get params "action") [:create :replace :update])
         accepts (set (keep #(parse-keyword % role-options) (many (get params "accepts"))))
         capacity (or (parse-positive-long (get params "capacity")) 1)
         roll-deg (or (parse-finite-double (get params "roll-deg")) 0.0)
         frame (adjusted-frame (parse-edn (get params "frame")) roll-deg)
+        update? (= :update action)
+        base-id (when update? original-mount-id)
+        existing-base (when base-id (mount-by-id existing-mounts base-id))
+        other-mounts (if base-id
+                       (remove #(= base-id (:mount/id %)) existing-mounts)
+                       existing-mounts)
         mirror? (checked? (get params "mirror"))
         repeat? (checked? (get params "repeat"))
         mirror-plane (parse-keyword (get params "mirror-plane") symmetry-plane-options)
@@ -220,8 +261,17 @@
       (nil? kind)
       {:error "Choose whether this mount is a plug or a socket."}
 
+      (nil? action)
+      {:error "Choose whether to save, replace, or update this mount."}
+
       (nil? frame)
       {:error "The selected face no longer has a valid frame. Pick it again."}
+
+      (and update? (nil? original-mount-id))
+      {:error "Choose a mount to edit."}
+
+      (and update? (nil? existing-base))
+      {:error "No mount with that id exists."}
 
       (and (= :socket kind) (empty? accepts))
       {:error "Choose at least one role this socket accepts."}
@@ -232,7 +282,10 @@
       (and (= :create action) (mount-by-id existing-mounts mount-id))
       {:error "A mount with that id already exists. Use replace when you mean to overwrite it."}
 
-      (and (= :plug kind) (plug-exists? existing-mounts mount-id))
+      (and update? (mount-by-id other-mounts mount-id))
+      {:error "A mount with that id already exists. Rename it or use replace deliberately."}
+
+      (and (= :plug kind) (plug-exists? other-mounts))
       {:error "This part already has a plug. Delete it first, or replace the existing plug id."}
 
       (and mirror? (not= :socket kind))
@@ -259,20 +312,22 @@
                            :mount/pos (:mount/pos frame)
                            :mount/axis (:mount/axis frame)
                            :mount/roll (:mount/roll frame)
-                           :mount/origin :picked}
+                           :mount/origin (or (:mount/origin existing-base) :picked)}
                     (= :socket kind) (assoc :mount/accepts accepts
                                             :mount/capacity capacity))]
         (if mirror?
           (if-let [mirrored (mirror-mount mount mirror-plane mirror-offset mirror-id)]
             (let [mounts (-> existing-mounts
-                             (replace-mount mount)
+                             (replace-mount-by-id (or base-id mount-id) mount)
                              (replace-mount mirrored))]
               (cond-> {:mount mount
                        :mirrored-mount mirrored
                        :mounts mounts}
                 repeat? (assoc :repeat-values (repeat-values mount mounts))))
             {:error "The mirrored socket frame is invalid. Pick the face again."})
-          (let [mounts (replace-mount existing-mounts mount)]
+          (let [mounts (if base-id
+                         (replace-mount-by-id existing-mounts base-id mount)
+                         (replace-mount existing-mounts mount))]
             (cond-> {:mount mount
                      :mounts mounts}
               repeat? (assoc :repeat-values (repeat-values mount mounts)))))))))
