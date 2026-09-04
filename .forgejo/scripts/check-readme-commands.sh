@@ -131,6 +131,8 @@ while IFS= read -r cmd; do
   case "$cmd" in
     *"shadow-cljs watch"*)
       skip "$cmd" "a watcher never exits; the compile it wraps is covered below" ;;
+    *"nrepl.cmdline"*)
+      skip "$cmd" "an interactive REPL never exits; its namespaces are covered by linting" ;;
     *":outdated"*)
       skip "$cmd" "reaches the network and reports newer releases by design, so it is never deterministically green" ;;
     *":benchmark"*)
