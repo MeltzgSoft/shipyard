@@ -1633,6 +1633,14 @@ canonical roll above and reports `:roll-source :part-orientation`. The mount for
 the optional rotation around the fixed normal **Twist**; saving encodes that adjustment
 in the durable `:mount/roll` vector rather than retaining an editor-only angle.
 
+The viewport renders a second Three.js scene through an orthographic camera into a
+scissored upper-right corner of the canvas. Its asymmetric wireframe box follows the part
+quaternion; red `+X`, green `+Y`, and blue `+Z` arrows stay aligned to the canonical frame.
+Matching circular arrows show positive rotation around each axis using the right-hand
+rule. Each render frame copies the main camera quaternion to the orthographic camera and
+places it on the equivalent viewing ray, so orbit controls rotate both views together
+without moving the widget on screen.
+
 On every successful result, position and all vector components are finite, axis and roll
 are unit length within `1e-9`, and `abs(dot(axis, roll)) <= 1e-9`. The derived +Y is
 `axis × roll`, making `(roll, +Y, axis)` a right-handed frame; the authoring preview draws

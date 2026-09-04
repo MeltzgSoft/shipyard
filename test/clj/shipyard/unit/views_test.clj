@@ -88,7 +88,11 @@
   (let [shell (render (views/shell {:bundles [] :classes [] :roles []} "/lib"))]
     (testing "hx-preserve keeps the WebGL context alive across every swap"
       (is (re-find #"<canvas[^>]*id=\"viewport\"" shell))
-      (is (re-find #"<canvas[^>]*hx-preserve=\"true\"" shell))))
+      (is (re-find #"<canvas[^>]*hx-preserve=\"true\"" shell)))
+    (testing "the canonical frame has a labelled color key"
+      (is (str/includes? shell "aria-label=\"Canonical axes\""))
+      (doseq [axis ["+X / Pitch" "+Y / Yaw" "+Z / Roll"]]
+        (is (str/includes? shell axis)))))
   (testing "nothing anywhere aims a swap at it"
     (doseq [v every-view]
       (let [html (render v)]

@@ -147,9 +147,13 @@ replaces the inferred role shown by browsing.
 
 Use **Part orientation** to put the source mesh into Shipyard's canonical pose: `+Y` is
 up, `+Z` is forward, and `+X` is starboard/right. Yaw rotates around Y, pitch around X,
-and roll around Z. Changes preview immediately; **Save orientation** stores the pose in
-the part's sidecar, while **Reset** returns it to the source STL orientation. Configure
-this before picking mounts so each new mount derives its up direction consistently.
+and roll around Z. A fixed widget in the viewport's upper-right corner shows an asymmetric
+wireframe box and canonical axes: red is `+X`/pitch, green is `+Y`/yaw, and blue is `+Z`/roll.
+Colored circular arrows show positive rotation using the right-hand rule. The widget
+follows the model's view as you orbit the camera while staying fixed in its corner.
+Changes preview immediately; **Save orientation** stores the pose in the part's sidecar,
+while **Reset** returns it to the source STL orientation. Configure this before picking
+mounts so each new mount derives its up direction consistently.
 
 **Save mount** creates a new id. If that id already exists, Shipyard reports it instead
 of overwriting silently; use **Replace** only when you mean to update that mount. A part

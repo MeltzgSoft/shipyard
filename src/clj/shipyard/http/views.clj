@@ -447,6 +447,10 @@
        [:p.muted "Loading the library…"]]]
      [:section.stage
       [:canvas#viewport.stage__canvas {:hx-preserve "true"}]
+      [:div.stage__axis-legend {:aria-label "Canonical axes"}
+       [:span.stage__axis.stage__axis--x [:i {:aria-hidden "true"}] "+X / Pitch"]
+       [:span.stage__axis.stage__axis--y [:i {:aria-hidden "true"}] "+Y / Yaw"]
+       [:span.stage__axis.stage__axis--z [:i {:aria-hidden "true"}] "+Z / Roll"]]
       [:aside#detail.panel.stage__detail (detail-empty)]]]]])
 
 (defn library-needs-root

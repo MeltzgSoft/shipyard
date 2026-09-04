@@ -162,6 +162,17 @@
   (select-part! "Mount Test Plate")
   (s/await-part *driver* s/mount-plate-id)
   (is (vec-close? (:orientation (s/stats *driver*)) [0.0 0.0 0.0 1.0]))
+  (let [guide (:orientation-guide (s/stats *driver*))]
+    (is (:wireframe? guide) "a loaded part should have an orientation wireframe")
+    (is (= "top-right" (:location guide))
+        "the guide should stay in a fixed viewport corner")
+    (is (= ["x" "y" "z"] (:positive-rotation-arcs guide))
+        "each axis should show its positive rotational direction")
+    (is (= [{:axis "x" :direction [1 0 0] :color-css "#ff5c5c"}
+            {:axis "y" :direction [0 1 0] :color-css "#5ce080"}
+            {:axis "z" :direction [0 0 1] :color-css "#57a7ff"}]
+           (:axes guide))
+        "the guide should label fixed canonical X, Y, and Z directions"))
   (s/js *driver* "() => {
     const input = document.querySelector('.part-orientation__form input[name=part-yaw-deg]');
     input.value = '90';
@@ -171,6 +182,9 @@
        #(vec-close? (:orientation (s/stats *driver*))
                     [0.0 0.7071068 0.0 0.7071068]))
       "yaw should preview on the loaded mesh immediately")
+  (let [guide (:orientation-guide (s/stats *driver*))]
+    (is (vec-close? (:orientation guide) [0.0 0.7071068 0.0 0.7071068])
+        "the corner wireframe should preview the same orientation as the solid mesh"))
   (s/click! *driver* ".part-orientation__actions button[value=save]")
   (select-part! "Classic Ram Prow")
   (s/await-part *driver* s/prow-id)
@@ -299,10 +313,19 @@
   (select-part! "Mount Test Plate")
   (s/await-part *driver* s/mount-plate-id)
   (let [{:keys [x y]} (viewport-center)
-        before (:camera (s/stats *driver*))]
+        before-stats (s/stats *driver*)
+        before (:camera before-stats)
+        before-guide-camera (get-in before-stats [:orientation-guide :camera-orientation])]
     (s/drag! *driver* [x y] [(+ x 160) (+ y 30)])
     (is (s/wait-until #(not (vec-close? before (:camera (s/stats *driver*)))))
         "dragging the canvas should still orbit when authoring is inactive")
+    (is (s/wait-until
+         #(let [{:keys [camera-orientation viewer-camera-orientation]}
+                (:orientation-guide (s/stats *driver*))]
+            (when (and (not (vec-close? before-guide-camera camera-orientation))
+                       (vec-close? camera-orientation viewer-camera-orientation))
+              true)))
+        "the corner widget should match the model camera while orbiting")
     (is (nil? (:preview (s/stats *driver*)))
         "ordinary orbiting should not create a facet preview")))
 

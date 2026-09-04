@@ -46,6 +46,15 @@
   ;; lighting is worse than building on it (§7.2).
   (three/MeshStandardMaterial. #js {:color 0x9aa4af :metalness 0.05 :roughness 0.65}))
 
+(def ^:private canonical-axes
+  [{:axis :x :direction [1.0 0.0 0.0] :color 0xff5c5c :color-css "#ff5c5c"}
+   {:axis :y :direction [0.0 1.0 0.0] :color 0x5ce080 :color-css "#5ce080"}
+   {:axis :z :direction [0.0 0.0 1.0] :color 0x57a7ff :color-css "#57a7ff"}])
+
+(def ^:private orientation-guide-size 156.0)
+(def ^:private orientation-guide-padding 12.0)
+(def ^:private orientation-guide-top 30.0)
+
 (defn- dispose-material! [material]
   (if (array? material)
     (doseq [m material] (some-> m .dispose))
@@ -94,12 +103,99 @@
       (.updateMatrixWorld object true)))
   object)
 
+(defn- v3 [[x y z]] (three/Vector3. x y z))
+
+(defn- rotation-point [axis angle radius]
+  (let [s (* radius (Math/sin angle))
+        c (* radius (Math/cos angle))]
+    (case axis
+      :x [0.0 c s]
+      :y [s 0.0 c]
+      :z [c s 0.0])))
+
+(defn- rotation-tangent [axis angle]
+  (let [s (Math/sin angle)
+        c (Math/cos angle)]
+    (case axis
+      :x [0.0 (- s) c]
+      :y [c 0.0 (- s)]
+      :z [(- s) c 0.0])))
+
+(defn- frontmost! [^js object]
+  (.traverse object
+             (fn [^js child]
+               (when-let [material (.-material child)]
+                 (set! (.-depthTest material) false)
+                 (set! (.-depthWrite material) false))))
+  (set! (.-renderOrder object) 5)
+  object)
+
+(defn- rotation-arc [{:keys [axis color]}]
+  (let [end-angle (* 1.62 Math/PI)
+        points (into-array (map #(v3 (rotation-point axis (* end-angle (/ % 40.0)) 0.9))
+                                (range 41)))
+        geometry (doto (three/BufferGeometry.)
+                   (.setFromPoints points))
+        line (three/Line. geometry
+                          (three/LineBasicMaterial. #js {:color color
+                                                         :transparent true
+                                                         :opacity 0.72}))
+        arrow (three/ArrowHelper. (v3 (rotation-tangent axis end-angle))
+                                  (v3 (rotation-point axis end-angle 0.9))
+                                  0.28 color 0.18 0.09)
+        group (three/Group.)]
+    (.add group line)
+    (.add group arrow)
+    (frontmost! group)))
+
+(defn- orientation-guide-object [part-orientation]
+  (let [box (three/BoxGeometry. 1.1 0.72 1.55)
+        wireframe (three/LineSegments.
+                   (three/EdgesGeometry. box)
+                   (three/LineBasicMaterial. #js {:color 0xd7e0e8
+                                                  :transparent true
+                                                  :opacity 0.82}))
+        group (three/Group.)]
+    (.dispose box)
+    (set! (.-name wireframe) "part-orientation-wireframe")
+    (frontmost! wireframe)
+    (doseq [{:keys [direction color] :as axis} canonical-axes]
+      (.add group (frontmost! (three/ArrowHelper. (v3 direction)
+                                                  (three/Vector3.)
+                                                  1.35 color 0.24 0.1)))
+      (.add group (rotation-arc axis)))
+    (.add group wireframe)
+    (orient-object! wireframe part-orientation)
+    {:object group
+     :wireframe wireframe
+     :orientation (orientation/orientation-of part-orientation)}))
+
 (defn- current-part? [{:keys [current]} part-id mesh-key]
   (let [loaded @current]
     (and (= part-id (:part-id loaded))
          (= mesh-key (:mesh-key loaded)))))
 
 ;; --- scene bookkeeping ------------------------------------------------------
+
+(defn- clear-orientation-guide! [{:keys [^js orientation-scene orientation-guide]}]
+  (when-let [{:keys [^js object]} @orientation-guide]
+    (.remove orientation-scene object)
+    (dispose-object! object))
+  (reset! orientation-guide nil))
+
+(defn- install-orientation-guide!
+  [{:keys [^js orientation-scene orientation-guide] :as sys} part-orientation]
+  (clear-orientation-guide! sys)
+  (let [{:keys [^js object] :as guide}
+        (orientation-guide-object part-orientation)]
+    (.add orientation-scene object)
+    (reset! orientation-guide guide)))
+
+(defn- update-orientation-guide! [{:keys [orientation-guide]} part-orientation]
+  (when-let [{:keys [^js wireframe]} @orientation-guide]
+    (let [normalized (orientation/orientation-of part-orientation)]
+      (orient-object! wireframe normalized)
+      (swap! orientation-guide assoc :orientation normalized))))
 
 (defn- put-part!
   "Put `obj` in the scene as `part-id`, disposing whatever was there under that
@@ -157,6 +253,7 @@
 (defn clear! [{:keys [^js scene ^js canvas parts authoring current repeat] :as sys}]
   (clear-authoring-preview! sys)
   (clear-interface-highlights! sys)
+  (clear-orientation-guide! sys)
   (reset! authoring nil)
   (reset! current nil)
   (reset! repeat nil)
@@ -167,8 +264,6 @@
   (reset! parts {}))
 
 ;; --- mount authoring --------------------------------------------------------
-
-(defn- v3 [[x y z]] (three/Vector3. x y z))
 
 (defn- parse-finite-double [s]
   (let [n (js/Number s)]
@@ -661,6 +756,7 @@
       (orient-object! (get @parts part-id) part-orientation)
       (orient-object! (:object @interfaces) part-orientation)
       (orient-object! (:object @preview) part-orientation)
+      (update-orientation-guide! sys part-orientation)
       (when-let [[bbox-min bbox-max] (:bounds @current)]
         (let [[oriented-min oriented-max]
               (orientation/oriented-bounds bbox-min bbox-max part-orientation)]
@@ -725,6 +821,7 @@
                  (orient-object! obj part-orientation)
                  (clear-authoring-preview! sys)
                  (clear-interface-highlights! sys)
+                 (clear-orientation-guide! sys)
                  (reset! authoring nil)
                  (reset! current {:part-id part-id
                                   :mesh-key mesh-key
@@ -733,6 +830,7 @@
                  (reset! repeat nil)
                  (.remove (.-classList canvas) "stage__canvas--authoring")
                  (show-only! sys part-id obj)
+                 (install-orientation-guide! sys part-orientation)
                  (draw-interfaces! sys {:part-id part-id
                                         :mesh-key mesh-key
                                         :orientation part-orientation
@@ -790,6 +888,17 @@
     (let [q (.-quaternion object)]
       [(.-x q) (.-y q) (.-z q) (.-w q)])))
 
+(defn- orientation-guide-stats
+  [{:keys [^js camera ^js orientation-camera orientation-guide]}]
+  (when-let [{:keys [orientation]} @orientation-guide]
+    (clj->js {:wireframe? true
+              :orientation orientation
+              :location :top-right
+              :camera-orientation (object-orientation orientation-camera)
+              :viewer-camera-orientation (object-orientation camera)
+              :positive-rotation-arcs (mapv :axis canonical-axes)
+              :axes (mapv #(select-keys % [:axis :direction :color-css]) canonical-axes)})))
+
 (defn stats
   "Scene facts for the E2E suite (§10.3).
 
@@ -814,6 +923,7 @@
          :status    (clj->js (:state @status))
          :authoring (clj->js @authoring)
          :orientation (clj->js (some-> objs first object-orientation))
+         :orientation-guide (orientation-guide-stats sys)
          :repeat    (clj->js @(:repeat sys))
          :interfaces (interface-stats sys)
          :preview   (preview-stats sys)}))
@@ -826,6 +936,37 @@
     (set! (.-aspect camera) (/ w h))
     (.updateProjectionMatrix camera)
     (.setSize renderer w h false)))
+
+(defn- sync-orientation-camera! [^js camera ^js orientation-camera]
+  (let [position (three/Vector3. 0.0 0.0 6.0)]
+    (.applyQuaternion position (.-quaternion camera))
+    (.copy (.-position orientation-camera) position)
+    (.copy (.-quaternion orientation-camera) (.-quaternion camera))
+    (.updateMatrixWorld orientation-camera true)))
+
+(defn- render-frame!
+  [{:keys [^js renderer ^js scene ^js camera ^js controls ^js canvas
+           ^js orientation-scene ^js orientation-camera orientation-guide]}]
+  (let [w (max 1 (.-clientWidth canvas))
+        h (max 1 (.-clientHeight canvas))]
+    (.update controls)
+    (.setScissorTest renderer false)
+    (.setViewport renderer 0 0 w h)
+    (.clear renderer true true true)
+    (.render renderer scene camera)
+    (when @orientation-guide
+      (let [size (min orientation-guide-size
+                      (max 72.0 (* 0.38 (min w h))))
+            x (max 0.0 (- w size orientation-guide-padding))
+            y (max 0.0 (- h size orientation-guide-top))]
+        (sync-orientation-camera! camera orientation-camera)
+        (.clearDepth renderer)
+        (.setViewport renderer x y size size)
+        (.setScissor renderer x y size size)
+        (.setScissorTest renderer true)
+        (.render renderer orientation-scene orientation-camera)
+        (.setScissorTest renderer false)
+        (.setViewport renderer 0 0 w h)))))
 
 (defn- environment!
   "A neutral studio IBL, generated rather than fetched: a `MeshStandardMaterial`
@@ -887,22 +1028,29 @@
   (when-let [renderer (renderer! canvas)]
     (let [scene    (three/Scene.)
           camera   (three/PerspectiveCamera. 45 1 0.1 1000)
+          orientation-scene (three/Scene.)
+          orientation-camera (three/OrthographicCamera. -2.0 2.0 2.0 -2.0 0.1 20.0)
           controls (OrbitControls. camera canvas)
           sys      {:canvas canvas :renderer renderer :scene scene :camera camera
+                    :orientation-scene orientation-scene
+                    :orientation-camera orientation-camera
                     :controls controls :parts (atom {}) :status (atom {:state :idle})
                     :current (atom nil) :authoring (atom nil) :preview (atom nil)
-                    :interfaces (atom nil) :repeat (atom nil)
+                    :interfaces (atom nil) :orientation-guide (atom nil) :repeat (atom nil)
                     :preview-revision (atom 0)
                     :raycaster (three/Raycaster.) :pointer (three/Vector2.)}]
       (set! (.-outputColorSpace renderer) three/SRGBColorSpace)
       (.setPixelRatio renderer (min 2 (.-devicePixelRatio js/window)))
+      (set! (.-autoClear renderer) false)
       (set! (.-background scene) (three/Color. 0x14171c))
+      (.set (.-position orientation-camera) 3.0 2.6 4.0)
+      (.lookAt orientation-camera 0.0 0.0 0.0)
       (set! (.-enableDamping controls) true)
       (environment! renderer scene)
       (resize! sys)
       (.observe (js/ResizeObserver. #(resize! sys)) canvas)
       (.addEventListener canvas "click" #(pick-face! sys %))
-      (.setAnimationLoop renderer (fn [] (.update controls) (.render renderer scene camera)))
+      (.setAnimationLoop renderer #(render-frame! sys))
       (listen! sys)
       sys)))
 
