@@ -82,6 +82,13 @@
   (let [[x y z w] (orientation-of orientation)]
     [(- x) (- y) (- z) w]))
 
+(defn relative-orientation
+  "Return the rotation from `saved` to `candidate`."
+  [saved candidate]
+  (orientation-of
+   (quaternion-multiply (orientation-of candidate)
+                        (inverse saved))))
+
 (defn rotate-vector
   "Rotate a three-vector by `orientation`."
   [orientation [vx vy vz]]

@@ -749,14 +749,21 @@
       (orientation/from-euler-degrees yaw pitch roll))))
 
 (defn- orient-part! [{:keys [parts current interfaces preview] :as sys}
-                     {:keys [part-id] :as payload}]
+                     {:keys [part-id saved?] :as payload}]
   (when (= part-id (:part-id @current))
-    (let [part-orientation (orientation/orientation-of (:orientation payload))]
-      (swap! current assoc :orientation part-orientation)
+    (let [part-orientation (orientation/orientation-of (:orientation payload))
+          saved-orientation (if saved?
+                              part-orientation
+                              (:saved-orientation @current))
+          guide-orientation (orientation/relative-orientation saved-orientation
+                                                              part-orientation)]
+      (swap! current assoc
+             :orientation part-orientation
+             :saved-orientation saved-orientation)
       (orient-object! (get @parts part-id) part-orientation)
       (orient-object! (:object @interfaces) part-orientation)
       (orient-object! (:object @preview) part-orientation)
-      (update-orientation-guide! sys part-orientation)
+      (update-orientation-guide! sys guide-orientation)
       (when-let [[bbox-min bbox-max] (:bounds @current)]
         (let [[oriented-min oriented-max]
               (orientation/oriented-bounds bbox-min bbox-max part-orientation)]
@@ -826,11 +833,12 @@
                  (reset! current {:part-id part-id
                                   :mesh-key mesh-key
                                   :orientation part-orientation
+                                  :saved-orientation part-orientation
                                   :bounds [bbox-min bbox-max]})
                  (reset! repeat nil)
                  (.remove (.-classList canvas) "stage__canvas--authoring")
                  (show-only! sys part-id obj)
-                 (install-orientation-guide! sys part-orientation)
+                 (install-orientation-guide! sys orientation/identity-quaternion)
                  (draw-interfaces! sys {:part-id part-id
                                         :mesh-key mesh-key
                                         :orientation part-orientation

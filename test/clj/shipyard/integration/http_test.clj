@@ -538,6 +538,7 @@
     (is (= 200 (:status saved)))
     (is (= part-orientation
            (:orientation (get (triggers saved) "shipyard:part-orientation"))))
+    (is (true? (:saved? (get (triggers saved) "shipyard:part-orientation"))))
     (is (re-find #"name=\"part-yaw-deg\"[^>]+value=\"90.0\"" (:body saved)))
     (testing "newly selected mount frames follow canonical part-up"
       (let [preview (get (triggers (facet-post h hull-id mesh-key 0))
@@ -550,7 +551,9 @@
                (:part/orientation (sidecar/read-sidecar root hull-id))))
         (is (= [0.0 0.0 0.0 1.0]
                (:orientation
-                (get (triggers reset-response) "shipyard:part-orientation"))))))
+                (get (triggers reset-response) "shipyard:part-orientation"))))
+        (is (true? (:saved?
+                    (get (triggers reset-response) "shipyard:part-orientation"))))))
     (testing "invalid values keep the loaded detail and restore the saved orientation"
       (let [invalid (part-orientation-post h {:part-id hull-id
                                               :part-yaw-deg "NaN"

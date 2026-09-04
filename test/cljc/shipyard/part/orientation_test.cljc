@@ -65,6 +65,18 @@
                           (orientation/inverse q)
                           (orientation/rotate-vector q point)))))))
 
+(deftest relative-orientation-test
+  (testing "returns identity when the candidate is the saved orientation"
+    (let [saved (orientation/from-euler-degrees 45 30 -15)]
+      (is (vector-close? orientation/identity-quaternion
+                         (orientation/relative-orientation saved saved)))))
+  (testing "returns the rotation that advances the saved orientation to the candidate"
+    (let [saved (orientation/from-euler-degrees 35 -20 10)
+          delta (orientation/from-euler-degrees -15 25 40)
+          candidate (orientation/quaternion-multiply delta saved)]
+      (is (vector-close? delta
+                         (orientation/relative-orientation saved candidate))))))
+
 (deftest rotate-vector-test
   (testing "identity leaves vectors unchanged"
     (is (vector-close? [1.0 2.0 3.0]

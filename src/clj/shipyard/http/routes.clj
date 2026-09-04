@@ -382,6 +382,7 @@
               (mount-response deps
                               part-id
                               {:part-orientation {:part-id part-id
+                                                  :saved? true
                                                   :orientation part-orientation}}))
             (catch Exception _
               (facet-error :part-orientation-save-failed

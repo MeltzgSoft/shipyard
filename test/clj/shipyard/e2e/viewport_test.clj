@@ -186,6 +186,13 @@
     (is (vec-close? (:orientation guide) [0.0 0.7071068 0.0 0.7071068])
         "the corner wireframe should preview the same orientation as the solid mesh"))
   (s/click! *driver* ".part-orientation__actions button[value=save]")
+  (is (s/wait-until
+       #(vec-close? (get-in (s/stats *driver*) [:orientation-guide :orientation])
+                    [0.0 0.0 0.0 1.0]))
+      "saving should make the current pose the wireframe's standard orientation")
+  (is (vec-close? (:orientation (s/stats *driver*))
+                  [0.0 0.7071068 0.0 0.7071068])
+      "saving should leave the solid mesh in its canonical pose")
   (select-part! "Classic Ram Prow")
   (s/await-part *driver* s/prow-id)
   (select-part! "Mount Test Plate")
@@ -193,6 +200,9 @@
   (is (vec-close? (:orientation (s/stats *driver*))
                   [0.0 0.7071068 0.0 0.7071068])
       "loading the part again should restore its sidecar orientation")
+  (is (vec-close? (get-in (s/stats *driver*) [:orientation-guide :orientation])
+                  [0.0 0.0 0.0 1.0])
+      "a loaded saved orientation should be the wireframe's standard")
   (s/click! *driver* ".part-orientation__actions button[value=reset]")
   (is (s/wait-until
        #(vec-close? (:orientation (s/stats *driver*)) [0.0 0.0 0.0 1.0]))
