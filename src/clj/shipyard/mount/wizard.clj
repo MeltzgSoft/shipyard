@@ -1,7 +1,8 @@
 (ns shipyard.mount.wizard
   "Pure parsing and validation for the M2 mount wizard."
   (:require [clojure.edn :as edn]
-            [clojure.string :as str]))
+            [clojure.string :as str]
+            [shipyard.part.orientation :as orientation]))
 
 (def role-options
   [:hull :hull-section :prow :bridge :antenna :engine :weapon :turret
@@ -14,7 +15,6 @@
 (def ^:private unit-epsilon 1e-6)
 (def ^:private orthogonal-epsilon 1e-6)
 (def ^:private centerline-epsilon 1e-6)
-(def ^:private plane-index {:x 0 :y 1 :z 2})
 
 (defn- many [x]
   (cond
@@ -148,29 +148,38 @@
         used (set (map :mount/id mounts))]
     (first (remove used candidates))))
 
-(defn mirror-frame [frame plane offset]
-  (let [idx (plane-index plane)
-        reflect-pos (fn [v] (assoc v idx (- (* 2.0 offset) (v idx))))
-        reflect-dir (fn [v] (update v idx -))
-        mirrored {:mount/pos (reflect-pos (:mount/pos frame))
-                  :mount/axis (reflect-dir (:mount/axis frame))
-                  :mount/roll (reflect-dir (:mount/roll frame))}]
-    (when (valid-frame? mirrored)
-      mirrored)))
+(defn mirror-frame
+  ([frame plane offset]
+   (mirror-frame frame plane offset orientation/identity-quaternion))
+  ([frame plane offset part-orientation]
+   (let [mirrored {:mount/pos (orientation/reflect-position
+                               part-orientation plane offset (:mount/pos frame))
+                   :mount/axis (orientation/reflect-direction
+                                part-orientation plane (:mount/axis frame))
+                   :mount/roll (orientation/reflect-direction
+                                part-orientation plane (:mount/roll frame))}]
+     (when (valid-frame? mirrored)
+       mirrored))))
 
-(defn centerline? [frame plane offset]
-  (let [idx (plane-index plane)]
-    (and idx (<= (Math/abs (- (double ((:mount/pos frame) idx))
-                              (double offset)))
-                 centerline-epsilon))))
+(defn centerline?
+  ([frame plane offset]
+   (centerline? frame plane offset orientation/identity-quaternion))
+  ([frame plane offset part-orientation]
+   (when-let [distance (orientation/plane-distance
+                        part-orientation plane offset (:mount/pos frame))]
+     (<= (Math/abs (double distance)) centerline-epsilon))))
 
-(defn mirror-mount [mount plane offset mirror-id]
-  (when-let [frame (mirror-frame (select-keys mount [:mount/pos :mount/axis :mount/roll])
-                                 plane offset)]
-    (merge mount
-           frame
-           {:mount/id mirror-id
-            :mount/origin :mirrored})))
+(defn mirror-mount
+  ([mount plane offset mirror-id]
+   (mirror-mount mount plane offset mirror-id orientation/identity-quaternion))
+  ([mount plane offset mirror-id part-orientation]
+   (when-let [frame (mirror-frame
+                     (select-keys mount [:mount/pos :mount/axis :mount/roll])
+                     plane offset part-orientation)]
+     (merge mount
+            frame
+            {:mount/id mirror-id
+             :mount/origin :mirrored}))))
 
 (defn repeat-values [mount mounts]
   {:mount-id (some->> (:mount/id mount) (suggest-repeat-id mounts) (name))
@@ -182,11 +191,13 @@
   (let [mount-id (parse-mount-id (get params "mount-id"))
         kind (parse-keyword (get params "kind") kind-options)
         accepts (set (keep #(parse-keyword % role-options) (many (get params "accepts"))))
-        capacity (parse-positive-long (get params "capacity"))]
+        capacity (parse-positive-long (get params "capacity"))
+        twist-deg (or (get params "twist-deg") (get params "roll-deg"))]
     (cond-> {}
       mount-id (assoc :mount-id (name mount-id))
       kind (assoc :kind kind)
       capacity (assoc :capacity capacity)
+      twist-deg (assoc :twist-deg twist-deg)
       (seq accepts) (assoc :accepts accepts))))
 
 (defn mount-values [mount]
@@ -233,104 +244,110 @@
       original-mount-id (assoc :mode :edit
                                :original-mount-id original-mount-id))))
 
-(defn save-request [params existing-mounts]
-  (let [mount-id (parse-mount-id (get params "mount-id"))
-        original-mount-id (parse-mount-id (get params "original-mount-id"))
-        kind (parse-keyword (get params "kind") kind-options)
-        action (parse-keyword (get params "action") [:create :replace :update])
-        accepts (set (keep #(parse-keyword % role-options) (many (get params "accepts"))))
-        capacity (or (parse-positive-long (get params "capacity")) 1)
-        roll-deg (or (parse-finite-double (get params "roll-deg")) 0.0)
-        frame (adjusted-frame (parse-edn (get params "frame")) roll-deg)
-        update? (= :update action)
-        base-id (when update? original-mount-id)
-        existing-base (when base-id (mount-by-id existing-mounts base-id))
-        other-mounts (if base-id
-                       (remove #(= base-id (:mount/id %)) existing-mounts)
-                       existing-mounts)
-        mirror? (checked? (get params "mirror"))
-        repeat? (checked? (get params "repeat"))
-        mirror-plane (parse-keyword (get params "mirror-plane") symmetry-plane-options)
-        mirror-offset (or (parse-finite-double (get params "mirror-offset")) 0.0)
-        mirror-id (or (parse-mount-id (get params "mirror-id"))
-                      (some-> mount-id (suggest-mirror-id)))]
-    (cond
-      (nil? mount-id)
-      {:error "Mount ids must start with a letter and contain only letters, numbers, dashes and underscores."}
+(defn save-request
+  ([params existing-mounts]
+   (save-request params existing-mounts orientation/identity-quaternion))
+  ([params existing-mounts part-orientation]
+   (let [mount-id (parse-mount-id (get params "mount-id"))
+         original-mount-id (parse-mount-id (get params "original-mount-id"))
+         kind (parse-keyword (get params "kind") kind-options)
+         action (parse-keyword (get params "action") [:create :replace :update])
+         accepts (set (keep #(parse-keyword % role-options) (many (get params "accepts"))))
+         capacity (or (parse-positive-long (get params "capacity")) 1)
+         twist-deg (or (parse-finite-double (or (get params "twist-deg")
+                                                (get params "roll-deg")))
+                       0.0)
+         frame (adjusted-frame (parse-edn (get params "frame")) twist-deg)
+         update? (= :update action)
+         base-id (when update? original-mount-id)
+         existing-base (when base-id (mount-by-id existing-mounts base-id))
+         other-mounts (if base-id
+                        (remove #(= base-id (:mount/id %)) existing-mounts)
+                        existing-mounts)
+         mirror? (checked? (get params "mirror"))
+         repeat? (checked? (get params "repeat"))
+         mirror-plane (parse-keyword (get params "mirror-plane") symmetry-plane-options)
+         mirror-offset (or (parse-finite-double (get params "mirror-offset")) 0.0)
+         mirror-id (or (parse-mount-id (get params "mirror-id"))
+                       (some-> mount-id (suggest-mirror-id)))]
+     (cond
+       (nil? mount-id)
+       {:error "Mount ids must start with a letter and contain only letters, numbers, dashes and underscores."}
 
-      (nil? kind)
-      {:error "Choose whether this mount is a plug or a socket."}
+       (nil? kind)
+       {:error "Choose whether this mount is a plug or a socket."}
 
-      (nil? action)
-      {:error "Choose whether to save, replace, or update this mount."}
+       (nil? action)
+       {:error "Choose whether to save, replace, or update this mount."}
 
-      (nil? frame)
-      {:error "The selected face no longer has a valid frame. Pick it again."}
+       (nil? frame)
+       {:error "The selected face no longer has a valid frame. Pick it again."}
 
-      (and update? (nil? original-mount-id))
-      {:error "Choose a mount to edit."}
+       (and update? (nil? original-mount-id))
+       {:error "Choose a mount to edit."}
 
-      (and update? (nil? existing-base))
-      {:error "No mount with that id exists."}
+       (and update? (nil? existing-base))
+       {:error "No mount with that id exists."}
 
-      (and (= :socket kind) (empty? accepts))
-      {:error "Choose at least one role this socket accepts."}
+       (and (= :socket kind) (empty? accepts))
+       {:error "Choose at least one role this socket accepts."}
 
-      (and (= :socket kind) (contains? params "capacity") (nil? (parse-positive-long (get params "capacity"))))
-      {:error "Capacity must be a whole number of at least 1."}
+       (and (= :socket kind) (contains? params "capacity") (nil? (parse-positive-long (get params "capacity"))))
+       {:error "Capacity must be a whole number of at least 1."}
 
-      (and (= :create action) (mount-by-id existing-mounts mount-id))
-      {:error "A mount with that id already exists. Use replace when you mean to overwrite it."}
+       (and (= :create action) (mount-by-id existing-mounts mount-id))
+       {:error "A mount with that id already exists. Use replace when you mean to overwrite it."}
 
-      (and update? (mount-by-id other-mounts mount-id))
-      {:error "A mount with that id already exists. Rename it or use replace deliberately."}
+       (and update? (mount-by-id other-mounts mount-id))
+       {:error "A mount with that id already exists. Rename it or use replace deliberately."}
 
-      (and (= :plug kind) (plug-exists? other-mounts))
-      {:error "This part already has a plug. Delete it first, or replace the existing plug id."}
+       (and (= :plug kind) (plug-exists? other-mounts))
+       {:error "This part already has a plug. Delete it first, or replace the existing plug id."}
 
-      (and mirror? (not= :socket kind))
-      {:error "Only sockets can be mirrored."}
+       (and mirror? (not= :socket kind))
+       {:error "Only sockets can be mirrored."}
 
-      (and mirror? (nil? mirror-plane))
-      {:error "Choose the symmetry plane for the mirrored socket."}
+       (and mirror? (nil? mirror-plane))
+       {:error "Choose the symmetry plane for the mirrored socket."}
 
-      (and mirror? (nil? mirror-id))
-      {:error "Choose a valid id for the mirrored socket."}
+       (and mirror? (nil? mirror-id))
+       {:error "Choose a valid id for the mirrored socket."}
 
-      (and mirror? (= mirror-id mount-id))
-      {:error "The mirrored socket needs a different id."}
+       (and mirror? (= mirror-id mount-id))
+       {:error "The mirrored socket needs a different id."}
 
-      (and mirror? (centerline? frame mirror-plane mirror-offset))
-      {:error "That socket is on the symmetry plane, so it has no mirrored counterpart."}
+       (and mirror? (centerline? frame mirror-plane mirror-offset part-orientation))
+       {:error "That socket is on the symmetry plane, so it has no mirrored counterpart."}
 
-      (and mirror? (= :create action) (mount-by-id existing-mounts mirror-id))
-      {:error "A mount with the mirrored id already exists. Rename it or use replace deliberately."}
+       (and mirror? (= :create action) (mount-by-id existing-mounts mirror-id))
+       {:error "A mount with the mirrored id already exists. Rename it or use replace deliberately."}
 
-      :else
-      (let [mount (cond-> {:mount/id mount-id
-                           :mount/kind kind
-                           :mount/pos (:mount/pos frame)
-                           :mount/axis (:mount/axis frame)
-                           :mount/roll (:mount/roll frame)
-                           :mount/origin (or (:mount/origin existing-base) :picked)}
-                    (= :socket kind) (assoc :mount/accepts accepts
-                                            :mount/capacity capacity))]
-        (if mirror?
-          (if-let [mirrored (mirror-mount mount mirror-plane mirror-offset mirror-id)]
-            (let [mounts (-> existing-mounts
-                             (replace-mount-by-id (or base-id mount-id) mount)
-                             (replace-mount mirrored))]
-              (cond-> {:mount mount
-                       :mirrored-mount mirrored
-                       :mounts mounts}
-                repeat? (assoc :repeat-values (repeat-values mount mounts))))
-            {:error "The mirrored socket frame is invalid. Pick the face again."})
-          (let [mounts (if base-id
-                         (replace-mount-by-id existing-mounts base-id mount)
-                         (replace-mount existing-mounts mount))]
-            (cond-> {:mount mount
-                     :mounts mounts}
-              repeat? (assoc :repeat-values (repeat-values mount mounts)))))))))
+       :else
+       (let [mount (cond-> {:mount/id mount-id
+                            :mount/kind kind
+                            :mount/pos (:mount/pos frame)
+                            :mount/axis (:mount/axis frame)
+                            :mount/roll (:mount/roll frame)
+                            :mount/origin (or (:mount/origin existing-base) :picked)}
+                     (= :socket kind) (assoc :mount/accepts accepts
+                                             :mount/capacity capacity))]
+         (if mirror?
+           (if-let [mirrored (mirror-mount mount mirror-plane mirror-offset mirror-id
+                                           part-orientation)]
+             (let [mounts (-> existing-mounts
+                              (replace-mount-by-id (or base-id mount-id) mount)
+                              (replace-mount mirrored))]
+               (cond-> {:mount mount
+                        :mirrored-mount mirrored
+                        :mounts mounts}
+                 repeat? (assoc :repeat-values (repeat-values mount mounts))))
+             {:error "The mirrored socket frame is invalid. Pick the face again."})
+           (let [mounts (if base-id
+                          (replace-mount-by-id existing-mounts base-id mount)
+                          (replace-mount existing-mounts mount))]
+             (cond-> {:mount mount
+                      :mounts mounts}
+               repeat? (assoc :repeat-values (repeat-values mount mounts))))))))))
 
 (defn delete-request [params existing-mounts]
   (if-let [mount-id (parse-mount-id (get params "mount-id"))]

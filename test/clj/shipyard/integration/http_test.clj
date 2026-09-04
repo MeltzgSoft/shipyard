@@ -155,6 +155,9 @@
 (defn- part-role-post [h params]
   (POST h "/parts/role" params))
 
+(defn- part-orientation-post [h params]
+  (POST h "/parts/orientation" params))
+
 ;; --- the shell --------------------------------------------------------------
 
 (deftest shell-is-a-document-with-the-canvas-island
@@ -221,6 +224,7 @@
       (testing "the mesh URL arrives by HX-Trigger, in the shipyard namespace"
         (is (= hull-id (:part-id shipyard:load-mesh)))
         (is (true? (:frame shipyard:load-mesh)))
+        (is (= [0.0 0.0 0.0 1.0] (:orientation shipyard:load-mesh)))
         (is (re-matches #"/mesh/[0-9a-f]{64}\.0\.symesh" (:url shipyard:load-mesh))))
       (testing "and the ready fragment stops polling"
         (is (not (str/includes? (:body ready) "load delay:")))))))
@@ -321,7 +325,7 @@
     (is (= [0.0 0.0 1.0] (get-in preview [:frame :mount/axis])))
     (is (= [1.0 0.0 0.0] (get-in preview [:frame :mount/roll])))
     (is (false? (:roll-ambiguous? preview)))
-    (is (= :hull-edge (:roll-source preview)))))
+    (is (= :part-orientation (:roll-source preview)))))
 
 (deftest mount-wizard-saves-replaces-and-deletes
   (let [root (library-tree)
@@ -456,9 +460,9 @@
     (is (str/includes? (:body edit) "Save changes"))
     (is (str/includes? (:body edit) "name=\"original-mount-id\""))
     (is (str/includes? (:body edit) "value=\"port-1\""))
-    (is (re-find #"checked=\"checked\"[^>]+value=\"weapon\"" (:body edit)))
     (is (str/includes? (:body edit) "Normal (+Z)"))
-    (is (str/includes? (:body edit) "Roll"))
+    (is (str/includes? (:body edit) "Twist"))
+    (is (re-find #"checked=\"checked\"[^>]+value=\"weapon\"" (:body edit)))
     (is (= {:state :enter :part-id hull-id :mesh-key mesh-key}
            (get edit-events "shipyard:authoring")))
     (is (= (:frame preview) (:frame edit-preview)))
@@ -470,7 +474,7 @@
                                   "kind" "socket"
                                   "accepts" "weapon"
                                   "capacity" "3"
-                                  "roll-deg" "90"})]
+                                  "twist-deg" "90"})]
         (is (= 200 (:status repicked)))
         (is (str/includes? (:body repicked) "Save changes"))
         (is (str/includes? (:body repicked) "name=\"original-mount-id\""))
@@ -484,7 +488,7 @@
                                    :accepts "prow"
                                    :capacity "1"
                                    :frame (pr-str (:frame edit-preview))
-                                   :roll-deg "90"
+                                   :twist-deg "90"
                                    :action "update"})
             mounts (:mounts (sidecar/read-sidecar root hull-id))
             mount (first mounts)]
@@ -519,6 +523,43 @@
         (is (= :hull (:part/role sidecar)))
         (is (str/includes? (:body role-saved) "Part metadata"))
         (is (str/includes? (:body role-saved) "Manual"))))))
+
+(deftest part-orientation-is-edited-outside-the-mount-wizard
+  (let [root (library-tree)
+        sys (system root)
+        h (handler sys)
+        mesh-key (seed-authoring-cache! sys)
+        saved (part-orientation-post h {:part-id hull-id
+                                        :part-yaw-deg "90"
+                                        :part-pitch-deg "0"
+                                        :part-roll-deg "0"
+                                        :action "save"})
+        part-orientation (:part/orientation (sidecar/read-sidecar root hull-id))]
+    (is (= 200 (:status saved)))
+    (is (= part-orientation
+           (:orientation (get (triggers saved) "shipyard:part-orientation"))))
+    (is (re-find #"name=\"part-yaw-deg\"[^>]+value=\"90.0\"" (:body saved)))
+    (testing "newly selected mount frames follow canonical part-up"
+      (let [preview (get (triggers (facet-post h hull-id mesh-key 0))
+                         "shipyard:facet-preview")]
+        (is (= :part-orientation (:roll-source preview)))
+        (is (false? (:roll-ambiguous? preview)))))
+    (testing "reset persists identity and updates the live viewer"
+      (let [reset-response (part-orientation-post h {:part-id hull-id :action "reset"})]
+        (is (= [0.0 0.0 0.0 1.0]
+               (:part/orientation (sidecar/read-sidecar root hull-id))))
+        (is (= [0.0 0.0 0.0 1.0]
+               (:orientation
+                (get (triggers reset-response) "shipyard:part-orientation"))))))
+    (testing "invalid values keep the loaded detail and restore the saved orientation"
+      (let [invalid (part-orientation-post h {:part-id hull-id
+                                              :part-yaw-deg "NaN"
+                                              :part-pitch-deg "0"
+                                              :part-roll-deg "0"
+                                              :action "save"})]
+        (is (= 200 (:status invalid)))
+        (is (str/includes? (:body invalid) "finite angles"))
+        (is (str/includes? (:body invalid) "Pick mount face"))))))
 
 (deftest mount-wizard-reports-validation-errors
   (let [sys (system (library-tree))

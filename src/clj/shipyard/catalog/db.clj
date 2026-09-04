@@ -12,7 +12,8 @@
             [datascript.core :as d]
             [integrant.core :as ig]
             [shipyard.catalog.sidecar :as sidecar]
-            [shipyard.library.index :as index]))
+            [shipyard.library.index :as index]
+            [shipyard.part.orientation :as orientation]))
 
 (def schema
   {:part/id          {:db/unique :db.unique/identity}
@@ -32,6 +33,7 @@
    :part/renderable  {:db/index true}
    :part/mesh-key    {}
    :part/tris        {}
+   :part/orientation {}
    :part/mounts      {:db/cardinality :db.cardinality/many
                       :db/valueType   :db.type/ref
                       :db/isComponent true}
@@ -70,14 +72,16 @@
 (defn part->tx
   "Part record plus its sidecar data -> a transaction map."
   [part sidecar]
-  (cond-> (into {} (remove (comp nil? val)) (select-keys part
-                                                         [:part/id :part/bundle :part/class :part/name
-                                                          :part/role-hint :part/role-source :part/source
-                                                          :part/renderable :part/mesh-key :part/tris
-                                                          :part/weapons? :part/turrets?
-                                                          :part/accepts-turrets?]))
-    (seq (:part/variants part)) (assoc :part/variants (vec (:part/variants part)))
-    (seq (:mounts sidecar))     (assoc :part/mounts (vec (:mounts sidecar)))))
+  (let [part-orientation (orientation/normalize-quaternion (:part/orientation sidecar))]
+    (cond-> (into {} (remove (comp nil? val)) (select-keys part
+                                                           [:part/id :part/bundle :part/class :part/name
+                                                            :part/role-hint :part/role-source :part/source
+                                                            :part/renderable :part/mesh-key :part/tris
+                                                            :part/weapons? :part/turrets?
+                                                            :part/accepts-turrets?]))
+      (seq (:part/variants part)) (assoc :part/variants (vec (:part/variants part)))
+      (seq (:mounts sidecar))     (assoc :part/mounts (vec (:mounts sidecar)))
+      part-orientation            (assoc :part/orientation part-orientation))))
 
 (defn ingest
   "Build a fresh DB from scanned parts, reading each part's sidecar.
@@ -194,6 +198,15 @@
                         :part/role-hint part-role
                         :part/role-source :manual}])
     part-role))
+
+(defn save-part-orientation!
+  "Persist a part's source-to-canonical orientation without changing mounts."
+  [{:keys [state]} part-id part-orientation]
+  (let [{:keys [conn root]} @state
+        part-orientation (orientation/orientation-of part-orientation)]
+    (sidecar/update-sidecar! root part-id assoc :part/orientation part-orientation)
+    (d/transact! conn [{:part/id part-id :part/orientation part-orientation}])
+    part-orientation))
 
 ;; --- component --------------------------------------------------------------
 

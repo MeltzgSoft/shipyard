@@ -118,7 +118,7 @@ needs - where the part sits, which way it faces, and how it is rotated.
 
 After a part has loaded, choose **Pick mount face**, then click the face in the viewport.
 Shipyard highlights the selected flat facet and draws its complete orientation frame:
-the outward normal (`+Z`), in-plane roll direction (`+X`), and derived up direction (`+Y`).
+the outward normal (`+Z`), in-plane twist reference (`+X`), and derived up direction (`+Y`).
 Choose **Done picking** to leave face-picking mode.
 Configured interfaces are always colored in the viewer when the part is loaded; the
 detail panel shows a legend for the plug and socket types present on that part.
@@ -132,8 +132,8 @@ When the preview looks right, fill in the mount form:
 - **Accepts** is used for sockets; choose at least one role that can attach there.
 - **Capacity** is used for sockets whose selected face can hold more than one part.
   Human Navy Cruiser weapon sockets use capacity `2`.
-- **Roll** rotates the `+X` and `+Y` directions around the fixed outward `+Z` normal before
-  saving when the automatic orientation is ambiguous or intentionally needs adjustment.
+- **Twist** rotates the `+X` and `+Y` directions around the fixed outward `+Z` normal
+  before saving. Most mounts should remain at zero once the part orientation is correct.
 - **Mirror** creates a second socket by reflecting the picked frame across a symmetry
   plane. Human Navy Cruiser hulls use the X plane at offset `0`; change the plane or
   offset only when the part's centreline is different. When mirror is selected,
@@ -144,6 +144,12 @@ When the preview looks right, fill in the mount form:
 Part-level metadata is edited outside the mount picker. Use **Part metadata** in the
 detail panel to set the role Shipyard should trust for that part from now on. It
 replaces the inferred role shown by browsing.
+
+Use **Part orientation** to put the source mesh into Shipyard's canonical pose: `+Y` is
+up, `+Z` is forward, and `+X` is starboard/right. Yaw rotates around Y, pitch around X,
+and roll around Z. Changes preview immediately; **Save orientation** stores the pose in
+the part's sidecar, while **Reset** returns it to the source STL orientation. Configure
+this before picking mounts so each new mount derives its up direction consistently.
 
 **Save mount** creates a new id. If that id already exists, Shipyard reports it instead
 of overwriting silently; use **Replace** only when you mean to update that mount. A part

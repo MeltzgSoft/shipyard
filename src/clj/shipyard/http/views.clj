@@ -8,7 +8,8 @@
   (:require [clojure.string :as str]
             [shipyard.http.urls :as urls]
             [shipyard.interface-colors :as interface-colors]
-            [shipyard.mount.wizard :as wizard]))
+            [shipyard.mount.wizard :as wizard]
+            [shipyard.part.orientation :as orientation]))
 
 ;; --- parts ------------------------------------------------------------------
 
@@ -162,6 +163,35 @@
       :class "From folder"
       "Inferred")]])
 
+(defn- display-angle [value]
+  (let [rounded (Math/round (* 100.0 (double value)))]
+    (/ rounded 100.0)))
+
+(defn- orientation-field [label name value]
+  [:label.part-orientation__field label
+   [:input {:type "number"
+            :name name
+            :value (display-angle value)
+            :step "1"}]])
+
+(defn- part-orientation [{:part/keys [id] :as part} error]
+  (let [[yaw pitch roll] (orientation/to-euler-degrees (:part/orientation part))]
+    [:section.part-orientation
+     [:h3.part-orientation__title "Part orientation"]
+     [:form.part-orientation__form
+      {:hx-post   "/parts/orientation"
+       :hx-target "#detail"
+       :hx-swap   "innerHTML"}
+      [:input {:type "hidden" :name "part-id" :value id}]
+      (orientation-field "Yaw (Y)" "part-yaw-deg" yaw)
+      (orientation-field "Pitch (X)" "part-pitch-deg" pitch)
+      (orientation-field "Roll (Z)" "part-roll-deg" roll)
+      [:div.part-orientation__actions
+       [:button {:type "submit" :name "action" :value "save"} "Save orientation"]
+       [:button {:type "submit" :name "action" :value "reset"} "Reset"]]]
+     (when error
+       [:p.detail__error error])]))
+
 (defn detail-preparing [{:part/keys [id] :as part}]
   [:div.detail
    (detail-head part)
@@ -170,12 +200,13 @@
 
 (defn detail-ready
   ([part mesh-key] (detail-ready part mesh-key nil))
-  ([part mesh-key {:keys [error preview repeat-values]}]
+  ([part mesh-key {:keys [error orientation-error preview repeat-values]}]
    [:div.detail.detail--ready
     [:div.detail__summary
      (detail-head part)
      [:p.detail__status "Loaded."]
      (part-metadata part)
+     (part-orientation part orientation-error)
      (interface-legend part)
      (mount-list part)]
     [:div#mount-authoring.mount-wizard
@@ -259,8 +290,8 @@
      [:label.mount-wizard__field "Capacity"
       [:input {:type "number" :name "capacity" :value capacity
                :min "1" :step "1"}]]
-     [:label.mount-wizard__field "Roll"
-      [:input {:type "number" :name "roll-deg" :value (or (:roll-deg values) "0")
+     [:label.mount-wizard__field "Twist"
+      [:input {:type "number" :name "twist-deg" :value (or (:twist-deg values) "0")
                :step "1"}]]
      (when-not edit?
        [:fieldset.mount-wizard__mirror
@@ -282,7 +313,7 @@
         "Repeat classification"])
      [:ul.mount-wizard__orientation
       [:li [:span.mount-wizard__swatch.mount-wizard__swatch--axis] "Normal (+Z)"]
-      [:li [:span.mount-wizard__swatch.mount-wizard__swatch--roll] "Roll (+X)"]
+      [:li [:span.mount-wizard__swatch.mount-wizard__swatch--roll] "Twist reference (+X)"]
       [:li [:span.mount-wizard__swatch.mount-wizard__swatch--up] "Up (+Y)"]]
      [:div.mount-wizard__actions
       (if edit?

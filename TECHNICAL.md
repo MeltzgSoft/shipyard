@@ -106,6 +106,7 @@ Human Navy Fleet Bundle/Cruiser/Hull/
 ```clojure
 {:shipyard/version 1
  :part/role   :hull
+ :part/orientation [0.0 0.0 0.0 1.0]
  :mounts [{:mount/id :prow  :mount/kind :socket :mount/accepts #{:prow}
            :mount/pos [0.0 0.0 86.77] :mount/axis [0.0 0.0 1.0] :mount/roll [0.0 1.0 0.0]
            :mount/origin :picked}]}
@@ -1621,28 +1622,16 @@ triangle order:
 2. `:mount/axis` is the normalized sum of the facet triangles' unnormalized cross
    products. It therefore weights by area and follows the mesh winding. A zero or
    non-finite result is an error.
-3. Project the unique geometric points into the facet plane, compute their two-dimensional
-   monotone-chain convex hull, and consider only consecutive hull edges, including the
-   closing edge. `:mount/roll` is the normalized three-dimensional direction of the
-   longest hull **edge**, never a diagonal.
+3. Use the part's persisted source-to-canonical quaternion to transform canonical up
+   (`+Y`) into source space, project it into the face plane, and derive `:mount/roll` so
+   `axis × roll` follows that projected up direction. If the face normal is parallel to
+   canonical up, use canonical forward (`+Z`), then canonical right (`+X`) as fallbacks.
 
-An edge direction has two equivalent signs. Canonicalize it so its first component whose
-absolute value exceeds `1e-9` is positive, checking X, then Y, then Z. Opposite parallel
-edges therefore produce the same roll. Lengths within one percent of the maximum are
-tied; if tied maximum edges contain more than one direction (directions are considered
-parallel when `abs(dot) >= cos(1 degree)`), the facet is roll-ambiguous. It is also
-ambiguous when the two eigenvalues of the projected convex polygon's area covariance are
-within one percent. The covariance is over polygon area, not its sampled vertices, so an
-unevenly tessellated circular rim still has no invented preferred direction. These two
-tests catch squares, circles and near-circles without misclassifying the two opposite long
-edges of a rectangle.
-
-For an ambiguous facet, project the first usable world axis from the fixed order X, Y, Z
-onto the facet plane and normalize it; "usable" means a projected length greater than
-`1e-9`. Canonicalize its sign by the same rule. The preview reports
-`:roll-ambiguous? true` and `:roll-source :world-axis`, so the wizard exposes roll
-adjustment rather than pretending the fallback came from the model. An ordinary facet
-reports `:roll-source :hull-edge`.
+The lower-level facet calculation still produces a deterministic geometric roll, which
+is useful to validate that a frame exists. The authoring boundary replaces it with the
+canonical roll above and reports `:roll-source :part-orientation`. The mount form calls
+the optional rotation around the fixed normal **Twist**; saving encodes that adjustment
+in the durable `:mount/roll` vector rather than retaining an editor-only angle.
 
 On every successful result, position and all vector components are finite, axis and roll
 are unit length within `1e-9`, and `abs(dot(axis, roll)) <= 1e-9`. The derived +Y is
@@ -1652,7 +1641,7 @@ ordinary EDN numbers.
 
 ### 12.4 Symmetry plane and mirroring
 
-M2 supports the three axis-aligned planes in the part's own coordinates. A plane is the
+M2 supports the three axis-aligned planes in the part's canonical coordinates. A plane is the
 transient pair `{:axis :x|:y|:z :offset number}`. The UI defaults the offset to the dense
 mesh bounding-box midpoint on the chosen axis and defaults the axis to `:x`, but always
 shows both for confirmation; print layouts mean neither the origin nor a guessed axis is
@@ -1666,7 +1655,8 @@ point'  = point - 2 n dot(point - q, n)
 vector' = vector - 2 n dot(vector, n)
 ```
 
-Reflect `:mount/pos` as a point and both `:mount/axis` and `:mount/roll` as vectors, then
+Transform the selected canonical plane normal into source space with the inverse part
+orientation. Reflect `:mount/pos` as a point and both `:mount/axis` and `:mount/roll` as vectors, then
 renormalize and remove any accumulated roll component along the axis:
 
 ```
@@ -1705,7 +1695,7 @@ handler passes this event map to the existing `htmx/fragment` helper:
            :mount/axis [0.0 0.0 1.0]
            :mount/roll [1.0 0.0 0.0]}
    :roll-ambiguous? false
-   :roll-source :hull-edge}}}
+   :roll-source :part-orientation}}}
 ```
 
 `htmx/fragment` names the event `shipyard:facet-preview`; on the wire it follows §7.1
@@ -1753,7 +1743,9 @@ data:
  :mount/origin :picked}
 ```
 
-`:mount/id`, kind, accepts, position, axis, roll and origin are durable. A manual
+`:mount/id`, kind, accepts, position, axis, roll and origin are durable. The normalized
+`:part/orientation` quaternion is durable at the sidecar top level; missing or malformed
+values resolve to identity. A manual
 `:part/role` override is durable at the sidecar top level and takes precedence over
 `:part/role-hint`; inferred role and its evidence remain derived catalog data. Once M2
 adds manual roles to the catalog transaction, browsing displays the manual role as
@@ -1761,7 +1753,7 @@ authoritative and keeps the original hint only as evidence, never as a compatibi
 fact. Existing unknown sidecar keys are preserved on every edit.
 
 The selected triangle, facet indices, mesh key, ambiguity flag, roll source, symmetry
-plane, unsaved roll adjustment, repeated classification, form validation state and
+plane, unsaved Twist adjustment, repeated classification, form validation state and
 preview geometry are transient. None belongs in Datascript except a confirmed mount's
 durable fields after the sidecar has been atomically written first (§1.2). In particular,
 Datascript never receives positions, normals or index buffers used to derive a facet.

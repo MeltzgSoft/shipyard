@@ -5,7 +5,8 @@
             [datascript.core :as d]
             [shipyard.catalog.db :as db]
             [shipyard.catalog.sidecar :as sidecar]
-            [shipyard.library.scan :as scan])
+            [shipyard.library.scan :as scan]
+            [shipyard.part.orientation :as orientation])
   (:import [java.io File]))
 
 (defn- touch [dir & files]
@@ -163,6 +164,28 @@
              (mapv #(select-keys % [:mount/id :mount/pos :mount/axis :mount/roll :mount/origin])
                    (:part/mounts part))))
       (is (= :manual (:part/role-source part))))))
+
+(deftest part-orientation-round-trips-through-sidecars
+  (let [root (fixture-tree)
+        cat (catalog root)
+        id "Human Navy Fleet Bundle/Cruiser/Hull"
+        q (orientation/from-euler-degrees 90 0 0)]
+    (sidecar/write-sidecar! root id {:mounts [a-mount] :part/role :hull})
+    (db/save-part-orientation! cat id q)
+    (let [sidecar (sidecar/read-sidecar root id)
+          part (db/part @(db/conn cat) id)]
+      (is (= q (:part/orientation sidecar)))
+      (is (= q (:part/orientation part)))
+      (is (= [a-mount] (:mounts sidecar)) "orientation does not rewrite mounts")
+      (is (= :hull (:part/role sidecar)) "orientation does not rewrite part metadata"))
+    (testing "restart re-ingests orientation from the sidecar"
+      (is (= q (:part/orientation (db/part @(db/conn (catalog root)) id)))))
+    (testing "parts without orientation remain identity at the behavior boundary"
+      (is (= orientation/identity-quaternion
+             (orientation/orientation-of
+              (:part/orientation
+               (db/part @(db/conn cat)
+                        "Human Navy Fleet Bundle/Cruiser/Classic Ram Prow"))))))))
 
 (deftest authoring-is-file-first-when-the-index-write-fails
   (let [root (fixture-tree)

@@ -157,6 +157,33 @@
                   (map vector target s/prow-offset))
           (str "camera target " (pr-str target) " should be near " (pr-str s/prow-offset))))))
 
+(deftest part-orientation-previews-persists-and-resets
+  (open-app!)
+  (select-part! "Mount Test Plate")
+  (s/await-part *driver* s/mount-plate-id)
+  (is (vec-close? (:orientation (s/stats *driver*)) [0.0 0.0 0.0 1.0]))
+  (s/js *driver* "() => {
+    const input = document.querySelector('.part-orientation__form input[name=part-yaw-deg]');
+    input.value = '90';
+    input.dispatchEvent(new Event('input', {bubbles: true}));
+  }")
+  (is (s/wait-until
+       #(vec-close? (:orientation (s/stats *driver*))
+                    [0.0 0.7071068 0.0 0.7071068]))
+      "yaw should preview on the loaded mesh immediately")
+  (s/click! *driver* ".part-orientation__actions button[value=save]")
+  (select-part! "Classic Ram Prow")
+  (s/await-part *driver* s/prow-id)
+  (select-part! "Mount Test Plate")
+  (s/await-part *driver* s/mount-plate-id)
+  (is (vec-close? (:orientation (s/stats *driver*))
+                  [0.0 0.7071068 0.0 0.7071068])
+      "loading the part again should restore its sidecar orientation")
+  (s/click! *driver* ".part-orientation__actions button[value=reset]")
+  (is (s/wait-until
+       #(vec-close? (:orientation (s/stats *driver*)) [0.0 0.0 0.0 1.0]))
+      "Reset should restore source orientation"))
+
 (deftest selecting-an-unpreviewable-part-clears-the-scene
   ;; The other half of the selection story: `show-only!` decides what replaces
   ;; what, `shipyard:clear` is what empties the scene when there is nothing to
@@ -343,14 +370,14 @@
       (is (s/wait-until #(true? (s/js *driver* "() => !!document.querySelector('.mount-wizard__form button[value=update]')")))
           "picking another face should preserve edit mode"))
     (s/js *driver* "() => {
-      const input = document.querySelector('.mount-wizard__form input[name=roll-deg]');
+      const input = document.querySelector('.mount-wizard__form input[name=twist-deg]');
       input.value = '90';
       input.dispatchEvent(new Event('input', {bubbles: true}));
     }")
     (is (s/wait-until #(vec-close? (:roll (:preview (s/stats *driver*))) [0.0 1.0 0.0]))
-        "changing Roll should rotate the cyan +X arrow immediately")
+        "changing Twist should rotate the cyan +X arrow immediately")
     (is (s/wait-until #(vec-close? (:up (:preview (s/stats *driver*))) [-1.0 0.0 0.0]))
-        "changing Roll should rotate the pink +Y arrow with it"))
+        "changing Twist should rotate the pink +Y arrow with it"))
   (s/js *driver* "() => { document.querySelector('.mount-wizard__form input[name=capacity]').value = '3'; }")
   (s/click! *driver* ".mount-wizard__actions button[value=update]")
   (is (s/wait-until #(str/includes? (s/text *driver* "#detail") "x3"))
@@ -418,7 +445,8 @@
   (s/click! *driver* ".mount-wizard__actions button[value=create]")
   (is (s/wait-until #(and (str/includes? (s/text *driver* "#detail") "port-1")
                           (str/includes? (s/text *driver* "#detail") "starboard-1")))
-      "saving with mirror should persist both sockets")
+      (str "saving with mirror should persist both sockets; detail was "
+           (pr-str (s/text *driver* "#detail"))))
   (is (s/wait-until #(= s/mount-plate-id (get-in (s/stats *driver*) [:authoring :part-id])))
       "repeat keeps face-picking active for the next socket")
   (let [{:keys [x y]} (viewport-center)]

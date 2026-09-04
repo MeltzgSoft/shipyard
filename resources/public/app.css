@@ -234,6 +234,55 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
   color: var(--ink-faint);
   font-size: 0.72rem;
 }
+.part-orientation { margin-top: 0.75rem; }
+.part-orientation__title {
+  margin: 0 0 0.3rem;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0;
+  color: var(--ink-dim);
+}
+.part-orientation__form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.4rem;
+  align-items: end;
+}
+.part-orientation__field {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+  color: var(--ink-dim);
+  font-size: 0.78rem;
+}
+.part-orientation__field input {
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--panel-2);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.25rem 0.35rem;
+  font: inherit;
+  font-size: 0.82rem;
+}
+.part-orientation__actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.part-orientation__actions button {
+  background: var(--panel-2);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.25rem 0.6rem;
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
 .facet-preview__message {
   display: flex;
   align-items: center;
@@ -392,7 +441,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
   font-size: 0.78rem;
   cursor: pointer;
 }
-.mount-wizard__actions button:hover, .mounts__action button:hover, .part-metadata__form button:hover, .detail__dismiss:hover { border-color: var(--accent); }
+.mount-wizard__actions button:hover, .mounts__action button:hover, .part-metadata__form button:hover, .part-orientation__actions button:hover, .detail__dismiss:hover { border-color: var(--accent); }
 .stage__canvas--authoring { cursor: crosshair; }
 
 @media (min-width: 72rem) {

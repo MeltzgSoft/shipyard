@@ -17,6 +17,7 @@
             ["three/examples/jsm/environments/RoomEnvironment.js" :refer [RoomEnvironment]]
             [cljs.reader :as edn]
             [shipyard.interface-colors :as interface-colors]
+            [shipyard.part.orientation :as orientation]
             [shipyard.wire :as wire]))
 
 (goog-define ^boolean TEST-HOOKS false)
@@ -85,6 +86,18 @@
     (set! (.-far camera) (* radius 1000.0))
     (.updateProjectionMatrix camera)
     (.update controls)))
+
+(defn- orient-object! [^js object part-orientation]
+  (when object
+    (let [[x y z w] (orientation/orientation-of part-orientation)]
+      (.set (.-quaternion object) x y z w)
+      (.updateMatrixWorld object true)))
+  object)
+
+(defn- current-part? [{:keys [current]} part-id mesh-key]
+  (let [loaded @current]
+    (and (= part-id (:part-id loaded))
+         (= mesh-key (:mesh-key loaded)))))
 
 ;; --- scene bookkeeping ------------------------------------------------------
 
@@ -157,32 +170,21 @@
 
 (defn- v3 [[x y z]] (three/Vector3. x y z))
 
-(def ^:private mirror-plane-index {"x" 0 "y" 1 "z" 2})
-
 (defn- parse-finite-double [s]
   (let [n (js/Number s)]
     (when (js/Number.isFinite n) n)))
 
-(defn- reflect-coordinate [x offset]
-  (- (* 2.0 offset) x))
+(defn- reflect-frame [{:mount/keys [pos axis roll]}
+                      {:keys [plane-keyword offset] :as mirror}]
+  (let [part-orientation (:orientation mirror)]
+    {:mount/pos (orientation/reflect-position part-orientation plane-keyword offset pos)
+     :mount/axis (orientation/reflect-direction part-orientation plane-keyword axis)
+     :mount/roll (orientation/reflect-direction part-orientation plane-keyword roll)}))
 
-(defn- reflect-pos [idx offset v]
-  (assoc v idx (reflect-coordinate (v idx) offset)))
-
-(defn- reflect-dir [idx v]
-  (update v idx -))
-
-(defn- reflect-frame [{:mount/keys [pos axis roll]} {:keys [idx offset]}]
-  {:mount/pos (reflect-pos idx offset pos)
-   :mount/axis (reflect-dir idx axis)
-   :mount/roll (reflect-dir idx roll)})
-
-(defn- reflect-point! [^js p {:keys [idx offset]}]
-  (case idx
-    0 (set! (.-x p) (reflect-coordinate (.-x p) offset))
-    1 (set! (.-y p) (reflect-coordinate (.-y p) offset))
-    2 (set! (.-z p) (reflect-coordinate (.-z p) offset))
-    nil)
+(defn- reflect-point! [^js p {:keys [plane-keyword offset] :as mirror}]
+  (let [[x y z] (orientation/reflect-position
+                 (:orientation mirror) plane-keyword offset [(.-x p) (.-y p) (.-z p)])]
+    (.set p x y z))
   p)
 
 (def ^:private interface-plane-epsilon 0.08)
@@ -316,7 +318,7 @@
 
 (defn- enter-authoring! [{:keys [^js canvas parts authoring current] :as sys} part-id mesh-key]
   (when (and (get @parts part-id)
-             (= {:part-id part-id :mesh-key mesh-key} @current))
+             (current-part? {:current current} part-id mesh-key))
     (clear-authoring-preview! sys)
     (reset! authoring {:part-id part-id :mesh-key mesh-key})
     (.add (.-classList canvas) "stage__canvas--authoring")
@@ -425,13 +427,13 @@
   (or (seq facet-indices)
       (some-> (interface-facet obj frame) :indices seq)))
 
-(defn- form-roll-degrees []
-  (some-> (.querySelector js/document ".mount-wizard__form input[name=roll-deg]")
+(defn- form-twist-degrees []
+  (some-> (.querySelector js/document ".mount-wizard__form input[name=twist-deg]")
           .-value
           (parse-finite-double)))
 
 (defn- roll-for-preview [{:mount/keys [axis roll]}]
-  (let [degrees (or (form-roll-degrees) 0.0)
+  (let [degrees (or (form-twist-degrees) 0.0)
         rotated (doto (v3 roll)
                   (.applyAxisAngle (v3 axis) (* degrees (/ js/Math.PI 180.0))))]
     [(.-x rotated) (.-y rotated) (.-z rotated)]))
@@ -476,30 +478,33 @@
      :mirror-frame mirrored-frame
      :facet-indices (vec facet-indices)}))
 
-(defn- mirror-form-values []
+(defn- mirror-form-values [part-orientation]
   (when-let [form (.querySelector js/document ".mount-wizard__form")]
     (let [plane (input-value form "select[name=mirror-plane]")
-          idx (get mirror-plane-index plane)
           offset (parse-finite-double (or (input-value form "input[name=mirror-offset]") "0"))]
       (when (and (checked? form "input[name=mirror]")
                  (= "socket" (input-value form "select[name=kind]"))
-                 idx
+                 (contains? #{"x" "y" "z"} plane)
                  offset)
-        {:plane plane :idx idx :offset offset}))))
+        {:plane plane
+         :plane-keyword (keyword plane)
+         :offset offset
+         :orientation part-orientation}))))
 
 (defn- install-preview! [{:keys [^js scene parts current authoring preview preview-revision]}
                          {:keys [part-id mesh-key] :as data}]
-  (when (and (= {:part-id part-id :mesh-key mesh-key} @current)
+  (when (and (current-part? {:current current} part-id mesh-key)
              (= {:part-id part-id :mesh-key mesh-key} @authoring))
     (when-let [obj (get @parts part-id)]
       (when-let [{:keys [^js object]} @preview]
         (.remove scene object)
         (dispose-object! object))
-      (let [mirror (mirror-form-values)
+      (let [mirror (mirror-form-values (:orientation @current))
             base-frame (or (:base-frame data) (:frame data))
             {:keys [object frame mirror-frame facet-indices]}
             (preview-object obj (assoc data :frame base-frame) mirror)
             revision (swap! preview-revision inc)]
+        (orient-object! object (:orientation @current))
         (.add scene object)
         (reset! preview (assoc data
                                :base-frame base-frame
@@ -515,12 +520,13 @@
                                               :roll-ambiguous? :roll-source])))
 
 (defn- draw-interfaces! [{:keys [^js scene parts current interfaces] :as sys}
-                         {:keys [part-id mesh-key mounts]}]
-  (when (= {:part-id part-id :mesh-key mesh-key} @current)
+                         {:keys [part-id mesh-key mounts orientation]}]
+  (when (current-part? {:current current} part-id mesh-key)
     (clear-interface-highlights! sys)
     (when-let [obj (get @parts part-id)]
       (try
         (let [{:keys [^js object items misses]} (interface-highlights obj mounts)]
+          (orient-object! object (or orientation (:orientation @current)))
           (when (seq items)
             (.add scene object))
           (reset! interfaces {:object object
@@ -585,7 +591,7 @@
        "kind" (input-value form "select[name=kind]")
        "accepts" (checked-values form "input[name=accepts]:checked")
        "capacity" (input-value form "input[name=capacity]")
-       "roll-deg" (input-value form "input[name=roll-deg]")})))
+       "twist-deg" (input-value form "input[name=twist-deg]")})))
 
 (defn- post-facet! [{:keys [authoring repeat]} triangle-index]
   (let [target (.getElementById js/document "facet-preview")
@@ -637,6 +643,37 @@
              @(:preview sys))
     (install-preview! sys (preview-data @(:preview sys)))))
 
+(defn- form-orientation [^js form]
+  (let [yaw (some-> (input-value form "input[name=part-yaw-deg]")
+                    (parse-finite-double))
+        pitch (some-> (input-value form "input[name=part-pitch-deg]")
+                      (parse-finite-double))
+        roll (some-> (input-value form "input[name=part-roll-deg]")
+                     (parse-finite-double))]
+    (when (every? some? [yaw pitch roll])
+      (orientation/from-euler-degrees yaw pitch roll))))
+
+(defn- orient-part! [{:keys [parts current interfaces preview] :as sys}
+                     {:keys [part-id] :as payload}]
+  (when (= part-id (:part-id @current))
+    (let [part-orientation (orientation/orientation-of (:orientation payload))]
+      (swap! current assoc :orientation part-orientation)
+      (orient-object! (get @parts part-id) part-orientation)
+      (orient-object! (:object @interfaces) part-orientation)
+      (orient-object! (:object @preview) part-orientation)
+      (when-let [[bbox-min bbox-max] (:bounds @current)]
+        (let [[oriented-min oriented-max]
+              (orientation/oriented-bounds bbox-min bbox-max part-orientation)]
+          (frame! sys oriented-min oriented-max))))))
+
+(defn- refresh-orientation-from-form! [sys ^js e]
+  (let [target (.-target e)
+        form (when (and target (.-closest target))
+               (.closest target ".part-orientation__form"))]
+    (when-let [part-orientation (and form (form-orientation form))]
+      (orient-part! sys {:part-id (input-value form "input[name=part-id]")
+                         :orientation part-orientation}))))
+
 (defn- sync-interfaces-from-dom! [sys]
   (when-let [values (dom-interface-values)]
     (draw-interfaces! sys values)))
@@ -670,7 +707,7 @@
   "Fetch, decode, upload, and optionally reframe. Errors are reported and
   swallowed: a part that fails to load must not take the session with it."
   [{:keys [^js scene ^js canvas authoring current repeat] :as sys}
-   {:keys [url part-id mesh-key frame mounts]}]
+   {:keys [url part-id mesh-key frame mounts] :as payload}]
   (-> (js/fetch url)
       (.then (fn [^js res]
                (if (.-ok res)
@@ -678,21 +715,29 @@
                  (throw (js/Error. (str "mesh request failed: " (.-status res)))))))
       (.then (fn [buf]
                (let [{:keys [bbox-min bbox-max] :as mesh} (wire/decode buf)
-                     obj (three/Mesh. (decode->geometry mesh) (material))]
+                     part-orientation (orientation/orientation-of (:orientation payload))
+                     obj (three/Mesh. (decode->geometry mesh) (material))
+                     [oriented-min oriented-max]
+                     (orientation/oriented-bounds bbox-min bbox-max part-orientation)]
                  (set! (.-name obj) (or part-id url))
                  (set! (.. obj -userData -partId) part-id)
                  (set! (.. obj -userData -meshKey) mesh-key)
+                 (orient-object! obj part-orientation)
                  (clear-authoring-preview! sys)
                  (clear-interface-highlights! sys)
                  (reset! authoring nil)
-                 (reset! current {:part-id part-id :mesh-key mesh-key})
+                 (reset! current {:part-id part-id
+                                  :mesh-key mesh-key
+                                  :orientation part-orientation
+                                  :bounds [bbox-min bbox-max]})
                  (reset! repeat nil)
                  (.remove (.-classList canvas) "stage__canvas--authoring")
                  (show-only! sys part-id obj)
                  (draw-interfaces! sys {:part-id part-id
                                         :mesh-key mesh-key
+                                        :orientation part-orientation
                                         :mounts mounts})
-                 (when frame (frame! sys bbox-min bbox-max))
+                 (when frame (frame! sys oriented-min oriented-max))
                  (swap! (:status sys) assoc :state :loaded :part-id part-id)
                  (sync-authoring-button! sys)
                  scene)))
@@ -740,6 +785,11 @@
                 :items (mapv item-stats items)
                 :miss-items (mapv item-stats misses)}))))
 
+(defn- object-orientation [^js object]
+  (when object
+    (let [q (.-quaternion object)]
+      [(.-x q) (.-y q) (.-z q) (.-w q)])))
+
 (defn stats
   "Scene facts for the E2E suite (§10.3).
 
@@ -763,6 +813,7 @@
          :geometries (.. renderer -info -memory -geometries)
          :status    (clj->js (:state @status))
          :authoring (clj->js @authoring)
+         :orientation (clj->js (some-> objs first object-orientation))
          :repeat    (clj->js @(:repeat sys))
          :interfaces (interface-stats sys)
          :preview   (preview-stats sys)}))
@@ -802,12 +853,17 @@
     (.addEventListener body "shipyard:facet-error" (fn [_] (clear-authoring-preview! sys)))
     (.addEventListener body "shipyard:mount-repeat" #(reset! (:repeat sys) (payload %)))
     (.addEventListener body "shipyard:interfaces" #(draw-interfaces! sys (payload %)))
+    (.addEventListener body "shipyard:part-orientation" #(orient-part! sys (payload %)))
     (.addEventListener body "htmx:afterSwap" (fn [_]
                                                (sync-authoring-button! sys)
                                                (sync-interfaces-from-dom! sys)
                                                (refresh-preview-after-swap! sys)))
-    (.addEventListener body "input" #(refresh-preview-from-form! sys %))
-    (.addEventListener body "change" #(refresh-preview-from-form! sys %))
+    (.addEventListener body "input" (fn [e]
+                                      (refresh-preview-from-form! sys e)
+                                      (refresh-orientation-from-form! sys e)))
+    (.addEventListener body "change" (fn [e]
+                                       (refresh-preview-from-form! sys e)
+                                       (refresh-orientation-from-form! sys e)))
     (.addEventListener body "submit" #(remember-repeat-from-submit! sys %))
     (.addEventListener body "click" #(authoring-toggle! sys %))))
 

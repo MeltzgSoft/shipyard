@@ -21,6 +21,7 @@
             [shipyard.mesh.cache :as cache]
             [shipyard.mesh.facet :as facet]
             [shipyard.mount.wizard :as wizard]
+            [shipyard.part.orientation :as orientation]
             [shipyard.wire :as wire])
   (:import [java.io ByteArrayOutputStream FileInputStream]))
 
@@ -87,6 +88,8 @@
                                        :part-id (:part/id part)
                                        :mesh-key mesh-key
                                        :mounts  (durable-mounts part)
+                                       :orientation (orientation/orientation-of
+                                                     (:part/orientation part))
                                        :frame   true}}}))
 
 (defn- preprocessing
@@ -202,9 +205,10 @@
 
               :else
               (try
-                (let [{:keys [facet-indices frame roll-ambiguous? roll-source]}
+                (let [{:keys [facet-indices frame]}
                       (facet/select (wire/decode (read-bytes tier0)) triangle-index
                                     (select-keys cache [:facet-angle-deg :facet-plane-epsilon-mm]))
+                      frame (orientation/orient-mount-frame frame (:part/orientation part))
                       edit (when-let [original-mount-id (get params "original-mount-id")]
                              (wizard/edit-request {"mount-id" original-mount-id}
                                                   (durable-mounts part)))
@@ -222,8 +226,8 @@
                                              :triangle-index triangle-index
                                              :facet-indices facet-indices
                                              :frame frame
-                                             :roll-ambiguous? roll-ambiguous?
-                                             :roll-source roll-source}}}))
+                                             :roll-ambiguous? false
+                                             :roll-source :part-orientation}}}))
                 (catch clojure.lang.ExceptionInfo e
                   (case (:code (ex-data e))
                     :triangle-out-of-range
@@ -268,7 +272,9 @@
       (facet-error :part-not-found "That part is no longer in the library." part-id 404)
 
       :else
-      (let [result (wizard/save-request params (durable-mounts part))]
+      (let [result (wizard/save-request params
+                                        (durable-mounts part)
+                                        (:part/orientation part))]
         (if-let [error (:error result)]
           (mount-error-response
            deps
@@ -350,6 +356,36 @@
             (catch Exception _
               (facet-error :part-role-save-failed
                            "The part role was written, but the catalog did not update. Restart Shipyard to re-ingest it."
+                           part-id
+                           500))))))))
+
+(defn- save-part-orientation
+  [{:keys [catalog] :as deps} {:keys [params]}]
+  (let [part-id (get params "part-id")
+        part (db/part (db/snapshot catalog) part-id)]
+    (cond
+      (nil? (:part/id part))
+      (facet-error :part-not-found "That part is no longer in the library." part-id 404)
+
+      :else
+      (let [result (orientation/save-request params)]
+        (if-let [error (:error result)]
+          (mount-response deps
+                          part-id
+                          {:part-orientation {:part-id part-id
+                                              :orientation (orientation/orientation-of
+                                                            (:part/orientation part))}}
+                          {:orientation-error error})
+          (try
+            (let [part-orientation (db/save-part-orientation!
+                                    catalog part-id (:orientation result))]
+              (mount-response deps
+                              part-id
+                              {:part-orientation {:part-id part-id
+                                                  :orientation part-orientation}}))
+            (catch Exception _
+              (facet-error :part-orientation-save-failed
+                           "The part orientation was written, but the catalog did not update. Restart Shipyard to re-ingest it."
                            part-id
                            500))))))))
 
@@ -437,6 +473,7 @@
    ["/mounts/edit" {:post (partial edit-mount deps)}]
    ["/mounts/delete" {:post (partial delete-mount deps)}]
    ["/parts/role" {:post (partial save-part-role deps)}]
+   ["/parts/orientation" {:post (partial save-part-orientation deps)}]
    ["/part/*id" {:get (partial part deps)}]
    ["/mesh/:file" {:get (partial mesh deps)}]])
 
