@@ -197,6 +197,23 @@ jobs:
     # application behaviour, not platform behaviour, and it is the slowest job
     # here - Windows would buy nothing and cost the §9 ten-minute budget.
     runs-on: linux
+    # Playwright's own image, pinned to the library version in deps.edn, because
+    # `install --with-deps` was costing five minutes a run and almost none of it
+    # was the browser. Measured on run 474: 18s resolving the classpath, 4m40s
+    # in apt, 12s downloading Chromium. The apt half was not the network either
+    # - 68.9 MB fetched in 6s, then 70 packages and 241 MB unpacked at under
+    # 1 MB/s onto a throwaway container overlay, every single run.
+    #
+    # This image ships those libraries and the matching Chromium already, at
+    # PLAYWRIGHT_BROWSERS_PATH=/ms-playwright. The JS image rather than
+    # playwright/java: it carries Node on PATH, which the runner needs to
+    # execute the JS actions below at all.
+    #
+    # The tag MUST move with com.microsoft.playwright in deps.edn. A mismatch
+    # is not fatal - the install step below re-downloads the right Chromium -
+    # but it silently gives back the saving this is here for.
+    container:
+      image: mcr.microsoft.com/playwright:v1.62.0-jammy
     steps:
       - uses: actions/checkout@v4
 
@@ -219,10 +236,15 @@ jobs:
 
       # Playwright ships the browser it drives, versioned with the library, so
       # this replaces a Chrome-for-Testing version lookup and two zip downloads
-      # matched by hand (issue #49). `--with-deps` installs the shared libraries
-      # Chromium needs, which was the other half of that block.
+      # matched by hand (issue #49).
+      #
+      # No `--with-deps` any more: the container above already has the shared
+      # libraries, and installing them again was the whole cost. Kept rather
+      # than deleted because it is what makes the pinned tag a performance
+      # concern instead of a correctness one - when the image and the library
+      # disagree, this fetches the browser that actually matches.
       - name: Playwright's browser
-        run: java -cp "$(clojure -Spath -M:test)" com.microsoft.playwright.CLI install --with-deps chromium
+        run: java -cp "$(clojure -Spath -M:test)" com.microsoft.playwright.CLI install chromium
 
       - name: Install npm dependencies
         run: npm ci
