@@ -87,26 +87,27 @@
   no longer the only thing Shipyard writes: `save-library-root!` needs the same
   guarantee, and `shipyard.library.index` already depends on this namespace."
   [target ^String content]
-  (fs/create-dirs (fs/parent target))
-  (let [tmp (fs/create-temp-file {:dir (fs/parent target) :prefix "shipyard-" :suffix ".tmp"})]
-    (spit (fs/file tmp) content)
-    (loop [attempt 1, atomic? true]
-      (let [outcome (try
-                      (fs/move tmp target (cond-> {:replace-existing true}
-                                            atomic? (assoc :atomic-move true)))
-                      :done
-                      ;; Must precede the FileSystemException catch: it is a
-                      ;; subclass, and this one is not worth retrying.
-                      (catch java.nio.file.AtomicMoveNotSupportedException _ :fallback)
-                      (catch java.nio.file.FileSystemException e
-                        (if (< attempt move-attempts)
-                          :retry
-                          (throw e))))]
-        (case outcome
-          :done     nil
-          :fallback (recur attempt false)
-          :retry    (do (Thread/sleep (* 50 (long attempt)))
-                        (recur (inc attempt) atomic?)))))))
+  (let [target (fs/absolutize target)]
+    (fs/create-dirs (fs/parent target))
+    (let [tmp (fs/create-temp-file {:dir (fs/parent target) :prefix "shipyard-" :suffix ".tmp"})]
+      (spit (fs/file tmp) content)
+      (loop [attempt 1, atomic? true]
+        (let [outcome (try
+                        (fs/move tmp target (cond-> {:replace-existing true}
+                                              atomic? (assoc :atomic-move true)))
+                        :done
+                        ;; Must precede the FileSystemException catch: it is a
+                        ;; subclass, and this one is not worth retrying.
+                        (catch java.nio.file.AtomicMoveNotSupportedException _ :fallback)
+                        (catch java.nio.file.FileSystemException e
+                          (if (< attempt move-attempts)
+                            :retry
+                            (throw e))))]
+          (case outcome
+            :done     nil
+            :fallback (recur attempt false)
+            :retry    (do (Thread/sleep (* 50 (long attempt)))
+                          (recur (inc attempt) atomic?))))))))
 
 ;; --- the library root, the one setting Shipyard writes back -----------------
 

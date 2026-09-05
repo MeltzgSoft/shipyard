@@ -456,7 +456,8 @@
     (is (str/includes? (:body edit) "Save changes"))
     (is (str/includes? (:body edit) "name=\"original-mount-id\""))
     (is (str/includes? (:body edit) "value=\"port-1\""))
-    (is (str/includes? (:body edit) "Axis"))
+    (is (re-find #"checked=\"checked\"[^>]+value=\"weapon\"" (:body edit)))
+    (is (str/includes? (:body edit) "Normal (+Z)"))
     (is (str/includes? (:body edit) "Roll"))
     (is (= {:state :enter :part-id hull-id :mesh-key mesh-key}
            (get edit-events "shipyard:authoring")))
@@ -473,6 +474,7 @@
         (is (= 200 (:status repicked)))
         (is (str/includes? (:body repicked) "Save changes"))
         (is (str/includes? (:body repicked) "name=\"original-mount-id\""))
+        (is (re-find #"checked=\"checked\"[^>]+value=\"weapon\"" (:body repicked)))
         (is (re-find #"name=\"capacity\"[^>]+value=\"3\"" (:body repicked)))))
     (testing "update changes the existing mount instead of leaving the old id behind"
       (let [updated (mount-post h {:part-id hull-id

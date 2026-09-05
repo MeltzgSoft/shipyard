@@ -66,6 +66,10 @@
             :accepts #{:weapon}
             :capacity 2}
            (wizard/mount-values (assoc socket :mount/capacity 2)))))
+  (testing "normalizes cardinality-many values pulled from the catalog"
+    (is (= #{:weapon :turret}
+           (:accepts (wizard/mount-values
+                      (assoc socket :mount/accepts [:weapon :turret]))))))
   (testing "omits socket-only fields from a plug"
     (is (= {:mount-id "plug" :kind :plug}
            (wizard/mount-values {:mount/id :plug :mount/kind :plug})))))

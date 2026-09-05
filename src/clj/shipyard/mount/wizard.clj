@@ -192,7 +192,7 @@
 (defn mount-values [mount]
   (cond-> {:mount-id (some-> (:mount/id mount) (name))
            :kind (:mount/kind mount)}
-    (seq (:mount/accepts mount)) (assoc :accepts (:mount/accepts mount))
+    (seq (:mount/accepts mount)) (assoc :accepts (set (:mount/accepts mount)))
     (:mount/capacity mount) (assoc :capacity (:mount/capacity mount))))
 
 (defn mount-frame [mount]

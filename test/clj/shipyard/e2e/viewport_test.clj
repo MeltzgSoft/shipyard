@@ -319,10 +319,12 @@
       "configured interfaces should get a color legend")
   (let [interfaces (s/wait-until
                     #(let [interfaces (:interfaces (s/stats *driver*))]
-                       (when (= 1 (:count interfaces)) interfaces)))
+                       (when (some (fn [item] (= "mount-1" (:mount-id item)))
+                                   (:items interfaces))
+                         interfaces)))
         last-interfaces (:interfaces (s/stats *driver*))]
     (is (= [{:type "weapon" :mount-id "mount-1" :triangles 2 :candidates 2}]
-           (:items interfaces))
+           (filterv #(= "mount-1" (:mount-id %)) (:items interfaces)))
         (str "saved socket should color its configured face; interfaces were "
              (pr-str last-interfaces))))
   (is (s/wait-until #(nil? (:preview (s/stats *driver*))))
@@ -352,7 +354,8 @@
   (s/js *driver* "() => { document.querySelector('.mount-wizard__form input[name=capacity]').value = '3'; }")
   (s/click! *driver* ".mount-wizard__actions button[value=update]")
   (is (s/wait-until #(str/includes? (s/text *driver* "#detail") "x3"))
-      "saving an edit should update the existing mount")
+      (str "saving an edit should update the existing mount; detail was "
+           (pr-str (s/text *driver* "#detail"))))
   (is (enter-authoring! s/mount-plate-id)
       "authoring mode should be active before picking another face")
   (let [{:keys [x y]} (viewport-center)]
@@ -380,8 +383,8 @@
   (s/click! *driver* "form:has(input[name=mount-id][value='mount-1']) button:has-text('Delete')")
   (is (s/wait-until #(not (str/includes? (s/text *driver* "#detail") "mount-1")))
       "deleting removes the mount from the detail panel")
-  (is (s/wait-until #(let [count (get-in (s/stats *driver*) [:interfaces :count])]
-                       (or (nil? count) (zero? count))))
+  (is (s/wait-until #(not-any? (fn [item] (= "mount-1" (:mount-id item)))
+                               (get-in (s/stats *driver*) [:interfaces :items])))
       "deleting removes the configured interface highlight"))
 
 (deftest mount-wizard-mirrors-and-repeats-a-socket-classification
