@@ -2,6 +2,7 @@
   "Pure parsing and validation for the M2 mount wizard."
   (:require [clojure.edn :as edn]
             [clojure.string :as str]
+            [shipyard.math :as math]
             [shipyard.part.orientation :as orientation]))
 
 (def role-options
@@ -32,12 +33,6 @@
     (when (re-matches id-re s)
       (keyword s))))
 
-(defn- parse-finite-double [s]
-  (try
-    (let [n (Double/parseDouble (str s))]
-      (when (Double/isFinite n) n))
-    (catch Exception _ nil)))
-
 (defn- parse-positive-long [s]
   (try
     (let [n (Long/parseLong (str/trim (str s)))]
@@ -52,38 +47,20 @@
     (edn/read-string s)
     (catch Exception _ nil)))
 
-(defn- finite-number? [x]
-  (and (number? x) (Double/isFinite (double x))))
-
 (defn- vec3? [x]
-  (and (vector? x) (= 3 (count x)) (every? finite-number? x)))
-
-(defn- dot [[ax ay az] [bx by bz]]
-  (+ (* ax bx) (* ay by) (* az bz)))
-
-(defn- length [v] (Math/sqrt (dot v v)))
-
-(defn- scale [s v] (mapv #(* s %) v))
-
-(defn- v+ [a b] (mapv + a b))
-
-(defn- normalize [v]
-  (let [len (length v)]
-    (when (> len 1e-12)
-      (scale (/ 1.0 len) v))))
-
-(defn- project-onto-plane [axis v]
-  (v+ v (scale (- (dot axis v)) axis)))
+  (and (vector? x) (= 3 (count x)) (every? math/finite-number? x)))
 
 (defn- fallback-roll [axis]
-  (some #(normalize (project-onto-plane axis %))
+  (some #(math/normalize (math/project-onto-plane axis %) 1e-12)
         [[1.0 0.0 0.0] [0.0 1.0 0.0] [0.0 0.0 1.0]]))
 
 (defn- normalize-frame [{:mount/keys [pos axis roll] :as frame}]
   (when (and (vec3? pos) (vec3? axis))
-    (when-let [axis (normalize axis)]
+    (when-let [axis (math/normalize axis 1e-12)]
       (when-let [roll (or (when (vec3? roll)
-                            (normalize (project-onto-plane axis roll)))
+                            (math/normalize
+                             (math/project-onto-plane axis roll)
+                             1e-12))
                           (fallback-roll axis))]
         (assoc frame :mount/axis axis :mount/roll roll)))))
 
@@ -91,9 +68,9 @@
   (and (vec3? pos)
        (vec3? axis)
        (vec3? roll)
-       (< (Math/abs (- 1.0 (length axis))) unit-epsilon)
-       (< (Math/abs (- 1.0 (length roll))) unit-epsilon)
-       (< (Math/abs (double (dot axis roll))) orthogonal-epsilon)))
+       (< (Math/abs (- 1.0 (math/length axis))) unit-epsilon)
+       (< (Math/abs (- 1.0 (math/length roll))) unit-epsilon)
+       (< (Math/abs (double (math/dot axis roll))) orthogonal-epsilon)))
 
 (defn rotate-roll
   "Rotate `roll` around unit `axis` by `degrees`, then remove numerical drift
@@ -102,12 +79,10 @@
   (let [radians (Math/toRadians (double degrees))
         c (Math/cos radians)
         s (Math/sin radians)
-        rotated (v+ (scale c roll)
-                    (scale s [(- (* (axis 1) (roll 2)) (* (axis 2) (roll 1)))
-                              (- (* (axis 2) (roll 0)) (* (axis 0) (roll 2)))
-                              (- (* (axis 0) (roll 1)) (* (axis 1) (roll 0)))]))
-        without-axis (project-onto-plane axis rotated)]
-    (normalize without-axis)))
+        rotated (math/add (math/scale c roll)
+                          (math/scale s (math/cross axis roll)))
+        without-axis (math/project-onto-plane axis rotated)]
+    (math/normalize without-axis 1e-12)))
 
 (defn adjusted-frame [frame roll-deg]
   (when-let [frame (normalize-frame frame)]
@@ -254,8 +229,8 @@
          action (parse-keyword (get params "action") [:create :replace :update])
          accepts (set (keep #(parse-keyword % role-options) (many (get params "accepts"))))
          capacity (or (parse-positive-long (get params "capacity")) 1)
-         twist-deg (or (parse-finite-double (or (get params "twist-deg")
-                                                (get params "roll-deg")))
+         twist-deg (or (math/parse-finite-double (or (get params "twist-deg")
+                                                     (get params "roll-deg")))
                        0.0)
          frame (adjusted-frame (parse-edn (get params "frame")) twist-deg)
          update? (= :update action)
@@ -267,7 +242,7 @@
          mirror? (checked? (get params "mirror"))
          repeat? (checked? (get params "repeat"))
          mirror-plane (parse-keyword (get params "mirror-plane") symmetry-plane-options)
-         mirror-offset (or (parse-finite-double (get params "mirror-offset")) 0.0)
+         mirror-offset (or (math/parse-finite-double (get params "mirror-offset")) 0.0)
          mirror-id (or (parse-mount-id (get params "mirror-id"))
                        (some-> mount-id (suggest-mirror-id)))]
      (cond

@@ -18,18 +18,12 @@
   coincident positions differ by a single ULP tears under decimation - 6,684
   boundary edges against 99 (issue #6). That surfaces two stages downstream
   looking like a simplifier bug, which is why `check-ratio` exists."
-  (:require [clojure.tools.logging :as log]))
+  (:require [clojure.tools.logging :as log]
+            [shipyard.mesh.float :as mesh-float]))
 
 ;; ---------------------------------------------------------------------------
 ;; stage 1 - weld on exact float bits
 ;; ---------------------------------------------------------------------------
-
-(defn- canonical-bits
-  "Float bits with -0.0 folded onto 0.0. Exact comparison would otherwise treat
-  the two as distinct positions and silently fail to weld any seam where an
-  exporter emitted both."
-  ^long [^double f]
-  (Float/floatToRawIntBits (float (if (zero? f) 0.0 f))))
 
 (defn- capacity-for ^long [^long corners]
   (loop [c 16] (if (>= c (* 2 corners)) c (recur (* 2 c)))))
@@ -54,9 +48,9 @@
          :vertex-count n}
         (let [o  (* 3 i)
               x  (aget pos o), y (aget pos (+ o 1)), z (aget pos (+ o 2))
-              bx (int (canonical-bits x))
-              by (int (canonical-bits y))
-              bz (int (canonical-bits z))
+              bx (int (mesh-float/canonical-bits x))
+              by (int (mesh-float/canonical-bits y))
+              bz (int (mesh-float/canonical-bits z))
               ;; classic spatial hash; the three primes decorrelate axis-aligned
               ;; geometry, which is most of this library
               h  (bit-xor (unchecked-multiply-int bx 73856093)

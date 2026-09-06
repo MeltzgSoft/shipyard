@@ -13,7 +13,8 @@
             [digest]
             [shipyard.canary :as canary]
             [shipyard.fixtures :as f]
-            [shipyard.library.scan :as scan])
+            [shipyard.library.scan :as scan]
+            [shipyard.report :as report])
   (:import [java.io File]))
 
 (defn- temp-dir ^File [prefix]
@@ -115,7 +116,7 @@
     (let [root (library-tree)
           r    (report root)
           out  (io/file (temp-dir "shipyard-canary-out") "canary.edn")]
-      (canary/write-report! out r)
+      (report/write-report! out r)
       (let [read-back (edn/read-string (slurp out))]
         (is (= (:totals r) (:totals read-back)))
         (is (= (set (map :part/id (:findings r)))

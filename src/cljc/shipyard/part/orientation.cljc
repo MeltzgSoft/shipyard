@@ -1,29 +1,16 @@
 (ns shipyard.part.orientation
   "Pure part-orientation math shared by the server and Three.js viewport."
-  (:require [clojure.string :as str]))
+  (:require [clojure.string :as str]
+            [shipyard.math :as math]))
 
 (def identity-quaternion [0.0 0.0 0.0 1.0])
 
 (def ^:private epsilon 1.0e-9)
 (def ^:private max-degrees 36000.0)
 
-(defn- finite-number? [x]
-  (and (number? x)
-       #?(:clj  (Double/isFinite (double x))
-          :cljs (js/Number.isFinite x))))
-
-(defn- length-squared [values]
-  (reduce + (map #(* % %) values)))
-
-(defn- normalize-vector [values]
-  (when (and (vector? values) (every? finite-number? values))
-    (let [length (#?(:clj Math/sqrt :cljs js/Math.sqrt) (length-squared values))]
-      (when (> length epsilon)
-        (mapv #(/ % length) values)))))
-
 (defn normalize-quaternion [q]
   (when (and (vector? q) (= 4 (count q)))
-    (normalize-vector q)))
+    (math/normalize q epsilon)))
 
 (defn orientation-of [part-orientation]
   (or (normalize-quaternion part-orientation) identity-quaternion))
@@ -112,36 +99,21 @@
     [(mapv (fn [idx] (apply min (map #(nth % idx) corners))) (range 3))
      (mapv (fn [idx] (apply max (map #(nth % idx) corners))) (range 3))]))
 
-(defn- dot [a b]
-  (reduce + (map * a b)))
-
-(defn- subtract [a b]
-  (mapv - a b))
-
-(defn- scale [factor values]
-  (mapv #(* factor %) values))
-
-(defn- project-onto-plane [axis vector]
-  (subtract vector (scale (dot axis vector) axis)))
-
-(defn- cross [[ax ay az] [bx by bz]]
-  [(- (* ay bz) (* az by))
-   (- (* az bx) (* ax bz))
-   (- (* ax by) (* ay bx))])
-
 (defn canonical-mount-roll
   "Derive mount +X so mount +Y follows canonical part up. If the selected
   normal is vertical, canonical forward becomes mount +Y instead."
   [part-orientation axis]
-  (when-let [axis (normalize-vector axis)]
+  (when-let [axis (math/normalize axis epsilon)]
     (let [canonical->source (inverse part-orientation)
           source-directions (map #(rotate-vector canonical->source %)
                                  [[0.0 1.0 0.0]
                                   [0.0 0.0 1.0]
                                   [1.0 0.0 0.0]])]
       (some (fn [desired-up]
-              (when-let [mount-up (normalize-vector (project-onto-plane axis desired-up))]
-                (normalize-vector (cross mount-up axis))))
+              (when-let [mount-up (math/normalize
+                                   (math/project-onto-plane axis desired-up)
+                                   epsilon)]
+                (math/normalize (math/cross mount-up axis) epsilon)))
             source-directions))))
 
 (defn orient-mount-frame [frame part-orientation]
@@ -161,29 +133,28 @@
   "Reflect a source-space point across a canonical part plane at `offset`."
   [part-orientation plane offset point]
   (when-let [normal (source-plane-normal part-orientation plane)]
-    (subtract point (scale (* 2.0 (- (dot normal point) offset)) normal))))
+    (math/subtract point
+                   (math/scale (* 2.0 (- (math/dot normal point) offset)) normal))))
 
 (defn reflect-direction
   "Reflect a source-space direction across a canonical part plane."
   [part-orientation plane direction]
   (when-let [normal (source-plane-normal part-orientation plane)]
-    (subtract direction (scale (* 2.0 (dot normal direction)) normal))))
+    (math/subtract direction (math/scale (* 2.0 (math/dot normal direction)) normal))))
 
 (defn plane-distance
   "Signed source-point distance from a canonical part plane."
   [part-orientation plane offset point]
   (when-let [normal (source-plane-normal part-orientation plane)]
-    (- (dot normal point) offset)))
+    (- (math/dot normal point) offset)))
 
 (defn- parse-degrees [value]
   (when-not (str/blank? (str value))
-    (try
-      (let [number #?(:clj  (Double/parseDouble (str value))
-                      :cljs (js/Number value))]
-        (when (and (finite-number? number)
-                   (<= (#?(:clj Math/abs :cljs js/Math.abs) number) max-degrees))
-          number))
-      (catch #?(:clj Exception :cljs :default) _ nil))))
+    (when-let [number (math/parse-finite-double value)]
+      (when (<= #?(:clj  (Math/abs (double number))
+                   :cljs (js/Math.abs number))
+                max-degrees)
+        number))))
 
 (defn save-request [params]
   (case (get params "action")

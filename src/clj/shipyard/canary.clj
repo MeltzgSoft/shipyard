@@ -20,6 +20,7 @@
             [shipyard.mesh.lod :as lod]
             [shipyard.mesh.stl :as stl]
             [shipyard.mesh.weld :as weld]
+            [shipyard.report :as report]
             [shipyard.system :as system])
   (:import [java.io File]
            [java.nio ByteBuffer ByteOrder]
@@ -212,10 +213,6 @@
       (println "    ..." (- (count group) 20) "more - see the EDN report"))
     (println)))
 
-(defn write-report! [file report]
-  (system/write-atomically! (fs/file file) (with-out-str (pp/pprint report)))
-  file)
-
 ;; --- entry point ------------------------------------------------------------
 
 (defn- parse-args [args]
@@ -247,7 +244,7 @@
                              :crease-deg (:crease-deg cache) :lod-tiers (:lod-tiers cache)
                              :thread-count thread-count})]
     (print-summary! report)
-    (println "report written to" (str (write-report! out report)))
+    (println "report written to" (str (report/write-report! out report)))
     ;; Always zero. This is a probe, not a gate (§10.4) - a non-zero exit would
     ;; invite somebody to wire it into CI, where it would fail on data the
     ;; repository does not control.

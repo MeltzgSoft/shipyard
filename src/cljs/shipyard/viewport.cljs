@@ -17,6 +17,7 @@
             ["three/examples/jsm/environments/RoomEnvironment.js" :refer [RoomEnvironment]]
             [cljs.reader :as edn]
             [shipyard.interface-colors :as interface-colors]
+            [shipyard.math :as math]
             [shipyard.part.orientation :as orientation]
             [shipyard.wire :as wire]))
 
@@ -265,10 +266,6 @@
 
 ;; --- mount authoring --------------------------------------------------------
 
-(defn- parse-finite-double [s]
-  (let [n (js/Number s)]
-    (when (js/Number.isFinite n) n)))
-
 (defn- reflect-frame [{:mount/keys [pos axis roll]}
                       {:keys [plane-keyword offset] :as mirror}]
   (let [part-orientation (:orientation mirror)]
@@ -285,24 +282,8 @@
 (def ^:private interface-plane-epsilon 0.08)
 (def ^:private interface-normal-cos 0.999)
 
-(defn- v- [[ax ay az] [bx by bz]]
-  [(- ax bx) (- ay by) (- az bz)])
-
-(defn- dot [[ax ay az] [bx by bz]]
-  (+ (* ax bx) (* ay by) (* az bz)))
-
-(defn- cross [[ax ay az] [bx by bz]]
-  [(- (* ay bz) (* az by))
-   (- (* az bx) (* ax bz))
-   (- (* ax by) (* ay bx))])
-
 (defn- length-sq [v]
-  (dot v v))
-
-(defn- normalize [[x y z :as v]]
-  (let [len (Math/sqrt (length-sq v))]
-    (when (pos? len)
-      [(/ x len) (/ y len) (/ z len)])))
+  (math/dot v v))
 
 (defn- triangle-count [^js obj]
   (quot (.. obj -geometry -index -count) 3))
@@ -319,19 +300,19 @@
           (range 3))))
 
 (defn- triangle-normal [[a b c]]
-  (normalize (cross (v- b a) (v- c a))))
+  (math/normalize (math/cross (math/subtract b a) (math/subtract c a))))
 
 (defn- triangle-center [points]
   (mapv (fn [idx] (/ (reduce + (map #(nth % idx) points)) 3.0))
         (range 3)))
 
 (defn- point-on-mount-plane? [pos axis p]
-  (<= (Math/abs (dot axis (v- p pos))) interface-plane-epsilon))
+  (<= (Math/abs (math/dot axis (math/subtract p pos))) interface-plane-epsilon))
 
 (defn- interface-triangle? [pos axis points]
   (when-let [normal (triangle-normal points)]
     (and (every? #(point-on-mount-plane? pos axis %) points)
-         (>= (Math/abs (dot normal axis)) interface-normal-cos))))
+         (>= (Math/abs (math/dot normal axis)) interface-normal-cos))))
 
 (defn- quantized [x]
   (js/Math.round (* 100000.0 x)))
@@ -387,7 +368,8 @@
                           (range (triangle-count obj)))]
       (when (seq triangles)
         (let [start (first (first (sort-by (fn [[_ points]]
-                                             (length-sq (v- (triangle-center points) pos)))
+                                             (length-sq
+                                              (math/subtract (triangle-center points) pos)))
                                            triangles)))]
           {:indices (connected-indices (adjacency triangles) start)
            :candidates (count triangles)})))))
@@ -525,7 +507,7 @@
 (defn- form-twist-degrees []
   (some-> (.querySelector js/document ".mount-wizard__form input[name=twist-deg]")
           (.-value)
-          (parse-finite-double)))
+          (math/parse-finite-double)))
 
 (defn- roll-for-preview [{:mount/keys [axis roll]}]
   (let [degrees (or (form-twist-degrees) 0.0)
@@ -534,7 +516,7 @@
     [(.-x rotated) (.-y rotated) (.-z rotated)]))
 
 (defn- frame-up [{:mount/keys [axis roll]}]
-  (cross axis roll))
+  (math/cross axis roll))
 
 (defn- preview-object [^js obj {:keys [facet-indices frame]} mirror]
   (let [frame (assoc frame :mount/roll (roll-for-preview frame))
@@ -576,7 +558,8 @@
 (defn- mirror-form-values [part-orientation]
   (when-let [form (.querySelector js/document ".mount-wizard__form")]
     (let [plane (input-value form "select[name=mirror-plane]")
-          offset (parse-finite-double (or (input-value form "input[name=mirror-offset]") "0"))]
+          offset (math/parse-finite-double
+                  (or (input-value form "input[name=mirror-offset]") "0"))]
       (when (and (checked? form "input[name=mirror]")
                  (= "socket" (input-value form "select[name=kind]"))
                  (contains? #{"x" "y" "z"} plane)
@@ -740,11 +723,11 @@
 
 (defn- form-orientation [^js form]
   (let [yaw (some-> (input-value form "input[name=part-yaw-deg]")
-                    (parse-finite-double))
+                    (math/parse-finite-double))
         pitch (some-> (input-value form "input[name=part-pitch-deg]")
-                      (parse-finite-double))
+                      (math/parse-finite-double))
         roll (some-> (input-value form "input[name=part-roll-deg]")
-                     (parse-finite-double))]
+                     (math/parse-finite-double))]
     (when (every? some? [yaw pitch roll])
       (orientation/from-euler-degrees yaw pitch roll))))
 

@@ -2,7 +2,9 @@
   "Facet grouping and mount-frame derivation for M2 authoring.
 
   Input is the tier-0 `.symesh` decoded by `shipyard.wire/decode`: positions,
-  indices, and counts in the exact triangle order the browser clicked.")
+  indices, and counts in the exact triangle order the browser clicked."
+  (:require [shipyard.math :as math]
+            [shipyard.mesh.float :as mesh-float]))
 
 (def default-options
   {:facet-angle-deg 1.0
@@ -13,43 +15,14 @@
 
 (defn- sq [x] (* x x))
 
-(defn- finite? [x] (Double/isFinite (double x)))
-
-(defn- v+ [[ax ay az] [bx by bz]]
-  [(+ ax bx) (+ ay by) (+ az bz)])
-
-(defn- v- [[ax ay az] [bx by bz]]
-  [(- ax bx) (- ay by) (- az bz)])
-
-(defn- v* [s [x y z]]
-  [(* s x) (* s y) (* s z)])
-
-(defn- dot [[ax ay az] [bx by bz]]
-  (+ (* ax bx) (* ay by) (* az bz)))
-
-(defn- cross [[ax ay az] [bx by bz]]
-  [(- (* ay bz) (* az by))
-   (- (* az bx) (* ax bz))
-   (- (* ax by) (* ay bx))])
-
-(defn- length [v] (Math/sqrt (dot v v)))
-
-(defn- normalize [v]
-  (let [len (length v)]
-    (when (and (finite? len) (> len 0.0))
-      (v* (/ 1.0 len) v))))
-
 (defn- canonicalize-sign [[x y z :as v]]
   (let [component (some #(when (> (Math/abs (double %)) component-epsilon) %) [x y z])]
-    (if (and component (neg? component)) (v* -1.0 v) v)))
-
-(defn- canonical-bits
-  "Float bits with -0.0 folded onto 0.0, matching the position weld."
-  ^long [x]
-  (Float/floatToRawIntBits (float (if (zero? (double x)) 0.0 x))))
+    (if (and component (neg? component)) (math/scale -1.0 v) v)))
 
 (defn- point-key [[x y z]]
-  [(canonical-bits x) (canonical-bits y) (canonical-bits z)])
+  [(mesh-float/canonical-bits x)
+   (mesh-float/canonical-bits y)
+   (mesh-float/canonical-bits z)])
 
 (defn- compare-point-key [[ax ay az] [bx by bz]]
   (let [c (compare ax bx)]
@@ -87,15 +60,15 @@
 
 (defn- triangle-geometry [mesh triangle-index]
   (let [[a b c :as points] (triangle-points mesh triangle-index)
-        ab (v- b a)
-        ac (v- c a)
-        cr (cross ab ac)
-        area2 (length cr)]
-    (when (and (every? finite? (apply concat points))
+        ab (math/subtract b a)
+        ac (math/subtract c a)
+        cr (math/cross ab ac)
+        area2 (math/length cr)]
+    (when (and (every? math/finite-number? (apply concat points))
                (> area2 degenerate-area2-epsilon))
       {:points points
        :cross cr
-       :normal (v* (/ 1.0 area2) cr)
+       :normal (math/scale (/ 1.0 area2) cr)
        :area2 area2})))
 
 (defn- require-triangle [mesh triangle-index]
@@ -135,10 +108,10 @@
    (vals (edge-table mesh))))
 
 (defn- point-on-plane? [{:keys [normal points]} epsilon p]
-  (<= (Math/abs (double (dot normal (v- p (first points))))) epsilon))
+  (<= (Math/abs (double (math/dot normal (math/subtract p (first points))))) epsilon))
 
 (defn- facet-neighbour? [start candidate cos-angle epsilon]
-  (and (>= (dot (:normal candidate) (:normal start)) cos-angle)
+  (and (>= (math/dot (:normal candidate) (:normal start)) cos-angle)
        (every? #(point-on-plane? start epsilon %) (:points candidate))))
 
 (defn- facet-indices [mesh triangle-index {:keys [facet-angle-deg facet-plane-epsilon-mm]}]
@@ -184,10 +157,10 @@
     (mapv #(/ (+ %1 %2) 2.0) mins maxs)))
 
 (defn- facet-axis [mesh indices]
-  (let [axis (normalize
+  (let [axis (math/normalize
               (reduce
                (fn [acc triangle-index]
-                 (v+ acc (:cross (require-triangle mesh triangle-index))))
+                 (math/add acc (:cross (require-triangle mesh triangle-index))))
                [0.0 0.0 0.0]
                indices))]
     (or axis
@@ -195,13 +168,10 @@
                         {:code :degenerate-facet
                          :facet-indices indices})))))
 
-(defn- project-onto-plane [axis v]
-  (v- v (v* (dot v axis) axis)))
-
 (defn- fallback-roll [axis]
   (or (some (fn [world-axis]
-              (some->> (project-onto-plane axis world-axis)
-                       (normalize)
+              (some->> (math/project-onto-plane axis world-axis)
+                       (math/normalize)
                        (canonicalize-sign)))
             [[1.0 0.0 0.0] [0.0 1.0 0.0] [0.0 0.0 1.0]])
       (throw (ex-info "could not derive a roll axis"
@@ -209,12 +179,12 @@
 
 (defn- plane-basis [axis]
   (let [u (fallback-roll axis)
-        v (normalize (cross axis u))]
+        v (math/normalize (math/cross axis u))]
     [u v]))
 
 (defn- projected-points [axis points]
   (let [[u v] (plane-basis axis)]
-    (mapv (fn [p] {:point p :x (dot p u) :y (dot p v)}) points)))
+    (mapv (fn [p] {:point p :x (math/dot p u) :y (math/dot p v)}) points)))
 
 (defn- cross2 [o a b]
   (- (* (- (:x a) (:x o)) (- (:y b) (:y o)))
@@ -236,16 +206,16 @@
 
 (defn- hull-edges [hull]
   (mapv (fn [a b]
-          (let [delta (v- (:point b) (:point a))
-                len (length delta)]
-            {:a a :b b :length len :direction (normalize delta)}))
+          (let [delta (math/subtract (:point b) (:point a))
+                len (math/length delta)]
+            {:a a :b b :length len :direction (math/normalize delta)}))
         hull
         (concat (rest hull) [(first hull)])))
 
 (defn- distinct-directions? [directions cos-angle]
   (let [dirs (vec directions)]
     (boolean
-     (some (fn [[a b]] (< (Math/abs (double (dot a b))) cos-angle))
+     (some (fn [[a b]] (< (Math/abs (double (math/dot a b))) cos-angle))
            (for [i (range (count dirs))
                  j (range (inc i) (count dirs))]
              [(dirs i) (dirs j)])))))
@@ -298,8 +268,8 @@
       (if ambiguous?
         (world-axis-roll axis)
         (if-let [roll (some->> (:direction (first longest))
-                               (project-onto-plane axis)
-                               (normalize)
+                               (math/project-onto-plane axis)
+                               (math/normalize)
                                (canonicalize-sign))]
           {:roll roll
            :roll-ambiguous? false

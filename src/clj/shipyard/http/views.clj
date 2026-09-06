@@ -6,6 +6,7 @@
   `shipyard.http.routes` do the looking-up; this namespace only decides what a
   thing looks like."
   (:require [clojure.string :as str]
+            [shipyard.catalog.part :as catalog-part]
             [shipyard.http.urls :as urls]
             [shipyard.interface-colors :as interface-colors]
             [shipyard.mount.wizard :as wizard]
@@ -129,9 +130,6 @@
            :aria-hidden "true"}]
          [:span {:data-interface-type (name type)} label]])]]))
 
-(defn- durable-mounts [mounts]
-  (mapv #(dissoc % :db/id) mounts))
-
 (declare facet-preview facet-error)
 
 (defn- dismiss-error-button [{:part/keys [id]}]
@@ -212,7 +210,8 @@
     [:div#mount-authoring.mount-wizard
      (cond-> {:data-part-id (:part/id part)
               :data-mesh-key mesh-key
-              :data-interface-mounts (pr-str (durable-mounts (:part/mounts part)))}
+              :data-interface-mounts (pr-str (catalog-part/durable-mounts
+                                              (:part/mounts part)))}
        repeat-values (assoc :data-repeat-values (pr-str repeat-values)))
      [:button.mount-wizard__toggle
       {:type                  "button"

@@ -14,6 +14,7 @@
             [reitit.ring.coercion :as coercion]
             [ring.middleware.params :as params]
             [shipyard.catalog.db :as db]
+            [shipyard.catalog.part :as catalog-part]
             [shipyard.http.contracts :as contracts]
             [shipyard.http.htmx :as htmx]
             [shipyard.http.jobs :as jobs]
@@ -71,9 +72,6 @@
 
 ;; --- part detail ------------------------------------------------------------
 
-(defn- durable-mounts [part]
-  (mapv #(dissoc % :db/id) (:part/mounts part)))
-
 (defn- source-file!
   "The STL the mesh pipeline should open. Derived from the catalog record, never
   from the URL: the id in the path only ever selects a part, it never names a
@@ -90,7 +88,7 @@
                  {:events {:load-mesh {:url     (urls/mesh-url mesh-key 0)
                                        :part-id (:part/id part)
                                        :mesh-key mesh-key
-                                       :mounts  (durable-mounts part)
+                                       :mounts  (catalog-part/durable-mounts (:part/mounts part))
                                        :orientation (orientation/orientation-of
                                                      (:part/orientation part))
                                        :frame   true}}}))
@@ -214,7 +212,8 @@
                       frame (orientation/orient-mount-frame frame (:part/orientation part))
                       edit (when-let [original-mount-id (get params "original-mount-id")]
                              (wizard/edit-request {"mount-id" original-mount-id}
-                                                  (durable-mounts part)))
+                                                  (catalog-part/durable-mounts
+                                                   (:part/mounts part))))
                       preview (cond-> {:part part
                                        :frame frame
                                        :values (merge (:values edit)
@@ -255,7 +254,8 @@
        (htmx/fragment (views/detail-ready part mesh-key view-options)
                       {:events (assoc events :interfaces {:part-id part-id
                                                           :mesh-key mesh-key
-                                                          :mounts (durable-mounts part)})})
+                                                          :mounts (catalog-part/durable-mounts
+                                                                   (:part/mounts part))})})
        (if (:part/id part)
          (facet-error :mesh-not-ready "Open the part and wait for preprocessing to finish." part-id 409)
          (facet-error :part-not-found "That part is no longer in the library." part-id 404))))))
@@ -276,7 +276,7 @@
 
       :else
       (let [result (wizard/save-request params
-                                        (durable-mounts part)
+                                        (catalog-part/durable-mounts (:part/mounts part))
                                         (:part/orientation part))]
         (if-let [error (:error result)]
           (mount-error-response!
@@ -317,7 +317,8 @@
       (facet-error :mesh-not-ready "Open the part and wait for preprocessing to finish." part-id 409)
 
       :else
-      (let [result (wizard/edit-request params (durable-mounts part))]
+      (let [result (wizard/edit-request params
+                                        (catalog-part/durable-mounts (:part/mounts part)))]
         (if-let [error (:error result)]
           (mount-error-response! deps
                                  part-id
@@ -402,7 +403,7 @@
       (facet-error :part-not-found "That part is no longer in the library." part-id 404)
 
       :else
-      (let [existing (durable-mounts part)
+      (let [existing (catalog-part/durable-mounts (:part/mounts part))
             result (wizard/delete-request params existing)]
         (cond
           (:error result)

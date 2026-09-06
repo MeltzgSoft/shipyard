@@ -14,7 +14,7 @@
             [shipyard.library.scan :as scan]
             [shipyard.mesh.facet :as facet]
             [shipyard.mesh.stl :as stl]
-            [shipyard.system :as system]))
+            [shipyard.report :as report]))
 
 (def parts
   {:hull "Human Navy Fleet Bundle/Cruiser/Hull"
@@ -192,10 +192,6 @@
                           "No M3 assembly or compatibility filtering is exercised here."]
                          notes))}))
 
-(defn write-report! [file report]
-  (system/write-atomically! (fs/file file) (with-out-str (pp/pprint report)))
-  file)
-
 (defn- parse-args [args]
   (reduce (fn [m [k v]]
             (case k
@@ -211,5 +207,5 @@
   (let [{:keys [out] :as opts} (parse-args args)
         report (run-proof! opts)]
     (pp/pprint report)
-    (println "report written to" (str (write-report! out report)))
+    (println "report written to" (str (report/write-report! out report)))
     (System/exit 0)))
