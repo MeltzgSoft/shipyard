@@ -5,7 +5,7 @@ existing STL part libraries - choose a hull, prow, bridge and weapon loadout, se
 result rendered as a complete ship, orbit and zoom it, design a paint scheme for it,
 and keep the result as a named loadout in a fleet roster.
 
-Status: specification. No code yet.
+This document defines the intended product behavior and design.
 
 ---
 
@@ -91,14 +91,13 @@ Two structurally different kinds of model live in the same collection:
 
 - **Kitbash classes** - Cruiser, Grand Cruiser, Battleship. Separate hull, prow, bridge,
   antenna and weapon files. These are what Shipyard is for.
-- **Escorts appear to be pre-combined whole ships.** `Cyanide Prow Rapier/` reads as
-  hull-class x prow-variant already merged, ~36 such parts in Human Navy alone.
-  **Unverified** - see Risks. If confirmed, escorts are a pick-one list, not an assembly.
+- **Escorts are mixed.** Some bundles contain pre-combined whole ships, others contain
+  genuine kitbash parts, and some contain both. Names do not distinguish them reliably;
+  classification requires geometry and sibling-relative evidence.
 
 `other/` directories contain Lychee `.lys` project files (1,489 across the collection),
 named per configuration, plus occasional `README.txt` files carrying assembly notes in
-prose. Neither is consumed by Shipyard v1, but the `.lys` names enumerate combinations
-the designers intended and may be useful later for seeding the catalog.
+prose. Shipyard does not consume either format.
 
 ### 4.1 Parts are not in a shared coordinate frame
 
@@ -495,27 +494,10 @@ capture can be triggered automatically on save.
 
 ---
 
-## 10. Milestones
+## 10. Delivery planning
 
-| | Deliverable |
-|---|---|
-| **M1** | Library scan, catalog, mesh pipeline, single-part viewer. Pick any STL, see it, orbit it. Proves the pipeline and the performance assumptions. |
-| **M2** | Mount wizard. Face picking, frame derivation, symmetry mirroring, mount persistence. |
-| **M3** | Assembly. Slot panel, compatibility filtering, assembled Human Navy Cruiser in the viewport. |
-| **M4** | Named loadouts: save, load, list, duplicate. |
-| **M5** | Paint schemes, per-part. |
-| **M6** | Fleet roster list, with thumbnails via canvas capture. |
-
-M2 and M3 were one milestone in an earlier draft. Splitting them reflects that the wizard
-is now the centrepiece rather than a fallback: it is independently useful and
-independently testable, and assembly is a thin layer of transform math on top of it.
-
-**First scope is the Human Navy Cruiser** - one hull, twelve prows, bridge, two antennae,
-six weapon modules. Enough variety to prove the catalog schema and the wizard before
-scaling to 19 GB, and its pitted variant makes it a convenient test case for the optional
-`:seeded` path later.
-
-**Assumption, flagged:** first scope was recommended but not explicitly confirmed.
+Milestone scope, progress, and outstanding work live in the
+[Forgejo milestones](https://forgejo.tail943578.ts.net/MeltzgSoft/shipyard/milestones).
 
 ## 10.1 CI
 
@@ -543,14 +525,11 @@ standing obligation to stay current.
 `docs/MANUAL.md` describes how to run Shipyard and get a ship on screen, written for
 someone who owns STL models and wants to preview them - not for someone reading the code.
 
-It documents **what the software does today.** Features that are specified but not built
-are marked as such with the milestone that will deliver them, so a reader can always tell
-the difference between a promise and a capability. That distinction is the whole point: a
-manual describing unbuilt features is a lie with a table of contents.
+It documents **supported behavior only**. Planned features and delivery status belong in
+Forgejo issues and milestones, so a reader never mistakes a promise for a capability.
 
 **Every change to user-facing behaviour updates the manual in the same pull request.**
-Not in a follow-up, not at the end of a milestone. A milestone is not complete while its
-manual section still says *Not yet built*.
+Not in a follow-up or at the end of a milestone.
 
 Scope: installation, pointing Shipyard at a library, every user-facing workflow, and
 troubleshooting for failures a user can actually hit. Where the software has a rough
@@ -575,33 +554,3 @@ whole ships, that welding would reach `V ≈ T/2`. Documentation drifts the same
 more quietly, because nothing fails when it does. Making currency a merge obligation is
 the only mechanism that reliably works; a periodic documentation pass is a promise to
 future-you that future-you will not keep.
-
-## 13. Risks and open questions
-
-- **Escorts may not be assemblies.** §4 infers that escort STLs are pre-combined whole
-  ships from filename patterns and file sizes. Not verified by inspecting geometry. If
-  wrong, the escort part of the catalog schema is wrong. Verify before M2 touches escorts.
-
-- **Facet grouping may not match user intent.** A "flat" hull seat may be subtly bowed,
-  or carry alignment teeth or a notch, so a strict coplanarity threshold fragments it
-  into several facets and a loose one bleeds into neighbouring surfaces. The existing
-  tooling hit exactly this and its guidance was to render the candidates and ask rather
-  than guess from area alone. Expect the threshold to need tuning, and expect to need a
-  merge-adjacent-facets affordance in the wizard.
-
-- **Non-watertight source meshes.** Only relevant if the optional `:seeded` path (§5.2)
-  is built - `trimesh.boolean.difference` raises `ValueError: Not all meshes are
-  volumes!` on such input, requiring the manifold3d direct API. Face picking is
-  unaffected: it needs no booleans and works on any mesh that loads.
-
-- **Cache growth.** Lazy `.glb` caching bounds this to what has been viewed, but there is
-  no eviction policy specified. Add one if it becomes a problem.
-
-- **Per-part paint granularity** may prove too coarse once used in anger (§8.5).
-
-- **Mount authoring is the real cost centre.** The pipeline, viewer and UI are all
-  tractable. The open-ended work is populating mounts across the collection, and it
-  scales with how many models are actually wanted rather than with library size. Face
-  picking makes each mount cheap and symmetry mirroring halves the count, but the total
-  is still bounded only by appetite. Ship M2 early and author a real hull with it before
-  committing to the rest of the plan.

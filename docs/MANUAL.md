@@ -1,17 +1,10 @@
 # Shipyard User Manual
 
-Shipyard lets you assemble a Battlefleet Gothic ship from the STL parts you already own,
-look at it from every angle, and decide what to print before you commit resin to it.
+Shipyard lets you browse and preview Battlefleet Gothic STL parts you already own and
+define the mount frames that describe how those parts connect.
 
-> **This manual tracks the software.** Sections marked *Not yet built* describe features
-> that are specified but not implemented. Each becomes real as its milestone lands, and
-> this document is updated in the same change - never afterwards.
-
-**Current state:** M1 and M2 complete. You can browse your library, view individual
-parts, and save the mount frames that describe how parts connect. Assembling a whole
-ship is M3.
-
----
+This manual covers supported behavior. Planned work lives in the
+[Forgejo milestones](https://forgejo.tail943578.ts.net/MeltzgSoft/shipyard/milestones).
 
 ## 1. Installing
 
@@ -109,9 +102,6 @@ library keeps working; one bad file never takes the browser down with it.
 
 ## 5. Defining how parts connect
 
-*Built - milestone M2. Mounts can be picked, mirrored, repeated, saved,
-replaced and deleted. Assembly remains later M3 work.*
-
 You will tell Shipyard how two parts mate by clicking the flat face where they meet: the
 back of a weapon module, or a hull's weapon seat. One click gives Shipyard everything it
 needs - where the part sits, which way it faces, and how it is rotated.
@@ -168,37 +158,6 @@ or correct the field and save once more.
 
 This information is saved beside the part, in the same folder as its STL, so it survives
 if you reorganise or move your library.
-
-M2 records authoring data only. It does not yet build a ship on screen, filter a module
-list by compatibility, or enforce a complete loadout; those behaviours begin in M3.
-
-## 6. Assembling a ship
-
-*Not yet built - milestone M3.*
-
-Choose a hull, then fill its slots - prow, bridge, weapons - from the parts that fit.
-The ship assembles on screen as you go.
-
-## 7. Saving loadouts
-
-*Not yet built - milestone M4.*
-
-Save a configuration under a name, reopen it later, and duplicate it to try variations.
-
-## 8. Paint schemes
-
-*Not yet built - milestone M5.*
-
-Assign colours per part and see them on the model under realistic lighting, so you can
-judge a scheme before opening a pot of paint.
-
-## 9. Fleets
-
-*Not yet built - milestone M6.*
-
-Group saved ships into a fleet, with a shared paint scheme and per-ship overrides.
-
----
 
 ## Troubleshooting
 

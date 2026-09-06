@@ -25,10 +25,8 @@ Neither of these is in the repository, and neither should be.
 
 ## tea, and when to drop to the API
 
-`tea` works against this forge - `tea issue ls`, `tea pr ls`, `tea pr <n>`, `tea whoami`
-all verified against tea 0.15.1 on 2026-08-24. An earlier session found it segfaulting in
-a nil version compare inside go-version, with a dead token besides, so treat it as the
-convenience path, not the guaranteed one.
+Use `tea` for ordinary issue and pull-request work. Treat the REST API as the fallback
+when a Forgejo operation is not exposed by the installed client.
 
 The fallback is the REST API, `https://forgejo.tail943578.ts.net/api/v1/repos/MeltzgSoft/shipyard/...`
 - `pulls/{n}` carries `mergeable`, `base.ref` and `head.ref`, which is what you need to
@@ -56,10 +54,8 @@ Post `{"logCursors":[]}` first: that returns `state.currentJob.steps` with each 
 status, which is how you find the `N` worth expanding. Lines come back at
 `logs.stepsLog[].lines[].message`.
 
-**There is no rerun API.** `runs/{n}/rerun`, `jobs/{i}/rerun` and `actions/jobs/{id}/rerun`
-all 404. A job red on infrastructure rather than on the code - #30 hit
-`SocketException: Network is unreachable` inside Aether - is re-run from the web UI, or by
-pushing to the branch.
+**There is no rerun API.** Re-run an infrastructure failure from the web UI or by pushing
+to the branch.
 
 ## Branches and stacked pull requests
 
@@ -67,12 +63,9 @@ One branch per issue, `feat/<issue>-<slug>`.
 
 Work that **depends** on unmerged work branches from that branch, not from `main`, and its
 pull request bases on it too; say which in the body. Independent work branches from `main`.
-#29 through #32 are a worked stack: `feat/15-http` <- `feat/16-viewport` <- `feat/17-ci` <-
-`feat/18-canary`.
 
-**A fix goes in on the branch that owns the bug**, not on whichever branch happened to
-surface it - in that stack, a Windows bug found on #31 was fixed on #29. A Windows-only
-failure is still #29's bug if #29 wrote the code.
+**A fix goes in on the branch that owns the bug**, not on whichever descendant branch
+happened to surface it.
 
 **The stack is kept up to date by rebasing, not by merging forward.** When `main` moves,
 rebase `feat/<first>` onto it and then each branch onto its rebuilt parent, so the chain

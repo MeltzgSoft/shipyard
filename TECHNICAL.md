@@ -1,12 +1,8 @@
 # Shipyard - Technical Specification
 
-Implementation-level design. Scope: **M1** (library scan, catalog, mesh pipeline,
-single-part viewer) and **M2** (face selection and mount authoring) in full detail, plus
-the system-wide foundations M1 forced us to commit to - project layout, dependencies,
-storage, and the HTTP contract - which every later milestone inherits.
-
-M3-M6 are deliberately not specced at this depth. M1 taught us the exact mesh identity
-and triangle-ordering constraints that M2 now specifies in §12.
+Implementation-level design for the library scan, catalog, mesh pipeline, single-part
+viewer, face selection, and mount authoring, plus the shared project layout, dependencies,
+storage, and HTTP contract.
 
 Companion to [SPEC.md](SPEC.md), which covers product scope and architecture rationale.
 
@@ -221,8 +217,8 @@ hand-authored. A machine-owned file that nothing else edits cannot do that.
 **The library root is deliberately not an environment variable.** It was one, with
 `~/Documents/3D_models/BFG` behind it as a default, and both were wrong: the default is
 one developer's home directory, and an env var that outranks the settings form makes the
-form lie about what the application is using. There is now no default and no
-`SHIPYARD_LIBRARY` (issue #35).
+form lie about what the application is using. There is no default and no
+`SHIPYARD_LIBRARY`.
 
 Tunables that spikes established live here rather than being hardcoded: the crease angle
 (§6.2), the LOD tier ratios (§6.3), and the cache cap (§6.5). All three were measured
@@ -270,8 +266,8 @@ call to make.
                        com.microsoft.playwright/playwright  {:mvn/version "1.62.0"}}}}}
 ```
 
-**Verified end to end** (issue #6): natives load, all calls execute, results are
-deterministic across threads. `MESHOPTIMIZER_VERSION = 220`.
+Natives load on every supported platform and meshoptimizer calls are deterministic across
+threads. `MESHOPTIMIZER_VERSION = 220`.
 
 tools.deps expresses a Maven classifier as `artifact$classifier`, **not** a `:classifier`
 key - the latter resolves to the wrong artifact silently. Core `lwjgl` natives are
@@ -374,9 +370,8 @@ Path decomposition, relative to library root:
 
 ### 5.2 Role inference - a hint, never a fact
 
-**Measured over all 1,661 part folders (issue #5).** The rule table works far better than
-feared on its headline number and far worse on inspection, and the design follows from
-the second fact rather than the first.
+Measurements over 1,661 part folders show that the headline coverage hides important
+false positives, so the design follows the inspected error rate instead.
 
 Raw result: `:unknown` is **25.1%**, not the ~60% we braced for. But that 74.9%
 "coverage" is inflated. 22.8 points of it come from directory facts, not filenames - a
@@ -463,7 +458,7 @@ bundles reach zero.
 
 **Turrets are a weapon subtype, not a sibling of one.** A turret drops into a
 socket on a weapon battery rather than mounting on the hull - a lance battery carries
-the hole and the turret fills it - so it needs its own role before M2 can describe the
+the hole and the turret fills it - so it needs its own role before mount authoring can describe the
 mount. The library was reorganised to put them under `weapons/turrets/` (45 folders,
 recorded in `TURRET-MOVES.json`), which makes turret-ness a directory fact rather than a
 name guess: all 45 now resolve with `:role-source :class`. The name rule stays as a
@@ -530,8 +525,8 @@ a rule table becomes a maintenance liability.
 
 ### 5.5 Escorts: mixed, and only geometry can tell
 
-**Measured across all 15 escort-bearing bundles (issue #3). The blanket rule this section
-previously asserted is wrong.** Escorts are pre-combined whole ships in *some* bundles,
+Measurements across all 15 escort-bearing bundles show that escorts are pre-combined
+whole ships in *some* bundles,
 genuine kitbash in others, and **both inside the same folder** in five of them.
 
 - **Fully pre-combined:** Human Navy, Toaster Mechanics, Ork, Anarchist Jarheads, Greater
@@ -567,10 +562,9 @@ Absolute size does not discriminate - `Combatbarge Standard Prow` (a component) 
 volume 5357 while `Gladiator Standard Prow` (a whole ship) has 1227. All comparisons must
 be sibling-relative.
 
-**Scope call: this does not belong in M1.** It needs volume and connected-component
-analysis on every escort, which is far more than a catalog scan should do. M1 marks
-escort-class parts `:role-hint :unknown, :role-source :inferred` and leaves them
-renderable. The classifier is M2 work, where mesh analysis already happens.
+The classifier belongs in the lazy mesh-analysis path, not the metadata-only catalog
+scan. Until that analysis exists, escort-class parts remain renderable with
+`:role-hint :unknown, :role-source :inferred`.
 
 ### 5.3 Variant selection
 
@@ -621,8 +615,8 @@ triangle - 3 floats face normal, 3x3 floats vertices, `uint16` attribute count.
 Read via a memory-mapped `ByteBuffer` in `LITTLE_ENDIAN` order. No per-triangle object
 allocation; write straight into primitive `float[]`.
 
-**One ASCII STL exists** and must be handled - the claim that none do was wrong
-(verified, issue #3): `Toaster Mechanics Fleet Bundle/Escort/Toaster Stalker Prow/
+**One ASCII STL exists** and must be handled:
+`Toaster Mechanics Fleet Bundle/Escort/Toaster Stalker Prow/
 unsupported.stl`, 6.3 MB, CRLF line endings. Its binary header parses as 1,814,065,765
 triangles, so a header-trusting parser allocates ~90 GB or reads garbage.
 
@@ -642,8 +636,7 @@ exact bit matching reaches **V/T = 0.497-0.498**, essentially the theoretical
 closed-manifold ideal of 0.5, and quantized snapping to a 1e-4 mm grid produces
 *identical* counts to three decimals. Exporters here emit bit-identical floats for shared
 vertices, so a `HashMap` keyed on the three ints from `Float.floatToRawIntBits` is both
-correct and sufficient. The quantized-snap fallback earlier drafts specified is dead
-code - drop it.
+correct and sufficient. Do not add a quantized-snap fallback.
 
 **Then split by crease angle.** Welding alone gives smooth normals everywhere, which
 rounds off the hard mechanical edges all over these hulls. Build vertex→face adjacency,
@@ -667,9 +660,8 @@ confirms the estimate these numbers replace.
 only ~15%, so this is not a parameter worth tuning per bundle. Pick it for shading
 quality, not memory.
 
-**Corrected test assertions.** Warn above **1.25**, fail at **≥ 2.5**. The earlier warn
-threshold of 1.0 would have fired on two of four reference parts under normal operation -
-a warning that cries wolf is worse than none.
+**Test assertions.** Warn above **1.25** and fail at **≥ 2.5**. This keeps reference parts
+within normal operation while detecting a weld that did not take.
 
 **The weld is load-bearing for simplification, not just memory.** Measured (§6.3): a mesh
 whose coincident positions differ by a single ULP tears badly under simplification -
@@ -686,7 +678,7 @@ bug.
 
 We carry per-vertex normals, and the attribute term measurably restrains collapses that
 damage shading - verified on a flat grid with varying normals, where geometric error is
-zero by construction so only the attribute term can act (issue #6). **Start at attribute
+zero by construction so only the attribute term can act. **Start at attribute
 weight 0.5 per normal component.** On smooth geometry both functions produce identical
 output, since normals there are derived from positions; the win is precisely on hard
 edges and split normals, which is what these hulls are made of.
@@ -694,8 +686,8 @@ edges and split normals, which is what these hulls are made of.
 Measured cost on 131k triangles: `optimizeVertexCache` 8.8 ms, simplify 31.1 ms. Not a
 factor in the §11 budgets.
 
-**Pipeline order: weld -> simplify -> crease-split per tier.** Issue #6 concluded the
-opposite from a synthetic greebled plate, and real hulls disproved it (issue #10).
+**Pipeline order: weld -> simplify -> crease-split per tier.** Real seam-dense hulls lock
+up when crease splitting happens before simplification.
 
 The plate had 28.2% of its positions on a crease seam and floored at 3.05%, comfortably
 below our tiers. The Cruiser Hull expands **2.12x** under crease splitting - 66,086
@@ -704,7 +696,7 @@ edge. On that topology the seams lock the mesh solid:
 
 | topology | 25% target | 5% target | unlimited error budget |
 |---|---|---|---|
-| crease-split (what #6 recommended) | 34.4% | 34.4% | **34.1%, and will not move** |
+| crease-split | 34.4% | 34.4% | **34.1%, and will not move** |
 | position-welded | **24.98%** | **4.93%** | collapses to zero |
 
 So a 25% tier missed and a 5% tier was unreachable. Simplifying the position-welded mesh
@@ -800,23 +792,20 @@ result. `swap!` may retry and build a delay it discards, which costs nothing pre
 because a delay's body does not run until deref - the reason `future` is wrong here, since
 a discarded future has already started working.
 
-An earlier draft submitted to a fixed `ExecutorService`. It was removed: this is a
-single-user local application that views one part at a time, so the concurrent-request
-case it guarded against does not arise, and the batch case - the canary walking the whole
-library - gets bounded parallelism from `pmap` at its own call site, already capped at
-`availableProcessors + 2`. Running inline also lets an exception propagate as itself;
-submitting to a pool wrapped every parser error in an `ExecutionException`.
+The cache stays synchronous because the single-user UI views one part at a time, while
+the canary supplies bounded parallelism at its own call site. Running inline also lets a
+parser exception propagate without an `ExecutionException` wrapper.
 
 **When a pool would earn its place:** a UI that prefetches many distinct parts at once,
 since preprocessing allocates tens of megabytes per part against a 2 GB peak budget
 (§11). Not before that exists.
 
-That UI now exists, and the pool is in `shipyard.http.jobs` rather than here (§7). Two
-threads, and only the HTTP layer uses them: `ensure!` keeps its inline contract, so the
-canary still gets its back-pressure and its unwrapped exceptions.
+The two-thread pool belongs in `shipyard.http.jobs`, and only the HTTP layer uses it
+(§7). `ensure!` keeps its inline contract, so the canary retains back-pressure and
+unwrapped exceptions.
 
-**Cache budget and eviction.** Measured on the Cruiser Hull once §6.4 became
-self-contained per-tier files (issue #13): tier 0 is 4.95 MB against a 6.64 MB source
+**Cache budget and eviction.** With self-contained per-tier files, the Cruiser Hull's
+tier 0 is 4.95 MB against a 6.64 MB source
 (74.5%), and all three tiers together are 6.92 MB - **about 104% of source**. The earlier
 82% figure was computed for the shared-vertex-buffer format that §6.4 replaced; separate
 tiers duplicate the vertex data they use, which is the price of each tier being
@@ -831,11 +820,9 @@ Every entry is regenerable from the source STL, so eviction is always safe and n
 loses user data. A cold re-encode of an evicted part costs the same as its first view:
 626 ms for the Cruiser Hull, against 5 ms for a warm hit.
 
-This supersedes SPEC §11's open question, which left eviction unspecified.
-
 ### 6.6 LWJGL interop notes
 
-Verified working practice (issue #6). These are the traps that cost real time.
+These are the required working practices for the native interop boundary.
 
 - **`MemoryStack` only for small out-params** such as `result_error`. It is
   `AutoCloseable`, so `(with-open [s (MemoryStack/stackPush)] …)` is correct from
@@ -970,9 +957,9 @@ EDN at `event.detail.value`:
                    #(handle (edn/read-string (.. % -detail -value))))
 ```
 
-An earlier version of this section showed the payload map JSON-encoded directly with
-keyword keys. That produces an event named `:shipyard/load-mesh` rather than
-`shipyard:load-mesh`, and delivers JSON rather than the EDN the rest of §7.2 assumes.
+Do not JSON-encode the payload map directly with keyword keys: that produces an event
+named `:shipyard/load-mesh` rather than `shipyard:load-mesh`, and delivers JSON rather
+than the EDN the rest of §7.2 assumes.
 
 | Event | Payload | Meaning |
 |---|---|---|
@@ -999,11 +986,10 @@ Owns: renderer, scene, camera, `OrbitControls`, an IBL environment, a map of par
 `Object3D`, and the `.symesh` decoder. Listens for the `shipyard:*` events on
 `document.body`.
 
-**The map holds several parts; M1 shows one.** `put-part!` is the primitive - it replaces
-one part by id and leaves the rest alone, which is what M3 assembly wants when a slot
-changes. `show-only!` is the M1 policy on top of it: a new selection replaces the scene,
-because M1 is a single-part viewer (SPEC §10). Without it, selecting a second part simply
-added it, and browsing the library accumulated a mesh per part (#47).
+**The map holds several parts; browsing shows one.** `put-part!` is the primitive - it
+replaces one part by id and leaves the rest alone, which assembly needs when a slot
+changes. `show-only!` is the browsing policy on top of it: a new selection replaces the
+scene so browsing does not accumulate meshes.
 
 That policy lives on the client deliberately. The alternative - emitting `shipyard:clear`
 alongside every `shipyard:load-mesh` - makes correct behaviour depend on the dispatch order
@@ -1171,8 +1157,8 @@ JVM server for HTML and meshes. Only the JVM process is needed to serve a releas
 
 Forgejo Actions, matrix over the `linux`, `windows` and `macos` runner labels.
 
-The JVM is portable; **LWJGL natives are not**. But the justification is narrower than it
-first appears (issue #6): the natives are prebuilt jars on Maven Central, so a Linux
+The JVM is portable; **LWJGL natives are not**. The natives are prebuilt jars on Maven
+Central, so a Linux
 runner can resolve and package the Windows and macOS classifiers without trouble.
 **Windows and macOS CI are needed only to *execute* tests on those platforms, never to
 build or release.**
@@ -1206,8 +1192,8 @@ buys nothing. The library canary (§10.4) is not a CI job at all.
 
 **No `actions/cache`, and this is not an oversight.** The sketch above used to show a
 `~/.m2` cache step. It does not work on this forge: the runner serves its actions cache on
-a random port, so every restore dies with `getCacheEntry failed: connect EHOSTUNREACH`
-(#28). Each Linux job therefore downloads its dependencies cold; Windows and macOS are
+a random port, so every restore dies with `getCacheEntry failed: connect EHOSTUNREACH`.
+Each Linux job therefore downloads its dependencies cold; Windows and macOS are
 host mode and keep `~/.m2` between jobs. Reinstate the cache step when the Linux runner
 pins its cache port, not before.
 
@@ -1227,7 +1213,7 @@ Downloading Chrome for Testing from its own manifest fixed the skew - the driver
 published beside the browser it was built for - at the cost of twenty-five lines of
 version lookup, two zips and an apt block for the runtime libraries.
 
-**Playwright removed the problem rather than solving it** (issue #49). It ships the
+Playwright ships the
 browser it drives, versioned with the library, so `playwright install --with-deps chromium`
 is the whole step: no manifest, no matching, and `--with-deps` covers the shared libraries
 that were the other half of that block. There is no driver binary to skew against, because
@@ -1250,8 +1236,8 @@ the shaded jar, unpacking it and dlopening it is a different code path from reso
 natives jar off the classpath, and it needs a writable temp dir. A runner without one
 fails here rather than later in something that reads like a mesh bug.
 
-**`Enable-Native-Access` in the manifest still works**, so the shipped jar needs no flag on
-the command line (issue #6). Worth knowing: **the manifest entry applies to `java -jar`
+**`Enable-Native-Access` in the manifest works**, so the shipped jar needs no flag on
+the command line. Worth knowing: **the manifest entry applies to `java -jar`
 only.** Launching the same jar with `-cp` ignores it and warns about restricted native
 access - which makes a `-cp` invocation useless as a check of it.
 
@@ -1260,11 +1246,8 @@ and the response actually contains the island.
 
 ### 9.2 Why a job runs the README
 
-Everything else in this file is checked by running it. The README was not, and it drifted:
-#37 told people to start the server without copying htmx, so the page rendered and the
-library silently never loaded; #39 told them to run the server, the test suite and the
-canary without a platform alias, so LWJGL's natives were absent and anything touching
-geometry failed. All three were found by a person following the instructions.
+Documentation examples are also exercised because a health check cannot detect a missing
+htmx copy or native classifier.
 
 **CI could not have caught any of them, and staying green was the proof.** The workflows
 spelled every command correctly. Two lists have to agree - what the README prints and what
@@ -1280,7 +1263,7 @@ process start:
 
 - *The server* is asked for the shell, for `/js/htmx.min.js`, for the library listing, and
   for a rendered part. Only the last of those needs the natives, and only the second
-  catches a missing htmx - #37 and #39 are invisible to a health check.
+  catches a missing htmx; both failures are invisible to a health check.
 - *The canary* is checked for `liblwjgl` in its output, not for its exit code. Without the
   natives it exits 0 and reports every part in the library as a finding, because
   `canary.clj` catches per-part exceptions on purpose (§10.4). A probe that names broken
@@ -1387,8 +1370,7 @@ release builds via a `goog-define`, so it cannot ship.
 else - part ids, vertices, materials - is computed from `parts`, so it shrinks the moment a
 part is removed from the map whether or not its GPU buffers were released. `:geometries`
 comes from `renderer.info.memory`, which `geometry.dispose()` decrements, so it is the only
-field that distinguishes *removed from the scene* from *actually freed*. Before #47 the
-suite had a test named for that distinction which could not observe it.
+field that distinguishes *removed from the scene* from *actually freed*.
 
 One screenshot test remains, and it only asks the crudest question: **is the canvas
 non-blank?** Sample pixels and assert they are not uniform. That catches "nothing rendered
@@ -1461,18 +1443,9 @@ every file in a fixture library before and after a run and compares; a weaker ch
 miss a rewrite that preserved length.
 
 **Four threads, not `availableProcessors + 2`.** Each worker holds a parsed hull plus its
-welded and simplified derivatives. Source sizes change with the collection (34.0 MB is
-the current largest selected source; an earlier snapshot reached 57.8 MB), and a dozen
+welded and simplified derivatives. Source sizes change with the collection, and a dozen
 large parts at once blows the 2 GB peak budget (§11). The canary is allowed to be slow;
 it is not allowed to die three hours in. `--threads` overrides it.
-
-**Measured on the current real-library snapshot** (2026-08-31), 1,142 parts across
-13.1 GB, four threads: **178.1 s wall** under `-Xmx1g`, with 898 MiB peak heap. The
-findings were 1 header mismatch (the known ASCII file), 57 supported-only folders, 23
-welds above the 1.25 warning line, and nothing in the other five categories. The earlier
-2026-08-24 run recorded 1,661 parts across 19 GB in 65 s; both the mounted collection and
-the reference machine changed, which is why that observation was not a portable budget.
-Issue #44 established the labelled, repeatable measurement in §11 instead.
 
 **Findings are classified from `ex-data`, never from the message text.** Both the parser
 and the weld guard say what went wrong in data. A canary that grepped their prose would
@@ -1487,33 +1460,24 @@ than empty.
 
 ## 11. Performance budgets
 
-Targets M1 must hold. Issue #44 measured all eight on 2026-08-31:
+These budgets define the performance contract. Measurements and delivery status belong in
+the associated Forgejo issue.
 
-- Intel Core i5-8400H (4 cores/8 threads), 32 GiB RAM, Java 25.0.4, Linux 7.0;
-- NVIDIA GeForce GTX 1050 Ti Mobile, Chromium WebGL 2 through ANGLE/OpenGL;
-- the read-only 13.1 GB library on a SanDisk USB 3.2 Gen1 exFAT drive;
-- generated indexes and mesh caches on the internal Samsung NVMe drive.
-
-The current collection contains 1,142 part folders, 1,085 renderable sources totalling
-4,002,733,230 bytes. This supersedes the earlier 1,661-part/19 GB snapshot. The largest
-renderable source is now the 679,380-triangle Battle Krooza hull; there is no 1.2M-triangle
-part in the mounted collection, so claiming to have measured one would be false.
-
-| Operation | Budget | Measured | Result |
-|---|---:|---:|:---:|
-| Cold start, fresh scan index (1,142 folders) | < 2 s | 183 ms median; 440 ms max | pass |
-| Warm start from the scan index (§5.4) | < 500 ms | 203 ms median; 329 ms max | pass |
-| Preprocess Cruiser hull (133,922 tris) | < 2 s | 520 ms median; 1.030 s max | pass |
-| Preprocess largest part (679,380 tris) | < 15 s | 2.418 s median; 2.436 s max | pass |
-| Serve cached 4,990,440-byte `.symesh` | < 50 ms | 22.1 ms median; 26.4 ms max | pass |
-| Hardware viewport, dense 679,380-triangle tier | >= 60 fps | 601 frames / 10.008 s = 60.052 fps | pass |
-| Peak heap, preprocessing | < 2 GiB | 525 MiB | pass |
-| Canary, whole library, 4 threads | < 4 min under `-Xmx1g` | 178.1 s; 898 MiB peak heap | pass |
+| Operation | Budget |
+|---|---:|
+| Cold start, fresh scan index | < 2 s |
+| Warm start from the scan index (§5.4) | < 500 ms |
+| Preprocess a representative Cruiser hull | < 2 s |
+| Preprocess the largest renderable part | < 15 s |
+| Serve a cached `.symesh` | < 50 ms |
+| Hardware viewport at the dense tier | >= 60 fps |
+| Peak heap while preprocessing | < 2 GiB |
+| Canary, whole library, 4 threads | < 4 min under `-Xmx1g` |
 
 **Method.** Run `clojure -M:natives-linux:benchmark --root /path/to/library --machine
 "CPU; RAM; GPU; storage"`. The alias fixes the JVM at `-Xmx1g`. Scan/start,
-preprocessing and HTTP figures above are five samples from one JVM; the table reports the
-median and the maximum. A cold start gets a new empty Shipyard index directory; its warm
+preprocessing and HTTP figures use five samples from one JVM and report the median and
+maximum. A cold start gets a new empty Shipyard index directory; its warm
 partner immediately reopens that index. Each preprocess gets a new content cache, so SHA,
 parse, weld, all three LOD encodes and disk writes are included. Heap `used` is sampled
 from `MemoryMXBean` every 2 ms.
@@ -1526,11 +1490,9 @@ run through CPU-only SwiftShader produced 5.61 fps; that is useful evidence that
 identity matters, not a measurement of the hardware-GPU budget. The canary is one complete
 four-thread pass, including its initial scan.
 
-The old 65 s canary target failed on this reference machine. It mixed a throughput number
-from another machine/library snapshot with the `-Xmx1g` safety claim. The replacement
-four-minute budget gives the measured 178.1 s run operational headroom while retaining
-the part that matters: bounded memory on a deliberately non-interactive data-quality
-probe. No user request waits for the canary, and it remains outside CI (§10.4).
+The four-minute canary budget retains the important property: bounded memory on a
+deliberately non-interactive data-quality probe. No user request waits for the canary,
+and it remains outside CI (§10.4).
 
 If the cold preprocess budget fails, the lazy-cache design is what protects the user
 experience - it is paid once per part, ever.
@@ -1541,7 +1503,7 @@ M2 turns a triangle clicked in the browser into a durable mount frame. The appar
 small word "triangle" crosses the mesh cache, meshoptimizer, Three.js, HTTP and the
 sidecar write path, so this section fixes that contract before any handler or viewport
 code grows its own interpretation. It does not specify assembly transforms or compatible
-part selection; those remain M3 work (SPEC §5.3 and §10).
+part selection; those are outside this contract (SPEC §5.3).
 
 ### 12.1 The authoring mesh and selection identity
 
@@ -1799,27 +1761,3 @@ apply `M = S . Tz(g) . Rx(pi) . P^-1`. Those are M3 behaviours even though the s
 frame representation and `geom.cljc` make them technically possible earlier. The M2
 end-to-end proof stops after mounts reload from their sidecars and render plausibly on the
 individual parts that own them.
-
-## 13. Open questions
-
-- **Escort classification** (SPEC §11) blocks accurate role inference. Verify by
-  inspecting geometry - a pre-combined escort should show one connected component with a
-  hull-like bbox - before M2 depends on it.
-- **Crease angle 35°** is a starting guess. Tune against real hulls; it may need to be
-  per-bundle if designers differ in how they export.
-- **`:unknown` role frequency** is unmeasured. If it is most of the library, the role
-  table needs work - or roles should come from the mount wizard instead of filenames.
-- **Sidecar write conflicts** if the library is on shared storage. Single-user assumption
-  for now; a lock file is the cheap fix if it ever matters.
-- **Single-ship bundles break the role model conceptually** (issue #5). Role presupposes
-  alternatives competing for a slot, but the four numbered bundles hold 56 parts that are
-  *sections of one model, all of which get printed*. `Bloody Iron Forward hull` and
-  `Rear Hull` are two halves, not two choices. Filtering `:hull` mixes 160 interchangeable
-  hulls with 11 non-interchangeable fragments. This needs a `:bundle/kind :single-ship`
-  flag or a part-level `:assembly` grouping - neither derivable from a folder name, so it
-  is a missing concept rather than a rule-table bug. Decide before M3.
-- **`ordinance/` contains 11 flight stands** (`Bomber Base`, `Fighter Base`) which are not
-  ordnance. Minor, but they will show up in the wrong filter.
-- **Cache cap of 4 GB** (§6.5) is a guess pending real usage. If normal browsing evicts
-  parts that get re-viewed minutes later, raise it; the sweep should log evictions so
-  that is visible rather than inferred.

@@ -1,4 +1,2 @@
-{;; with-native has let's binding shape - pairs of symbol and init - so kondo
- ;; can analyse it the same way. Without this it reports every bound symbol as
- ;; unresolved.
- :lint-as {shipyard.mesh.lod/with-native clojure.core/let}}
+{:lint-as {shipyard.mesh.lod/with-native clojure.core/let}
+ :linters {:unresolved-var {:exclude [digest/sha-256]}}}

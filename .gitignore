@@ -13,6 +13,7 @@
 .nrepl-port
 .lsp/
 .clj-kondo/.cache/
+.clj-kondo/imports/
 
 # editor / os
 .idea/

@@ -9,9 +9,8 @@ hours of resin to it - and prows are distinguished by silhouette details that on
 once mounted. Shipyard closes that loop: pick parts, see the assembled ship, decide
 before printing.
 
-**Status:** early. M1 (library scan, catalog, mesh pipeline, single-part viewer) and
-M2 (mount picking, mirroring, repeated authoring, and sidecar persistence) are complete.
-See the [milestones](https://forgejo.tail943578.ts.net/MeltzgSoft/shipyard/milestones).
+Current work and delivery planning live in the
+[Forgejo milestones](https://forgejo.tail943578.ts.net/MeltzgSoft/shipyard/milestones).
 
 ## Requirements
 
@@ -70,11 +69,10 @@ clojure -M:clj-kondo --lint src --lint test --lint dev --lint build.clj
 clojure -M:outdated                     # dependency freshness, deps.edn + package.json
 ```
 
-The M2 Human Navy Cruiser proof is an on-demand check over proprietary user-owned STL
-data, so it is not a CI gate and it should not run against your only copy. Materialize a
+The Human Navy Cruiser proof is an on-demand check over proprietary user-owned STL data,
+so it is not a CI gate and it should not run against your only copy. Materialize a
 temporary Shipyard-style Cruiser library first; the proof command writes `shipyard.edn`
-sidecars into that copy, reloads a fresh catalog, and writes an EDN report. See
-[docs/M2_HUMAN_NAVY_CRUISER_PROOF.md](docs/M2_HUMAN_NAVY_CRUISER_PROOF.md).
+sidecars into that copy, reloads a fresh catalog, and writes an EDN report.
 
 The benchmark is the on-demand, machine-labelled measurement behind TECHNICAL.md §11;
 it is deliberately not a CI gate. It creates fresh scan indexes and mesh caches under
@@ -150,7 +148,6 @@ bypass with `--no-verify`.
 | document | audience |
 |---|---|
 | [docs/MANUAL.md](docs/MANUAL.md) | **Users.** How to run Shipyard and get a ship on screen. |
-| [docs/M2_HUMAN_NAVY_CRUISER_PROOF.md](docs/M2_HUMAN_NAVY_CRUISER_PROOF.md) | M2 proof notes from the real Human Navy Cruiser target. |
 | [SPEC.md](SPEC.md) | What Shipyard is for, what it deliberately is not, and why. |
 | [TECHNICAL.md](TECHNICAL.md) | Implementation design: layout, storage, mesh pipeline, HTTP, testing. |
 
@@ -180,5 +177,5 @@ the uberjar. Full layout in TECHNICAL.md §2.
 
 ## License
 
-Not yet chosen. The STL models this operates on are third-party purchased assets and are
-not part of this repository.
+No license is granted for this repository. The third-party purchased STL assets it
+operates on are not part of the repository.
