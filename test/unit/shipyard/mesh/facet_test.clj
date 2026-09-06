@@ -1,5 +1,6 @@
 (ns shipyard.mesh.facet-test
   (:require [clojure.test :refer [deftest is testing]]
+            [shipyard.math :as math]
             [shipyard.mesh.facet :as facet]))
 
 (defn- mesh
@@ -20,12 +21,6 @@
 
 (defn- vec-close? [expected actual]
   (every? true? (map close? expected actual)))
-
-(defn- dot [[ax ay az] [bx by bz]]
-  (+ (* ax bx) (* ay by) (* az bz)))
-
-(defn- length [v]
-  (Math/sqrt (dot v v)))
 
 (defn- finite-vec? [v]
   (every? #(Double/isFinite (double %)) v))
@@ -62,9 +57,9 @@
       (is (vec-close? [0.0 0.0 1.0] (:mount/axis frame)))
       (is (vec-close? [1.0 0.0 0.0] (:mount/roll frame)))
       (is (finite-vec? (:mount/pos frame)))
-      (is (close? 1.0 (length (:mount/axis frame))))
-      (is (close? 1.0 (length (:mount/roll frame))))
-      (is (close? 0.0 (dot (:mount/axis frame) (:mount/roll frame))))
+      (is (close? 1.0 (math/length (:mount/axis frame))))
+      (is (close? 1.0 (math/length (:mount/roll frame))))
+      (is (close? 0.0 (math/dot (:mount/axis frame) (:mount/roll frame))))
       (is (false? roll-ambiguous?))
       (is (= :hull-edge roll-source))))
 

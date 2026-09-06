@@ -2,9 +2,6 @@
   (:require [clojure.test :refer [deftest is testing]]
             [shipyard.math :as math]))
 
-(defn- close? [a b]
-  (< (#?(:clj Math/abs :cljs js/Math.abs) (- a b)) 1.0e-9))
-
 (deftest finite-number?-test
   (testing "accepts finite numbers"
     (is (math/finite-number? 1.5)))
@@ -59,8 +56,8 @@
 (deftest normalize-test
   (testing "returns a unit vector"
     (let [[x y] (math/normalize [3.0 4.0])]
-      (is (close? 0.6 x))
-      (is (close? 0.8 y))))
+      (is (< (#?(:clj Math/abs :cljs js/Math.abs) (- 0.6 x)) 1.0e-9))
+      (is (< (#?(:clj Math/abs :cljs js/Math.abs) (- 0.8 y)) 1.0e-9))))
   (testing "rejects zero, malformed, and threshold-length vectors"
     (is (nil? (math/normalize [0.0 0.0])))
     (is (nil? (math/normalize nil)))
