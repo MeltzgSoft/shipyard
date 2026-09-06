@@ -30,11 +30,11 @@
    :mount/origin :picked})
 
 (defn- catalog [root]
-  {:state (atom {:conn (db/ingest (scan/scan root) root) :root root})})
+  {:state (atom {:conn (db/ingest! (scan/scan! root) root) :root root})})
 
 (deftest schema-and-ingest
   (let [root (fixture-tree)
-        conn (db/conn (catalog root))]
+        conn (db/conn! (catalog root))]
     (is (= 6 (count (db/browse @conn {}))))
     (testing ":part/id is an identity, so re-transacting updates rather than duplicating"
       (d/transact! conn [{:part/id "Human Navy Fleet Bundle/Cruiser/Hull" :part/tris 42}])
@@ -45,14 +45,14 @@
   (testing "a vertex buffer in the catalog would balloon the heap and make the DB
             non-derivable, so assert no geometry attribute exists anywhere"
     (let [root (fixture-tree)
-          conn (db/conn (catalog root))
+          conn (db/conn! (catalog root))
           attrs (set (d/q '[:find [?a ...] :where [_ ?a]] @conn))]
       (is (empty? (set/intersection attrs db/geometry-keys)))
       (is (every? #(not (re-find #"position|normal|vertex|geometry|indices" (name %))) attrs)))))
 
 (deftest turret-metadata-survives-ingest
   (let [root (fixture-tree)
-        conn (db/conn (catalog root))
+        conn (db/conn! (catalog root))
         db @conn]
     (testing "directory facts reach the catalog rather than being dropped"
       (let [t (db/part db "Human Navy Fleet Bundle/Cruiser/weapons/turrets/Lance Turret")]
@@ -69,7 +69,7 @@
 
 (deftest browse-queries
   (let [root (fixture-tree)
-        conn (db/conn (catalog root))
+        conn (db/conn! (catalog root))
         db @conn]
     (is (= ["Human Navy Fleet Bundle" "Ork Fleet Bundle"] (db/bundles db)))
     (is (= ["Battleship" "Cruiser"] (db/classes db "Human Navy Fleet Bundle")))
@@ -86,11 +86,11 @@
   (let [root (fixture-tree)
         id   "Human Navy Fleet Bundle/Cruiser/Hull"]
     (sidecar/write-sidecar! root id {:mounts [a-mount]})
-    (let [back (sidecar/read-sidecar root id)]
+    (let [back (sidecar/read-sidecar! root id)]
       (is (= [a-mount] (:mounts back)))
       (is (= sidecar/format-version (:shipyard/version back))))
     (testing "a part with no sidecar reads as nil, not an error"
-      (is (nil? (sidecar/read-sidecar root "Ork Fleet Bundle/Cruiser/Battle Krooza Hull"))))))
+      (is (nil? (sidecar/read-sidecar! root "Ork Fleet Bundle/Cruiser/Battle Krooza Hull"))))))
 
 (deftest malformed-sidecar-fails-loudly
   (let [root (fixture-tree)
@@ -100,9 +100,9 @@
               indistinguishable from an unauthored part, so a syntax error would
               silently discard work"
       (is (thrown-with-msg? clojure.lang.ExceptionInfo #"malformed sidecar"
-                            (sidecar/read-sidecar root id))))
+                            (sidecar/read-sidecar! root id))))
     (testing "but one bad file must not make the whole library invisible"
-      (let [conn (db/conn (catalog root))]
+      (let [conn (db/conn! (catalog root))]
         (is (= 6 (count (db/browse @conn {}))))))))
 
 (deftest write-through-is-file-first
@@ -110,14 +110,14 @@
         cat  (catalog root)
         id   "Human Navy Fleet Bundle/Cruiser/Hull"]
     (db/save-mounts! cat id [a-mount])
-    (is (= [a-mount] (:mounts (sidecar/read-sidecar root id))))
-    (is (= 1 (count (:part/mounts (db/part @(db/conn cat) id)))))
+    (is (= [a-mount] (:mounts (sidecar/read-sidecar! root id))))
+    (is (= 1 (count (:part/mounts (db/part @(db/conn! cat) id)))))
 
     (testing "a failing transact still leaves the sidecar on disk"
       (let [broken {:state (atom {:conn (d/create-conn db/schema) :root root})}]   ; part not in this DB
         (try (db/save-mounts! broken "Ork Fleet Bundle/Cruiser/Battle Krooza Hull" [a-mount])
              (catch Exception _ nil))
-        (is (= [a-mount] (:mounts (sidecar/read-sidecar
+        (is (= [a-mount] (:mounts (sidecar/read-sidecar!
                                    root "Ork Fleet Bundle/Cruiser/Battle Krooza Hull")))
             "the durable write happened before the index write")))))
 
@@ -127,8 +127,8 @@
         id   "Human Navy Fleet Bundle/Cruiser/Classic Ram Prow"]
     (sidecar/write-sidecar! root id {:kept "yes"})
     (db/save-authoring! cat id {:mounts [a-mount] :part-role :weapon})
-    (let [sidecar (sidecar/read-sidecar root id)
-          part (db/part @(db/conn cat) id)]
+    (let [sidecar (sidecar/read-sidecar! root id)
+          part (db/part @(db/conn! cat) id)]
       (is (= "yes" (:kept sidecar)) "unknown sidecar fields survive")
       (is (= :weapon (:part/role sidecar)))
       (is (= :weapon (:part/role-hint part)))
@@ -137,11 +137,11 @@
     (testing "replace and delete update the derived component refs rather than accumulating"
       (db/save-authoring! cat id {:mounts [(assoc a-mount :mount/id :weapon-back)]
                                   :part-role :weapon})
-      (is (= [:weapon-back] (mapv :mount/id (:part/mounts (db/part @(db/conn cat) id)))))
+      (is (= [:weapon-back] (mapv :mount/id (:part/mounts (db/part @(db/conn! cat) id)))))
       (db/save-authoring! cat id {:mounts []})
-      (is (empty? (:part/mounts (db/part @(db/conn cat) id)))))
+      (is (empty? (:part/mounts (db/part @(db/conn! cat) id)))))
     (testing "restart re-ingests the manual role from the sidecar"
-      (let [part (db/part @(db/conn (catalog root)) id)]
+      (let [part (db/part @(db/conn! (catalog root)) id)]
         (is (= :weapon (:part/role-hint part)))
         (is (= :manual (:part/role-source part)))))))
 
@@ -157,8 +157,8 @@
                         :mount/origin :mirrored)
         mounts [a-mount mirrored]]
     (db/save-authoring! cat id {:mounts mounts :part-role :hull})
-    (is (= mounts (:mounts (sidecar/read-sidecar root id))))
-    (let [part (db/part @(db/conn (catalog root)) id)]
+    (is (= mounts (:mounts (sidecar/read-sidecar! root id))))
+    (let [part (db/part @(db/conn! (catalog root)) id)]
       (is (= (mapv #(select-keys % [:mount/id :mount/pos :mount/axis :mount/roll :mount/origin])
                    mounts)
              (mapv #(select-keys % [:mount/id :mount/pos :mount/axis :mount/roll :mount/origin])
@@ -172,19 +172,19 @@
         q (orientation/from-euler-degrees 90 0 0)]
     (sidecar/write-sidecar! root id {:mounts [a-mount] :part/role :hull})
     (db/save-part-orientation! cat id q)
-    (let [sidecar (sidecar/read-sidecar root id)
-          part (db/part @(db/conn cat) id)]
+    (let [sidecar (sidecar/read-sidecar! root id)
+          part (db/part @(db/conn! cat) id)]
       (is (= q (:part/orientation sidecar)))
       (is (= q (:part/orientation part)))
       (is (= [a-mount] (:mounts sidecar)) "orientation does not rewrite mounts")
       (is (= :hull (:part/role sidecar)) "orientation does not rewrite part metadata"))
     (testing "restart re-ingests orientation from the sidecar"
-      (is (= q (:part/orientation (db/part @(db/conn (catalog root)) id)))))
+      (is (= q (:part/orientation (db/part @(db/conn! (catalog root)) id)))))
     (testing "parts without orientation remain identity at the behavior boundary"
       (is (= orientation/identity-quaternion
              (orientation/orientation-of
               (:part/orientation
-               (db/part @(db/conn cat)
+               (db/part @(db/conn! cat)
                         "Human Navy Fleet Bundle/Cruiser/Classic Ram Prow"))))))))
 
 (deftest authoring-is-file-first-when-the-index-write-fails
@@ -195,7 +195,7 @@
       (try
         (db/save-authoring! cat id {:mounts [a-mount] :part-role :hull})
         (catch Exception _ nil)))
-    (let [sidecar (sidecar/read-sidecar root id)]
+    (let [sidecar (sidecar/read-sidecar! root id)]
       (is (= [a-mount] (:mounts sidecar))
           "the durable mount write happened before the index write")
       (is (= :hull (:part/role sidecar))
@@ -207,8 +207,8 @@
           id   "Human Navy Fleet Bundle/Cruiser/Hull"
           c1   (catalog root)]
       (db/save-mounts! c1 id [a-mount])
-      (let [before (db/browse @(db/conn c1) {})
-            after  (db/browse @(db/conn (catalog root)) {})]
+      (let [before (db/browse @(db/conn! c1) {})
+            after  (db/browse @(db/conn! (catalog root)) {})]
         (is (= (map :part/id before) (map :part/id after)))
-        (is (= (count (:part/mounts (db/part @(db/conn (catalog root)) id))) 1)
+        (is (= (count (:part/mounts (db/part @(db/conn! (catalog root)) id))) 1)
             "mounts come back from the sidecar, not from the discarded DB")))))

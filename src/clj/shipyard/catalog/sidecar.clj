@@ -14,7 +14,7 @@
 
 (defn sidecar-file ^File [root part-id] (io/file root part-id filename))
 
-(defn read-sidecar
+(defn read-sidecar!
   "Read a part's sidecar, or nil when it has none.
 
   A malformed sidecar throws. It must never degrade to \"this part has no
@@ -41,4 +41,4 @@
 (defn update-sidecar!
   "Read, apply `f`, write back. The durable half of a write-through update."
   [root part-id f & args]
-  (write-sidecar! root part-id (apply f (or (read-sidecar root part-id) {}) args)))
+  (write-sidecar! root part-id (apply f (or (read-sidecar! root part-id) {}) args)))

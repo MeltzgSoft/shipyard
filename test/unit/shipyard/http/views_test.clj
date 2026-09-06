@@ -1,4 +1,4 @@
-(ns shipyard.unit.views-test
+(ns shipyard.http.views-test
   (:require [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [shipyard.http.htmx :as htmx]

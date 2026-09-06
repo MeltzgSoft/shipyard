@@ -16,13 +16,13 @@
 (deftest mmap-binary-roundtrip
   (let [tris (f/uv-sphere 1.0 12 16)
         file (temp-stl (f/->binary-stl tris) ".stl")
-        m    (stl/parse-file file)]
+        m    (stl/parse-file! file)]
     (is (= (count tris) (:triangle-count m)))
     (is (= (* 9 (count tris)) (alength ^floats (:positions m))))))
 
 (deftest committed-ascii-fixture
   (testing "an ASCII STL with CRLF endings, as found in the real library"
-    (let [m (stl/parse-file (io/file "test/fixtures/cube-ascii-crlf.stl"))]
+    (let [m (stl/parse-file! (io/file "test/fixtures/cube-ascii-crlf.stl"))]
       (is (= 12 (:triangle-count m)))
       (is (= [-1.0 -1.0 -1.0] (mapv float (:bbox-min m))))
       (is (= [1.0 1.0 1.0] (mapv float (:bbox-max m)))))))
@@ -32,7 +32,7 @@
         short (java.util.Arrays/copyOf b (- (alength b) 20))
         file  (temp-stl short ".stl")]
     (is (thrown-with-msg? clojure.lang.ExceptionInfo #"truncated or corrupt"
-                          (stl/parse-file file)))))
+                          (stl/parse-file! file)))))
 
 (deftest allocates-no-per-triangle-objects
   (testing "heap allocation stays within a small multiple of the output array"
@@ -55,7 +55,7 @@
 
 (deftest binary-fixture-built-from-the-spec
   (testing "a real binary file whose header text begins with 'solid'"
-    (let [m (stl/parse-file (io/file "test/fixtures/triangle-binary-solid-header.stl"))]
+    (let [m (stl/parse-file! (io/file "test/fixtures/triangle-binary-solid-header.stl"))]
       (is (= 1 (:triangle-count m))
           "detection keys on size == 84 + 50n, never on the leading text")
       (is (= [1.0 2.0 3.0 4.0 5.0 6.0 7.0 8.0 9.0] (vec ^floats (:positions m)))
@@ -76,5 +76,5 @@
           "which would demand over 25 GB - the same class of lie as the real library's ASCII file")
       (is (not= size (stl/expected-size n)))
       (testing "and it parses correctly anyway"
-        (let [m (stl/parse-file f)]
+        (let [m (stl/parse-file! f)]
           (is (= 12 (:triangle-count m))))))))

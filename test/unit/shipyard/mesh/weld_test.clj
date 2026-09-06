@@ -1,4 +1,4 @@
-(ns shipyard.unit.weld-test
+(ns shipyard.mesh.weld-test
   (:require [clojure.test :refer [deftest is testing]]
             [shipyard.fixtures :as f]
             [shipyard.mesh.stl :as stl]

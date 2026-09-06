@@ -83,7 +83,7 @@
       (seq (:mounts sidecar))     (assoc :part/mounts (vec (:mounts sidecar)))
       part-orientation            (assoc :part/orientation part-orientation))))
 
-(defn ingest
+(defn ingest!
   "Build a fresh DB from scanned parts, reading each part's sidecar.
 
   A malformed sidecar is logged and skipped rather than aborting the whole
@@ -92,7 +92,7 @@
   (let [conn (d/create-conn schema)
         tx   (reduce (fn [acc part]
                        (let [sc (try
-                                  (sidecar/read-sidecar root (:part/id part))
+                                  (sidecar/read-sidecar! root (:part/id part))
                                   (catch Exception e
                                     (log/warn (ex-message e))
                                     nil))]
@@ -103,13 +103,13 @@
 
 ;; --- queries ----------------------------------------------------------------
 
-(defn conn
+(defn conn!
   "The live connection. `snapshot` is what a handler wants; this is for the
   writers, and for tests asserting on transactions."
   [{:keys [state]}]
   (:conn @state))
 
-(defn snapshot
+(defn snapshot!
   "The current value of the catalog. A query takes a db value, not a connection,
   so a handler that reads several facets sees one consistent index.
 
@@ -221,10 +221,10 @@
   [{:keys [state]} parts root]
   (let [parts (or parts [])]
     (log/infof "catalog: %d parts re-ingested" (count parts))
-    (reset! state {:conn (ingest parts root) :root root})))
+    (reset! state {:conn (ingest! parts root) :root root})))
 
 (defmethod ig/init-key :shipyard.catalog/db [_ {:keys [library]}]
-  (let [parts (index/parts library)
-        root  (index/root library)]
+  (let [parts (index/parts! library)
+        root  (index/root! library)]
     (log/infof "catalog: %d parts ingested" (count parts))
-    {:state (atom {:conn (ingest (or parts []) root) :root root})}))
+    {:state (atom {:conn (ingest! (or parts []) root) :root root})}))

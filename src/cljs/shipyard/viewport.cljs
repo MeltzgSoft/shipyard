@@ -524,7 +524,7 @@
 
 (defn- form-twist-degrees []
   (some-> (.querySelector js/document ".mount-wizard__form input[name=twist-deg]")
-          .-value
+          (.-value)
           (parse-finite-double)))
 
 (defn- roll-for-preview [{:mount/keys [axis roll]}]
@@ -802,7 +802,8 @@
       (.setFromCamera raycaster pointer camera)
       (let [hits (.intersectObject raycaster obj false)]
         (when (pos? (.-length hits))
-          (let [face-index (.-faceIndex (aget hits 0))]
+          (let [^js hit (aget hits 0)
+                face-index (.-faceIndex hit)]
             (when (some? face-index)
               (post-facet! sys face-index))))))))
 

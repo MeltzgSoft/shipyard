@@ -1,4 +1,4 @@
-(ns shipyard.unit.scan-test
+(ns shipyard.library.scan-test
   "Role inference is pure string work, so it is unit-testable without a library.
   Names below are real folder names taken from the collection."
   (:require [clojure.test :refer [deftest is testing]]

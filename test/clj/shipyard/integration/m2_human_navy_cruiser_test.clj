@@ -42,7 +42,7 @@
         (is (= mount-count reloaded-mount-count))
         (is (= part-role reloaded-role))
         (is (= sidecar/format-version
-               (:shipyard/version (sidecar/read-sidecar root part-id))))))
+               (:shipyard/version (sidecar/read-sidecar! root part-id))))))
     (testing "Cruiser weapon faces record two-module capacity"
       (let [hull (get-in report [:authored (:hull proof/parts)])
             by-id (into {} (map (juxt :mount/id identity)) (:mounts hull))]

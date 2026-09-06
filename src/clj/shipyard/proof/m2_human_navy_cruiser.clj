@@ -92,8 +92,8 @@
                       {:part-id part-id})))
     (fs/file root part-id (index/name-of source))))
 
-(defn- bbox [root scanned-by-id part-id]
-  (let [m (stl/parse-file (mesh-file root scanned-by-id part-id))]
+(defn- bbox! [root scanned-by-id part-id]
+  (let [m (stl/parse-file! (mesh-file root scanned-by-id part-id))]
     {:triangles (:triangle-count m)
      :bbox-min (:bbox-min m)
      :bbox-max (:bbox-max m)}))
@@ -118,10 +118,10 @@
                        :expected-layout parts}))))
   scanned)
 
-(defn- library [root cache-home]
+(defn- library! [root cache-home]
   (ig/init-key :shipyard.library/index {:root root :cache-home cache-home}))
 
-(defn- catalog [library]
+(defn- catalog! [library]
   (ig/init-key :shipyard.catalog/db {:library library}))
 
 (defn- save-authoring-with-times! [catalog]
@@ -138,9 +138,9 @@
                              :mount/origin])
          :bbox-face-span-mm (bbox-face-span bbox (:mount/axis mount))))
 
-(defn- part-summary [root scanned-by-id reloaded timings [part-id {:keys [mounts part-role]}]]
-  (let [bbox (bbox root scanned-by-id part-id)
-        reloaded-part (db/part (db/snapshot reloaded) part-id)
+(defn- part-summary! [root scanned-by-id reloaded timings [part-id {:keys [mounts part-role]}]]
+  (let [bbox (bbox! root scanned-by-id part-id)
+        reloaded-part (db/part (db/snapshot! reloaded) part-id)
         elapsed-ms (get timings part-id)
         mount-count (count mounts)]
     [part-id {:part-role part-role
@@ -150,7 +150,7 @@
               :ms-per-mount (round3 (/ elapsed-ms (max 1 mount-count)))
               :reloaded-role (:part/role-hint reloaded-part)
               :reloaded-mount-count (count (:part/mounts reloaded-part))
-              :sidecar-version (:shipyard/version (sidecar/read-sidecar root part-id))}]))
+              :sidecar-version (:shipyard/version (sidecar/read-sidecar! root part-id))}]))
 
 (defn- totals []
   (let [mounts (mapcat :mounts (vals authoring))]
@@ -170,20 +170,20 @@
   (when-not root
     (throw (ex-info "pass --root pointing at a temporary Cruiser library copy" {})))
   (let [root (str root)
-        scanned (verify-parts! (vec (scan/scan (fs/file root))))
+        scanned (verify-parts! (vec (scan/scan! (fs/file root))))
         scanned-by-id (into {} (map (juxt :part/id identity)) scanned)
-        lib (library root cache-home)
-        cat (catalog lib)
+        lib (library! root cache-home)
+        cat (catalog! lib)
         timings (save-authoring-with-times! cat)
-        reloaded (catalog (library root cache-home))]
+        reloaded (catalog! (library! root cache-home))]
     {:root root
      :ran-at (str (java.time.Instant/now))
      :parts (into (sorted-map)
-                  (map (fn [[k id]] [k (merge {:part/id id} (bbox root scanned-by-id id))]))
+                  (map (fn [[k id]] [k (merge {:part/id id} (bbox! root scanned-by-id id))]))
                   parts)
      :facet-tolerances facet/default-options
      :authored (into (sorted-map)
-                     (map (partial part-summary root scanned-by-id reloaded timings))
+                     (map (partial part-summary! root scanned-by-id reloaded timings))
                      authoring)
      :totals (totals)
      :ambiguous-roll-cases []

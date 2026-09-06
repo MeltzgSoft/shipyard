@@ -21,13 +21,13 @@
             [shipyard.library.index :as index]
             [shipyard.system :as system]))
 
-(defn normalise
+(defn normalise!
   "The path as it will be used: trimmed, `~` expanded, or nil if there is
   nothing there."
   [path]
-  (some-> path str str/trim not-empty system/expand-home))
+  (some-> path (str) (str/trim) (not-empty) (system/expand-home!)))
 
-(defn problem
+(defn problem!
   "Why `path` cannot be a library root, in the user's terms, or nil when it
   can.
 
@@ -37,7 +37,7 @@
   fixable. Refusing the path would instead be Shipyard telling the user they
   are wrong about where their own files are."
   [path]
-  (let [p (normalise path)
+  (let [p (normalise! path)
         f (some-> p fs/file)]
     (cond
       (nil? p)                  "Enter the folder that holds your STL library."
@@ -55,8 +55,8 @@
   would leave a running application whose library silently reverts at the next
   restart, which is the failure nobody thinks to check for."
   [{:keys [library catalog jobs config-dir]} path]
-  (or (problem path)
-      (let [root (normalise path)]
+  (or (problem! path)
+      (let [root (normalise! path)]
         (if-let [failure (try
                            (if config-dir
                              (system/save-library-root! config-dir root)

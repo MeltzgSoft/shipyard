@@ -108,8 +108,8 @@
         source  (newest-source)]
     (when (and source (< (.lastModified bundle) (.lastModified ^File source)))
       (throw (ex-info
-              (str "stale viewport bundle: " (str source) " is newer than "
-                   (str bundle) " - run `npx shadow-cljs compile viewport` first.\n"
+              (str "stale viewport bundle: " source " is newer than "
+                   bundle " - run `npx shadow-cljs compile viewport` first.\n"
                    "The bundle is gitignored, so it survives a branch switch and would "
                    "otherwise be tested against source it was not built from.")
               {:bundle (str bundle) :source (str source)})))))

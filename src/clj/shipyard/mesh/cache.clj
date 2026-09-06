@@ -15,7 +15,7 @@
             [shipyard.system :as system]
             [shipyard.wire :as wire]))
 
-(defn sha256
+(defn sha256!
   "Content hash of a source STL, streamed. Computed only at first preprocess
   (§5.4) - hashing 19 GB at every start is what the scan index exists to avoid."
   [f]
@@ -26,7 +26,7 @@
 
 ;; --- eviction ---------------------------------------------------------------
 
-(defn cache-size ^long [{:keys [dir]}]
+(defn cache-size! ^long [{:keys [dir]}]
   (reduce + 0 (map fs/size (filter fs/regular-file? (fs/list-dir dir)))))
 
 (defn evict!
@@ -55,7 +55,7 @@
 (defn- preprocess!
   "Parse, weld, generate tiers, encode, write. Runs once per source file ever."
   [{:keys [crease-deg lod-tiers] :as cache} source mesh-key]
-  (let [parsed (stl/parse-file source)
+  (let [parsed (stl/parse-file! source)
         tiers  (lod/generate parsed {:crease-deg crease-deg :tiers lod-tiers})]
     (doseq [[i tier] (map-indexed vector tiers)]
       (let [target (tier-file cache mesh-key i)
@@ -72,10 +72,10 @@
      :tiers    (count tiers)
      :tris     (:triangle-count parsed)}))
 
-(defn- run-job
+(defn- run-job!
   "The work itself: take the cache hit, or preprocess and then evict."
   [cache source]
-  (let [mesh-key (sha256 source)
+  (let [mesh-key (sha256! source)
         t0       (tier-file cache mesh-key 0)]
     (if (fs/regular-file? t0)
       (do (touch! t0) {:mesh-key mesh-key :cached true})
@@ -108,7 +108,7 @@
   part, and the §11 budget is 2 GB peak."
   [{:keys [inflight] :as cache} source]
   (let [k (str (fs/absolutize source))
-        d (-> (swap! inflight update k #(or % (delay (run-job cache source))))
+        d (-> (swap! inflight update k #(or % (delay (run-job! cache source))))
               (get k))]
     (try @d (finally (swap! inflight dissoc k)))))
 
@@ -119,7 +119,7 @@
              facet-angle-deg facet-plane-epsilon-mm]}]
   ;; `cache-home` is injectable for the same reason the scan index's is: an
   ;; E2E run must not evict the developer's real cache to prove a point.
-  (let [dir (fs/file (or cache-home (system/cache-home)) "shipyard" "mesh")]
+  (let [dir (fs/file (or cache-home (system/cache-home!)) "shipyard" "mesh")]
     (fs/create-dirs dir)
     (log/infof "mesh cache at %s (cap %,d bytes)" (str dir) cap-bytes)
     {:dir dir :crease-deg crease-deg :lod-tiers lod-tiers

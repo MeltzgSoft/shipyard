@@ -1,4 +1,4 @@
-(ns shipyard.unit.wizard-test
+(ns shipyard.mount.wizard-test
   (:require [clojure.test :refer [deftest is testing]]
             [shipyard.mount.wizard :as wizard]))
 

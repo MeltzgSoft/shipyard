@@ -1,4 +1,4 @@
-(ns shipyard.unit.system-test
+(ns shipyard.system-test
   (:require [clojure.test :refer [deftest is testing]]
             [shipyard.system :as system]))
 
@@ -12,7 +12,6 @@
 
 (deftest expand-home-test
   (let [home (System/getProperty "user.home")]
-    (is (= (str home "/models") (system/expand-home "~/models")))
-    (is (= "/abs/path" (system/expand-home "/abs/path")))
-    (is (nil? (system/expand-home nil)))))
-
+    (is (= (str home "/models") (system/expand-home! "~/models")))
+    (is (= "/abs/path" (system/expand-home! "/abs/path")))
+    (is (nil? (system/expand-home! nil)))))

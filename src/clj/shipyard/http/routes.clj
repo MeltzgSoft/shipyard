@@ -9,9 +9,12 @@
             [clojure.java.io :as io]
             [clojure.string :as str]
             [integrant.core :as ig]
+            [reitit.coercion.malli :as malli-coercion]
             [reitit.ring :as ring]
+            [reitit.ring.coercion :as coercion]
             [ring.middleware.params :as params]
             [shipyard.catalog.db :as db]
+            [shipyard.http.contracts :as contracts]
             [shipyard.http.htmx :as htmx]
             [shipyard.http.jobs :as jobs]
             [shipyard.http.settings :as settings]
@@ -33,34 +36,34 @@
 
 ;; --- shell ------------------------------------------------------------------
 
-(defn- facets
+(defn- facets!
   "The filter menus. Read from one db value so the three of them cannot
   disagree, and computed once per page load - the library does not change while
   the process runs."
   [catalog]
-  (let [db (db/snapshot catalog)]
+  (let [db (db/snapshot! catalog)]
     {:bundles (db/bundles db)
      :classes (db/classes db)
      :roles   (db/roles db)}))
 
-(defn- root [{:keys [catalog library]} _]
-  (htmx/page (views/shell (facets catalog) (index/root library))))
+(defn- root! [{:keys [catalog library]} _]
+  (htmx/page (views/shell (facets! catalog) (index/root! library))))
 
 ;; --- library ----------------------------------------------------------------
 
 (defn- blank->nil [s] (when-not (str/blank? s) s))
 
-(defn- library
+(defn- library!
   "`GET /library`. An absent or empty parameter means no filter, which is what
   the \"All bundles\" option submits."
   [{:keys [catalog library]} {:keys [params]}]
-  (if-not (index/available? library)
-    (htmx/fragment (if (index/root library)
-                     (views/library-unavailable (index/root library))
+  (if-not (index/available?! library)
+    (htmx/fragment (if (index/root! library)
+                     (views/library-unavailable (index/root! library))
                      (views/library-needs-root)))
     (htmx/fragment
      (views/library-results
-      (db/browse (db/snapshot catalog)
+      (db/browse (db/snapshot! catalog)
                  {:bundle (blank->nil (get params "bundle"))
                   :class  (blank->nil (get params "class"))
                   :role   (some-> (get params "role") blank->nil keyword)
@@ -71,12 +74,12 @@
 (defn- durable-mounts [part]
   (mapv #(dissoc % :db/id) (:part/mounts part)))
 
-(defn- source-file
+(defn- source-file!
   "The STL the mesh pipeline should open. Derived from the catalog record, never
   from the URL: the id in the path only ever selects a part, it never names a
   file."
   [library {:part/keys [id source]}]
-  (fs/file (index/root library) id (index/name-of source)))
+  (fs/file (index/root! library) id (index/name-of source)))
 
 (defn- ready
   "The mesh is on disk. The fragment says so and the `HX-Trigger` hands the
@@ -92,13 +95,13 @@
                                                      (:part/orientation part))
                                        :frame   true}}}))
 
-(defn- preprocessing
+(defn- preprocessing!
   "Submit the job if it is not already running and answer with whatever is true
   right now. This returns in milliseconds even when the work takes seconds,
   which is the whole point of §7's preprocess-latency rule."
   [{:keys [library jobs]} part]
   (let [id (:part/id part)
-        {:keys [state mesh-key message]} (jobs/submit! jobs id (source-file library part))]
+        {:keys [state mesh-key message]} (jobs/submit! jobs id (source-file! library part))]
     (case state
       :ready  (ready part mesh-key)
       :failed (htmx/fragment (views/detail-failed part message)
@@ -107,7 +110,7 @@
                      {:events {:status {:state   :preparing
                                         :message "Preparing this part for display."}}}))))
 
-(defn- part
+(defn- part!
   "`GET /part/*id`. A catch-all rather than `:id` because a part id contains
   separators; see `shipyard.http.urls/encode-id` for why `%2F` is not an option.
 
@@ -115,7 +118,7 @@
   carry it, so a failure is shown rather than silently retried on the next tick."
   [{:keys [catalog library cache jobs] :as deps} {:keys [params path-params]}]
   (let [id   (:id path-params)
-        part (db/part (db/snapshot catalog) id)]
+        part (db/part (db/snapshot! catalog) id)]
     (cond
       (nil? (:part/id part))
       (htmx/fragment (views/detail-missing id) {:status 404 :events {:clear nil}})
@@ -126,11 +129,11 @@
 
       :else
       (let [_      (when (get params "retry") (jobs/forget! jobs id))
-            cached (index/mesh-key library id)]
+            cached (index/mesh-key! library id)]
         (if (and cached (fs/regular-file? (cache/tier-file cache cached 0)))
           ;; Known from a previous run: no job, no poll, no round trip.
           (ready part cached)
-          (preprocessing deps part))))))
+          (preprocessing! deps part))))))
 
 ;; --- facet preview ----------------------------------------------------------
 
@@ -154,19 +157,19 @@
 (defn- invalid-selection [part-id]
   (facet-error :invalid-selection "Select a face from the loaded part." part-id 400))
 
-(defn- read-bytes [f]
+(defn- read-bytes! [f]
   (with-open [in (FileInputStream. (fs/file f))
               out (ByteArrayOutputStream.)]
     (io/copy in out)
     (.toByteArray out)))
 
-(defn- fresh-entry? [entry source]
+(defn- fresh-entry?! [entry source]
   (try
-    (and source (index/fresh? entry source))
+    (and source (index/fresh?! entry source))
     (catch Exception _
       false)))
 
-(defn- facet-preview
+(defn- facet-preview!
   "`POST /facet`. Turns a selected tier-0 triangle into a transient preview
   event. Durable mount writes are a later M2 endpoint."
   [{:keys [catalog library cache]} {:keys [params]}]
@@ -178,14 +181,14 @@
                  (re-matches mesh-key-re mesh-key)
                  triangle-index)
       (invalid-selection part-id)
-      (let [db (db/snapshot catalog)
+      (let [db (db/snapshot! catalog)
             part (db/part db part-id)]
         (cond
           (nil? (:part/id part))
           (facet-error :part-not-found "That part is no longer in the library." part-id 404)
 
           :else
-          (let [{:keys [root entry]} (index/part-state library part-id)
+          (let [{:keys [root entry]} (index/part-state! library part-id)
                 current-key (:mesh-key entry)
                 source (when (and root (:part/source part))
                          (fs/file root part-id (index/name-of (:part/source part))))
@@ -197,7 +200,7 @@
               (not= mesh-key current-key)
               (facet-error :stale-mesh "The mesh changed. Reopen the part before picking a face." part-id 409)
 
-              (not (fresh-entry? entry source))
+              (not (fresh-entry?! entry source))
               (facet-error :stale-mesh "The source STL changed. Reopen the part before picking a face." part-id 409)
 
               (not (fs/regular-file? tier0))
@@ -206,7 +209,7 @@
               :else
               (try
                 (let [{:keys [facet-indices frame]}
-                      (facet/select (wire/decode (read-bytes tier0)) triangle-index
+                      (facet/select (wire/decode (read-bytes! tier0)) triangle-index
                                     (select-keys cache [:facet-angle-deg :facet-plane-epsilon-mm]))
                       frame (orientation/orient-mount-frame frame (:part/orientation part))
                       edit (when-let [original-mount-id (get params "original-mount-id")]
@@ -243,11 +246,11 @@
 
 ;; --- durable mounts ---------------------------------------------------------
 
-(defn- mount-response
-  ([deps part-id events] (mount-response deps part-id events nil))
+(defn- mount-response!
+  ([deps part-id events] (mount-response! deps part-id events nil))
   ([{:keys [catalog library]} part-id events view-options]
-   (let [part (db/part (db/snapshot catalog) part-id)
-         mesh-key (index/mesh-key library part-id)]
+   (let [part (db/part (db/snapshot! catalog) part-id)
+         mesh-key (index/mesh-key! library part-id)]
      (if (and (:part/id part) mesh-key)
        (htmx/fragment (views/detail-ready part mesh-key view-options)
                       {:events (assoc events :interfaces {:part-id part-id
@@ -257,16 +260,16 @@
          (facet-error :mesh-not-ready "Open the part and wait for preprocessing to finish." part-id 409)
          (facet-error :part-not-found "That part is no longer in the library." part-id 404))))))
 
-(defn- mount-error-response
+(defn- mount-error-response!
   [{:keys [library] :as deps} part-id error events view-options]
-  (if (index/mesh-key library part-id)
-    (mount-response deps part-id events view-options)
+  (if (index/mesh-key! library part-id)
+    (mount-response! deps part-id events view-options)
     (htmx/fragment (views/facet-error error))))
 
-(defn- save-mount
+(defn- save-mount!
   [{:keys [catalog library] :as deps} {:keys [params]}]
   (let [part-id (get params "part-id")
-        part (db/part (db/snapshot catalog) part-id)]
+        part (db/part (db/snapshot! catalog) part-id)]
     (cond
       (nil? (:part/id part))
       (facet-error :part-not-found "That part is no longer in the library." part-id 404)
@@ -276,36 +279,36 @@
                                         (durable-mounts part)
                                         (:part/orientation part))]
         (if-let [error (:error result)]
-          (mount-error-response
+          (mount-error-response!
            deps
            part-id
            error
            {:authoring {:state :enter
                         :part-id part-id
-                        :mesh-key (index/mesh-key library part-id)}}
+                        :mesh-key (index/mesh-key! library part-id)}}
            {:preview (wizard/error-preview part params error)})
           (try
             (db/save-authoring! catalog part-id (select-keys result [:mounts]))
             (if-let [repeat-values (:repeat-values result)]
-              (mount-response deps part-id {:clear-preview nil
-                                            :authoring {:state :enter
-                                                        :part-id part-id
-                                                        :mesh-key (index/mesh-key library part-id)}
-                                            :mount-repeat repeat-values}
-                              {:repeat-values repeat-values})
-              (mount-response deps part-id {:clear-preview nil
-                                            :authoring {:state :exit}}))
+              (mount-response! deps part-id {:clear-preview nil
+                                             :authoring {:state :enter
+                                                         :part-id part-id
+                                                         :mesh-key (index/mesh-key! library part-id)}
+                                             :mount-repeat repeat-values}
+                               {:repeat-values repeat-values})
+              (mount-response! deps part-id {:clear-preview nil
+                                             :authoring {:state :exit}}))
             (catch Exception _
               (facet-error :mount-save-failed
                            "The mount was written, but the catalog did not update. Restart Shipyard to re-ingest it."
                            part-id
                            500))))))))
 
-(defn- edit-mount
+(defn- edit-mount!
   [{:keys [catalog library] :as deps} {:keys [params]}]
   (let [part-id (get params "part-id")
-        part (db/part (db/snapshot catalog) part-id)
-        mesh-key (index/mesh-key library part-id)]
+        part (db/part (db/snapshot! catalog) part-id)
+        mesh-key (index/mesh-key! library part-id)]
     (cond
       (nil? (:part/id part))
       (facet-error :part-not-found "That part is no longer in the library." part-id 404)
@@ -316,13 +319,13 @@
       :else
       (let [result (wizard/edit-request params (durable-mounts part))]
         (if-let [error (:error result)]
-          (mount-error-response deps
-                                part-id
-                                error
-                                {}
-                                {:error error})
+          (mount-error-response! deps
+                                 part-id
+                                 error
+                                 {}
+                                 {:error error})
           (let [frame (:frame result)]
-            (mount-response
+            (mount-response!
              deps
              part-id
              {:authoring {:state :enter
@@ -338,10 +341,10 @@
                         :original-mount-id (:original-mount-id result)
                         :values (:values result)}})))))))
 
-(defn- save-part-role
+(defn- save-part-role!
   [{:keys [catalog] :as deps} {:keys [params]}]
   (let [part-id (get params "part-id")
-        part (db/part (db/snapshot catalog) part-id)]
+        part (db/part (db/snapshot! catalog) part-id)]
     (cond
       (nil? (:part/id part))
       (facet-error :part-not-found "That part is no longer in the library." part-id 404)
@@ -349,20 +352,20 @@
       :else
       (let [result (wizard/part-role-request params)]
         (if-let [error (:error result)]
-          (mount-response deps part-id {} {:error error})
+          (mount-response! deps part-id {} {:error error})
           (try
             (db/save-part-role! catalog part-id (:part-role result))
-            (mount-response deps part-id {})
+            (mount-response! deps part-id {})
             (catch Exception _
               (facet-error :part-role-save-failed
                            "The part role was written, but the catalog did not update. Restart Shipyard to re-ingest it."
                            part-id
                            500))))))))
 
-(defn- save-part-orientation
+(defn- save-part-orientation!
   [{:keys [catalog] :as deps} {:keys [params]}]
   (let [part-id (get params "part-id")
-        part (db/part (db/snapshot catalog) part-id)]
+        part (db/part (db/snapshot! catalog) part-id)]
     (cond
       (nil? (:part/id part))
       (facet-error :part-not-found "That part is no longer in the library." part-id 404)
@@ -370,30 +373,30 @@
       :else
       (let [result (orientation/save-request params)]
         (if-let [error (:error result)]
-          (mount-response deps
-                          part-id
-                          {:part-orientation {:part-id part-id
-                                              :orientation (orientation/orientation-of
-                                                            (:part/orientation part))}}
-                          {:orientation-error error})
+          (mount-response! deps
+                           part-id
+                           {:part-orientation {:part-id part-id
+                                               :orientation (orientation/orientation-of
+                                                             (:part/orientation part))}}
+                           {:orientation-error error})
           (try
             (let [part-orientation (db/save-part-orientation!
                                     catalog part-id (:orientation result))]
-              (mount-response deps
-                              part-id
-                              {:part-orientation {:part-id part-id
-                                                  :saved? true
-                                                  :orientation part-orientation}}))
+              (mount-response! deps
+                               part-id
+                               {:part-orientation {:part-id part-id
+                                                   :saved? true
+                                                   :orientation part-orientation}}))
             (catch Exception _
               (facet-error :part-orientation-save-failed
                            "The part orientation was written, but the catalog did not update. Restart Shipyard to re-ingest it."
                            part-id
                            500))))))))
 
-(defn- delete-mount
+(defn- delete-mount!
   [{:keys [catalog] :as deps} {:keys [params]}]
   (let [part-id (get params "part-id")
-        part (db/part (db/snapshot catalog) part-id)]
+        part (db/part (db/snapshot! catalog) part-id)]
     (cond
       (nil? (:part/id part))
       (facet-error :part-not-found "That part is no longer in the library." part-id 404)
@@ -403,19 +406,19 @@
             result (wizard/delete-request params existing)]
         (cond
           (:error result)
-          (mount-error-response deps part-id (:error result) {} {:error (:error result)})
+          (mount-error-response! deps part-id (:error result) {} {:error (:error result)})
 
           (= existing (:mounts result))
-          (mount-error-response deps
-                                part-id
-                                "No mount with that id exists."
-                                {}
-                                {:error "No mount with that id exists."})
+          (mount-error-response! deps
+                                 part-id
+                                 "No mount with that id exists."
+                                 {}
+                                 {:error "No mount with that id exists."})
 
           :else
           (try
             (db/save-authoring! catalog part-id (select-keys result [:mounts]))
-            (mount-response deps part-id {:clear-preview nil})
+            (mount-response! deps part-id {:clear-preview nil})
             (catch Exception _
               (facet-error :mount-save-failed
                            "The mount deletion was written, but the catalog did not update. Restart Shipyard to re-ingest it."
@@ -424,7 +427,7 @@
 
 ;; --- settings ---------------------------------------------------------------
 
-(defn- save-settings
+(defn- save-settings!
   "`POST /settings`. Applies a new library root, or explains why it did not.
 
   A success answers `HX-Refresh` rather than a fragment. The library has been
@@ -448,7 +451,7 @@
              "cache-control" htmx/fragment-cache-control}
    :body    message})
 
-(defn- mesh
+(defn- mesh!
   "`GET /mesh/<sha256>.<tier>.symesh`. The regex is the whole of the access
   control: only a hex digest and a small integer ever reach the filesystem."
   [{:keys [cache]} {:keys [path-params]}]
@@ -465,24 +468,49 @@
 ;; --- router -----------------------------------------------------------------
 
 (defn routes [deps]
-  [["/"        {:get (partial root deps)}]
-   ["/healthz" {:get healthz}]
-   ["/library" {:get (partial library deps)}]
-   ["/settings" {:post (partial save-settings deps)}]
-   ["/facet" {:post (partial facet-preview deps)}]
-   ["/mounts" {:post (partial save-mount deps)}]
-   ["/mounts/edit" {:post (partial edit-mount deps)}]
-   ["/mounts/delete" {:post (partial delete-mount deps)}]
-   ["/parts/role" {:post (partial save-part-role deps)}]
-   ["/parts/orientation" {:post (partial save-part-orientation deps)}]
-   ["/part/*id" {:get (partial part deps)}]
-   ["/mesh/:file" {:get (partial mesh deps)}]])
+  [["/" {:get {:handler (partial root! deps)
+               :responses contracts/html-responses}}]
+   ["/healthz" {:get {:handler healthz
+                      :responses contracts/health-responses}}]
+   ["/library" {:get {:handler (partial library! deps)
+                      :parameters {:query contracts/library-query}
+                      :responses contracts/html-responses}}]
+   ["/settings" {:post {:handler (partial save-settings! deps)
+                        :parameters {:form contracts/settings-form}
+                        :responses contracts/html-responses}}]
+   ["/facet" {:post {:handler (partial facet-preview! deps)
+                     :parameters {:form contracts/facet-form}
+                     :responses contracts/html-responses}}]
+   ["/mounts" {:post {:handler (partial save-mount! deps)
+                      :parameters {:form contracts/mount-form}
+                      :responses contracts/html-responses}}]
+   ["/mounts/edit" {:post {:handler (partial edit-mount! deps)
+                           :parameters {:form contracts/mount-id-form}
+                           :responses contracts/html-responses}}]
+   ["/mounts/delete" {:post {:handler (partial delete-mount! deps)
+                             :parameters {:form contracts/mount-id-form}
+                             :responses contracts/html-responses}}]
+   ["/parts/role" {:post {:handler (partial save-part-role! deps)
+                          :parameters {:form contracts/role-form}
+                          :responses contracts/html-responses}}]
+   ["/parts/orientation" {:post {:handler (partial save-part-orientation! deps)
+                                 :parameters {:form contracts/orientation-form}
+                                 :responses contracts/html-responses}}]
+   ["/part/*id" {:get {:handler (partial part! deps)
+                       :parameters {:path contracts/part-path}
+                       :responses contracts/html-responses}}]
+   ["/mesh/:file" {:get {:handler (partial mesh! deps)
+                         :parameters {:path contracts/mesh-path}
+                         :responses contracts/mesh-responses}}]])
 
 (defn router [deps]
-  ;; ring-core's wrap-params rather than reitit's: the equivalent middleware
-  ;; lives in reitit-middleware, an artifact this project would otherwise have
-  ;; no reason to depend on.
-  (ring/router (routes deps) {:data {:middleware [params/wrap-params]}}))
+  (ring/router
+   (routes deps)
+   {:data {:coercion malli-coercion/coercion
+           :middleware [params/wrap-params
+                        coercion/coerce-exceptions-middleware
+                        coercion/coerce-request-middleware
+                        coercion/coerce-response-middleware]}}))
 
 (defn handler
   "Build the ring handler. `deps` carries :library, :catalog, :cache and :jobs,

@@ -1,13 +1,14 @@
 (ns user
   "REPL workflow helpers (Integrant). Start Shipyard with (go), reload changed
   namespaces and restart with (reset), and stop it with (halt)."
-  (:require [integrant.repl :as ig-repl]
+  (:require [integrant.core :as ig]
+            [integrant.repl :as ig-repl]
             [shipyard.system :as system]))
 
 (defn config
-  "Load Shipyard's system configuration for an Integrant REPL session."
+  "Load the config and its Integrant component namespaces for go/reset."
   []
-  (system/load-config))
+  (doto (system/load-config!) ig/load-namespaces))
 
 (ig-repl/set-prep! config)
 

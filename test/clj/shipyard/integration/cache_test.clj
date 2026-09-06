@@ -39,35 +39,35 @@
 
 (deftest touching-the-source-invalidates
   (let [src (write-stl (temp-dir "shipyard-src") 8)
-        before (cache/sha256 src)]
+        before (cache/sha256! src)]
     (testing "content hash changes when the file changes, so the key changes"
       (with-open [o (io/output-stream src :append true)] (.write o (byte-array 4)))
-      (is (not= before (cache/sha256 src))))))
+      (is (not= before (cache/sha256! src))))))
 
 (deftest index-freshness-tracks-mtime-and-size
   (let [src (write-stl (temp-dir "shipyard-src") 6)
         e   {:mtime (.lastModified src) :size (.length src) :mesh-key "abc"}]
-    (is (index/fresh? e src))
+    (is (index/fresh?! e src))
     (testing "a size change invalidates"
-      (is (not (index/fresh? (assoc e :size 1) src))))
+      (is (not (index/fresh?! (assoc e :size 1) src))))
     (testing "an mtime change invalidates - this is what re-pitting a hull does"
-      (is (not (index/fresh? (assoc e :mtime 1) src))))
-    (is (not (index/fresh? nil src)))))
+      (is (not (index/fresh?! (assoc e :mtime 1) src))))
+    (is (not (index/fresh?! nil src)))))
 
 (deftest index-roundtrips-and-survives-corruption
   (let [f       (io/file (temp-dir "shipyard-idx") "index.edn")
         entries {"a/b" {:mtime 1 :size 2 :mesh-key "k"}}]
     (index/save-index! f "/lib" entries)
-    (is (= entries (index/load-index f "/lib")))
+    (is (= entries (index/load-index! f "/lib")))
     (testing "entries scanned from another root are not this library's"
       ;; A part id is library-relative, so two libraries can hold the same one.
       ;; Serving the stored mesh key would hand back a mesh of the wrong ship.
-      (is (= {} (index/load-index f "/somewhere-else"))))
+      (is (= {} (index/load-index! f "/somewhere-else"))))
     (testing "a corrupt index costs a rescan, never correctness"
       (spit f "{{{not edn")
-      (is (= {} (index/load-index f "/lib"))))
+      (is (= {} (index/load-index! f "/lib"))))
     (testing "a missing index is empty, not an error"
-      (is (= {} (index/load-index (io/file "/no/such/index.edn") "/lib"))))))
+      (is (= {} (index/load-index! (io/file "/no/such/index.edn") "/lib"))))))
 
 (deftest atomic-write-leaves-no-partial-file
   (let [target (io/file (temp-dir "shipyard-atomic") "out.edn")]
@@ -110,7 +110,7 @@
         src (write-stl (temp-dir "shipyard-src") 10)]
     (cache/ensure! c src)
     (cache/evict! c)
-    (is (< (cache/cache-size c) 1000)
+    (is (< (cache/cache-size! c) 1000)
         "an aggressive cap must actually drop tiers, not just log about it")))
 
 (deftest eviction-is-safe-because-everything-regenerates

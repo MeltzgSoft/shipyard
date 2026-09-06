@@ -30,12 +30,12 @@
   `cache-home` is injectable so a test can be hermetic: an E2E run scanning a
   fixture tree must not write part ids from a temp directory into the index the
   developer's real library depends on."
-  ([root] (index-file (system/cache-home) root))
+  ([root] (index-file (system/cache-home!) root))
   ([cache-home root]
    (fs/file cache-home "shipyard"
             (str "index-" (subs (digest/sha-256 (str root)) 0 16) ".edn"))))
 
-(defn load-index
+(defn load-index!
   "The stored entries, but only if they were scanned from `root`.
 
   **The stamp is not decoration.** Entries are keyed by library-relative part
@@ -60,13 +60,13 @@
 (defn save-index! [f root entries]
   (system/write-atomically! f (pr-str {:root (str root) :entries entries})))
 
-(defn- stat [f] {:mtime (fs/file-time->millis (fs/last-modified-time f)) :size (fs/size f)})
+(defn- stat! [f] {:mtime (fs/file-time->millis (fs/last-modified-time f)) :size (fs/size f)})
 
-(defn fresh?
+(defn fresh?!
   "An entry survives only while its source file's mtime and size both match.
   Re-pitting a hull changes both, so the cache self-invalidates."
   [entry source]
-  (and entry (= (select-keys entry [:mtime :size]) (stat source))))
+  (and entry (= (select-keys entry [:mtime :size]) (stat! source))))
 
 (defn name-of [variant]
   (case variant
@@ -74,7 +74,7 @@
     :unsupported        "unsupported.stl"
     :supported          "supported.stl"))
 
-(defn refresh
+(defn refresh!
   "Merge a fresh scan against the stored index, carrying forward `:mesh-key` for
   parts whose source file is unchanged and dropping it for everything else."
   [parts root stored]
@@ -85,8 +85,8 @@
        (let [f   (fs/file root id (name-of source))
              old (get stored id)]
          (assoc acc id
-                (merge (stat f)
-                       (when (fresh? old f)
+                (merge (stat! f)
+                       (when (fresh?! old f)
                          (select-keys old [:mesh-key :tris :escort-analysis])))))))
    {}
    parts))
@@ -118,13 +118,13 @@
       (save-index! (:index-file updated) (:root updated) (:entries updated)))
     mesh-key))
 
-(defn mesh-key
+(defn mesh-key!
   "The recorded mesh key for a part, or nil if it has never been preprocessed
   or its source file has changed since."
   [{:keys [state]} part-id]
   (get-in @state [:entries part-id :mesh-key]))
 
-(defn part-state
+(defn part-state!
   "The current root and scan-index entry for `part-id`, read from one atom
   snapshot. Selection handlers need this coherence: a settings change can swap
   roots while a request is in flight."
@@ -154,11 +154,11 @@
 
 ;; --- the component, and the root it can be pointed at ------------------------
 
-(defn root
+(defn root!
   "Where the library currently is, or nil when nobody has said yet."
   [{:keys [state]}] (:root @state))
 
-(defn available?
+(defn available?!
   "Whether the root is a directory that exists **now**. False is the normal
   state of a fresh install, not an error.
 
@@ -171,9 +171,9 @@
   (let [{:keys [root]} @state]
     (boolean (and root (fs/directory? (fs/file root))))))
 
-(defn parts [{:keys [state]}] (:parts @state))
+(defn parts! [{:keys [state]}] (:parts @state))
 
-(defn- scan-state
+(defn- scan-state!
   "Scan `root` and build the component's whole value. Pure enough to be the one
   place that knows what a library's state consists of, so starting and
   relocating cannot drift apart."
@@ -189,9 +189,9 @@
         ;; Not fatal: the app must still start so the user can point it
         ;; somewhere real. A hard failure here makes a fresh install unusable.
         (log/warn "library root does not exist:" root))
-      (let [stored (load-index f root)
-            parts  (or (scan/scan dir) [])
-            idx    (refresh parts root stored)]
+      (let [stored (load-index! f root)
+            parts  (or (scan/scan! dir) [])
+            idx    (refresh! parts root stored)]
         (log/infof "library: %d parts, %d with a cached mesh key"
                    (count parts) (count (filter :mesh-key (vals idx))))
         (when-not (= idx stored) (save-index! f root idx))
@@ -206,9 +206,9 @@
   without a restart; rebuilding the component would leave every handler holding
   the old one."
   [{:keys [cache-home state]} root]
-  (reset! state (scan-state root cache-home)))
+  (reset! state (scan-state! root cache-home)))
 
 (defmethod ig/init-key :shipyard.library/index [_ {:keys [root cache-home]}]
-  (let [cache-home (or cache-home (system/cache-home))]
+  (let [cache-home (or cache-home (system/cache-home!))]
     {:cache-home cache-home
-     :state      (atom (scan-state root cache-home))}))
+     :state      (atom (scan-state! root cache-home))}))

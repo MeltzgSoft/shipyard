@@ -9,6 +9,7 @@
             [clojure.test :refer [deftest is testing]]
             [babashka.fs :as fs]
             [integrant.core :as ig]
+            [ring.mock.request :as mock]
             [shipyard.fixtures :as f]
             [shipyard.http.jobs :as jobs]
             [shipyard.http.routes :as routes]
@@ -16,9 +17,7 @@
             [shipyard.library.index :as index]
             [shipyard.catalog.sidecar :as sidecar]
             [shipyard.wire :as wire])
-  (:import [java.io File]
-           [java.net URLEncoder]
-           [java.nio.charset StandardCharsets]))
+  (:import [java.io File]))
 
 ;; --- a library on disk ------------------------------------------------------
 
@@ -73,19 +72,13 @@
 (defn- GET
   ([h path] (GET h path nil))
   ([h path query]
-   (h (cond-> {:request-method :get :uri path}
-        query (assoc :query-string query)))))
+   (h (cond-> (mock/request :get path)
+        query (mock/query-string query)))))
 
 (defn- POST
   "A form post, the way htmx sends one."
   [h path params]
-  (let [body (str/join "&" (for [[k v] params]
-                             (str (name k) "="
-                                  (URLEncoder/encode (str v) StandardCharsets/UTF_8))))]
-    (h {:request-method :post
-        :uri            path
-        :headers        {"content-type" "application/x-www-form-urlencoded"}
-        :body           (io/input-stream (.getBytes body StandardCharsets/UTF_8))})))
+  (h (mock/request :post path params)))
 
 (defn- triggers
   "The `HX-Trigger` header, decoded: JSON envelope, EDN payloads (§7.1)."
@@ -252,7 +245,7 @@
         h   (handler sys)]
     (await-ready h hull-id)
     (testing "the mesh key is written back to the scan index (§5.4)"
-      (is (re-matches #"[0-9a-f]{64}" (index/mesh-key (:library sys) hull-id))))
+      (is (re-matches #"[0-9a-f]{64}" (index/mesh-key! (:library sys) hull-id))))
     (testing "so a later request is answered without a poll"
       (let [r (GET h (str "/part/" (str/replace hull-id " " "%20")))]
         (is (get (triggers r) "shipyard:load-mesh"))
@@ -302,10 +295,13 @@
 
 (deftest mesh-route-refuses-anything-but-a-digest
   (let [h (handler (system (library-tree)))]
-    (doseq [path ["/mesh/nope.0.symesh"
-                  "/mesh/....%2F....%2Fetc%2Fpasswd.0.symesh"
-                  (str "/mesh/" (apply str (repeat 64 "a")) ".0.symesh")]]
-      (is (= 404 (:status (GET h path))) path))))
+    (testing "Malli rejects malformed path parameters at the Ring boundary"
+      (doseq [path ["/mesh/nope.0.symesh"
+                    "/mesh/....%2F....%2Fetc%2Fpasswd.0.symesh"]]
+        (is (= 400 (:status (GET h path))) path)))
+    (testing "a valid but absent digest reaches the handler"
+      (let [path (str "/mesh/" (apply str (repeat 64 "a")) ".0.symesh")]
+        (is (= 404 (:status (GET h path))) path)))))
 
 ;; --- facet preview ----------------------------------------------------------
 
@@ -359,7 +355,7 @@
     (is (str/includes? (:body saved) "port-1"))
     (is (str/includes? (:body saved) "x2"))
     (is (str/includes? (:body saved) "Interface colors"))
-    (let [sidecar (sidecar/read-sidecar root hull-id)
+    (let [sidecar (sidecar/read-sidecar! root hull-id)
           mount (first (:mounts sidecar))]
       (is (nil? (:part/role sidecar)))
       (is (= :port-1 (:mount/id mount)))
@@ -380,7 +376,7 @@
                (get (triggers duplicate) "shipyard:authoring")))))
     (testing "replace updates the durable mount instead of accumulating"
       (let [replaced (mount-post h (assoc save-params :accepts "prow" :action "replace"))
-            mounts (:mounts (sidecar/read-sidecar root hull-id))]
+            mounts (:mounts (sidecar/read-sidecar! root hull-id))]
         (is (= 200 (:status replaced)))
         (is (= 1 (count mounts)))
         (is (= #{:prow} (:mount/accepts (first mounts))))))
@@ -389,7 +385,7 @@
         (is (= 200 (:status deleted)))
         (is (= {:part-id hull-id :mesh-key mesh-key :mounts []}
                (get (triggers deleted) "shipyard:interfaces")))
-        (is (empty? (:mounts (sidecar/read-sidecar root hull-id))))
+        (is (empty? (:mounts (sidecar/read-sidecar! root hull-id))))
         (is (not (str/includes? (:body deleted) "port-1")))))))
 
 (deftest mount-wizard-mirrors-and-repeats
@@ -412,7 +408,7 @@
                              :repeat "true"
                              :action "create"})
         events (triggers saved)
-        mounts (:mounts (sidecar/read-sidecar root hull-id))
+        mounts (:mounts (sidecar/read-sidecar! root hull-id))
         by-id (into {} (map (juxt :mount/id identity)) mounts)]
     (is (= 200 (:status saved)))
     (is (str/includes? (:body saved) "port-1"))
@@ -490,7 +486,7 @@
                                    :frame (pr-str (:frame edit-preview))
                                    :twist-deg "90"
                                    :action "update"})
-            mounts (:mounts (sidecar/read-sidecar root hull-id))
+            mounts (:mounts (sidecar/read-sidecar! root hull-id))
             mount (first mounts)]
         (is (= 200 (:status updated)))
         (is (= 1 (count mounts)))
@@ -515,10 +511,10 @@
                              :action "create"})]
     (testing "mount saves ignore any stray part-role field"
       (is (= 200 (:status saved)))
-      (is (nil? (:part/role (sidecar/read-sidecar root hull-id)))))
+      (is (nil? (:part/role (sidecar/read-sidecar! root hull-id)))))
     (testing "the standalone metadata form persists the role override"
       (let [role-saved (part-role-post h {:part-id hull-id :part-role "hull"})
-            sidecar (sidecar/read-sidecar root hull-id)]
+            sidecar (sidecar/read-sidecar! root hull-id)]
         (is (= 200 (:status role-saved)))
         (is (= :hull (:part/role sidecar)))
         (is (str/includes? (:body role-saved) "Part metadata"))
@@ -534,7 +530,7 @@
                                         :part-pitch-deg "0"
                                         :part-roll-deg "0"
                                         :action "save"})
-        part-orientation (:part/orientation (sidecar/read-sidecar root hull-id))]
+        part-orientation (:part/orientation (sidecar/read-sidecar! root hull-id))]
     (is (= 200 (:status saved)))
     (is (= part-orientation
            (:orientation (get (triggers saved) "shipyard:part-orientation"))))
@@ -548,7 +544,7 @@
     (testing "reset persists identity and updates the live viewer"
       (let [reset-response (part-orientation-post h {:part-id hull-id :action "reset"})]
         (is (= [0.0 0.0 0.0 1.0]
-               (:part/orientation (sidecar/read-sidecar root hull-id))))
+               (:part/orientation (sidecar/read-sidecar! root hull-id))))
         (is (= [0.0 0.0 0.0 1.0]
                (:orientation
                 (get (triggers reset-response) "shipyard:part-orientation"))))
@@ -604,12 +600,12 @@
   (testing "missing or malformed fields"
     (let [r (POST (handler (system (library-tree))) "/facet" {})]
       (is (= 400 (:status r)))
-      (is (= :invalid-selection (:code (get (triggers r) "shipyard:facet-error"))))))
+      (is (= :reitit.coercion/request-coercion (:type (:body r))))))
 
   (testing "non-decimal triangle index"
     (let [r (facet-post (handler (system (library-tree))) hull-id (apply str (repeat 64 "1")) "1e3")]
       (is (= 400 (:status r)))
-      (is (= :invalid-selection (:code (get (triggers r) "shipyard:facet-error"))))))
+      (is (= :reitit.coercion/request-coercion (:type (:body r))))))
 
   (testing "part absent from the current catalog"
     (let [r (facet-post (handler (system (library-tree))) "No/Such/Part" (apply str (repeat 64 "1")) 0)]

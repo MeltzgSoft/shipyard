@@ -53,7 +53,7 @@
   (reset! state {})
   nil)
 
-(defn- execute [{:keys [state library cache]} part-id source]
+(defn- execute! [{:keys [state library cache]} part-id source]
   (let [result (try
                  (let [{:keys [mesh-key tris]} (cache/ensure! cache source)]
                    ;; Recording the key is an optimisation, not part of the
@@ -85,7 +85,7 @@
   (let [mine  {:state :running}
         after (swap! state update part-id #(or % mine))]
     (when (identical? mine (get after part-id))
-      (.submit pool ^Runnable #(execute jobs part-id source)))
+      (.submit pool ^Runnable #(execute! jobs part-id source)))
     (get after part-id)))
 
 ;; --- component --------------------------------------------------------------

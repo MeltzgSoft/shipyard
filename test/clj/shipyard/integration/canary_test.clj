@@ -59,8 +59,8 @@
            [(fs/size f) (digest/sha-256 (fs/file f))]])))
 
 (defn- report [root]
-  (canary/run {:root (str root) :parts (scan/scan root)
-               :crease-deg 35 :lod-tiers [1.0 0.25 0.05]}))
+  (canary/run-canary! {:root (str root) :parts (scan/scan! root)
+                       :crease-deg 35 :lod-tiers [1.0 0.25 0.05]}))
 
 (defn- kinds [report] (set (map :kind (:findings report))))
 

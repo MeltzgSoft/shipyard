@@ -83,7 +83,7 @@
 (defn- finding [part kind detail]
   (merge {:kind kind :part/id (:part/id part)} detail))
 
-(defn examine
+(defn examine!
   "Every anomaly one part can show, as a vector of findings. Never throws - the
   caller wants the list, not the first entry in it."
   [root {:part/keys [id source] :as part} {:keys [crease-deg lod-tiers]}]
@@ -95,7 +95,7 @@
               header (when-not (or binary? headerless?)
                        [(finding part :header-size-mismatch
                                  {:file (str f) :size size :declared declared})])
-              parsed (stl/parse-file f)
+              parsed (stl/parse-file! f)
               {:keys [^floats positions ^long triangle-count bbox-min bbox-max]} parsed
               ext    (extents bbox-min bbox-max)
               volume (Math/abs (signed-volume positions triangle-count))
@@ -145,7 +145,7 @@
 (defn- threads [n]
   (max 1 (min (or n default-threads) (.availableProcessors (Runtime/getRuntime)))))
 
-(defn run
+(defn run-canary!
   "Examine every part. Returns the report map."
   [{:keys [root parts crease-deg lod-tiers thread-count]
     :or   {crease-deg 35 lod-tiers [1.0 0.25 0.05]}}]
@@ -159,7 +159,7 @@
                              ;; A Clojure fn is already a Callable, which is
                              ;; what invokeAll wants.
                              (fn []
-                               (let [r (examine root part opts)
+                               (let [r (examine! root part opts)
                                      d (swap! done inc)]
                                  (when (zero? (mod d 100))
                                    (println (format "  %d/%d parts" d total)))
@@ -231,7 +231,7 @@
 
 (defn -main [& args]
   (let [{:keys [out limit thread-count root]} (parse-args args)
-        cfg   (system/load-config)
+        cfg   (system/load-config!)
         root  (or root (get-in cfg [:shipyard.library/index :root]))
         cache (get cfg :shipyard.mesh/cache)
         _     (when-not root
@@ -241,11 +241,11 @@
                 (println "No library root. Pass --root, or set one in Shipyard first.")
                 (System/exit 2))
         _     (println "scanning" root "...")
-        all   (vec (scan/scan (fs/file root)))
+        all   (vec (scan/scan! (fs/file root)))
         parts (if limit (subvec all 0 (min (long limit) (count all))) all)
-        report (run {:root root :parts parts
-                     :crease-deg (:crease-deg cache) :lod-tiers (:lod-tiers cache)
-                     :thread-count thread-count})]
+        report (run-canary! {:root root :parts parts
+                             :crease-deg (:crease-deg cache) :lod-tiers (:lod-tiers cache)
+                             :thread-count thread-count})]
     (print-summary! report)
     (println "report written to" (str (write-report! out report)))
     ;; Always zero. This is a probe, not a gate (§10.4) - a non-zero exit would

@@ -134,7 +134,7 @@
   (let [{:keys [binary? declared]} (canary/header-check (fs/file source))]
     (if binary?
       declared
-      (:triangle-count (stl/parse-file source)))))
+      (:triangle-count (stl/parse-file! source)))))
 
 (defn- source-info! [root part]
   (let [source (source-file root part)]
@@ -170,7 +170,7 @@
             warm-run   (atom nil)
             warm-ms    (elapsed-ms! #(reset! warm-run (init-library! root cache-home)))]
         (recur (inc i) (conj cold cold-ms) (conj warm warm-ms)
-               (index/parts @warm-run))))))
+               (index/parts! @warm-run))))))
 
 ;; --- preprocessing ---------------------------------------------------------
 
@@ -382,12 +382,12 @@
 (defn- measure-canary! [root]
   (let [{:keys [elapsed-ms heap-peak-bytes value]}
         (measured!
-         #(let [parts (vec (scan/scan (fs/file root)))]
-            (canary/run {:root root
-                         :parts parts
-                         :crease-deg 35
-                         :lod-tiers [1.0 0.25 0.05]
-                         :thread-count 4})))]
+         #(let [parts (vec (scan/scan! (fs/file root)))]
+            (canary/run-canary! {:root root
+                                 :parts parts
+                                 :crease-deg 35
+                                 :lod-tiers [1.0 0.25 0.05]
+                                 :thread-count 4})))]
     {:elapsed-ms elapsed-ms
      :heap-peak-bytes heap-peak-bytes
      :parts (:parts value)
@@ -455,7 +455,7 @@
 
 (defn -main [& args]
   (let [{:keys [out root] :as opts} (parse-args args)
-        root (or root (get-in (system/load-config) [:shipyard.library/index :root]))
+        root (or root (get-in (system/load-config!) [:shipyard.library/index :root]))
         report (run-benchmark! (assoc opts :root root))]
     (system/write-atomically! (fs/file out) (with-out-str (pp/pprint report)))
     (pp/pprint report)

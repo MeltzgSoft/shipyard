@@ -1,6 +1,6 @@
 #kaocha/v1
 {:tests [{:id :unit
-          :test-paths ["test/clj/shipyard/unit" "test/cljc"]}
+          :test-paths ["test/unit" "test/clj/shipyard/unit" "test/cljc"]}
          {:id :integration
           :test-paths ["test/clj/shipyard/integration"]}
          {:id :e2e

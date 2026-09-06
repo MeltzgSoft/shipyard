@@ -1,4 +1,4 @@
-(ns shipyard.unit.urls-test
+(ns shipyard.http.urls-test
   "The `:id` round trip. Asserted through the real router rather than against a
   hand-written decoder, because what has to hold is that a URL this code
   produces arrives back as the same part id - not that two functions in the same

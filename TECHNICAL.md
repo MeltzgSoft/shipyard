@@ -200,7 +200,7 @@ lifecycle next to the thing it constructs. `system.clj` holds only key derivatio
 anything ordering-sensitive; `main.clj` reads the config, calls `ig/init`, and registers a
 shutdown hook.
 
-`load-config` takes `:config-dir` and `:env` so the layering is testable without
+`load-config!` takes `:config-dir` and `:env` so the layering is testable without
 mutating the process environment.
 
 **Four layers, later winning over earlier:**
@@ -937,6 +937,12 @@ warm part is answered from the index with no job and no poll, and a restart does
 re-hash a 20 MB STL to name a URL it already knew.
 
 ### 7.1 htmx contract
+
+Every route declares a Malli request and response schema. Reitit's Malli
+coercion middleware enforces those schemas at the Ring boundary, before form
+data reaches a handler and after a response leaves it. These schemas describe
+transport shape; domain decisions such as whether a mount id is valid remain
+in the pure mount and orientation functions.
 
 The canvas is `hx-preserve` and never a swap target (SPEC §6.1). All viewport
 communication is `HX-Trigger`.

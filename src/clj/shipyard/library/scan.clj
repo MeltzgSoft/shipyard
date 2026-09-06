@@ -153,7 +153,7 @@
 
 ;; --- part folder discovery (§5.1) -------------------------------------------
 
-(defn part-folder?
+(defn part-folder?!
   "A directory is a part folder iff it holds at least one variant file."
   [dir]
   (boolean (some #(fs/regular-file? (fs/file dir %)) source-files)))
@@ -171,12 +171,12 @@
         turrets? (boolean (some #{"turrets"} lower))
         class    (->> (map vector lower middle)
                       (remove (comp #{"weapons" "turrets"} first))
-                      first
-                      second)]
+                      (first)
+                      (second))]
     {:bundle bundle :class class :weapons? weapons? :turrets? turrets?
      :name (last segments)}))
 
-(defn- variants [dir]
+(defn- variants! [dir]
   (into #{} (keep (fn [f] (when (fs/regular-file? (fs/file dir f)) (variant-key f)))
                   source-files)))
 
@@ -187,7 +187,7 @@
   [vs]
   (some vs renderable))
 
-(defn scan
+(defn scan!
   "Walk `root`, returning a part record per part folder.
 
   Directories named `other` are skipped whole: they hold Lychee projects,
@@ -199,12 +199,12 @@
          (remove (fn [d]
                    (some #(= "other" (str/lower-case (str %)))
                          (fs/components (fs/relativize root d)))))
-         (filter part-folder?)
+         (filter part-folder?!)
          (map (fn [d]
                 (let [rel  (fs/relativize root d)
                       segs (mapv str (fs/components rel))
                       info (decompose segs)
-                      vs   (variants d)
+                      vs   (variants! d)
                       [role src] (role-hint info)]
                   {:part/id         (str/join "/" segs)
                    :part/bundle     (:bundle info)

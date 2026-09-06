@@ -3,6 +3,7 @@
  :deps
  {org.clojure/clojure            {:mvn/version "1.12.4"}
   metosin/reitit-ring            {:mvn/version "0.7.2"}
+  metosin/reitit-malli           {:mvn/version "0.7.2"}
   ring/ring-jetty-adapter        {:mvn/version "1.12.2"}
   hiccup/hiccup                  {:mvn/version "2.0.0-RC3"}
   ;; One header needs JSON: htmx parses `HX-Trigger` itself and dispatches a
@@ -52,13 +53,16 @@
 
   ;; --- test ---------------------------------------------------------------
   :test
-  {:extra-paths ["test/clj" "test/cljc"]
+  {:extra-paths ["test/clj" "test/cljc" "test/unit"]
    ;; Playwright rather than a WebDriver client: it ships the browser it drives,
    ;; versioned with the library, so the E2E level needs no system Chrome and no
    ;; separately-matched chromedriver (issue #49). `playwright install chromium`
    ;; fetches it.
    :extra-deps  {lambdaisland/kaocha            {:mvn/version "1.91.1392"}
-                 com.microsoft.playwright/playwright {:mvn/version "1.62.0"}}
+                 com.microsoft.playwright/playwright {:mvn/version "1.62.0"}
+                 commons-io/commons-io            {:mvn/version "2.20.0"}
+                 ring/ring-mock                 {:mvn/version "0.6.2"
+                                                  :exclusions [ring/ring-core]}}
    :jvm-opts    ["--enable-native-access=ALL-UNNAMED"
                  "--sun-misc-unsafe-memory-access=allow"]
    :main-opts   ["-m" "kaocha.runner"]}
@@ -111,7 +115,7 @@
   ;; src/cljs and the test roots are added because neither is on the default
   ;; :paths - cljs is compiled by shadow, not the JVM.
   :cljfmt
-  {:extra-paths ["src/cljs" "test/clj" "test/cljc"]
+  {:extra-paths ["src/cljs" "test/clj" "test/cljc" "test/unit"]
    :extra-deps  {dev.weavejester/cljfmt {:mvn/version "0.16.5"}}
    :main-opts   ["-m" "cljfmt.main"]}
 
@@ -119,7 +123,7 @@
   ;; `clojure -M:clj-kondo --lint src test build.clj`. Same path reasoning as
   ;; :cljfmt above.
   :clj-kondo
-  {:extra-paths ["src/cljs" "test/clj" "test/cljc"]
+  {:extra-paths ["src/cljs" "test/clj" "test/cljc" "test/unit"]
    :extra-deps  {clj-kondo/clj-kondo {:mvn/version "2026.08.04"}}
    :main-opts   ["-m" "clj-kondo.main"]}
 

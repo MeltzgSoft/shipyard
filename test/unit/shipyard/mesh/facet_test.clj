@@ -1,4 +1,4 @@
-(ns shipyard.unit.facet-test
+(ns shipyard.mesh.facet-test
   (:require [clojure.test :refer [deftest is testing]]
             [shipyard.mesh.facet :as facet]))
 

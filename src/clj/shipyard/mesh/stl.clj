@@ -147,7 +147,7 @@
   (let [buf (doto (ByteBuffer/wrap b) (.order ByteOrder/LITTLE_ENDIAN))]
     (parse-buffer buf (alength b) (java.io.ByteArrayInputStream. b))))
 
-(defn parse-file
+(defn parse-file!
   "Parse an STL from disk, memory-mapped so the largest hull in the library
   (57.8 MB) costs no heap.
 

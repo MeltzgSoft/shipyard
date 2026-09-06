@@ -81,7 +81,7 @@
         root    (library-tree part-id)
         sys     (system)
         h       (routes/handler sys)]
-    (is (empty? (index/parts (:library sys))))
+    (is (empty? (index/parts! (:library sys))))
 
     (let [r (POST h "/settings" {:root (str root)})]
       (testing "htmx is told to reload: the facets in the shell describe the old library"
@@ -89,7 +89,7 @@
         (is (= "true" (get-in r [:headers "HX-Refresh"])))))
 
     (testing "the same running handler now serves the new library"
-      (is (= 1 (count (index/parts (:library sys)))))
+      (is (= 1 (count (index/parts! (:library sys)))))
       (let [body (:body (GET h "/library"))]
         (is (str/includes? body "1 part"))
         (is (str/includes? body part-id))))
@@ -98,7 +98,7 @@
       (is (str/includes? (:body (GET h "/")) "Human Navy Fleet Bundle")))
 
     (testing "and it survives a restart"
-      (let [cfg (system/load-config {:config-dir (str (:config-dir sys)) :env {}})]
+      (let [cfg (system/load-config! {:config-dir (str (:config-dir sys)) :env {}})]
         (is (= (str root) (get-in cfg [:shipyard.library/index :root])))))))
 
 (deftest relocating-again-replaces-the-library
@@ -134,11 +134,11 @@
           (is (nil? (get-in r [:headers "HX-Refresh"]))))))
 
     (testing "the library that was working still is"
-      (is (= (str root) (index/root (:library sys))))
+      (is (= (str root) (index/root! (:library sys))))
       (is (str/includes? (:body (GET h "/library")) "Bundle/Cruiser/Hull")))
     (testing "and the saved setting was not overwritten"
       (is (= (str root)
-             (get-in (system/load-config {:config-dir (str (:config-dir sys)) :env {}})
+             (get-in (system/load-config! {:config-dir (str (:config-dir sys)) :env {}})
                      [:shipyard.library/index :root]))))))
 
 (deftest a-root-that-goes-away-under-a-running-server-reports-itself
@@ -167,10 +167,10 @@
         cache   (temp-dir "shipyard-idx")
         library (ig/init-key :shipyard.library/index {:root (str a) :cache-home cache})]
     (index/record-mesh-key! library part-id "cafe" 12)
-    (is (= "cafe" (index/mesh-key library part-id)))
+    (is (= "cafe" (index/mesh-key! library part-id)))
 
     (index/set-root! library (str b))
-    (is (nil? (index/mesh-key library part-id))
+    (is (nil? (index/mesh-key! library part-id))
         "a part id is library-relative; serving the stored key would be the wrong mesh")
     (index/record-mesh-key! library part-id "f00d" 34)
 
@@ -178,9 +178,9 @@
       ;; One index file per root. A single shared file would have to be thrown
       ;; away on every switch, and re-hashing is the cost §5.4 exists to avoid.
       (index/set-root! library (str a))
-      (is (= "cafe" (index/mesh-key library part-id)))
+      (is (= "cafe" (index/mesh-key! library part-id)))
       (index/set-root! library (str b))
-      (is (= "f00d" (index/mesh-key library part-id))))
+      (is (= "f00d" (index/mesh-key! library part-id))))
 
     (testing "the files are distinct, and each names the root it belongs to"
       ;; Parsed, not grepped: `pr-str` escapes the backslashes in a Windows
@@ -196,11 +196,11 @@
 
 (deftest problem-explains-itself
   (let [root (library-tree "Bundle/Cruiser/Hull")]
-    (is (nil? (settings/problem (str root))))
-    (is (nil? (settings/problem (str "  " root "  ")))
+    (is (nil? (settings/problem! (str root))))
+    (is (nil? (settings/problem! (str "  " root "  ")))
         "a pasted path arrives with whitespace")
     (testing "an empty library is a real answer, not a rejection"
-      (is (nil? (settings/problem (str (temp-dir "shipyard-empty"))))))
-    (is (some? (settings/problem nil)))
-    (is (some? (settings/problem "   ")))
-    (is (some? (settings/problem (str root "/no/such/place"))))))
+      (is (nil? (settings/problem! (str (temp-dir "shipyard-empty"))))))
+    (is (some? (settings/problem! nil)))
+    (is (some? (settings/problem! "   ")))
+    (is (some? (settings/problem! (str root "/no/such/place"))))))

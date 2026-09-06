@@ -1,4 +1,4 @@
-(ns shipyard.unit.htmx-test
+(ns shipyard.http.htmx-test
   (:require [clojure.data.json :as json]
             [clojure.edn :as edn]
             [clojure.string :as str]

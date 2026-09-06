@@ -18,8 +18,8 @@ run() {
   "$@" || failed_cmds+=("$*")
 }
 
-run clojure -M:cljfmt check src test build.clj
-run clojure -M:clj-kondo --lint src --lint test --lint build.clj
+run clojure -M:cljfmt check src dev test build.clj
+run clojure -M:clj-kondo --lint src --lint dev --lint test --lint build.clj
 
 # Unit only. Integration and e2e belong to CI: a pre-commit hook slow enough to
 # be annoying is a hook people bypass with --no-verify, which is worse than not
@@ -33,6 +33,6 @@ if [ ${#failed_cmds[@]} -gt 0 ]; then
   echo "Failed commands:"
   printf '  %s\n' "${failed_cmds[@]}"
   echo
-  echo "Fix formatting with: clojure -M:cljfmt fix src test build.clj"
+  echo "Fix formatting with: clojure -M:cljfmt fix src dev test build.clj"
   exit 1
 fi

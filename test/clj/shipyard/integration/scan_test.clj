@@ -44,7 +44,7 @@
 (defn- by-id [parts] (into {} (map (juxt :part/id identity) parts)))
 
 (deftest scans-a-fixture-tree
-  (let [parts (scan/scan (fixture-tree))
+  (let [parts (scan/scan! (fixture-tree))
         m     (by-id parts)]
     (is (= 8 (count parts)) "eight part folders; nothing under other/")
     (testing "other/ is skipped whole, including part folders nested inside it"
@@ -90,10 +90,10 @@
 
 (deftest missing-root-is-not-an-error
   (testing "a fresh install points somewhere that does not exist yet"
-    (is (nil? (scan/scan (io/file "/no/such/library"))))))
+    (is (nil? (scan/scan! (io/file "/no/such/library"))))))
 
 (deftest results-are-stable
   (let [root (fixture-tree)]
-    (is (= (scan/scan root) (scan/scan root)) "scanning twice gives the same records")
-    (is (= (map :part/id (scan/scan root)) (sort (map :part/id (scan/scan root))))
+    (is (= (scan/scan! root) (scan/scan! root)) "scanning twice gives the same records")
+    (is (= (map :part/id (scan/scan! root)) (sort (map :part/id (scan/scan! root))))
         "sorted by id, so catalog ingestion is deterministic")))

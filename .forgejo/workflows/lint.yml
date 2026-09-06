@@ -39,8 +39,8 @@ jobs:
           echo "$HOME/clojure/bin" >> "$GITHUB_PATH"
 
       - name: Formatting
-        # `clojure -M:cljfmt fix src test build.clj` resolves failures locally.
-        run: clojure -M:cljfmt check src test build.clj
+        # `clojure -M:cljfmt fix src dev test build.clj` resolves failures locally.
+        run: clojure -M:cljfmt check src dev test build.clj
 
       - name: Linting
-        run: clojure -M:clj-kondo --lint src --lint test --lint build.clj
+        run: clojure -M:clj-kondo --lint src --lint dev --lint test --lint build.clj
