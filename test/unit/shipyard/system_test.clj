@@ -11,7 +11,8 @@
     (is (= {:a 1} (system/deep-merge {:a 1} nil)))))
 
 (deftest expand-home-test
-  (let [home (System/getProperty "user.home")]
-    (is (= (str home "/models") (system/expand-home! "~/models")))
-    (is (= "/abs/path" (system/expand-home! "/abs/path")))
-    (is (nil? (system/expand-home! nil)))))
+  (testing "a leading tilde uses the supplied home"
+    (is (= "/home/alice/models" (system/expand-home "/home/alice" "~/models"))))
+  (testing "absolute and absent paths are unchanged"
+    (is (= "/abs/path" (system/expand-home "/home/alice" "/abs/path")))
+    (is (nil? (system/expand-home "/home/alice" nil)))))

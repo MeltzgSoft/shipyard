@@ -21,11 +21,28 @@
             [shipyard.library.index :as index]
             [shipyard.system :as system]))
 
-(defn normalise!
-  "The path as it will be used: trimmed, `~` expanded, or nil if there is
-  nothing there."
-  [path]
-  (some-> path (str) (str/trim) (not-empty) (system/expand-home!)))
+(defn normalise
+  "Trim a path, expand `~` from an explicit home, or return nil."
+  [home path]
+  (when-let [trimmed (some-> path (str) (str/trim) (not-empty))]
+    (system/expand-home home trimmed)))
+
+(defn path-problem
+  "Turn inspected path facts into a user-facing validation result."
+  [path {:keys [exists? directory? readable?]}]
+  (cond
+    (nil? path)       "Enter the folder that holds your STL library."
+    (not exists?)     (str "No such folder: " path)
+    (not directory?)  (str "Not a folder: " path)
+    (not readable?)   (str "Shipyard cannot read " path)
+    :else             nil))
+
+(defn- inspect-path! [path]
+  (when path
+    (let [f (fs/file path)]
+      {:exists? (fs/exists? f)
+       :directory? (fs/directory? f)
+       :readable? (fs/readable? f)})))
 
 (defn problem!
   "Why `path` cannot be a library root, in the user's terms, or nil when it
@@ -37,14 +54,8 @@
   fixable. Refusing the path would instead be Shipyard telling the user they
   are wrong about where their own files are."
   [path]
-  (let [p (normalise! path)
-        f (some-> p fs/file)]
-    (cond
-      (nil? p)                  "Enter the folder that holds your STL library."
-      (not (fs/exists? f))      (str "No such folder: " p)
-      (not (fs/directory? f))   (str "Not a folder: " p)
-      (not (fs/readable? f))    (str "Shipyard cannot read " p)
-      :else                     nil)))
+  (let [p (normalise (System/getProperty "user.home") path)]
+    (path-problem p (inspect-path! p))))
 
 (defn relocate!
   "Point the application at `path`: persist it, rescan, re-ingest, and drop the
@@ -56,7 +67,7 @@
   restart, which is the failure nobody thinks to check for."
   [{:keys [library catalog jobs config-dir]} path]
   (or (problem! path)
-      (let [root (normalise! path)]
+      (let [root (normalise (System/getProperty "user.home") path)]
         (if-let [failure (try
                            (if config-dir
                              (system/save-library-root! config-dir root)

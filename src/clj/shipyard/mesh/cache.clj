@@ -29,6 +29,18 @@
 (defn cache-size! ^long [{:keys [dir]}]
   (reduce + 0 (map fs/size (filter fs/regular-file? (fs/list-dir dir)))))
 
+(defn eviction-plan
+  "Choose oldest cache entries until their remaining size fits the cap."
+  [files cap-bytes]
+  (let [ordered (sort-by :mtime files)
+        total   (reduce + 0 (map :size ordered))]
+    (loop [[file & more] ordered
+           size total
+           drop []]
+      (if (or (nil? file) (<= size cap-bytes))
+        {:files drop :before total :after size}
+        (recur more (- size (:size file)) (conj drop (:file file)))))))
+
 (defn evict!
   "Drop least-recently-used tiers until the cache fits under its cap.
 
@@ -37,16 +49,15 @@
   [{:keys [dir ^long cap-bytes]}]
   (let [files (->> (fs/list-dir dir)
                    (filter fs/regular-file?)
-                   (sort-by #(fs/file-time->millis (fs/last-modified-time %))))
-        total (reduce + 0 (map fs/size files))]
-    (when (> total cap-bytes)
-      (loop [[f & more] files, size total, dropped 0]
-        (if (or (nil? f) (<= size cap-bytes))
-          (log/infof "cache eviction: dropped %d tiers, %,d -> %,d bytes (cap %,d)"
-                     dropped total size cap-bytes)
-          (let [len (fs/size f)]
-            (fs/delete f)
-            (recur more (- size len) (inc dropped))))))))
+                   (mapv (fn [f]
+                           {:file f
+                            :size (fs/size f)
+                            :mtime (fs/file-time->millis (fs/last-modified-time f))})))
+        {:keys [files before after]} (eviction-plan files cap-bytes)]
+    (when (seq files)
+      (doseq [f files] (fs/delete f))
+      (log/infof "cache eviction: dropped %d tiers, %,d -> %,d bytes (cap %,d)"
+                 (count files) before after cap-bytes))))
 
 (defn- touch! [f] (fs/set-last-modified-time f (System/currentTimeMillis)))
 

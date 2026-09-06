@@ -47,12 +47,12 @@
 (deftest index-freshness-tracks-mtime-and-size
   (let [src (write-stl (temp-dir "shipyard-src") 6)
         e   {:mtime (.lastModified src) :size (.length src) :mesh-key "abc"}]
-    (is (index/fresh?! e src))
+    (is (index/fresh-source?! e src))
     (testing "a size change invalidates"
-      (is (not (index/fresh?! (assoc e :size 1) src))))
+      (is (not (index/fresh-source?! (assoc e :size 1) src))))
     (testing "an mtime change invalidates - this is what re-pitting a hull does"
-      (is (not (index/fresh?! (assoc e :mtime 1) src))))
-    (is (not (index/fresh?! nil src)))))
+      (is (not (index/fresh-source?! (assoc e :mtime 1) src))))
+    (is (not (index/fresh-source?! nil src)))))
 
 (deftest index-roundtrips-and-survives-corruption
   (let [f       (io/file (temp-dir "shipyard-idx") "index.edn")

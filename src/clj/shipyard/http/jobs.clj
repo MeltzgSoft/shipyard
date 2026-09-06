@@ -34,6 +34,11 @@
   [{:keys [state]} part-id]
   (get @state part-id))
 
+(defn claim-job
+  "Install a candidate status only when the part has no recorded job."
+  [statuses part-id candidate]
+  (update statuses part-id #(or % candidate)))
+
 (defn forget!
   "Drop a recorded result so the next `submit!` runs the work again. Only a
   failure is ever worth forgetting - a success is a cache hit from then on."
@@ -83,7 +88,7 @@
   a single point rather than a race."
   [{:keys [^ExecutorService pool state] :as jobs} part-id source]
   (let [mine  {:state :running}
-        after (swap! state update part-id #(or % mine))]
+        after (swap! state claim-job part-id mine)]
     (when (identical? mine (get after part-id))
       (.submit pool ^Runnable #(execute! jobs part-id source)))
     (get after part-id)))

@@ -30,10 +30,9 @@
   `cache-home` is injectable so a test can be hermetic: an E2E run scanning a
   fixture tree must not write part ids from a temp directory into the index the
   developer's real library depends on."
-  ([root] (index-file (system/cache-home!) root))
-  ([cache-home root]
-   (fs/file cache-home "shipyard"
-            (str "index-" (subs (digest/sha-256 (str root)) 0 16) ".edn"))))
+  [cache-home root]
+  (fs/file cache-home "shipyard"
+           (str "index-" (subs (digest/sha-256 (str root)) 0 16) ".edn")))
 
 (defn load-index!
   "The stored entries, but only if they were scanned from `root`.
@@ -62,11 +61,15 @@
 
 (defn- stat! [f] {:mtime (fs/file-time->millis (fs/last-modified-time f)) :size (fs/size f)})
 
-(defn fresh?!
-  "An entry survives only while its source file's mtime and size both match.
-  Re-pitting a hull changes both, so the cache self-invalidates."
+(defn fresh?
+  "Whether cached metadata matches an already-inspected source."
+  [entry source-stat]
+  (and entry (= (select-keys entry [:mtime :size]) source-stat)))
+
+(defn fresh-source?!
+  "Inspect a source file and compare it with a cached entry."
   [entry source]
-  (and entry (= (select-keys entry [:mtime :size]) (stat! source))))
+  (and source (fresh? entry (stat! source))))
 
 (defn name-of [variant]
   (case variant
@@ -74,22 +77,31 @@
     :unsupported        "unsupported.stl"
     :supported          "supported.stl"))
 
-(defn refresh!
-  "Merge a fresh scan against the stored index, carrying forward `:mesh-key` for
-  parts whose source file is unchanged and dropping it for everything else."
-  [parts root stored]
+(defn refresh
+  "Merge scan results with stored entries using precomputed source metadata."
+  [parts stored source-stats]
   (reduce
    (fn [acc {:part/keys [id source]}]
      (if-not source
        (assoc acc id (dissoc (get stored id) :mesh-key))   ; nothing renderable
-       (let [f   (fs/file root id (name-of source))
-             old (get stored id)]
+       (let [source-stat (get source-stats id)
+             old         (get stored id)]
          (assoc acc id
-                (merge (stat! f)
-                       (when (fresh?! old f)
+                (merge source-stat
+                       (when (fresh? old source-stat)
                          (select-keys old [:mesh-key :tris :escort-analysis])))))))
    {}
    parts))
+
+(defn refresh!
+  "Inspect source files, then merge the scan with the stored index."
+  [parts root stored]
+  (let [source-stats (into {}
+                           (keep (fn [{:part/keys [id source]}]
+                                   (when source
+                                     [id (stat! (fs/file root id (name-of source)))])))
+                           parts)]
+    (refresh parts stored source-stats)))
 
 (defn record-mesh-key!
   "Remember the mesh key a preprocess produced, and persist the index.

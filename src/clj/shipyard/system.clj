@@ -28,11 +28,11 @@
 (defn cache-home!  [] (xdg! "XDG_CACHE_HOME"  ".cache"))
 (defn data-home!   [] (xdg! "XDG_DATA_HOME"   ".local/share"))
 
-(defn expand-home!
-  "Expand a leading ~ so config files can be written the way people type paths."
-  [path]
+(defn expand-home
+  "Expand a leading ~ using an explicit home directory."
+  [home path]
   (if (and (string? path) (str/starts-with? path "~"))
-    (str (System/getProperty "user.home") (subs path 1))
+    (str home (subs path 1))
     path))
 
 (defn deep-merge [a b]
@@ -111,7 +111,7 @@
 
 ;; --- the library root, the one setting Shipyard writes back -----------------
 
-(defn library-file!
+(defn library-file
   "Where the settings form persists the library root.
 
   Its own file, deliberately. The alternative - merging into the user's
@@ -119,14 +119,14 @@
   aero would evaluate `#env` and `#profile` tags and drop every comment, so
   saving a path from the UI would quietly rewrite configuration the user hand
   authored. A machine-written file nothing else edits cannot do that."
-  ([] (library-file! (config-home!)))
-  ([config-dir] (fs/file config-dir "shipyard" "library.edn")))
+  [config-dir]
+  (fs/file config-dir "shipyard" "library.edn"))
 
 (defn- library-setting!
   "Layer 3. Absent until somebody sets a root, which is the state a fresh
   install is in."
   [config-dir]
-  (let [f (library-file! config-dir)]
+  (let [f (library-file config-dir)]
     (when (fs/regular-file? f)
       (try
         (when-let [root (:root (edn/read-string (slurp (fs/file f))))]
@@ -141,7 +141,7 @@
   "Persist `root` as the library location. Returns it."
   ([root] (save-library-root! (config-home!) root))
   ([config-dir root]
-   (let [f (library-file! config-dir)]
+   (let [f (library-file config-dir)]
      (write-atomically! f (pr-str {:root (str root)}))
      (log/info "library root saved to" (str f))
      root)))
@@ -160,7 +160,8 @@
          (deep-merge (user-config! config-dir))
          (deep-merge (library-setting! config-dir))
          (env-overrides env)
-         (update-in [:shipyard.library/index :root] expand-home!)))))
+         (update-in [:shipyard.library/index :root]
+                    #(expand-home (System/getProperty "user.home") %))))))
 
 (defn start!
   ([] (start! (load-config!)))

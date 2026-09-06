@@ -165,7 +165,7 @@
 
 (defn- fresh-entry?! [entry source]
   (try
-    (and source (index/fresh?! entry source))
+    (index/fresh-source?! entry source)
     (catch Exception _
       false)))
 

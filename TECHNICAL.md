@@ -1306,6 +1306,11 @@ greebled plate); STL parsing is tested against a `byte[]`, never a path.
 | Mount frame | Facet -> position/axis/roll; bbox midpoint not vertex average; longest hull **edge** not diagonal |
 | Assembly transform | `M = S . Tz(g) . Rx(pi) . P^-1` places a known plug on a known socket |
 | Symmetry mirroring | Mirrored mount is the exact reflection; roll handedness preserved |
+| Settings validation | Path normalization and validation messages from inspected facts |
+| Scan index refresh | Unchanged sources retain derived keys; changed sources drop them |
+| Catalog authoring | Sidecar data and Datascript transactions are planned without I/O |
+| Cache eviction | Oldest entries are selected until the remaining bytes fit the cap |
+| Job claiming | An existing result wins; only an unclaimed part receives a job |
 
 **`wire.cljc` is tested on both runtimes from one namespace** - JVM via kaocha, CLJS via
 shadow-cljs `:target :node-test`. That cross-runtime run is the actual proof that encoder

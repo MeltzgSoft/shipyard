@@ -164,29 +164,36 @@
                [?p :part/mounts ?m]]
              db part-id)))
 
+(defn authoring-sidecar
+  "Apply mount authoring values to existing durable sidecar data."
+  [data {:keys [mounts part-role]}]
+  (cond-> (assoc data :mounts (vec mounts))
+    part-role (assoc :part/role part-role)))
+
+(defn authoring-tx
+  "Build the catalog transaction for authored mounts and an optional role."
+  [db part-id {:keys [mounts part-role]}]
+  (let [part-tx (cond-> {:part/id part-id :part/mounts (vec mounts)}
+                  part-role (assoc :part/role-hint part-role
+                                   :part/role-source :manual))]
+    (vec (concat (retract-current-mounts db part-id) [part-tx]))))
+
 (defn save-mounts!
   "Persist a part's mounts. **File first**, then index: if the transact throws,
   the data is already safe on disk and the next restart picks it up."
   [{:keys [state]} part-id mounts]
   (let [{:keys [conn root]} @state]
     (sidecar/update-sidecar! root part-id assoc :mounts mounts)
-    (d/transact! conn (concat (retract-current-mounts @conn part-id)
-                              [{:part/id part-id :part/mounts (vec mounts)}]))
+    (d/transact! conn (authoring-tx @conn part-id {:mounts mounts}))
     mounts))
 
 (defn save-authoring!
   "Persist mounts and an optional manual role override, file first."
   [{:keys [state]} part-id {:keys [mounts part-role]}]
   (let [{:keys [conn root]} @state
-        update-sidecar (fn [data]
-                         (cond-> (assoc data :mounts (vec mounts))
-                           part-role (assoc :part/role part-role)))
-        part-tx (cond-> {:part/id part-id :part/mounts (vec mounts)}
-                  part-role (assoc :part/role-hint part-role
-                                   :part/role-source :manual))]
-    (sidecar/update-sidecar! root part-id update-sidecar)
-    (d/transact! conn (concat (retract-current-mounts @conn part-id)
-                              [part-tx]))
+        authoring {:mounts mounts :part-role part-role}]
+    (sidecar/update-sidecar! root part-id authoring-sidecar authoring)
+    (d/transact! conn (authoring-tx @conn part-id authoring))
     {:mounts mounts :part-role part-role}))
 
 (defn save-part-role!
