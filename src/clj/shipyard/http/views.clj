@@ -293,7 +293,13 @@
          (name role)])]
      [:label.mount-wizard__field "Capacity"
       [:input {:type "number" :name "capacity" :value capacity
-               :min "1" :step "1"}]]
+               :min "1" :max "256" :step "1"}]]
+     [:label.mount-wizard__field "Split direction"
+      [:select {:name "split-direction"}
+       [:option {:value "vertical" :selected (not= :horizontal (:split-direction values))}
+        "Vertical — equal widths"]
+       [:option {:value "horizontal" :selected (= :horizontal (:split-direction values))}
+        "Horizontal — equal heights"]]]
      [:label.mount-wizard__field "Twist"
       [:input {:type "number" :name "twist-deg" :value (or (:twist-deg values) "0")
                :step "1"}]]

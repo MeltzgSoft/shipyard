@@ -19,6 +19,7 @@
             [shipyard.assembly.scene :as assembly-scene]
             [shipyard.interface-colors :as interface-colors]
             [shipyard.math :as math]
+            [shipyard.mount.split :as split]
             [shipyard.part.orientation :as orientation]
             [shipyard.wire :as wire]))
 
@@ -521,6 +522,26 @@
 (defn- frame-up [{:mount/keys [axis roll]}]
   (math/cross axis roll))
 
+(defn- split-preview [frame]
+  (when-let [form (.querySelector js/document ".mount-wizard__form")]
+    (let [capacity (math/parse-finite-double (input-value form "input[name=capacity]"))
+          direction (keyword (or (input-value form "select[name=split-direction]") "vertical"))
+          source-frame (some-> (input-value form "input[name=frame]") (edn/read-string))]
+      (when (and capacity (> capacity 1))
+        (split/sections (assoc frame :mount/capacity capacity
+                               :mount/split (split/metadata-for source-frame frame direction)))))))
+
+(defn- add-split-preview! [^js group frame length]
+  (let [{:keys [frames lines]} (split-preview frame)]
+    (doseq [points lines]
+      (let [geometry (doto (three/BufferGeometry.)
+                       (.setFromPoints (into-array (map v3 points))))]
+        (.add group (three/Line. geometry (three/LineBasicMaterial. #js {:color 0xffffff :depthTest false})))))
+    (doseq [section frames]
+      (.add group (three/ArrowHelper. (v3 (:mount/axis section)) (v3 (:mount/pos section))
+                                      (* length 0.65) 0xffffff (* length 0.14) (* length 0.05))))
+    {:split-lines lines :split-centers (mapv :mount/pos frames)}))
+
 (defn- preview-object [^js obj {:keys [facet-indices frame]} mirror]
   (let [frame (assoc frame :mount/roll (roll-for-preview frame))
         axis (:mount/axis frame)
@@ -553,10 +574,11 @@
       (.add group (three/ArrowHelper. (v3 (frame-up mirrored-frame))
                                       (v3 (:mount/pos mirrored-frame))
                                       (* length 0.75) 0xffa7b7 (* length 0.16) (* length 0.06))))
-    {:object group
-     :frame frame
-     :mirror-frame mirrored-frame
-     :facet-indices (vec facet-indices)}))
+    (merge (add-split-preview! group frame length)
+           {:object group
+            :frame frame
+            :mirror-frame mirrored-frame
+            :facet-indices (vec facet-indices)})))
 
 (defn- mirror-form-values [part-orientation]
   (when-let [form (.querySelector js/document ".mount-wizard__form")]
@@ -582,7 +604,7 @@
         (dispose-object! object))
       (let [mirror (mirror-form-values (:orientation @current))
             base-frame (or (:base-frame data) (:frame data))
-            {:keys [object frame mirror-frame facet-indices]}
+            {:keys [object frame mirror-frame facet-indices split-lines split-centers]}
             (preview-object obj (assoc data :frame base-frame) mirror)
             revision (swap! preview-revision inc)]
         (orient-object! object (:orientation @current))
@@ -590,6 +612,8 @@
         (reset! preview (assoc data
                                :base-frame base-frame
                                :frame frame
+                               :split-lines split-lines
+                               :split-centers split-centers
                                :facet-indices facet-indices
                                :object object
                                :revision revision
@@ -672,6 +696,7 @@
        "kind" (input-value form "select[name=kind]")
        "accepts" (checked-values form "input[name=accepts]:checked")
        "capacity" (input-value form "input[name=capacity]")
+       "split-direction" (input-value form "select[name=split-direction]")
        "twist-deg" (input-value form "input[name=twist-deg]")})))
 
 (defn- post-facet! [{:keys [authoring repeat]} triangle-index]
@@ -691,9 +716,9 @@
                    (let [trigger (.get (.-headers res) "HX-Trigger")]
                      (-> (.text res)
                          (.then (fn [html]
-                                  (trigger-header! trigger)
                                   (set! (.-innerHTML target) html)
-                                  (some-> js/window .-htmx (.process target))))))))
+                                  (some-> js/window .-htmx (.process target))
+                                  (trigger-header! trigger)))))))
           (.catch (fn [e]
                     (js/console.error "shipyard: facet selection failed" e)))))))
 
@@ -898,13 +923,15 @@
 
 (defn- preview-stats [{:keys [preview]}]
   (when-let [{:keys [^js object revision part-id mesh-key facet-indices frame
-                     mirror mirror-frame roll-ambiguous? roll-source]} @preview]
+                     mirror mirror-frame roll-ambiguous? roll-source split-lines split-centers]} @preview]
     (clj->js {:revision revision
               :part-id part-id
               :mesh-key mesh-key
               :facet-indices facet-indices
               :triangles (count facet-indices)
               :position (:mount/pos frame)
+              :split-lines split-lines
+              :split-centers split-centers
               :axis (:mount/axis frame)
               :roll (:mount/roll frame)
               :up (frame-up frame)

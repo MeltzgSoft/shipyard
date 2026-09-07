@@ -21,7 +21,7 @@
           "kind" "socket"
           "accepts" "weapon"
           "capacity" "1"
-          "frame" (pr-str frame)
+          "frame" (pr-str (assoc frame :face-points [[0.0 0.0 0.0] [4.0 2.0 0.0]]))
           "roll-deg" "0"
           "action" "create"}
          overrides))

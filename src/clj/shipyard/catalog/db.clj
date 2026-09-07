@@ -42,6 +42,7 @@
    :mount/kind       {:db/index true}
    :mount/accepts    {:db/cardinality :db.cardinality/many}
    :mount/capacity   {}
+   :mount/split      {}
    :mount/pos        {} :mount/axis {} :mount/roll {}
    :mount/magnet     {}
    :mount/origin     {}

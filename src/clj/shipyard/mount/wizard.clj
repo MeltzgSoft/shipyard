@@ -4,6 +4,7 @@
             [clojure.string :as str]
             [shipyard.geom :as geom]
             [shipyard.math :as math]
+            [shipyard.mount.split :as split]
             [shipyard.part.orientation :as orientation]))
 
 (def role-options
@@ -145,16 +146,19 @@
    (when-let [frame (mirror-frame
                      (select-keys mount [:mount/pos :mount/axis :mount/roll])
                      plane offset part-orientation)]
-     (merge mount
-            frame
-            {:mount/id mirror-id
-             :mount/origin :mirrored}))))
+     (cond-> (merge mount frame {:mount/id mirror-id :mount/origin :mirrored})
+       (:mount/split mount)
+       (update-in [:mount/split :bounds]
+                  (fn [[[xmin ymin] [xmax ymax]]]
+                    ;; Reflection preserves X; reconstructing right-handed Y reverses it.
+                    [[xmin (- ymax)] [xmax (- ymin)]]))))))
 
 (defn repeat-values [mount mounts]
-  {:mount-id (some->> (:mount/id mount) (suggest-repeat-id mounts) (name))
-   :kind (some-> (:mount/kind mount) (name))
-   :accepts (:mount/accepts mount)
-   :capacity (:mount/capacity mount)})
+  (cond-> {:mount-id (some->> (:mount/id mount) (suggest-repeat-id mounts) (name))
+           :kind (some-> (:mount/kind mount) (name))
+           :accepts (:mount/accepts mount)
+           :capacity (:mount/capacity mount)}
+    (:mount/split mount) (assoc :split-direction (get-in mount [:mount/split :direction]))))
 
 (defn preview-values [params]
   (let [mount-id (parse-mount-id (get params "mount-id"))
@@ -166,6 +170,7 @@
       mount-id (assoc :mount-id (name mount-id))
       kind (assoc :kind kind)
       capacity (assoc :capacity capacity)
+      (get params "split-direction") (assoc :split-direction (keyword (get params "split-direction")))
       twist-deg (assoc :twist-deg twist-deg)
       (seq accepts) (assoc :accepts accepts))))
 
@@ -173,10 +178,11 @@
   (cond-> {:mount-id (some-> (:mount/id mount) (name))
            :kind (:mount/kind mount)}
     (seq (:mount/accepts mount)) (assoc :accepts (set (:mount/accepts mount)))
-    (:mount/capacity mount) (assoc :capacity (:mount/capacity mount))))
+    (:mount/capacity mount) (assoc :capacity (:mount/capacity mount))
+    (:mount/split mount) (assoc :split-direction (get-in mount [:mount/split :direction]))))
 
 (defn mount-frame [mount]
-  (normalize-frame (select-keys mount [:mount/pos :mount/axis :mount/roll])))
+  (normalize-frame (select-keys mount [:mount/pos :mount/axis :mount/roll :mount/split])))
 
 (defn edit-request [params existing-mounts]
   (let [mount-id (parse-mount-id (get params "mount-id"))
@@ -226,7 +232,10 @@
          twist-deg (or (math/parse-finite-double (or (get params "twist-deg")
                                                      (get params "roll-deg")))
                        0.0)
-         frame (adjusted-frame (parse-edn (get params "frame")) twist-deg)
+         source-frame (parse-edn (get params "frame"))
+         frame (adjusted-frame source-frame twist-deg)
+         split-direction (parse-keyword (or (get params "split-direction") "vertical") [:vertical :horizontal])
+         split-data (when frame (split/metadata-for source-frame frame split-direction))
          update? (= :update action)
          base-id (when update? original-mount-id)
          existing-base (when base-id (mount-by-id existing-mounts base-id))
@@ -264,6 +273,12 @@
        (and (= :socket kind) (contains? params "capacity") (nil? (parse-positive-long (get params "capacity"))))
        {:error "Capacity must be a whole number of at least 1."}
 
+       (and (= :socket kind) (> capacity 256))
+       {:error "Capacity cannot exceed 256 sections."}
+
+       (and (= :socket kind) (> capacity 1) (nil? split-data))
+       {:error "Pick the socket face again and choose a vertical or horizontal split."}
+
        (and (= :create action) (mount-by-id existing-mounts mount-id))
        {:error "A mount with that id already exists. Use replace when you mean to overwrite it."}
 
@@ -299,7 +314,8 @@
                             :mount/roll (:mount/roll frame)
                             :mount/origin (or (:mount/origin existing-base) :picked)}
                      (= :socket kind) (assoc :mount/accepts accepts
-                                             :mount/capacity capacity))]
+                                             :mount/capacity capacity)
+                     (and (= :socket kind) (> capacity 1)) (assoc :mount/split split-data))]
          (if mirror?
            (if-let [mirrored (mirror-mount mount mirror-plane mirror-offset mirror-id
                                            part-orientation)]

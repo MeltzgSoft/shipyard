@@ -26,6 +26,7 @@
             [shipyard.mesh.cache :as cache]
             [shipyard.mesh.facet :as facet]
             [shipyard.mount.wizard :as wizard]
+            [shipyard.mount.split :as split]
             [shipyard.part.orientation :as orientation]
             [shipyard.wire :as wire])
   (:import [java.io ByteArrayOutputStream FileInputStream]))
@@ -207,10 +208,12 @@
 
               :else
               (try
-                (let [{:keys [facet-indices frame]}
+                (let [{:keys [facet-indices frame points]}
                       (facet/select (wire/decode (read-bytes! tier0)) triangle-index
                                     (select-keys cache [:facet-angle-deg :facet-plane-epsilon-mm]))
-                      frame (orientation/orient-mount-frame frame (:part/orientation part))
+                      frame (assoc (orientation/orient-mount-frame frame (:part/orientation part))
+                                   :face-points points)
+                      frame (assoc frame :mount/split (split/metadata-for frame frame :vertical))
                       edit (when-let [original-mount-id (get params "original-mount-id")]
                              (wizard/edit-request {"mount-id" original-mount-id}
                                                   (catalog-part/durable-mounts
@@ -228,7 +231,7 @@
                                              :mesh-key mesh-key
                                              :triangle-index triangle-index
                                              :facet-indices facet-indices
-                                             :frame frame
+                                             :frame (dissoc frame :face-points)
                                              :roll-ambiguous? false
                                              :roll-source :part-orientation}}}))
                 (catch clojure.lang.ExceptionInfo e

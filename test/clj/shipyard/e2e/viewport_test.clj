@@ -353,7 +353,15 @@
        #(false? (s/js *driver* "() => !!document.querySelector('.mount-wizard__form select[name=part-role]')")))
       "part role should be edited outside the mount wizard")
   (s/select-option! *driver* ".mount-wizard__form select[name=kind]" "socket")
-  (s/js *driver* "() => { document.querySelector('.mount-wizard__form input[name=capacity]').value = '2'; }")
+  (s/js *driver* "() => { const input = document.querySelector('.mount-wizard__form input[name=capacity]'); input.value = '2'; input.dispatchEvent(new Event('input', {bubbles: true})); }")
+  (is (s/wait-until #(= 2 (count (get-in (s/stats *driver*) [:preview :split-centers]))))
+      "vertical split previews both positions")
+  (let [vertical (get-in (s/stats *driver*) [:preview :split-centers])]
+    (s/select-option! *driver* ".mount-wizard__form select[name=split-direction]" "Horizontal — equal heights")
+    (is (s/wait-until #(not= vertical (get-in (s/stats *driver*) [:preview :split-centers])))
+        "horizontal split changes positions on the selected face")
+    (is (= 1 (count (get-in (s/stats *driver*) [:preview :split-lines]))))
+    (s/select-option! *driver* ".mount-wizard__form select[name=split-direction]" "Vertical — equal widths"))
   (s/click! *driver* ".mount-wizard__actions button[value=create]")
   (is (s/wait-until #(str/includes? (s/text *driver* "#detail") "mount-1"))
       (str "the saved mount should appear in the detail panel; got "

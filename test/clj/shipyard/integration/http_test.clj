@@ -347,6 +347,7 @@
                       :mount/kind :socket
                       :mount/accepts [:weapon]
                       :mount/capacity 2
+                      :mount/split {:direction :vertical :bounds [[-2.0 -1.0] [2.0 1.0]]}
                       :mount/pos [2.0 1.0 0.0]
                       :mount/axis [0.0 0.0 1.0]
                       :mount/roll [1.0 0.0 0.0]
@@ -417,7 +418,7 @@
     (is (= {:mount-id "port-2"
             :kind "socket"
             :accepts #{:turret}
-            :capacity 2}
+            :capacity 2 :split-direction :vertical}
            (get events "shipyard:mount-repeat")))
     (is (= :picked (get-in by-id [:port-1 :mount/origin])))
     (is (= :mirrored (get-in by-id [:starboard-1 :mount/origin])))

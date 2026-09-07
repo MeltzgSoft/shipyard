@@ -285,6 +285,7 @@
     {:frame {:mount/pos (bbox-midpoint points)
              :mount/axis axis
              :mount/roll roll}
+     :points points
      :roll-ambiguous? roll-ambiguous?
      :roll-source roll-source}))
 

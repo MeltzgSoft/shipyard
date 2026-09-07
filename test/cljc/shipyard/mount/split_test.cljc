@@ -35,3 +35,14 @@
     (is (= [[0.0 0.0 -2.0] [0.0 0.0 2.0]]
            (mapv :mount/pos (:frames (split/sections
                                       (assoc socket :mount/axis [1 0 0] :mount/roll [0 0 1]))))))))
+
+(deftest metadata-for-test
+  (testing "saved extents survive editing and reproject after a quarter turn"
+    (is (= (:mount/split socket) (split/metadata-for socket socket :vertical)))
+    (is (= {:direction :horizontal :bounds [[-2 -4] [2 4]]}
+           (split/metadata-for socket (assoc socket :mount/roll [0 1 0]) :horizontal))))
+  (testing "fresh picks and invalid or missing points"
+    (is (= {:direction :vertical :bounds [[0 0] [3 2]]}
+           (split/metadata-for (assoc socket :face-points [[0 0 0] [3 2 0]]) socket :vertical)))
+    (is (nil? (split/metadata-for (dissoc socket :mount/split) socket :vertical)))
+    (is (nil? (split/metadata-for socket socket :diagonal)))))

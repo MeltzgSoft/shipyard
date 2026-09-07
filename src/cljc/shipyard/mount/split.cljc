@@ -18,6 +18,24 @@
         (every? #(and (vector? %) (= 2 (count %)) (every? math/finite-number? %)) bounds)
         (every? true? (map < (first bounds) (second bounds))))))
 
+(defn metadata-for
+  "Reproject picked face points (or saved extent corners) into the adjusted mount frame."
+  [frame adjusted direction]
+  (let [bounds (get-in frame [:mount/split :bounds])
+        points (or (:face-points frame)
+                   (when (valid-bounds? bounds)
+                     (let [[[xmin ymin] [xmax ymax]] bounds
+                           up (math/cross (:mount/axis frame) (:mount/roll frame))]
+                       (for [x [xmin xmax] y [ymin ymax]]
+                         (math/add (:mount/pos frame)
+                                   (math/add (math/scale x (:mount/roll frame))
+                                             (math/scale y up)))))))]
+    (when (and (#{:vertical :horizontal} direction) (seq points)
+               (every? #(and (vector? %) (= 3 (count %)) (every? math/finite-number? %)) points))
+      (let [bounds (face-bounds adjusted points)]
+        (when (valid-bounds? bounds)
+          {:direction direction :bounds bounds})))))
+
 (defn sections
   "Return ordered frames and boundary segments, or actionable incomplete-authoring data.
   Vertical divides +X width; horizontal divides +Y height. Ordinals increase along that axis."

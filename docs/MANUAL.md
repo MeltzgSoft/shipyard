@@ -131,6 +131,13 @@ When the preview looks right, fill in the mount form:
 - **Repeat classification** keeps the kind and accepted roles ready for the next picked
   face. The next mount is still shown in the form and must be saved deliberately.
 
+When capacity is above one, choose **Vertical — equal widths** or
+**Horizontal — equal heights**. The selected face is divided in its own frame:
+vertical cuts run along +Y, and horizontal cuts along +X. White lines show boundaries
+and arrows show each section's center. Capacity and Twist changes update the preview.
+Saved splits travel with the mount's sidecar, including when mirrored. Older
+capacity-only mounts need their face picked again to define the split.
+
 Part-level metadata is edited outside the mount picker. Use **Part metadata** in the
 detail panel to set the role Shipyard should trust for that part from now on. It
 replaces the inferred role shown by browsing.
