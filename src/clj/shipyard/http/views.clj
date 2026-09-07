@@ -203,6 +203,11 @@
     [:div.detail__summary
      (detail-head part)
      [:p.detail__status "Loaded."]
+     (when (and (= :manual (:part/role-source part))
+                (#{:hull :hull-section} (:part/role-hint part)))
+       [:a {:href (str "/assembly?part-id=" (urls/encode-id (:part/id part)))
+            :hx-get (str "/assembly?part-id=" (urls/encode-id (:part/id part)))
+            :hx-target "#detail"} "Assemble this hull"])
      (part-metadata part)
      (part-orientation part orientation-error)
      (interface-legend part)
@@ -427,6 +432,8 @@
    [:head
     [:meta {:charset "utf-8"}]
     [:meta {:name "viewport" :content "width=device-width, initial-scale=1"}]
+    [:meta {:name "htmx-config"
+            :content "{\"responseHandling\":[{\"code\":\"204\",\"swap\":false},{\"code\":\"[23]..\",\"swap\":true},{\"code\":\"409|422\",\"swap\":true},{\"code\":\"[45]..\",\"swap\":false,\"error\":true}]}"}]
     [:title "Shipyard"]
     [:link {:rel "stylesheet" :href "/app.css"}]
     ;; htmx is a separate file from the viewport bundle so a broken viewport
@@ -436,6 +443,7 @@
    [:body
     [:header.masthead
      [:h1 "Shipyard"]
+     [:a {:href "/assembly" :hx-get "/assembly" :hx-target "#detail"} "Assembly"]
      [:p.masthead__tagline "Preview and assemble Battlefleet Gothic miniatures."]]
     [:main.layout
      [:section#library.panel

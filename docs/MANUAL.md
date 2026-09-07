@@ -159,6 +159,25 @@ or correct the field and save once more.
 This information is saved beside the part, in the same folder as its STL, so it survives
 if you reorganise or move your library.
 
+## Assembly draft
+
+Choose **Assembly** in the header, or **Assemble this hull** on a loaded, manually
+classified hull. Choose **Start assembly**, then assign compatible parts to its sockets.
+Numbered positions are separate assignments; you can use the same printable part more
+than once. Assigning a component with sockets reveals its nested slots, such as turrets
+on a weapon. **Replace** or **Clear** removes that component's nested assignments.
+
+Only authored roles, accepted socket roles, a single valid plug, available unsupported
+geometry, and matching bundle/class authorize a choice. Inferred roles cannot do so.
+Single-ship bundles are self-contained. Missing capacity splits require reauthoring.
+Cold parts prepare in the background; failed preparation offers **Retry**. If the draft
+changed elsewhere, review the refreshed panel before trying again. The choices remain
+usable if the viewport bundle is unavailable. This panel establishes the draft; the
+multi-part rendering capability is delivered separately.
+
+The draft is in memory only. Resetting or stopping Shipyard loses it; named loadouts,
+save/load, paint schemes and thumbnails are not available in M3.
+
 ## Troubleshooting
 
 **"Shipyard will not start, with an error about an unrecognised JVM option."** You are
