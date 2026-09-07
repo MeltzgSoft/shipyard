@@ -1826,6 +1826,8 @@ centers in the same frame on the model before save. Nonrectangular faces use pro
 bounds, not equal-area partitioning. Persist bounds, not triangle indices. Changes to
 twist or mirrored authoring must recompute/transform those bounds consistently.
 Legacy capacity > 1 records without bounds need reauthoring; show an actionable error.
+Capacity is bounded to 256 sections per socket, nesting to 16 levels, and traversal
+to 4096 slots per draft; malformed authoring returns diagnostics instead of unbounded work.
 
 ### 13.3 Placement and viewport protocol
 
