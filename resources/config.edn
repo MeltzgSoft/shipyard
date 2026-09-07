@@ -37,11 +37,14 @@
  {:library #ig/ref :shipyard.library/index
   :cache   #ig/ref :shipyard.mesh/cache}
 
+ :shipyard.assembly/db {}
+
  :shipyard.http/routes
  {:library #ig/ref :shipyard.library/index
   :catalog #ig/ref :shipyard.catalog/db
   :cache   #ig/ref :shipyard.mesh/cache
-  :jobs    #ig/ref :shipyard.http/jobs}
+  :jobs    #ig/ref :shipyard.http/jobs
+  :assembly #ig/ref :shipyard.assembly/db}
 
  :shipyard.http/server
  {:port    #or [#env PORT 8080]

@@ -1844,7 +1844,7 @@ child quaternion in the viewport. Nested matrices are already composed server-si
 One `shipyard:assembly` HX-Trigger event carries an EDN envelope:
 
 ```clojure
-{:revision 3 :commands
+{:revision 3 :sequence 5 :commands
  [{:op :reset}
   {:op :set :slot [] :part-id "Human Navy Fleet Bundle/Cruiser/Hull"
    :mesh-key "<sha256>" :url "/mesh/<sha256>.0.symesh"
@@ -1854,7 +1854,8 @@ One `shipyard:assembly` HX-Trigger event carries an EDN envelope:
 `:set` replaces only its slot; `:remove` removes its named slot. Reset clears all
 assembly objects and invalidates pending mesh fetches. Commands are ordered, removals
 precede sets, and every mutation increases revision. Ignore older/equal revision
-events, and reject fetch completion unless both the active mode generation and that
+events by their monotonically increasing response `:sequence` (including mesh-ready
+poll responses at the same draft revision), and reject fetch completion unless both the active mode generation and that
 slot's request token still match. A resume snapshot resets at the current revision;
 entering browsing or authoring invalidates assembly fetches and disposes its resources.
 Duplicate part ids are distinct objects keyed by slot paths. Frame the camera from
