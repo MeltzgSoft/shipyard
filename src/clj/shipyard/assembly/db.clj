@@ -52,10 +52,10 @@
                                   {:scene {} :error (:code (ex-data e))}))
           after (:scene placement-result)
           prepared (prepare! deps sources (map :part-id (vals after)) retry)
-          keys (into {} (keep (fn [[id status]] (when (= :ready (:state status)) [id (:mesh-key status)]))) prepared)
+          mesh-keys (into {} (keep (fn [[id status]] (when (= :ready (:state status)) [id (:mesh-key status)]))) prepared)
           reset? (or resume? (and operation (not (:error result)) (#{:hull :reset} (:op operation))))
           envelope {:revision (:revision draft) :sequence (inc sequence)
-                    :commands (transforms/commands scene after keys reset?)}]
+                    :commands (transforms/commands scene after mesh-keys reset?)}]
       (reset! state {:draft draft :sequence (inc sequence)
                      :root (if blocked-root? root current-root) :scene after})
       (merge result {:database database :prepared prepared :event envelope

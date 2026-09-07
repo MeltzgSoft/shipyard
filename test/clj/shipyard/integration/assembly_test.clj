@@ -5,6 +5,7 @@
             [clojure.test :refer [deftest is testing use-fixtures]]
             [ring.mock.request :as mock]
             [shipyard.assembly-fixture :as fixture]
+            [shipyard.assembly.db :as assembly]
             [shipyard.catalog.db :as catalog]
             [shipyard.library.index :as index]))
 
@@ -26,6 +27,12 @@
       (edn/read-string)))
 
 (deftest draft-http-workflow
+  (testing "the response includes available sources for server-rendered choices"
+    (let [system (:system *fixture*)
+          deps {:catalog (:shipyard.catalog/db system) :library (:shipyard.library/index system)
+                :cache (:shipyard.mesh/cache system) :jobs (:shipyard.http/jobs system)
+                :assembly (:shipyard.assembly/db system)}]
+      (is (contains? (:available (assembly/request! deps nil {})) (:hull fixture/ids)))))
   (testing "select, fill capacity twice and add a nested turret through the real handler"
     (let [selected (post! "/assembly/hull" {:revision "0" :part-id (:hull fixture/ids)})
           first-slot (post! "/assembly/assign" {:revision "1" :slot "[[:weapon 0]]" :part-id (:weapon fixture/ids)})
