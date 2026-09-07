@@ -16,6 +16,7 @@
             ["three/examples/jsm/controls/OrbitControls.js" :refer [OrbitControls]]
             ["three/examples/jsm/environments/RoomEnvironment.js" :refer [RoomEnvironment]]
             [cljs.reader :as edn]
+            [shipyard.assembly.scene :as assembly-scene]
             [shipyard.interface-colors :as interface-colors]
             [shipyard.math :as math]
             [shipyard.part.orientation :as orientation]
@@ -252,6 +253,8 @@
   (reset! interfaces nil))
 
 (defn clear! [{:keys [^js scene ^js canvas parts authoring current repeat] :as sys}]
+  (when-let [assembly (:assembly sys)] (swap! assembly assembly-scene/leave))
+  (when-let [generation (:browse-generation sys)] (swap! generation inc))
   (clear-authoring-preview! sys)
   (clear-interface-highlights! sys)
   (clear-orientation-guide! sys)
@@ -795,45 +798,101 @@
   swallowed: a part that fails to load must not take the session with it."
   [{:keys [^js scene ^js canvas authoring current repeat] :as sys}
    {:keys [url part-id mesh-key frame mounts] :as payload}]
-  (-> (js/fetch url)
-      (.then (fn [^js res]
-               (if (.-ok res)
-                 (.arrayBuffer res)
-                 (throw (js/Error. (str "mesh request failed: " (.-status res)))))))
-      (.then (fn [buf]
-               (let [{:keys [bbox-min bbox-max] :as mesh} (wire/decode buf)
-                     part-orientation (orientation/orientation-of (:orientation payload))
-                     obj (three/Mesh. (decode->geometry mesh) (material))
-                     [oriented-min oriented-max]
-                     (orientation/oriented-bounds bbox-min bbox-max part-orientation)]
-                 (set! (.-name obj) (or part-id url))
-                 (set! (.. obj -userData -partId) part-id)
-                 (set! (.. obj -userData -meshKey) mesh-key)
-                 (orient-object! obj part-orientation)
-                 (clear-authoring-preview! sys)
-                 (clear-interface-highlights! sys)
-                 (clear-orientation-guide! sys)
-                 (reset! authoring nil)
-                 (reset! current {:part-id part-id
-                                  :mesh-key mesh-key
-                                  :orientation part-orientation
-                                  :saved-orientation part-orientation
-                                  :bounds [bbox-min bbox-max]})
-                 (reset! repeat nil)
-                 (.remove (.-classList canvas) "stage__canvas--authoring")
-                 (show-only! sys part-id obj)
-                 (install-orientation-guide! sys orientation/identity-quaternion)
-                 (draw-interfaces! sys {:part-id part-id
-                                        :mesh-key mesh-key
-                                        :orientation part-orientation
-                                        :mounts mounts})
-                 (when frame (frame! sys oriented-min oriented-max))
-                 (swap! (:status sys) assoc :state :loaded :part-id part-id)
-                 (sync-authoring-button! sys)
-                 scene)))
-      (.catch (fn [e]
-                (js/console.error "shipyard: could not load" url e)
-                (swap! (:status sys) assoc :state :failed :message (str e))))))
+  (clear! sys)
+  (let [generation @(:browse-generation sys)]
+    (-> (js/fetch url)
+        (.then (fn [^js res]
+                 (if (.-ok res)
+                   (.arrayBuffer res)
+                   (throw (js/Error. (str "mesh request failed: " (.-status res)))))))
+        (.then (fn [buf]
+                 (when (= generation @(:browse-generation sys))
+                   (let [{:keys [bbox-min bbox-max] :as mesh} (wire/decode buf)
+                         part-orientation (orientation/orientation-of (:orientation payload))
+                         obj (three/Mesh. (decode->geometry mesh) (material))
+                         [oriented-min oriented-max]
+                         (orientation/oriented-bounds bbox-min bbox-max part-orientation)]
+                     (set! (.-name obj) (or part-id url))
+                     (set! (.. obj -userData -partId) part-id)
+                     (set! (.. obj -userData -meshKey) mesh-key)
+                     (orient-object! obj part-orientation)
+                     (clear-authoring-preview! sys)
+                     (clear-interface-highlights! sys)
+                     (clear-orientation-guide! sys)
+                     (reset! authoring nil)
+                     (reset! current {:part-id part-id
+                                      :mesh-key mesh-key
+                                      :orientation part-orientation
+                                      :saved-orientation part-orientation
+                                      :bounds [bbox-min bbox-max]})
+                     (reset! repeat nil)
+                     (.remove (.-classList canvas) "stage__canvas--authoring")
+                     (show-only! sys part-id obj)
+                     (install-orientation-guide! sys orientation/identity-quaternion)
+                     (draw-interfaces! sys {:part-id part-id
+                                            :mesh-key mesh-key
+                                            :orientation part-orientation
+                                            :mounts mounts})
+                     (when frame (frame! sys oriented-min oriented-max))
+                     (swap! (:status sys) assoc :state :loaded :part-id part-id)
+                     (sync-authoring-button! sys)
+                     scene))))
+        (.catch (fn [e]
+                  (when (= generation @(:browse-generation sys))
+                    (js/console.error "shipyard: could not load" url e)
+                    (swap! (:status sys) assoc :state :failed :message (str e))))))))
+
+(defn- frame-assembly! [{:keys [parts] :as sys}]
+  (when (seq @parts)
+    (let [bounds (three/Box3.)]
+      (doseq [object (vals @parts)] (.expandByObject bounds object))
+      (let [minimum (.-min bounds) maximum (.-max bounds)]
+        (frame! sys [(.-x minimum) (.-y minimum) (.-z minimum)]
+                [(.-x maximum) (.-y maximum) (.-z maximum)])))))
+
+(defn- load-assembly-slot! [{:keys [assembly] :as sys} slot {:keys [token payload]}]
+  (-> (js/fetch (:url payload))
+      (.then (fn [^js response]
+               (if (.-ok response) (.arrayBuffer response)
+                   (throw (js/Error. (str "Assembly mesh request failed: " (.-status response)))))))
+      (.then (fn [buffer]
+               (when (assembly-scene/current? @assembly slot token)
+                 (let [geometry (decode->geometry (wire/decode buffer))
+                       surface (material)
+                       object (three/Mesh. geometry surface)]
+                   (try
+                     (set! (.-matrixAutoUpdate object) false)
+                     (.fromArray (.-matrix object) (clj->js (:matrix payload)))
+                     (set! (.. object -userData -partId) (:part-id payload))
+                     (set! (.. object -userData -meshKey) (:mesh-key payload))
+                     (.updateMatrixWorld object true)
+                     (put-part! sys slot object)
+                     (frame-assembly! sys)
+                     (swap! (:status sys) assoc :state :loaded)
+                     (catch :default error
+                       (dispose-object! object)
+                       (throw error)))))))
+      (.catch (fn [error]
+                (when (assembly-scene/current? @assembly slot token)
+                  (swap! (:status sys) assoc :state :failed
+                         :message (str "Assembly mesh failed. Reopen Assembly to retry. " error)))))))
+
+(defn- apply-assembly! [{:keys [assembly parts ^js scene] :as sys} event]
+  (let [before @assembly
+        after (assembly-scene/accept-event before event)]
+    (when (not= before after)
+      (when (some #(= :reset (:op %)) (:commands event)) (clear! sys))
+      (doseq [[slot _] @parts
+              :when (not= (get-in before [:slots slot :token])
+                          (get-in after [:slots slot :token]))]
+        (when-let [object (get @parts slot)]
+          (.remove scene object)
+          (dispose-object! object)
+          (swap! parts dissoc slot)))
+      (reset! assembly after)
+      (doseq [[slot entry] (:slots after)
+              :when (not= (:token entry) (get-in before [:slots slot :token]))]
+        (load-assembly-slot! sys slot entry)))))
 
 ;; --- test hook --------------------------------------------------------------
 
@@ -914,6 +973,13 @@
          :geometries (.. renderer -info -memory -geometries)
          :status    (clj->js (:state @status))
          :authoring (clj->js @authoring)
+         :assembly (clj->js
+                    {:mode (:mode @(:assembly sys))
+                     :slots (when (= :assembly (:mode @(:assembly sys)))
+                              (mapv (fn [[slot ^js object]]
+                                      {:slot slot :part-id (.. object -userData -partId)
+                                       :uuid (.-uuid object) :matrix (vec (.. object -matrix -elements))})
+                                    @parts))})
          :orientation (clj->js (some-> objs first object-orientation))
          :orientation-guide (orientation-guide-stats sys)
          :repeat    (clj->js @(:repeat sys))
@@ -982,6 +1048,7 @@
     (.addEventListener body "shipyard:status" #(reset! (:status sys) (payload %)))
     (.addEventListener body "shipyard:authoring" #(authoring! sys (payload %)))
     (.addEventListener body "shipyard:clear-preview" (fn [_] (clear-authoring-preview! sys)))
+    (.addEventListener body "shipyard:assembly" #(apply-assembly! sys (payload %)))
     (.addEventListener body "shipyard:facet-preview" #(draw-preview! sys (payload %)))
     (.addEventListener body "shipyard:facet-error" (fn [_] (clear-authoring-preview! sys)))
     (.addEventListener body "shipyard:mount-repeat" #(reset! (:repeat sys) (payload %)))
@@ -1028,6 +1095,7 @@
                     :orientation-camera orientation-camera
                     :controls controls :parts (atom {}) :status (atom {:state :idle})
                     :current (atom nil) :authoring (atom nil) :preview (atom nil)
+                    :assembly (atom assembly-scene/empty-state) :browse-generation (atom 0)
                     :interfaces (atom nil) :orientation-guide (atom nil) :repeat (atom nil)
                     :preview-revision (atom 0)
                     :raycaster (three/Raycaster.) :pointer (three/Vector2.)}]
