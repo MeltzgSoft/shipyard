@@ -19,6 +19,7 @@
             [shipyard.library.scan :as scan]
             [shipyard.mesh.lod :as lod]
             [shipyard.mesh.stl :as stl]
+            [shipyard.mesh.volume :as volume]
             [shipyard.mesh.weld :as weld]
             [shipyard.report :as report]
             [shipyard.system :as system])
@@ -27,24 +28,6 @@
            [java.util.concurrent Executors ExecutorService TimeUnit]))
 
 ;; --- geometry checks --------------------------------------------------------
-
-(defn signed-volume
-  "Signed volume of a triangle soup, accumulated per face.
-
-  Exact for a closed mesh and near zero for anything flat, which is the case
-  worth reporting: a part that is a single plane renders as an invisible sliver
-  rather than as an obvious error."
-  ^double [^floats positions ^long triangle-count]
-  (loop [t 0, acc 0.0]
-    (if (>= t triangle-count)
-      (/ acc 6.0)
-      (let [o (* t 9)
-            ax (aget positions o)        ay (aget positions (+ o 1)) az (aget positions (+ o 2))
-            bx (aget positions (+ o 3))  by (aget positions (+ o 4)) bz (aget positions (+ o 5))
-            cx (aget positions (+ o 6))  cy (aget positions (+ o 7)) cz (aget positions (+ o 8))]
-        (recur (inc t)
-               (+ acc (- (+ (* ax by cz) (* ay bz cx) (* az bx cy))
-                         (+ (* az by cx) (* ay bx cz) (* ax bz cy)))))))))
 
 (defn extents [bbox-min bbox-max]
   (mapv (fn [a b] (Math/abs (- (double b) (double a)))) bbox-min bbox-max))
@@ -99,7 +82,7 @@
               parsed (stl/parse-file! f)
               {:keys [^floats positions ^long triangle-count bbox-min bbox-max]} parsed
               ext    (extents bbox-min bbox-max)
-              volume (Math/abs (signed-volume positions triangle-count))
+              volume (Math/abs (volume/signed positions triangle-count))
               flat   (when (or (some #(< (double %) flat-epsilon) ext)
                                (< volume flat-epsilon))
                        [(finding part :zero-volume {:extents ext :volume volume})])

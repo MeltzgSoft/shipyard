@@ -5,11 +5,13 @@
   explicit probe/classifier path and caches derived measurements in the scan
   index once they have been paid for."
   (:require [babashka.fs :as fs]
-            [clojure.pprint :as pp]
             [clojure.string :as str]
             [integrant.core :as ig]
             [shipyard.library.index :as index]
+            [shipyard.math :as math]
             [shipyard.mesh.stl :as stl]
+            [shipyard.mesh.volume :as volume]
+            [shipyard.report :as report]
             [shipyard.system :as system]))
 
 (def ^:const bin-size-mm 0.5)
@@ -31,37 +33,8 @@
       (double (aget positions (+ o 7)))
       (double (aget positions (+ o 8)))]]))
 
-(defn- v- [[ax ay az] [bx by bz]]
-  [(- ax bx) (- ay by) (- az bz)])
-
-(defn- cross [[ax ay az] [bx by bz]]
-  [(- (* ay bz) (* az by))
-   (- (* az bx) (* ax bz))
-   (- (* ax by) (* ay bx))])
-
-(defn- dot [[ax ay az] [bx by bz]]
-  (+ (* ax bx) (* ay by) (* az bz)))
-
-(defn- length [v] (Math/sqrt (dot v v)))
-
 (defn- triangle-area [[a b c]]
-  (/ (length (cross (v- b a) (v- c a))) 2.0))
-
-(defn signed-volume
-  "Signed volume of a triangle soup, accumulated per face."
-  [^floats positions triangle-count]
-  (loop [t 0, acc 0.0]
-    (if (>= t triangle-count)
-      (/ acc 6.0)
-      (let [[[ax ay az] [bx by bz] [cx cy cz]] (triangle-points positions t)]
-        (recur (inc t)
-               (+ acc (- (+ (* ax by cz) (* ay bz cx) (* az bx cy))
-                         (+ (* az by cx) (* ay bx cz) (* ax bz cy)))))))))
-
-(defn sorted-extents [bbox-min bbox-max]
-  (->> (mapv (fn [a b] (Math/abs (- (double b) (double a)))) bbox-min bbox-max)
-       (sort)
-       (vec)))
+  (/ (math/length (math/cross (math/subtract b a) (math/subtract c a))) 2.0))
 
 (defn- axis-order [bbox-min bbox-max]
   (->> (map-indexed vector (mapv (fn [a b] (Math/abs (- (double b) (double a))))
@@ -76,7 +49,7 @@
           profile)
     (sorted-map)))
 
-(defn axial-profile
+(defn- axial-profile
   "Area-weighted 0.5 mm bins along the longest bounding-box axis."
   [{:keys [^floats positions triangle-count bbox-min bbox-max]}]
   (let [axis (first (axis-order bbox-min bbox-max))
@@ -109,7 +82,7 @@
                  (conj seen t))))
       (vec (sort seen)))))
 
-(defn connected-components
+(defn- connected-components
   "Triangle components connected by shared vertex positions."
   [{:keys [^floats positions triangle-count]}]
   (let [vertex->tris (reduce
@@ -128,10 +101,9 @@
         components))))
 
 (defn- component-volume [^floats positions component]
-  (Math/abs
-   (double (signed-volume positions (count component)))))
+  (Math/abs (volume/signed positions (count component))))
 
-(defn component-volumes [{:keys [^floats positions]} components]
+(defn- component-volumes [{:keys [^floats positions]} components]
   ;; Component triangles are copied into a compact soup so the volume routine
   ;; can stay simple and indexed from zero.
   (mapv (fn [component]
@@ -153,7 +125,7 @@
      :axial-axis (first order)
      :length (first extents)
      :cross-section (vec (rest extents))
-     :volume (Math/abs (double (signed-volume (:positions mesh) triangle-count)))
+     :volume (Math/abs (volume/signed (:positions mesh) triangle-count))
      :component-count (count components)
      :component-volumes (component-volumes mesh components)
      :profile (axial-profile mesh)}))
@@ -165,7 +137,7 @@
               (<= (Math/abs (- (double x) (double y))) tol)))
           (map vector (:cross-section a) (:cross-section b))))
 
-(defn profile-agreement-mm [a b]
+(defn- profile-agreement-mm [a b]
   (let [pa (:profile a)
         pb (:profile b)]
     (* bin-size-mm (count (filter (fn [bin]
@@ -179,14 +151,14 @@
                          (* min-shared-profile-ratio
                             (min (double (:length a)) (double (:length b)))))))))
 
-(defn anchor? [measurement siblings]
+(defn- anchor? [measurement siblings]
   (some #(>= (double (:volume %)) (* 2.0 (double (:volume measurement)))) siblings))
 
 (defn- volume-close? [a b]
   (<= (Math/abs (- (double a) (double b)))
       (* volume-tolerance-ratio (max 1.0 (double b)))))
 
-(defn assembly? [measurement siblings]
+(defn- assembly? [measurement siblings]
   (let [component-volumes (sort (:component-volumes measurement))
         sibling-volumes (sort (map :volume siblings))]
     (and (> (:component-count measurement) 1)
@@ -228,21 +200,11 @@
 (defn- escort-part? [part]
   (= "escort" (some-> (:part/class part) (str/lower-case))))
 
-(defn- measure-file [root {:part/keys [id source]}]
-  (measure (stl/parse-file (fs/file root id (index/name-of source)))))
-
-(defn analyze-library!
-  "Analyze renderable escort parts in an initialized library index component."
-  [{:keys [state] :as library}]
-  (let [{:keys [root parts]} @state
-        measured (into {}
-                       (keep (fn [{:part/keys [id source] :as part}]
-                               (when (and (escort-part? part) source)
-                                 [id (or (index/escort-analysis library id)
-                                         (index/record-escort-analysis!
-                                          library id (measure-file root part)))])))
-                       parts)
-        by-siblings (group-by (juxt :part/bundle :part/class) (filter escort-part? parts))]
+(defn classify-library
+  "Classify measured escort parts without reading files or component state."
+  [parts measured]
+  (let [by-siblings (group-by (juxt :part/bundle :part/class)
+                              (filter escort-part? parts))]
     (vec
      (for [[_ siblings] by-siblings
            :let [siblings (filter #(contains? measured (:part/id %)) siblings)]
@@ -258,9 +220,21 @@
         :classification classification
         :part (apply-classification part classification)}))))
 
-(defn write-report! [file report]
-  (system/write-atomically! (fs/file file) (with-out-str (pp/pprint report)))
-  file)
+(defn- measure-file! [root {:part/keys [id source]}]
+  (measure (stl/parse-file! (fs/file root id (index/name-of source)))))
+
+(defn analyze-library!
+  "Analyze renderable escort parts in an initialized library index component."
+  [{:keys [state] :as library}]
+  (let [{:keys [root parts]} @state
+        measured (into {}
+                       (keep (fn [{:part/keys [id source] :as part}]
+                               (when (and (escort-part? part) source)
+                                 [id (or (index/escort-analysis! library id)
+                                         (index/record-escort-analysis!
+                                          library id (measure-file! root part)))])))
+                       parts)]
+    (classify-library parts measured)))
 
 (defn- parse-args [args]
   (reduce (fn [m [k v]]
@@ -273,7 +247,7 @@
 
 (defn -main [& args]
   (let [{:keys [out root]} (parse-args args)
-        cfg (system/load-config)
+        cfg (system/load-config!)
         root (or root (get-in cfg [:shipyard.library/index :root]))
         _ (when-not root
             (println "No library root. Pass --root, or set one in Shipyard first.")
@@ -281,5 +255,5 @@
         library (ig/init-key :shipyard.library/index {:root root})
         report (analyze-library! library)]
     (println "escort classifications:" (count report))
-    (println "report written to" (str (write-report! out report)))
+    (println "report written to" (str (report/write-report! out report)))
     (System/exit 0)))

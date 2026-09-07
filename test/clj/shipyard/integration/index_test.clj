@@ -19,17 +19,17 @@
         part-id "Human Navy Fleet Bundle/Escort/Cyanide Prow Python"
         f (source! root part-id)
         parts [{:part/id part-id :part/source :unsupported}]
-        entry (get (index/refresh parts root {}) part-id)
+        entry (get (index/refresh! parts root {}) part-id)
         stored {part-id (assoc entry
                                :escort-analysis {:volume 42.0})}]
     (testing "fresh source files keep cached escort geometry analysis"
       (is (= {:volume 42.0}
-             (get-in (index/refresh parts root stored)
+             (get-in (index/refresh! parts root stored)
                      [part-id :escort-analysis]))))
     (testing "changed source files drop cached escort geometry analysis"
       (Thread/sleep 2)
       (spit f "changed")
-      (is (nil? (get-in (index/refresh parts root stored)
+      (is (nil? (get-in (index/refresh! parts root stored)
                         [part-id :escort-analysis]))))
     (testing "the test did not leave the temp root missing before assertions"
       (is (fs/directory? root)))))

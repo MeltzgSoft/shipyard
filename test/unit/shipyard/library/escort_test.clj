@@ -1,4 +1,4 @@
-(ns shipyard.unit.escort-test
+(ns shipyard.library.escort-test
   (:require [clojure.test :refer [deftest is testing]]
             [shipyard.fixtures :as f]
             [shipyard.library.escort :as escort]
@@ -75,6 +75,29 @@
     (testing "uncertain cases remain visible"
       (is (= :unresolved
              (:escort/classification (escort/classify-measurement component [])))))))
+
+(deftest classify-library-test
+  (let [a {:part/id "bundle/escort/a"
+           :part/name "A"
+           :part/bundle "bundle"
+           :part/class "Escort"
+           :part/role-hint :unknown}
+        b (assoc a :part/id "bundle/escort/b" :part/name "B")
+        ignored (assoc a :part/id "bundle/cruiser/c" :part/class "Cruiser")
+        ship (m {:length 60.0
+                 :cross-section [19.0 28.0]
+                 :volume 1200.0
+                 :profile (zipmap (range 120) (repeat 1.0))})
+        rows (escort/classify-library [a b ignored]
+                                      {(:part/id a) ship
+                                       (:part/id b) (assoc ship :length 70.0)})]
+    (testing "classification is a pure transformation over parts and measurements"
+      (is (= #{"bundle/escort/a" "bundle/escort/b"}
+             (set (map :part/id rows))))
+      (is (every? #(= :whole-ship
+                      (get-in % [:classification :escort/classification]))
+                  rows))
+      (is (every? #(= :ship (get-in % [:part :part/role-hint])) rows)))))
 
 (deftest apply-classification-test
   (testing "whole ships become geometry-sourced role hints"

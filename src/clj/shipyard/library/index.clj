@@ -144,10 +144,17 @@
   (let [{:keys [root entries]} @state]
     {:root root :entry (get entries part-id)}))
 
-(defn escort-analysis
+(defn escort-analysis!
   "Cached escort geometry analysis for a part, if its source file is unchanged."
   [{:keys [state]} part-id]
   (get-in @state [:entries part-id :escort-analysis]))
+
+(defn with-escort-analysis
+  "Return `state` with analysis cached when `part-id` still exists."
+  [state part-id analysis]
+  (if (contains? (:entries state) part-id)
+    (assoc-in state [:entries part-id :escort-analysis] analysis)
+    state))
 
 (defn record-escort-analysis!
   "Persist on-demand escort analysis beside the scan index.
@@ -155,11 +162,7 @@
   Startup still does not open STL geometry; this is called only by the explicit
   escort probe/classifier path."
   [{:keys [state]} part-id analysis]
-  (let [updated (swap! state
-                       (fn [{:keys [entries] :as st}]
-                         (if (contains? entries part-id)
-                           (assoc-in st [:entries part-id :escort-analysis] analysis)
-                           st)))]
+  (let [updated (swap! state with-escort-analysis part-id analysis)]
     (when (contains? (:entries updated) part-id)
       (save-index! (:index-file updated) (:root updated) (:entries updated)))
     analysis))
