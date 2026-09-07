@@ -176,6 +176,17 @@ preserving the +X roll reference. `Tz(g)` is an optional gap along the socket ax
 default 0 - the virtual model mates flush, but a small positive `g` can represent the
 physical standoff introduced by magnets if that turns out to matter visually.
 
+Frames are persisted in source mesh coordinates. For a parent with source-to-world
+matrix `W`, a child's source-to-world matrix is `W · S · Tz(g) · Rx(π) · P⁻¹`.
+The root uses its source-to-canonical orientation. Converting both child mesh and plug
+to canonical coordinates cancels the child's orientation; do not rotate it a second
+time after mating. Matrix payloads use 16 column-major numbers (TECHNICAL.md §13).
+
+Socket capacity divides the selected face into equal-width **vertical** sections or
+equal-height **horizontal** sections in its authored frame. The user chooses the
+direction and sees boundaries and section centers on the model. Each section supplies
+one independently assignable socket; capacity alone cannot supply their positions.
+
 ### 5.4 The face-picking wizard
 
 The primary authoring interaction. Two flows, differing only in how many faces are picked.
@@ -419,7 +430,23 @@ from another mount, `:seeded` was proposed automatically from a pitted/unpitted 
 
 No facet index appears in this record, deliberately - see §5.4.
 
-### 8.3 Loadout
+### 8.3 Assembly draft and loadout
+
+M3 edits one ephemeral draft: a hull and assignments keyed by paths of socket ids and
+zero-based section ordinals. Repeating a printable part in different paths is allowed;
+repeating a part on its own ancestor chain is a cycle and is rejected. Replacing or
+clearing a component removes its descendants. Sockets on components expose further
+slots, including turrets on weapons.
+
+Candidates need an authored manual role accepted by the socket, exactly one valid
+plug, and an available unsupported mesh source. Role inference is browsing information
+only. Candidates must share the root's bundle and class. Single-ship bundles are
+self-contained: absent class matches absent class within that same bundle, never
+another bundle. Multi-section ships use one manually selected root hull and authored
+plugs/sockets joining its sections; filenames never imply those attachments.
+
+The draft has no name or disk persistence. M4 adds the named loadout below and uses
+the same path identity, rather than a flat mount-id map that loses repeated/nested slots.
 
 A named ship. Slot assignments plus an optional scheme override.
 
@@ -427,10 +454,10 @@ A named ship. Slot assignments plus an optional scheme override.
 {:loadout/id      #uuid "…"
  :loadout/name    "Dominator-pattern, Voss ram"
  :loadout/hull    "human-navy/cruiser/hull"
- :loadout/slots   {:prow     "human-navy/cruiser/voss-ram-prow"
-                   :bridge   "human-navy/cruiser/bridge"
-                   :port-1   "human-navy/cruiser/lance-battery"
-                   :port-2   "human-navy/cruiser/weapon-battery"}
+ :loadout/slots   {[[:prow 0]]   "human-navy/cruiser/voss-ram-prow"
+                   [[:bridge 0]] "human-navy/cruiser/bridge"
+                   [[:port-1 0]] "human-navy/cruiser/lance-battery"
+                   [[:port-1 1]] "human-navy/cruiser/weapon-battery"}
  :loadout/scheme  #uuid "…"              ; inherited from fleet unless overridden
  :loadout/thumb   "thumbs/….png"}
 ```

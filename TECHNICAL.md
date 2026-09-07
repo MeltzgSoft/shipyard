@@ -1766,3 +1766,118 @@ apply `M = S . Tz(g) . Rx(pi) . P^-1`. Those are M3 behaviours even though the s
 frame representation and `geom.cljc` make them technically possible earlier. The M2
 end-to-end proof stops after mounts reload from their sidecars and render plausibly on the
 individual parts that own them.
+
+## 13. M3 assembly contract
+
+### 13.1 Authored compatibility and draft identity
+
+The current catalog stores a durable sidecar `:part/role` as `:part/role-hint` with
+`:part/role-source :manual`. Assembly must require BOTH attributes; `:inferred` and
+`:class` sources cannot authorize a candidate. Query Datascript for manual accepted
+roles, then validate exactly one plug, finite orthonormal frames, renderability and
+source availability. Bundle AND class must match the root. Missing class is a value
+for this comparison only: two classless parts match only in the same bundle.
+Single-ship bundles are self-contained, including their manually joined hull sections.
+Selecting a root requires a renderable, manually authored `:hull` or `:hull-section`.
+
+The Integrant-managed draft is immutable data held in one atom, with no durable writes:
+
+```clojure
+{:revision 3
+ :hull "Human Navy Fleet Bundle/Cruiser/Hull"
+ :assignments
+ {[[:port-1 0]] "Human Navy Fleet Bundle/Cruiser/weapons/Weapon Battery"
+  [[:port-1 1]] "Human Navy Fleet Bundle/Cruiser/weapons/Weapon Battery"
+  [[:port-1 0] [:turret-pit 0]]
+  "Human Navy Fleet Bundle/Cruiser/weapons/turrets/Dorsal Turret"}}
+```
+
+The root slot path is `[]`. Each child appends `[mount-id ordinal]` to its parent's
+path. Ordinals start at zero and are stable under assignment changes. The same mesh
+may occupy any number of sibling slots; ancestor part repetition is forbidden.
+Replace/clear prunes the entire descendant subtree. Missing parts, duplicate mount ids,
+invalid frames, incomplete splits, cycles and unreachable assignments return structured
+diagnostics; they never silently invent positions or compatibility. Catalog changes
+are validated again on every operation, including library relocation and authoring edits.
+
+### 13.2 Capacity authoring
+
+Capacity one uses the authored mount frame directly. Capacity N > 1 requires persisted
+split metadata alongside that frame:
+
+```clojure
+{:mount/id :port-1 :mount/kind :socket :mount/accepts #{:weapon}
+ :mount/capacity 2
+ :mount/pos [-19.061 0.0 48.0]
+ :mount/axis [-1.0 0.0 0.0] :mount/roll [0.0 0.0 1.0]
+ :mount/split {:direction :vertical :bounds [[-12.0 -4.0] [12.0 4.0]]}}
+
+{:mount/id :turret-pit :mount/kind :socket :mount/accepts #{:turret}
+ :mount/capacity 1 :mount/pos [238.53 29.31 4.263]
+ :mount/axis [0.0 0.0 1.0] :mount/roll [1.0 0.0 0.0]}
+```
+
+Bounds are the picked facet's extents projected onto mount +X (roll) and +Y
+(`axis × roll`), relative to mount position, in source-space millimeters. Vertical
+divides the X extent into equal widths; horizontal divides Y into equal heights.
+Each slot origin is its section bounding-box center with the original axis and roll.
+There is no arbitrary angle control. Preview draws the section dividing lines and
+centers in the same frame on the model before save. Nonrectangular faces use projected
+bounds, not equal-area partitioning. Persist bounds, not triangle indices. Changes to
+twist or mirrored authoring must recompute/transform those bounds consistently.
+Legacy capacity > 1 records without bounds need reauthoring; show an actionable error.
+
+### 13.3 Placement and viewport protocol
+
+All shared math is pure CLJC in `shipyard.geom`, reusing `shipyard.math` and
+`shipyard.part.orientation`. Serialized matrices are column-major 16-element vectors,
+acting on column vectors, with translation at indices 12–14. Validate finite unit
+axis/roll and perpendicularity to tolerance `1e-9`, deriving right-handed +Y by cross
+product. Gaps default to zero. A child source mesh matrix is
+`Wparent · Ssource · Tz(g) · Rx(π) · inverse(Psource)`; the root's matrix is its
+source-to-canonical rotation. Equivalently, converting child mesh and plug by `Qchild`
+gives `inverse(Qchild · Psource) · Qchild = inverse(Psource)`. Apply no additional
+child quaternion in the viewport. Nested matrices are already composed server-side.
+
+One `shipyard:assembly` HX-Trigger event carries an EDN envelope:
+
+```clojure
+{:revision 3 :commands
+ [{:op :reset}
+  {:op :set :slot [] :part-id "Human Navy Fleet Bundle/Cruiser/Hull"
+   :mesh-key "<sha256>" :url "/mesh/<sha256>.0.symesh"
+   :matrix [1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1]}]}
+```
+
+`:set` replaces only its slot; `:remove` removes its named slot. Reset clears all
+assembly objects and invalidates pending mesh fetches. Commands are ordered, removals
+precede sets, and every mutation increases revision. Ignore older/equal revision
+events, and reject fetch completion unless both the active mode generation and that
+slot's request token still match. A resume snapshot resets at the current revision;
+entering browsing or authoring invalidates assembly fetches and disposes its resources.
+Duplicate part ids are distinct objects keyed by slot paths. Frame the camera from
+loaded assembly object bounds. htmx swaps HTML panels only; the canvas is hx-preserve.
+
+### 13.4 Ring boundary and progressive HTML
+
+Routes are reitit with Malli request/response coercion. Forms carry string ids, a
+nonnegative revision and (for slot operations) an EDN path, parsed with a bounded,
+validated vector shape. Client transforms are never used. HTML is always available,
+including with a missing viewport bundle. Successful responses expose the current
+draft as EDN data and the viewport commands as the event above.
+
+| Route | Inputs | Result |
+|---|---|---|
+| GET /assembly | none | Current panel and resume snapshot |
+| POST /assembly/hull | part-id, revision | New root, empty assignments |
+| POST /assembly/assign | slot, part-id, revision | Validated assignment/replacement |
+| POST /assembly/clear | slot, revision | Remove assignment and descendants |
+| POST /assembly/reset | revision | Empty draft |
+
+Malformed transport returns 400 through middleware. Recoverable domain errors render
+in the panel without losing the draft (409 stale revision, 422 incompatibility or
+incomplete authoring). Every mutation rechecks authoritative catalog facts. Mesh
+preparation uses the existing background jobs/poll/retry flow; do not block requests
+on preprocessing, and do not emit a mesh set until its source is ready. No authentication
+is introduced for the existing local application. Names, saved loadouts, duplication,
+paint schemes and thumbnails remain outside M3.
