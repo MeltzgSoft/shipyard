@@ -2,6 +2,7 @@
   "Pure parsing and validation for the M2 mount wizard."
   (:require [clojure.edn :as edn]
             [clojure.string :as str]
+            [shipyard.geom :as geom]
             [shipyard.math :as math]
             [shipyard.part.orientation :as orientation]))
 
@@ -13,8 +14,6 @@
 (def symmetry-plane-options [:x :y :z])
 
 (def ^:private id-re #"[A-Za-z][A-Za-z0-9_-]*")
-(def ^:private unit-epsilon 1e-6)
-(def ^:private orthogonal-epsilon 1e-6)
 (def ^:private centerline-epsilon 1e-6)
 
 (defn- many [x]
@@ -65,12 +64,7 @@
         (assoc frame :mount/axis axis :mount/roll roll)))))
 
 (defn valid-frame? [{:mount/keys [pos axis roll]}]
-  (and (vec3? pos)
-       (vec3? axis)
-       (vec3? roll)
-       (< (Math/abs (- 1.0 (math/length axis))) unit-epsilon)
-       (< (Math/abs (- 1.0 (math/length roll))) unit-epsilon)
-       (< (Math/abs (double (math/dot axis roll))) orthogonal-epsilon)))
+  (geom/valid-frame? {:mount/pos pos :mount/axis axis :mount/roll roll}))
 
 (defn rotate-roll
   "Rotate `roll` around unit `axis` by `degrees`, then remove numerical drift
