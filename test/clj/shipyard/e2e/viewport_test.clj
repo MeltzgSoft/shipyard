@@ -378,7 +378,7 @@
     (is (= 1 (count (get-in (s/stats *driver*) [:preview :split-lines]))))
     (s/select-option! *driver* ".mount-wizard__form select[name=split-direction]" "Vertical — equal widths"))
   (s/click! *driver* ".mount-wizard__actions button[value=create]")
-  (is (s/wait-until #(str/includes? (s/text *driver* "#detail") "mount-1"))
+  (is (s/wait-until #(str/includes? (s/text *driver* "#detail") "weapon-1"))
       (str "the saved mount should appear in the detail panel; got "
            (pr-str (s/text *driver* "#detail"))))
   (is (str/includes? (s/text *driver* "#detail") "x2")
@@ -387,12 +387,12 @@
       "configured interfaces should get a color legend")
   (let [interfaces (s/wait-until
                     #(let [interfaces (:interfaces (s/stats *driver*))]
-                       (when (some (fn [item] (= "mount-1" (:mount-id item)))
+                       (when (some (fn [item] (= "weapon-1" (:mount-id item)))
                                    (:items interfaces))
                          interfaces)))
         last-interfaces (:interfaces (s/stats *driver*))
-        saved (filterv #(= "mount-1" (:mount-id %)) (:items interfaces))]
-    (is (= [{:type "weapon" :mount-id "mount-1" :triangles 2 :candidates 2}]
+        saved (filterv #(= "weapon-1" (:mount-id %)) (:items interfaces))]
+    (is (= [{:type "weapon" :mount-id "weapon-1" :triangles 2 :candidates 2}]
            (mapv #(select-keys % [:type :mount-id :triangles :candidates]) saved)))
     (is (= 1 (count (:split-lines (first saved))))
         "the saved capacity split renders one persistent boundary")
@@ -401,7 +401,7 @@
              (pr-str last-interfaces))))
   (is (s/wait-until #(nil? (:preview (s/stats *driver*))))
       "saving clears the transient preview")
-  (s/click! *driver* "form:has(input[name=mount-id][value='mount-1']) button:has-text('Edit')")
+  (s/click! *driver* "form:has(input[name=mount-id][value='weapon-1']) button:has-text('Edit')")
   (is (s/wait-until #(true? (s/js *driver* "() => !!document.querySelector('.mount-wizard__form button[value=update]')")))
       "Edit should open the mount with an update action")
   (let [edit-preview (await-preview)]
@@ -433,13 +433,14 @@
   (let [{:keys [x y]} (viewport-center)]
     (s/click-point! *driver* x y))
   (is (some? (await-preview)))
+  (s/js *driver* "() => { document.querySelector('.mount-wizard__form input[name=mount-id]').value = 'weapon-1'; }")
   (s/click! *driver* ".mount-wizard__actions button[value=create]")
   (is (s/wait-until #(str/includes? (s/text *driver* "#detail") "already exists"))
       "duplicate ids should report the validation error in the detail panel")
   (is (s/wait-until #(true? (s/js *driver* "() => !!document.querySelector('.mount-wizard__form button[value=replace]')")))
       "the error state should keep the form available so Replace is reachable")
   (s/click! *driver* ".detail__dismiss")
-  (is (s/wait-until #(and (str/includes? (s/text *driver* "#detail") "mount-1")
+  (is (s/wait-until #(and (str/includes? (s/text *driver* "#detail") "weapon-1")
                           (not (str/includes? (s/text *driver* "#detail") "already exists"))))
       "dismissing the error should restore the normal loaded detail")
   (s/select-option! *driver* ".part-metadata__form select[name=part-role]" "hull")
@@ -452,10 +453,10 @@
     return card ? card.querySelector('.part__role').textContent : null;
   }")))
       "the manual role is visible as the part's authoritative role")
-  (s/click! *driver* "form:has(input[name=mount-id][value='mount-1']) button:has-text('Delete')")
-  (is (s/wait-until #(not (str/includes? (s/text *driver* "#detail") "mount-1")))
+  (s/click! *driver* "form:has(input[name=mount-id][value='weapon-1']) button:has-text('Delete')")
+  (is (s/wait-until #(not (str/includes? (s/text *driver* "#detail") "weapon-1")))
       "deleting removes the mount from the detail panel")
-  (is (s/wait-until #(not-any? (fn [item] (= "mount-1" (:mount-id item)))
+  (is (s/wait-until #(not-any? (fn [item] (= "weapon-1" (:mount-id item)))
                                (get-in (s/stats *driver*) [:interfaces :items])))
       "deleting removes the configured interface highlight"))
 
