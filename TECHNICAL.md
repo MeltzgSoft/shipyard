@@ -1545,9 +1545,10 @@ the settings form may have relocated the library. If the root changes mid-reques
 old coherent view may still return a preview, but it belongs to the part and mesh named
 in the event; the next authoring action will be against the new root.
 
-This identity exists only for the life of a preview. Triangle order is derived cache
-state and may change when the STL or mesh pipeline changes, so neither this triple nor a
-triangle or facet index is written to a sidecar or Datascript.
+Triangle order is derived cache state and may change when the STL or mesh pipeline
+changes. A confirmed mount therefore retains its selected facet only as
+`{:mesh-key ... :indices [...]}`: the entries are ignored unless the current mesh key
+matches and can always be regenerated from the static tier-0 mesh.
 
 ### 12.2 Geometric edges and facet growth
 
@@ -1735,11 +1736,11 @@ adds manual roles to the catalog transaction, browsing displays the manual role 
 authoritative and keeps the original hint only as evidence, never as a compatibility
 fact. Existing unknown sidecar keys are preserved on every edit.
 
-The selected triangle, facet indices, mesh key, ambiguity flag, roll source, symmetry
-plane, unsaved Twist adjustment, repeated classification, form validation state and
-preview geometry are transient. None belongs in Datascript except a confirmed mount's
-durable fields after the sidecar has been atomically written first (§1.2). In particular,
-Datascript never receives positions, normals or index buffers used to derive a facet.
+The selected triangle, ambiguity flag, roll source, symmetry plane, unsaved Twist
+adjustment, repeated classification, form validation state and preview geometry are
+transient. A confirmed mount additionally keeps its selected facet's mesh-key-scoped
+triangle indices as derived render data, after the sidecar has been atomically written
+first (§1.2). Positions, normals and index buffers never otherwise enter Datascript.
 
 ### 12.7 Fixture that fixes the contract
 
@@ -1829,6 +1830,10 @@ bounds, not equal-area partitioning. The selected facet indices are retained wit
 key that produced them: they are a derived render cache, ignored when that key changes, not
 portable geometric identity. Changes to twist or mirrored authoring must recompute/transform
 those bounds consistently.
+When an older record has no retained face, the server recovers the connected component nearest
+its saved frame once, on a bounded background job, then persists the resulting indices. The
+detail fragment polls while that happens. This preserves the lightweight viewport path and
+keeps legacy mesh scanning out of the browser.
 Legacy capacity > 1 records without bounds need reauthoring; show an actionable error.
 Capacity is bounded to 256 sections per socket, nesting to 16 levels, and traversal
 to 4096 slots per draft; malformed authoring returns diagnostics instead of unbounded work.

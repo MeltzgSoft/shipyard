@@ -82,6 +82,22 @@
       (is (true? roll-ambiguous?))
       (is (= :world-axis roll-source)))))
 
+(deftest match-frame-test
+  (testing "recovers the connected face nearest a legacy mount frame"
+    (is (= [0 1]
+           (facet/match-frame contract-mesh
+                              {:mount/pos [2.0 1.0 0.0]
+                               :mount/axis [0.0 0.0 1.0]}))))
+  (testing "accepts the reverse axis, as the former viewport matcher did"
+    (is (= [0 1]
+           (facet/match-frame contract-mesh
+                              {:mount/pos [2.0 1.0 0.0]
+                               :mount/axis [0.0 0.0 -1.0]}))))
+  (testing "returns nil when no triangle is on the durable mount plane"
+    (is (nil? (facet/match-frame contract-mesh
+                                 {:mount/pos [2.0 1.0 9.0]
+                                  :mount/axis [0.0 0.0 1.0]})))))
+
 (deftest roll-fallback-test
   (testing "a numerically bad hull projection still yields a selectable frame"
     (let [projected-points (ns-resolve 'shipyard.mesh.facet 'projected-points)

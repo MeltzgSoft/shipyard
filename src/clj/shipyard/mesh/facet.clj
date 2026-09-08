@@ -10,6 +10,14 @@
   {:facet-angle-deg 1.0
    :facet-plane-epsilon-mm 0.01})
 
+(def interface-match-options
+  "The tolerance used to recover a legacy mount's selected face from its
+  durable frame. This deliberately matches the former viewport matcher: it
+  identifies triangles on the mount plane and then keeps only the connected
+  component nearest the saved mount position."
+  {:interface-plane-epsilon-mm 0.08
+   :interface-normal-cos 0.999})
+
 (def ^:private degenerate-area2-epsilon 1e-12)
 (def ^:private component-epsilon 1e-9)
 
@@ -86,26 +94,26 @@
   (let [[a b c] (triangle-points mesh triangle-index)]
     [(edge-key a b) (edge-key b c) (edge-key c a)]))
 
-(defn- edge-table [mesh]
-  (reduce
-   (fn [edges triangle-index]
-     (reduce #(update %1 %2 (fnil conj []) triangle-index)
-             edges
-             (triangle-edge-keys mesh triangle-index)))
-   {}
-   (range (triangle-count mesh))))
-
-(defn- adjacency [mesh]
-  (reduce
-   (fn [adj tris]
-     (if (= 2 (count tris))
-       (let [[a b] tris]
-         (-> adj
-             (update a (fnil conj #{}) b)
-             (update b (fnil conj #{}) a)))
-       adj))
-   {}
-   (vals (edge-table mesh))))
+(defn- adjacency
+  ([mesh] (adjacency mesh (range (triangle-count mesh))))
+  ([mesh triangle-indices]
+   (reduce
+    (fn [adj tris]
+      (if (= 2 (count tris))
+        (let [[a b] tris]
+          (-> adj
+              (update a (fnil conj #{}) b)
+              (update b (fnil conj #{}) a)))
+        adj))
+    {}
+    (vals
+     (reduce
+      (fn [edges triangle-index]
+        (reduce #(update %1 %2 (fnil conj []) triangle-index)
+                edges
+                (triangle-edge-keys mesh triangle-index)))
+      {}
+      triangle-indices)))))
 
 (defn- point-on-plane? [{:keys [normal points]} epsilon p]
   (<= (Math/abs (double (math/dot normal (math/subtract p (first points))))) epsilon))
@@ -130,6 +138,52 @@
                      (conj seen candidate-index))
               (recur (next queue) seen))))
         (vec (sort seen))))))
+
+(defn- triangle-center [points]
+  (mapv (fn [component]
+          (/ (reduce + (map #(nth % component) points)) 3.0))
+        (range 3)))
+
+(defn- distance-squared [a b]
+  (math/dot (math/subtract a b) (math/subtract a b)))
+
+(defn- mount-plane-triangle?
+  [pos axis {:keys [normal points]} {:keys [interface-plane-epsilon-mm interface-normal-cos]}]
+  (and (>= (Math/abs (double (math/dot normal axis))) interface-normal-cos)
+       (every? #(<= (Math/abs (double (math/dot axis (math/subtract % pos))))
+                    interface-plane-epsilon-mm)
+               points)))
+
+(defn match-frame
+  "Return the connected tier-0 facet described by a durable mount frame.
+
+  This is a server-only compatibility path for mounts authored before selected
+  facet indices were retained. It reproduces the old viewport matching rule,
+  then callers persist the result against the current mesh key so this work is
+  performed at most once per legacy mount and mesh revision."
+  ([mesh mount] (match-frame mesh mount nil))
+  ([mesh {:mount/keys [pos axis]} opts]
+   (when (and (vector? pos) (= 3 (count pos)))
+     (when-let [axis (math/normalize axis)]
+       (let [opts (merge interface-match-options opts)
+             candidates (keep (fn [triangle-index]
+                                (when-let [triangle (triangle-geometry mesh triangle-index)]
+                                  (when (mount-plane-triangle? pos axis triangle opts)
+                                    {:index triangle-index :points (:points triangle)})))
+                              (range (triangle-count mesh)))]
+         (when (seq candidates)
+           (let [start (:index (first (sort-by #(distance-squared (triangle-center (:points %)) pos)
+                                               candidates)))
+                 candidate-indices (map :index candidates)
+                 adjacent (adjacency mesh candidate-indices)]
+             (loop [queue (list start)
+                    seen #{}]
+               (if-let [candidate-index (first queue)]
+                 (if (contains? seen candidate-index)
+                   (recur (rest queue) seen)
+                   (recur (concat (rest queue) (get adjacent candidate-index))
+                          (conj seen candidate-index)))
+                 (vec (sort seen)))))))))))
 
 (defn- unique-points [mesh indices]
   (vals

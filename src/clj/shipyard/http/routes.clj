@@ -82,29 +82,84 @@
   [library {:part/keys [id source]}]
   (fs/file (index/root! library) id (index/name-of source)))
 
+(declare read-bytes!)
+
+(defn- retained-facet? [mesh-key mount]
+  (and (= mesh-key (get-in mount [:mount/facet :mesh-key]))
+       (seq (get-in mount [:mount/facet :indices]))))
+
+(defn- legacy-mounts [mesh-key mounts]
+  (remove #(retained-facet? mesh-key %) mounts))
+
+(defn- same-mount-frame? [a b]
+  (= (select-keys a [:mount/id :mount/pos :mount/axis :mount/roll])
+     (select-keys b [:mount/id :mount/pos :mount/axis :mount/roll])))
+
+(defn- backfill-mount-facets!
+  "Recover legacy selected facets on a background worker and write only the
+  derived mesh-key-scoped result. A concurrent authoring edit always wins."
+  [{:keys [catalog library cache]} part-id mesh-key mounts]
+  (let [mesh (wire/decode (read-bytes! (cache/tier-file cache mesh-key 0)))
+        matches (into {}
+                      (keep identity)
+                      ;; Matching faces is independent per mount. `pmap` keeps
+                      ;; the one-time recovery off the UI and uses JVM workers
+                      ;; when a hull has several legacy mounts.
+                      (doall (pmap (fn [mount]
+                                     (when-let [indices (seq (facet/match-frame mesh mount))]
+                                       [(:mount/id mount)
+                                        {:mount mount :indices (vec indices)}]))
+                                   mounts)))]
+    (when (and (seq matches) (= mesh-key (index/mesh-key! library part-id)))
+      (let [current (catalog-part/durable-mounts
+                     (:part/mounts (db/part (db/snapshot! catalog) part-id)))
+            updated (mapv (fn [mount]
+                            (if-let [{saved :mount indices :indices} (get matches (:mount/id mount))]
+                              (if (and (not (retained-facet? mesh-key mount))
+                                       (same-mount-frame? saved mount))
+                                (assoc mount :mount/facet {:mesh-key mesh-key :indices indices})
+                                mount)
+                              mount))
+                          current)]
+        (when (not= current updated)
+          (db/save-mounts! catalog part-id updated))))))
+
+(defn- recover-legacy-facets!
+  [{:keys [jobs] :as deps} part mesh-key]
+  (let [mounts (catalog-part/durable-mounts (:part/mounts part))]
+    (when (seq (legacy-mounts mesh-key mounts))
+      (jobs/submit-facet-backfill!
+       jobs
+       [(:part/id part) mesh-key]
+       #(backfill-mount-facets! deps (:part/id part) mesh-key mounts)))))
+
 (defn- ready
   "The mesh is on disk. The fragment says so and the `HX-Trigger` hands the
   viewport the URL - the canvas is never swapped, so this header is the only
   channel to it (§7.1)."
-  [part mesh-key]
-  (htmx/fragment (views/detail-ready part mesh-key)
-                 {:events {:load-mesh {:url     (urls/mesh-url mesh-key 0)
-                                       :part-id (:part/id part)
-                                       :mesh-key mesh-key
-                                       :mounts  (catalog-part/durable-mounts (:part/mounts part))
-                                       :orientation (orientation/orientation-of
-                                                     (:part/orientation part))
-                                       :frame   true}}}))
+  [deps part mesh-key]
+  (if (= :running (:state (recover-legacy-facets! deps part mesh-key)))
+    (htmx/fragment (views/detail-preparing part)
+                   {:events {:status {:state :preparing
+                                      :message "Restoring saved mount faces."}}})
+    (htmx/fragment (views/detail-ready part mesh-key)
+                   {:events {:load-mesh {:url     (urls/mesh-url mesh-key 0)
+                                         :part-id (:part/id part)
+                                         :mesh-key mesh-key
+                                         :mounts  (catalog-part/durable-mounts (:part/mounts part))
+                                         :orientation (orientation/orientation-of
+                                                       (:part/orientation part))
+                                         :frame   true}}})))
 
 (defn- preprocessing!
   "Submit the job if it is not already running and answer with whatever is true
   right now. This returns in milliseconds even when the work takes seconds,
   which is the whole point of §7's preprocess-latency rule."
-  [{:keys [library jobs]} part]
+  [{:keys [library jobs] :as deps} part]
   (let [id (:part/id part)
         {:keys [state mesh-key message]} (jobs/submit! jobs id (source-file! library part))]
     (case state
-      :ready  (ready part mesh-key)
+      :ready  (ready deps part mesh-key)
       :failed (htmx/fragment (views/detail-failed part message)
                              {:events {:status {:state :failed :message message}}})
       (htmx/fragment (views/detail-preparing part)
@@ -133,7 +188,7 @@
             cached (index/mesh-key! library id)]
         (if (and cached (fs/regular-file? (cache/tier-file cache cached 0)))
           ;; Known from a previous run: no job, no poll, no round trip.
-          (ready part cached)
+          (ready deps part cached)
           (preprocessing! deps part))))))
 
 ;; --- facet preview ----------------------------------------------------------

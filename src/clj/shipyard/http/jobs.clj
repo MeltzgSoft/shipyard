@@ -54,8 +54,9 @@
   viewport the previous library's mesh for whatever now sits at that path.
   Jobs already in flight are left to finish - `index/record-mesh-key!` drops
   results that no longer belong to the current library."
-  [{:keys [state]}]
+  [{:keys [state facet-state]}]
   (reset! state {})
+  (reset! facet-state {})
   nil)
 
 (defn- execute! [{:keys [state library cache]} part-id source]
@@ -93,11 +94,38 @@
       (.submit pool ^Runnable #(execute! jobs part-id source)))
     (get after part-id)))
 
+(defn submit-facet-backfill!
+  "Run `task` once for a mesh-key-scoped legacy mount recovery.
+
+  The task is intentionally supplied by the HTTP layer: it owns the catalog
+  write, while this component owns bounded background execution and duplicate
+  suppression."
+  [{:keys [^ExecutorService pool facet-state]} key task]
+  (loop []
+    (let [before @facet-state]
+      (if-let [existing (get before key)]
+        existing
+        (let [running {:state :running}]
+          (if (compare-and-set! facet-state before (assoc before key running))
+            (do
+              (.submit pool ^Runnable
+                       #(let [result (try
+                                       (task)
+                                       {:state :complete}
+                                       (catch Throwable t
+                                         (log/warn t "mount facet recovery failed:" (first key))
+                                         {:state :failed
+                                          :message (or (ex-message t) (str (class t)))}))]
+                          (swap! facet-state assoc key result)))
+              running)
+            (recur)))))))
+
 ;; --- component --------------------------------------------------------------
 
 (defmethod ig/init-key :shipyard.http/jobs [_ {:keys [library cache]}]
   {:pool    (Executors/newFixedThreadPool threads (daemon-factory))
    :state   (atom {})
+   :facet-state (atom {})
    :library library
    :cache   cache})
 

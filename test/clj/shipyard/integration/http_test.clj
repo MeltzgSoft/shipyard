@@ -13,6 +13,7 @@
             [shipyard.fixtures :as f]
             [shipyard.http.jobs :as jobs]
             [shipyard.http.routes :as routes]
+            [shipyard.catalog.db :as catalog-db]
             [shipyard.mesh.cache :as cache]
             [shipyard.library.index :as index]
             [shipyard.catalog.sidecar :as sidecar]
@@ -335,6 +336,8 @@
                      :accepts "weapon"
                      :capacity "2"
                      :frame (pr-str (:frame preview))
+                     :mesh-key mesh-key
+                     :facet-indices (pr-str (:facet-indices preview))
                      :roll-deg "0"
                      :action "create"}
         saved (mount-post h save-params)]
@@ -351,6 +354,7 @@
                       :mount/pos [2.0 1.0 0.0]
                       :mount/axis [0.0 0.0 1.0]
                       :mount/roll [1.0 0.0 0.0]
+                      :mount/facet {:mesh-key mesh-key :indices [0 1]}
                       :mount/origin :picked}]}
            (get (triggers saved) "shipyard:interfaces")))
     (is (str/includes? (:body saved) "port-1"))
@@ -364,6 +368,7 @@
       (is (= #{:weapon} (:mount/accepts mount)))
       (is (= 2 (:mount/capacity mount)))
       (is (= [2.0 1.0 0.0] (:mount/pos mount)))
+      (is (= {:mesh-key mesh-key :indices [0 1]} (:mount/facet mount)))
       (is (nil? (:facet-indices mount))))
     (testing "duplicate ids require deliberate replacement"
       (let [duplicate (mount-post h save-params)]
@@ -414,6 +419,38 @@
     (is (= 200 (:status saved)))
     (is (= #{:turret :antenna}
            (:mount/accepts (first (:mounts (sidecar/read-sidecar! root hull-id))))))))
+
+(deftest part-detail-backfills-legacy-mount-facets-on-the-server
+  (let [root (library-tree)
+        mount {:mount/id :port-1
+               :mount/kind :socket
+               :mount/accepts #{:weapon}
+               :mount/capacity 1
+               :mount/pos [2.0 1.0 0.0]
+               :mount/axis [0.0 0.0 1.0]
+               :mount/roll [1.0 0.0 0.0]
+               :mount/origin :picked}
+        _ (sidecar/write-sidecar! root hull-id {:mounts [mount]})
+        sys (system root)
+        h (handler sys)
+        mesh-key (seed-authoring-cache! sys)
+        first-response (GET h (str "/part/" (str/replace hull-id " " "%20")))
+        ready (await-ready h hull-id)
+        mounts (:mounts (get (triggers ready) "shipyard:load-mesh"))]
+    (testing "the request polls while a bounded server job recovers faces"
+      (is (str/includes? (:body first-response) "Preparing this part"))
+      (is (nil? (get (triggers first-response) "shipyard:load-mesh"))))
+    (testing "the completed response and durable sidecar carry direct indices"
+      (is (= 1 (count (:part/mounts (catalog-db/part (catalog-db/snapshot! (:catalog sys)) hull-id)))))
+      (is (= [{:mount/id :port-1
+               :mount/pos [2.0 1.0 0.0]
+               :mount/axis [0.0 0.0 1.0]
+               :mount/facet {:mesh-key mesh-key :indices [0 1]}}]
+             (mapv #(select-keys % [:mount/id :mount/pos :mount/axis :mount/facet]) mounts)))
+      (is (= [{:mesh-key mesh-key :indices [0 1]}]
+             (mapv :mount/facet mounts)))
+       (is (= {:mesh-key mesh-key :indices [0 1]}
+              (:mount/facet (first (:mounts (sidecar/read-sidecar! root hull-id)))))))))
 
 (deftest mount-wizard-mirrors-and-repeats
   (let [root (library-tree)
