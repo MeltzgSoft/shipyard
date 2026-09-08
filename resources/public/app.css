@@ -429,6 +429,16 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
   font-size: 0.78rem;
   padding: 0 0.25rem;
 }
+.mount-wizard__role-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.3rem 0.55rem;
+  align-items: center;
+}
+.mount-wizard__role-options .mount-wizard__check {
+  min-width: 0;
+  margin: 0;
+}
 .mount-wizard__mirror .mount-wizard__check { grid-column: 1 / -1; }
 .mount-wizard__check {
   display: inline-flex;
@@ -483,6 +493,14 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
 @media (max-width: 56rem) {
   .detail--ready { grid-template-columns: 1fr; }
   .mount-wizard__roles, .mount-wizard__mirror { grid-column: 1 / -1; }
+}
+
+@media (max-width: 32rem) {
+  .mount-wizard__role-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 24rem) {
+  .mount-wizard__role-options { grid-template-columns: 1fr; }
 }
 
 /* --- library location ---------------------------------------------------- */

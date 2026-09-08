@@ -450,6 +450,18 @@
   (is (some? (await-preview)))
   (s/select-option! *driver* ".mount-wizard__form select[name=kind]" "socket")
   (is (= "radio" (s/js *driver* "() => document.querySelector('input[name=accepts][value=weapon]').type")))
+  (is (= {:columns 3
+          :roles ["antenna" "bridge" "detail" "engine" "fin" "hull" "hull-section"
+                  "ordinance" "prow" "section" "stern" "terrain" "turret"
+                  "unknown" "weapon"]}
+         (s/js *driver* "() => {
+           const group = document.querySelector('.mount-wizard__role-options');
+           return {
+             columns: getComputedStyle(group).gridTemplateColumns.split(' ').length,
+             roles: [...group.querySelectorAll('input[name=accepts]')].map(input => input.value)
+           };
+         }"))
+      "acceptance profiles are alphabetized in aligned columns")
   (s/click! *driver* "input[name=accepts][value=weapon]")
   (s/click! *driver* "input[name=accepts][value=turret]")
   (is (true? (s/js *driver* "() => {

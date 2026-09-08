@@ -174,3 +174,19 @@
       (is (str/includes? html "No mount with that id exists."))
       (is (str/includes? html "Dismiss"))
       (is (str/includes? html "Pick mount face")))))
+
+(deftest mount-acceptance-profiles-are-sorted-in-a-grid
+  (let [html (render (views/detail-ready hull
+                                         (apply str (repeat 64 "1"))
+                                         {:preview {:part hull
+                                                    :frame {:mount/pos [0 0 0]
+                                                            :mount/axis [0 0 1]
+                                                            :mount/roll [1 0 0]}
+                                                    :values {:mount-id "mount-1"}}}))]
+    (is (str/includes? html "mount-wizard__role-options"))
+    (is (= ["antenna" "bridge" "detail" "engine" "fin" "hull" "hull-section"
+            "ordinance" "prow" "section" "stern" "terrain" "turret"
+            "turret-or-antenna" "unknown" "weapon"]
+           (mapv second
+                 (re-seq #"(?s)<input(?=[^>]*name=\"accepts\")(?=[^>]*value=\"([^\"]+)\")[^>]*>"
+                         html))))))

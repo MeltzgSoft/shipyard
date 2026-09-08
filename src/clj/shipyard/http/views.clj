@@ -290,11 +290,12 @@
          [:option {:value (name k) :selected (= k kind)} (name k)])]]
      [:fieldset.mount-wizard__roles
       [:legend "Accepts"]
-      (for [{:keys [id label]} profiles]
-        [:label.mount-wizard__check
-         [:input {:type "radio" :name "accepts" :value (name id)
-                  :checked (= selected-profile id)}]
-         label])]
+      [:div.mount-wizard__role-options
+       (for [{:keys [id label]} (sort-by (comp str/lower-case :label) profiles)]
+         [:label.mount-wizard__check
+          [:input {:type "radio" :name "accepts" :value (name id)
+                   :checked (= selected-profile id)}]
+          label])]]
      [:label.mount-wizard__field "Capacity"
       [:input {:type "number" :name "capacity" :value capacity
                :min "1" :max "256" :step "1"}]]
