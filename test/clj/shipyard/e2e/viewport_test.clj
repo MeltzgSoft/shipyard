@@ -390,10 +390,14 @@
                        (when (some (fn [item] (= "mount-1" (:mount-id item)))
                                    (:items interfaces))
                          interfaces)))
-        last-interfaces (:interfaces (s/stats *driver*))]
+        last-interfaces (:interfaces (s/stats *driver*))
+        saved (filterv #(= "mount-1" (:mount-id %)) (:items interfaces))]
     (is (= [{:type "weapon" :mount-id "mount-1" :triangles 2 :candidates 2}]
-           (filterv #(= "mount-1" (:mount-id %)) (:items interfaces)))
-        (str "saved socket should color its configured face; interfaces were "
+           (mapv #(select-keys % [:type :mount-id :triangles :candidates]) saved)))
+    (is (= 1 (count (:split-lines (first saved))))
+        "the saved capacity split renders one persistent boundary")
+    (is (= 2 (count (:split-centers (first saved))))
+        (str "the saved capacity split keeps two rendered sections; interfaces were "
              (pr-str last-interfaces))))
   (is (s/wait-until #(nil? (:preview (s/stats *driver*))))
       "saving clears the transient preview")

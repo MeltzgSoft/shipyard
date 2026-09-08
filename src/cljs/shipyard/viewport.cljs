@@ -474,25 +474,35 @@
 (defn- color-int [interface-type]
   (js/parseInt (subs (interface-colors/color interface-type) 1) 16))
 
+(defn- split-guide-object [mount color]
+  (let [{:keys [frames lines]} (split/sections mount)]
+    (when (seq lines)
+      (let [points (into-array (mapcat #(map v3 %) lines))
+            geometry (doto (three/BufferGeometry.) (.setFromPoints points))]
+        {:object (three/LineSegments.
+                  geometry
+                  (three/LineBasicMaterial. #js {:color color :depthTest false}))
+         :split-lines lines
+         :split-centers (mapv :mount/pos frames)}))))
+
 (defn- interface-highlight-object [^js obj mount]
-  (let [interface-type (interface-colors/type-of mount)]
-    (if-let [{:keys [indices candidates]} (interface-facet obj mount)]
-      (let [facet-indices (seq indices)]
-        {:type interface-type
-         :mount-id (:mount/id mount)
-         :triangles (count facet-indices)
-         :candidates candidates
-         :object (face-highlight obj
-                                 facet-indices
-                                 mount
-                                 nil
-                                 (color-int interface-type)
-                                 0.42)})
-      {:type interface-type
-       :mount-id (:mount/id mount)
-       :triangles 0
-       :candidates 0
-       :object nil})))
+  (let [interface-type (interface-colors/type-of mount)
+        color (color-int interface-type)
+        facet (interface-facet obj mount)
+        facet-indices (seq (:indices facet))
+        split-guide (split-guide-object mount color)
+        group (three/Group.)]
+    (when facet-indices
+      (.add group (face-highlight obj facet-indices mount nil color 0.42)))
+    (when-let [split-object (:object split-guide)]
+      (.add group split-object))
+    {:type interface-type
+     :mount-id (:mount/id mount)
+     :triangles (count facet-indices)
+     :candidates (or (:candidates facet) 0)
+     :split-lines (or (:split-lines split-guide) [])
+     :split-centers (or (:split-centers split-guide) [])
+     :object (when (or facet-indices split-guide) group)}))
 
 (defn- interface-highlights [^js obj mounts]
   (let [items (keep #(interface-highlight-object obj %) mounts)
@@ -948,11 +958,13 @@
 
 (defn- interface-stats [{:keys [interfaces]}]
   (when-let [{:keys [part-id mesh-key items misses error]} @interfaces]
-    (let [item-stats (fn [{:keys [type mount-id triangles candidates]}]
+    (let [item-stats (fn [{:keys [type mount-id triangles candidates split-lines split-centers]}]
                        {:type (name type)
                         :mount-id (name mount-id)
                         :triangles triangles
-                        :candidates candidates})]
+                        :candidates candidates
+                        :split-lines split-lines
+                        :split-centers split-centers})]
       (clj->js {:part-id part-id
                 :mesh-key mesh-key
                 :count (count items)

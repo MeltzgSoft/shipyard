@@ -1823,8 +1823,8 @@ Bounds are the picked facet's extents projected onto mount +X (roll) and +Y
 (`axis × roll`), relative to mount position, in source-space millimeters. Vertical
 divides the X extent into equal widths; horizontal divides Y into equal heights.
 Each slot origin is its section bounding-box center with the original axis and roll.
-There is no arbitrary angle control. Preview draws the section dividing lines and
-centers in the same frame on the model before save. Nonrectangular faces use projected
+There is no arbitrary angle control. The preview and the durable interface overlay draw
+the section dividing lines in the same frame on the model. Nonrectangular faces use projected
 bounds, not equal-area partitioning. Persist bounds, not triangle indices. Changes to
 twist or mirrored authoring must recompute/transform those bounds consistently.
 Legacy capacity > 1 records without bounds need reauthoring; show an actionable error.
