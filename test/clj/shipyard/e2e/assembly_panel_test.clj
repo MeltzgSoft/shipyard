@@ -59,3 +59,39 @@
 
 (deftest slot-panel-without-viewport
   (workflow! true))
+
+(deftest complete-synthetic-cruiser
+  (let [started (fixture/start! true) driver (s/make-driver)]
+    (try
+      (s/go! driver (s/base-url (:system started)))
+      (s/wait-visible! driver "#library-results .part")
+      (s/click! driver ".masthead a:has-text('Assembly')")
+      (s/wait-visible! driver "#assembly")
+      (s/click! driver ".assembly__hull button")
+      (s/wait-visible! driver (slot-selector [[:weapon 0]]))
+      (doseq [[path label] [[[[:prow 0]] "prow"] [[[:bridge 0]] "bridge"]
+                            [[[:antenna 0]] "antenna"] [[[:antenna 1]] "antenna"]
+                            [[[:weapon 0]] "weapon"] [[[:weapon 1]] "weapon"]
+                            [[[:mirrored-weapon 0]] "weapon"] [[[:mirrored-weapon 1]] "weapon"]
+                            [[[:weapon 0] [:turret 0]] "turret"] [[[:weapon 1] [:turret 0]] "turret"]
+                            [[[:mirrored-weapon 0] [:turret 0]] "turret"]
+                            [[[:mirrored-weapon 1] [:turret 0]] "turret"]]]
+        (assign! driver path label))
+      (is (s/wait-until #(= 13 (count (get-in (s/stats driver) [:assembly :slots])))))
+      (testing "the complete hierarchy renders with distinct capacity and mirrored positions"
+        (let [slots (get-in (s/stats driver) [:assembly :slots])
+              weapons (filter #(= (:weapon fixture/ids) (:part-id %)) slots)
+              turrets (filter #(= (:turret fixture/ids) (:part-id %)) slots)]
+          (is (= 4 (count weapons)))
+          (is (= 4 (count turrets)))
+          (is (= 4 (count (set (map :matrix weapons)))))))
+      (testing "alternative prow replacement removes its old object"
+        (let [old (first (filter #(= (:prow fixture/ids) (:part-id %))
+                                 (get-in (s/stats driver) [:assembly :slots])))]
+          (assign! driver [[:prow 0]] "prow-alt")
+          (is (s/wait-until
+               #(let [slots (get-in (s/stats driver) [:assembly :slots])]
+                  (and (= 13 (count slots))
+                       (some (fn [item] (= (:prow-alt fixture/ids) (:part-id item))) slots)
+                       (not-any? (fn [item] (= (:uuid old) (:uuid item))) slots)))))))
+      (finally (s/quit! driver) (fixture/stop! started)))))

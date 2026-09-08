@@ -72,7 +72,10 @@ clojure -M:outdated                     # dependency freshness, deps.edn + packa
 The Human Navy Cruiser proof is an on-demand check over proprietary user-owned STL data,
 so it is not a CI gate and it should not run against your only copy. Materialize a
 temporary Shipyard-style Cruiser library first; the proof command writes `shipyard.edn`
-sidecars into that copy, reloads a fresh catalog, and writes an EDN report.
+sidecars into that copy, reloads a fresh catalog, checks the M3 slot/attachment contract,
+audits every authored mount against its source surface, and writes an EDN report. A
+blocked report deliberately identifies mounts that need reauthoring rather than guessing
+their mating geometry.
 
 The benchmark is the on-demand, machine-labelled measurement behind TECHNICAL.md §11;
 it is deliberately not a CI gate. It creates fresh scan indexes and mesh caches under

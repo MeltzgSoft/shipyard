@@ -51,7 +51,11 @@
     (testing "facet-size evidence is recorded with each mount"
       (is (every? (fn [{:keys [bbox-face-span-mm]}]
                     (= 2 (count bbox-face-span-mm)))
-                  (mapcat :mounts (vals (:authored report))))))))
+                  (mapcat :mounts (vals (:authored report))))))
+    (testing "the M3 audit makes incomplete capacity authoring actionable"
+      (is (= :blocked (get-in report [:m3-assembly :status])))
+      (is (some #(= :incomplete-split (:code %))
+                (get-in report [:m3-assembly :diagnostics]))))))
 
 (deftest proof-reports-missing-real-targets
   (let [root (temp-dir)]

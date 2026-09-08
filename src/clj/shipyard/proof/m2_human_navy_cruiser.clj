@@ -8,10 +8,13 @@
   (:require [babashka.fs :as fs]
             [clojure.pprint :as pp]
             [integrant.core :as ig]
+            [shipyard.assembly.model :as assembly]
             [shipyard.catalog.db :as db]
             [shipyard.catalog.sidecar :as sidecar]
+            [shipyard.geom :as geom]
             [shipyard.library.index :as index]
             [shipyard.library.scan :as scan]
+            [shipyard.math :as math]
             [shipyard.mesh.facet :as facet]
             [shipyard.mesh.stl :as stl]
             [shipyard.report :as report]))
@@ -138,6 +141,134 @@
                              :mount/origin])
          :bbox-face-span-mm (bbox-face-span bbox (:mount/axis mount))))
 
+(defn- distance3 [a b]
+  (math/length (math/subtract a b)))
+
+(defn- point-at [^floats positions offset]
+  [(double (aget positions offset))
+   (double (aget positions (+ offset 1)))
+   (double (aget positions (+ offset 2)))])
+
+(defn- closest-point-on-triangle
+  "Closest point using the region tests from Real-Time Collision Detection.
+  This stays in the proof tool: it audits user geometry without adding a
+  run-time mesh-processing concern to the assembly path."
+  [p a b c]
+  (let [ab (math/subtract b a) ac (math/subtract c a) ap (math/subtract p a)
+        d1 (math/dot ab ap) d2 (math/dot ac ap)]
+    (cond
+      (and (<= d1 0.0) (<= d2 0.0)) a
+      :else
+      (let [bp (math/subtract p b) d3 (math/dot ab bp) d4 (math/dot ac bp)]
+        (cond
+          (and (>= d3 0.0) (<= d4 d3)) b
+          :else
+          (let [vc (- (* d1 d4) (* d3 d2))]
+            (cond
+              (and (<= vc 0.0) (>= d1 0.0) (<= d3 0.0))
+              (math/add a (math/scale (/ d1 (- d1 d3)) ab))
+              :else
+              (let [cp (math/subtract p c) d5 (math/dot ab cp) d6 (math/dot ac cp)]
+                (cond
+                  (and (>= d6 0.0) (<= d5 d6)) c
+                  :else
+                  (let [vb (- (* d5 d2) (* d1 d6))]
+                    (cond
+                      (and (<= vb 0.0) (>= d2 0.0) (<= d6 0.0))
+                      (math/add a (math/scale (/ d2 (- d2 d6)) ac))
+                      :else
+                      (let [va (- (* d3 d6) (* d5 d4))]
+                        (if (and (<= va 0.0) (>= (- d4 d3) 0.0) (>= (- d5 d6) 0.0))
+                          (math/add b (math/scale (/ (- d4 d3)
+                                                     (+ (- d4 d3) (- d5 d6)))
+                                                  (math/subtract c b)))
+                          (let [denom (/ 1.0 (+ va vb vc))]
+                            (math/add a
+                                      (math/add (math/scale (* vb denom) ab)
+                                                (math/scale (* vc denom) ac)))))))))))))))))
+
+(defn- nearest-surface [mesh point]
+  (let [^floats positions (:positions mesh)
+        n (:triangle-count mesh)]
+    (reduce
+     (fn [nearest triangle]
+       (let [offset (* 9 triangle)
+             a (point-at positions offset) b (point-at positions (+ offset 3)) c (point-at positions (+ offset 6))
+             closest (closest-point-on-triangle point a b c)
+             distance (distance3 point closest)]
+         (if (< distance (:distance-mm nearest))
+           {:triangle triangle :point closest :distance-mm distance
+            :normal (math/normalize (math/cross (math/subtract b a) (math/subtract c a)))}
+           nearest)))
+     {:distance-mm Double/POSITIVE_INFINITY}
+     (range n))))
+
+(defn- source-surface-diagnostics
+  "Mount origins must land on an actual source surface and their axes must be
+  normal to it. This catches stale coordinates even though attachment math can
+  still make two stale frames agree algebraically."
+  [root scanned-by-id]
+  (vec
+   (mapcat
+    (fn [[part-id {:keys [mounts]}]]
+      (let [mesh (stl/parse-file! (mesh-file root scanned-by-id part-id))]
+        (keep (fn [{:mount/keys [id pos axis]}]
+                (let [{:keys [triangle distance-mm normal]} (nearest-surface mesh pos)
+                      axis-dot (when normal (math/dot axis normal))]
+                  (cond
+                    (> distance-mm 0.1)
+                    {:code :mount-off-surface :part-id part-id :mount-id id
+                     :nearest-triangle triangle :distance-mm (round3 distance-mm)
+                     :remedy "Pick the intended mating face again in Mount authoring."}
+
+                    (< (Math/abs (double axis-dot)) 0.98)
+                    {:code :mount-axis-not-normal :part-id part-id :mount-id id
+                     :nearest-triangle triangle :axis-dot (round3 axis-dot)
+                     :remedy "Pick the intended mating face again; do not use a guessed axis."})))
+              mounts)))
+    authoring)))
+
+(defn- transform-vector [matrix vector]
+  (math/subtract (geom/transform-point matrix vector)
+                 (geom/transform-point matrix [0.0 0.0 0.0])))
+
+(defn- attachment-check [parent socket child]
+  (let [plug (first (filter #(= :plug (:mount/kind %)) (:mounts child)))
+        matrix (geom/attachment-matrix geom/identity-matrix socket plug)
+        anchor-error (distance3 (:mount/pos socket)
+                                (geom/transform-point matrix (:mount/pos plug)))
+        axis-dot (math/dot (:mount/axis socket)
+                           (transform-vector matrix (:mount/axis plug)))
+        roll-dot (math/dot (:mount/roll socket)
+                           (transform-vector matrix (:mount/roll plug)))]
+    {:parent-part-id parent :mount-id (:mount/id socket) :child-part-id (:part/id child)
+     :anchor-error-mm (round3 anchor-error) :axis-dot (round3 axis-dot) :roll-dot (round3 roll-dot)
+     :status (if (and (<= anchor-error 1e-6) (<= axis-dot -0.999999) (>= roll-dot 0.999999))
+               :pass :transform-mismatch)}))
+
+(defn- m3-assembly-audit [root scanned-by-id catalog]
+  (let [database (db/snapshot! catalog)
+        hull-id (:hull parts)
+        derived (assembly/slots database hull-id {})
+        authored-parts (into {} (map (fn [[id facts]] [id (assoc facts :part/id id)])) authoring)
+        hull (get authored-parts hull-id)
+        by-role (into {} (map (fn [[id {:keys [part-role] :as facts}]]
+                                [part-role (assoc facts :part/id id)])) authoring)
+        pairs (for [socket (:mounts hull)
+                    :let [role (first (:mount/accepts socket))
+                          child (get by-role role)]
+                    :when child]
+                (attachment-check hull-id socket child))
+        transform-errors (filter #(= :transform-mismatch (:status %)) pairs)
+        geometry-errors (source-surface-diagnostics root scanned-by-id)
+        diagnostics (vec (concat (:errors derived) geometry-errors
+                                 (map #(assoc % :code :transform-mismatch) transform-errors)))]
+    {:status (if (seq diagnostics) :blocked :ready)
+     :slots (mapv :id (:slots derived))
+     :diagnostics diagnostics
+     :attachment-checks (vec pairs)
+     :note "A blocked proof is intentional: it names the exact legacy mount that must be reauthored, instead of fabricating a geometry placement."}))
+
 (defn- part-summary! [root scanned-by-id reloaded timings [part-id {:keys [mounts part-role]}]]
   (let [bbox (bbox! root scanned-by-id part-id)
         reloaded-part (db/part (db/snapshot! reloaded) part-id)
@@ -175,7 +306,8 @@
         lib (library! root cache-home)
         cat (catalog! lib)
         timings (save-authoring-with-times! cat)
-        reloaded (catalog! (library! root cache-home))]
+        reloaded (catalog! (library! root cache-home))
+        m3-assembly (m3-assembly-audit root scanned-by-id reloaded)]
     {:root root
      :ran-at (str (java.time.Instant/now))
      :parts (into (sorted-map)
@@ -186,10 +318,11 @@
                      (map (partial part-summary! root scanned-by-id reloaded timings))
                      authoring)
      :totals (totals)
+     :m3-assembly m3-assembly
      :ambiguous-roll-cases []
      :notes (vec (concat ["Run against a temporary Shipyard-style copy of Human Navy/HN Cruiser.zip."
                           "Sidecars were written through shipyard.catalog.db/save-authoring! and reloaded through a fresh catalog."
-                          "No M3 assembly or compatibility filtering is exercised here."]
+                          "The :m3-assembly audit checks legacy authoring before attempting a live Cruiser assembly."]
                          notes))}))
 
 (defn- parse-args [args]

@@ -179,8 +179,11 @@ geometry, and matching bundle/class authorize a choice. Inferred roles cannot do
 Single-ship bundles are self-contained. Missing capacity splits require reauthoring.
 Cold parts prepare in the background; failed preparation offers **Retry**. If the draft
 changed elsewhere, review the refreshed panel before trying again. The choices remain
-usable if the viewport bundle is unavailable. This panel establishes the draft; the
-multi-part rendering capability is delivered separately.
+usable if the viewport bundle is unavailable. When the viewport is available, every
+assignment appears in the same scene at its authored socket; repeated capacity positions
+and nested turrets remain separate objects. Replacing or clearing a part removes that
+object and everything beneath it before the new scene is shown. Returning to browse mode
+clears the assembly scene; returning to Assembly restores the current in-memory draft.
 
 The draft is in memory only. Resetting or stopping Shipyard loses it; named loadouts,
 save/load, paint schemes and thumbnails are not available in M3.
