@@ -119,7 +119,9 @@ When the preview looks right, fill in the mount form:
   and may contain letters, numbers, dashes and underscores.
 - **Kind** is `plug` for the back face of a module and `socket` for a place something
   attaches.
-- **Accepts** is used for sockets; choose at least one role that can attach there.
+- **Accepts** is used for sockets. It is a radio choice: normally choose one role. Hulls
+  also offer a named **Turret or antenna hardpoint** profile for a shared upper seat;
+  weapon sockets offer only **Turret pit**, so antennae cannot be mounted to weapons.
 - **Capacity** is used for sockets whose selected face can hold more than one part.
   Human Navy Cruiser weapon sockets use capacity `2`.
 - **Twist** rotates the `+X` and `+Y` directions around the fixed outward `+Z` normal
@@ -128,7 +130,7 @@ When the preview looks right, fill in the mount form:
   plane. Human Navy Cruiser hulls use the X plane at offset `0`; change the plane or
   offset only when the part's centreline is different. When mirror is selected,
   Shipyard highlights the reflected face in blue before you save.
-- **Repeat classification** keeps the kind and accepted roles ready for the next picked
+- **Repeat classification** keeps the kind and accepted role ready for the next picked
   face. The next mount is still shown in the form and must be saved deliberately.
 
 When capacity is above one, choose **Vertical — equal widths** or

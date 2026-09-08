@@ -281,7 +281,8 @@
       :else
       (let [result (wizard/save-request params
                                         (catalog-part/durable-mounts (:part/mounts part))
-                                        (:part/orientation part))]
+                                        (:part/orientation part)
+                                        (:part/role-hint part))]
         (if-let [error (:error result)]
           (mount-error-response!
            deps

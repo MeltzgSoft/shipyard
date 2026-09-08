@@ -375,6 +375,12 @@
         (is (str/includes? (:body duplicate) "value=\"port-1\""))
         (is (= {:state :enter :part-id hull-id :mesh-key mesh-key}
                (get (triggers duplicate) "shipyard:authoring")))))
+    (testing "a forged multi-role request is rejected even though the browser uses radios"
+      (let [rejected (mount-post h (assoc save-params :accepts ["weapon" "turret"]))]
+        (is (= 200 (:status rejected)))
+        (is (str/includes? (:body rejected) "Choose one role"))
+        (is (= #{:weapon}
+               (:mount/accepts (first (:mounts (sidecar/read-sidecar! root hull-id))))))))
     (testing "replace updates the durable mount instead of accumulating"
       (let [replaced (mount-post h (assoc save-params :accepts "prow" :action "replace"))
             mounts (:mounts (sidecar/read-sidecar! root hull-id))]
@@ -388,6 +394,26 @@
                (get (triggers deleted) "shipyard:interfaces")))
         (is (empty? (:mounts (sidecar/read-sidecar! root hull-id))))
         (is (not (str/includes? (:body deleted) "port-1")))))))
+
+(deftest hull-acceptance-profile-allows-turrets-or-antennae
+  (let [root (library-tree)
+        sys (system root)
+        h (handler sys)
+        mesh-key (seed-authoring-cache! sys)
+        preview-response (facet-post h hull-id mesh-key 0)
+        frame (:frame (get (triggers preview-response) "shipyard:facet-preview"))
+        saved (mount-post h {:part-id hull-id
+                             :mount-id "top-seat"
+                             :kind "socket"
+                             :accepts "turret-or-antenna"
+                             :capacity "1"
+                             :frame (pr-str frame)
+                             :roll-deg "0"
+                             :action "create"})]
+    (is (str/includes? (:body preview-response) "Turret or antenna hardpoint"))
+    (is (= 200 (:status saved)))
+    (is (= #{:turret :antenna}
+           (:mount/accepts (first (:mounts (sidecar/read-sidecar! root hull-id))))))))
 
 (deftest mount-wizard-mirrors-and-repeats
   (let [root (library-tree)

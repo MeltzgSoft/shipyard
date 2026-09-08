@@ -197,7 +197,10 @@ surface. Shipyard shows the complete frame as arrows: outward normal `+Z`, roll 
 module.
 
 **For a hull** - pick **N** faces, one per seat: each weapon shelf, the prow cap, the
-bridge deck. Each gets an id and an `accepts` role. Multiple sockets per hull.
+bridge deck. Each gets an id and an acceptance profile. Most profiles contain exactly
+one role and are presented as radios. Hulls additionally offer one named shared profile,
+`#{:turret :antenna}`; weapon sockets offer only `#{:turret}`. Multiple sockets per hull
+remain available.
 
 **Turret pits are a socket like any other**, and the wizard must let a picked face be
 classified as one - `:mount/accepts #{:turret}`. They are worth calling out for two

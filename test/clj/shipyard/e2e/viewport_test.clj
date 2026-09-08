@@ -449,8 +449,14 @@
     (s/click-point! *driver* x y))
   (is (some? (await-preview)))
   (s/select-option! *driver* ".mount-wizard__form select[name=kind]" "socket")
+  (is (= "radio" (s/js *driver* "() => document.querySelector('input[name=accepts][value=weapon]').type")))
   (s/click! *driver* "input[name=accepts][value=weapon]")
   (s/click! *driver* "input[name=accepts][value=turret]")
+  (is (true? (s/js *driver* "() => {
+    const weapon = document.querySelector('input[name=accepts][value=weapon]');
+    const turret = document.querySelector('input[name=accepts][value=turret]');
+    return turret.checked && !weapon.checked;
+  }")))
   (s/js *driver* "() => { document.querySelector('.mount-wizard__form input[name=capacity]').value = '2'; }")
   (s/click! *driver* "input[name=mirror]")
   (let [mirrored (s/wait-until

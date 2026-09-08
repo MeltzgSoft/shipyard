@@ -265,6 +265,10 @@
 (defn- mount-form [{:keys [part frame mode original-mount-id values]}]
   (let [kind (or (:kind values) (default-kind part))
         accepts (or (:accepts values) #{:weapon})
+        profiles (wizard/acceptance-profiles (:part/role-hint part))
+        selected-profile (or (some #(when (= accepts (:accepts %)) (:id %)) profiles)
+                             (some #(when (contains? accepts (:id %)) (:id %)) profiles)
+                             (:id (first profiles)))
         capacity (or (:capacity values) 1)
         mount-id (or (:mount-id values) "mount-1")
         mirror-id (some-> mount-id (keyword) (wizard/suggest-mirror-id) (name))
@@ -286,11 +290,11 @@
          [:option {:value (name k) :selected (= k kind)} (name k)])]]
      [:fieldset.mount-wizard__roles
       [:legend "Accepts"]
-      (for [role wizard/role-options]
+      (for [{:keys [id label]} profiles]
         [:label.mount-wizard__check
-         [:input {:type "checkbox" :name "accepts" :value (name role)
-                  :checked (contains? accepts role)}]
-         (name role)])]
+         [:input {:type "radio" :name "accepts" :value (name id)
+                  :checked (= selected-profile id)}]
+         label])]
      [:label.mount-wizard__field "Capacity"
       [:input {:type "number" :name "capacity" :value capacity
                :min "1" :max "256" :step "1"}]]

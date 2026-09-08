@@ -28,6 +28,40 @@
     (let [k (keyword s)]
       (when (contains? (set allowed) k) k))))
 
+(defn acceptance-profiles
+  "The one choice a socket author makes. Hulls may expose the single shared
+  hardpoint profile; weapons are deliberately limited to turret pits."
+  [part-role]
+  (let [singleton-profiles (mapv (fn [role] {:id role :label (name role) :accepts #{role}})
+                                 role-options)]
+    (cond
+      (= :weapon part-role)
+      [{:id :turret :label "Turret pit" :accepts #{:turret}}]
+
+      (#{:hull :hull-section} part-role)
+      (conj singleton-profiles {:id :turret-or-antenna
+                                :label "Turret or antenna hardpoint"
+                                :accepts #{:turret :antenna}})
+
+      :else singleton-profiles)))
+
+(defn- accepted-roles [params part-role]
+  (let [values (many (get params "accepts"))
+        profiles (into {} (map (juxt :id identity) (acceptance-profiles part-role)))]
+    (if (and (= 1 (count values)) (string? (first values)))
+      (or (:accepts (get profiles (keyword (first values))))
+          #{})
+      (set (keep #(parse-keyword % role-options) values)))))
+
+(defn- accepted-by-host? [part-role accepts]
+  (contains? (set (map :accepts (acceptance-profiles part-role))) accepts))
+
+(defn- acceptance-error [part-role]
+  (case part-role
+    :weapon "Weapon sockets can accept only turrets."
+    (:hull :hull-section) "Choose one role or the Turret or antenna hardpoint profile."
+    "Choose exactly one role this socket accepts."))
+
 (defn- parse-mount-id [s]
   (when-let [s (some-> s (str) (str/trim) (not-empty))]
     (when (re-matches id-re s)
@@ -160,19 +194,21 @@
            :capacity (:mount/capacity mount)}
     (:mount/split mount) (assoc :split-direction (get-in mount [:mount/split :direction]))))
 
-(defn preview-values [params]
-  (let [mount-id (parse-mount-id (get params "mount-id"))
-        kind (parse-keyword (get params "kind") kind-options)
-        accepts (set (keep #(parse-keyword % role-options) (many (get params "accepts"))))
-        capacity (parse-positive-long (get params "capacity"))
-        twist-deg (or (get params "twist-deg") (get params "roll-deg"))]
-    (cond-> {}
-      mount-id (assoc :mount-id (name mount-id))
-      kind (assoc :kind kind)
-      capacity (assoc :capacity capacity)
-      (get params "split-direction") (assoc :split-direction (keyword (get params "split-direction")))
-      twist-deg (assoc :twist-deg twist-deg)
-      (seq accepts) (assoc :accepts accepts))))
+(defn preview-values
+  ([params] (preview-values params nil))
+  ([params part-role]
+   (let [mount-id (parse-mount-id (get params "mount-id"))
+         kind (parse-keyword (get params "kind") kind-options)
+         accepts (accepted-roles params part-role)
+         capacity (parse-positive-long (get params "capacity"))
+         twist-deg (or (get params "twist-deg") (get params "roll-deg"))]
+     (cond-> {}
+       mount-id (assoc :mount-id (name mount-id))
+       kind (assoc :kind kind)
+       capacity (assoc :capacity capacity)
+       (get params "split-direction") (assoc :split-direction (keyword (get params "split-direction")))
+       twist-deg (assoc :twist-deg twist-deg)
+       (seq accepts) (assoc :accepts accepts)))))
 
 (defn mount-values [mount]
   (cond-> {:mount-id (some-> (:mount/id mount) (name))
@@ -213,7 +249,7 @@
   (let [frame (normalize-frame (parse-edn (get params "frame")))
         original-mount-id (parse-mount-id (get params "original-mount-id"))]
     (cond-> {:part part
-             :values (preview-values params)
+             :values (preview-values params (:part/role-hint part))
              :error error}
       frame (assoc :frame frame)
       original-mount-id (assoc :mode :edit
@@ -221,13 +257,15 @@
 
 (defn save-request
   ([params existing-mounts]
-   (save-request params existing-mounts orientation/identity-quaternion))
+   (save-request params existing-mounts orientation/identity-quaternion nil))
   ([params existing-mounts part-orientation]
+   (save-request params existing-mounts part-orientation nil))
+  ([params existing-mounts part-orientation part-role]
    (let [mount-id (parse-mount-id (get params "mount-id"))
          original-mount-id (parse-mount-id (get params "original-mount-id"))
          kind (parse-keyword (get params "kind") kind-options)
          action (parse-keyword (get params "action") [:create :replace :update])
-         accepts (set (keep #(parse-keyword % role-options) (many (get params "accepts"))))
+         accepts (accepted-roles params part-role)
          capacity (or (parse-positive-long (get params "capacity")) 1)
          twist-deg (or (math/parse-finite-double (or (get params "twist-deg")
                                                      (get params "roll-deg")))
@@ -267,8 +305,8 @@
        (and update? (nil? existing-base))
        {:error "No mount with that id exists."}
 
-       (and (= :socket kind) (empty? accepts))
-       {:error "Choose at least one role this socket accepts."}
+       (and (= :socket kind) (not (accepted-by-host? part-role accepts)))
+       {:error (acceptance-error part-role)}
 
        (and (= :socket kind) (contains? params "capacity") (nil? (parse-positive-long (get params "capacity"))))
        {:error "Capacity must be a whole number of at least 1."}

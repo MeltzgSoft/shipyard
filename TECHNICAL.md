@@ -314,6 +314,8 @@ JVM stack viable.
 
    :mount/id         {}
    :mount/kind       {:db/index true}                   ; :socket | :plug
+   ;; Stored cardinality-many keeps old sidecars readable. New socket authoring selects
+   ;; one radio profile: a singleton role, or the hull-only #{:turret :antenna} profile.
    :mount/accepts    {:db/cardinality :db.cardinality/many}
    :mount/pos        {} :mount/axis {} :mount/roll {}
    :mount/origin     {}

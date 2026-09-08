@@ -39,6 +39,21 @@
     (is (false? (wizard/valid-frame? {:mount/pos [0 0] :mount/axis [0 0 1] :mount/roll [1 0 0]})))
     (is (false? (wizard/valid-frame? (assoc frame :mount/roll [0 0 1]))))))
 
+(deftest acceptance-profiles-test
+  (testing "normal sockets offer singleton role profiles"
+    (is (= #{#{:prow} #{:weapon} #{:turret}}
+           (set (map :accepts (filter #(contains? #{:prow :weapon :turret} (:id %))
+                                      (wizard/acceptance-profiles nil)))))))
+  (testing "hulls expose the one shared hardpoint profile"
+    (is (some #(= {:id :turret-or-antenna
+                   :label "Turret or antenna hardpoint"
+                   :accepts #{:turret :antenna}}
+                  %)
+              (wizard/acceptance-profiles :hull))))
+  (testing "weapon sockets are turret pits"
+    (is (= [{:id :turret :label "Turret pit" :accepts #{:turret}}]
+           (wizard/acceptance-profiles :weapon)))))
+
 (deftest rotate-roll-test
   (testing "rotates around the mount axis"
     (is (vec-close? [0.0 1.0 0.0]
@@ -66,7 +81,7 @@
             :accepts #{:weapon}
             :capacity 2}
            (wizard/mount-values (assoc socket :mount/capacity 2)))))
-  (testing "normalizes cardinality-many values pulled from the catalog"
+  (testing "keeps legacy cardinality-many data available for its matching profile"
     (is (= #{:weapon :turret}
            (:accepts (wizard/mount-values
                       (assoc socket :mount/accepts [:weapon :turret]))))))
@@ -120,6 +135,18 @@
   (testing "rejects invalid socket capacities"
     (is (:error (wizard/save-request (params {"capacity" "0"}) [])))
     (is (:error (wizard/save-request (params {"capacity" "1.5"}) []))))
+  (testing "rejects forged multi-role socket submissions"
+    (is (= "Choose exactly one role this socket accepts."
+           (:error (wizard/save-request (params {"accepts" ["weapon" "turret"]}) [])))))
+  (testing "permits the named shared profile only on hulls"
+    (let [result (wizard/save-request (params {"accepts" "turret-or-antenna"}) []
+                                      [0.0 0.0 0.0 1.0]
+                                      :hull)]
+      (is (= #{:turret :antenna} (get-in result [:mount :mount/accepts]))))
+    (is (= "Weapon sockets can accept only turrets."
+           (:error (wizard/save-request (params {"accepts" "weapon"}) []
+                                        [0.0 0.0 0.0 1.0]
+                                        :weapon)))))
   (testing "ignores capacity on plugs"
     (let [{:keys [mount]} (wizard/save-request (params {"mount-id" "plug"
                                                         "kind" "plug"
