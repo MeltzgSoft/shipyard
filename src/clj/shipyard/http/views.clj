@@ -267,11 +267,12 @@
         accepts (or (:accepts values) #{:weapon})
         profiles (wizard/acceptance-profiles (:part/role-hint part))
         sorted-profiles (sort-by (comp str/lower-case :label) profiles)
-        selected-profile (or (some #(when (= accepts (:accepts %)) (:id %)) profiles)
+        selected-profile (or (:id (wizard/acceptance-profile (:part/role-hint part) accepts))
                              (some #(when (contains? accepts (:id %)) (:id %)) profiles)
                              (:id (first profiles)))
         capacity (or (:capacity values) 1)
-        mount-id (or (:mount-id values) "mount-1")
+        mount-id (or (:mount-id values)
+                     (some-> (wizard/suggest-mount-id selected-profile (:part/mounts part)) (name)))
         mirror-id (some-> mount-id (keyword) (wizard/suggest-mirror-id) (name))
         edit? (= :edit mode)]
     [:form.mount-wizard__form
@@ -288,6 +289,7 @@
        [:input {:type "hidden" :name "original-mount-id" :value (name original-mount-id)}])
      [:label.mount-wizard__field "Mount id"
       [:input {:type "text" :name "mount-id" :value mount-id
+               :data-accept-prefix (name selected-profile)
                :autocomplete "off" :spellcheck "false"}]]
      [:label.mount-wizard__field "Kind"
       [:select {:name "kind"}
@@ -328,6 +330,7 @@
          [:input {:type "number" :name "mirror-offset" :value "0" :step "0.01"}]]
         [:label.mount-wizard__field "Mirrored id"
          [:input {:type "text" :name "mirror-id" :value mirror-id
+                  :data-mirror-source mount-id
                   :autocomplete "off" :spellcheck "false"}]]])
      (when-not edit?
        [:label.mount-wizard__check

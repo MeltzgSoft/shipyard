@@ -484,8 +484,7 @@
     (is (= :enter (:state (get events "shipyard:authoring"))))
     (is (= {:mount-id "port-2"
             :kind "socket"
-            :accepts #{:turret}
-            :capacity 2 :split-direction :vertical}
+            :accepts #{:turret}}
            (get events "shipyard:mount-repeat")))
     (is (= :picked (get-in by-id [:port-1 :mount/origin])))
     (is (= :mirrored (get-in by-id [:starboard-1 :mount/origin])))
@@ -497,10 +496,9 @@
       (let [repeated (:body (facet-post h hull-id mesh-key 0
                                         {"mount-id" "port-2"
                                          "kind" "socket"
-                                         "accepts" "turret"
-                                         "capacity" "2"}))]
+                                         "accepts" "turret"}))]
         (is (str/includes? repeated "value=\"port-2\""))
-        (is (re-find #"name=\"capacity\"[^>]+value=\"2\"" repeated))
+        (is (re-find #"name=\"capacity\"[^>]+value=\"1\"" repeated))
         (is (re-find #"checked=\"checked\"[^>]+value=\"turret\"" repeated))))))
 
 (deftest mount-wizard-edits-existing-mounts

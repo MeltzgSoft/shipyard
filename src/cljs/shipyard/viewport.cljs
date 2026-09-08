@@ -744,6 +744,38 @@
 (defn- checked-values [^js form selector]
   (mapv #(.-value %) (array-seq (.querySelectorAll form selector))))
 
+(defn- mirror-id [mount-id] (str mount-id "-mirror"))
+
+(defn- update-mirror-id! [^js form previous-id]
+  (when-let [mirror-input (.querySelector form "input[name=mirror-id]")]
+    (when (= (.-value mirror-input) (mirror-id previous-id))
+      (let [next-id (input-value form "input[name=mount-id]")]
+        (set! (.-value mirror-input) (mirror-id next-id))
+        (.setAttribute mirror-input "data-mirror-source" next-id)))))
+
+(defn- update-mount-id-prefix! [^js form]
+  (when-let [mount-id (.querySelector form "input[name=mount-id]")]
+    (when-let [selected (.querySelector form "input[name=accepts]:checked")]
+      (let [previous-prefix (.getAttribute mount-id "data-accept-prefix")
+            next-prefix (.-value selected)
+            current-id (.-value mount-id)]
+        (when (and previous-prefix
+                   (or (= current-id previous-prefix)
+                       (.startsWith current-id (str previous-prefix "-"))))
+          (let [next-id (str next-prefix (subs current-id (count previous-prefix)))]
+            (set! (.-value mount-id) next-id)
+            (update-mirror-id! form current-id)))
+        (.setAttribute mount-id "data-accept-prefix" next-prefix)))))
+
+(defn- sync-mirror-id-from-mount-id! [^js form]
+  (when-let [mirror-input (.querySelector form "input[name=mirror-id]")]
+    (update-mirror-id! form (.getAttribute mirror-input "data-mirror-source"))))
+
+(defn- event-form [^js e]
+  (let [target (.-target e)]
+    (when (and target (.-closest target))
+      (.closest target ".mount-wizard__form"))))
+
 (defn- preview-data [preview-record]
   (-> (select-keys preview-record [:part-id :mesh-key :facet-indices
                                    :roll-ambiguous? :roll-source])
@@ -1101,9 +1133,15 @@
                                                (sync-interfaces-from-dom! sys)
                                                (refresh-preview-after-swap! sys)))
     (.addEventListener body "input" (fn [e]
+                                      (when-let [form (event-form e)]
+                                        (when (= "mount-id" (.-name (.-target e)))
+                                          (sync-mirror-id-from-mount-id! form)))
                                       (refresh-preview-from-form! sys e)
                                       (refresh-orientation-from-form! sys e)))
     (.addEventListener body "change" (fn [e]
+                                       (when-let [form (event-form e)]
+                                         (when (= "accepts" (.-name (.-target e)))
+                                           (update-mount-id-prefix! form)))
                                        (refresh-preview-from-form! sys e)
                                        (refresh-orientation-from-form! sys e)))
     (.addEventListener body "submit" #(remember-repeat-from-submit! sys %))

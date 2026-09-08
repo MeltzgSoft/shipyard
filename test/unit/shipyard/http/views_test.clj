@@ -167,6 +167,7 @@
       (is (str/includes? html "Up (+Y)"))
       (is (not (str/includes? html "class=\"mount-wizard__field\">Part role")))
       (is (str/includes? html "Pick mount face"))))
+
   (testing "delete errors keep the part detail rather than replacing it"
     (let [html (render (views/detail-ready hull
                                            (apply str (repeat 64 "1"))
@@ -174,6 +175,18 @@
       (is (str/includes? html "No mount with that id exists."))
       (is (str/includes? html "Dismiss"))
       (is (str/includes? html "Pick mount face")))))
+
+(deftest new-mounts-use-the-acceptance-profile-as-the-id-prefix
+  (let [html (render (views/detail-ready hull
+                                         (apply str (repeat 64 "1"))
+                                         {:preview {:part hull
+                                                    :frame {:mount/pos [0 0 0]
+                                                            :mount/axis [0 0 1]
+                                                            :mount/roll [1 0 0]}
+                                                    :values {}}}))]
+    (is (re-find #"name=\"mount-id\"[^>]+value=\"weapon-1\"" html))
+    (is (str/includes? html "data-accept-prefix=\"weapon\""))
+    (is (re-find #"name=\"mirror-id\"[^>]+value=\"weapon-1-mirror\"" html))))
 
 (deftest mount-acceptance-profiles-are-sorted-in-a-grid
   (let [html (render (views/detail-ready hull

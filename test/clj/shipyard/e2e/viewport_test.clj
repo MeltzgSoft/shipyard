@@ -492,6 +492,16 @@
     (is (every? (set (:roles layout)) ["weapon" "turret"])
         (str "socket profiles should retain the required weapon and turret choices; layout was "
              (pr-str layout))))
+  (is (= {:mountId "weapon-1" :mirrorId "weapon-1-mirror" :capacity "1"}
+         (s/js *driver* "() => {
+           const form = document.querySelector('.mount-wizard__form');
+           return {
+             mountId: form.querySelector('input[name=mount-id]').value,
+             mirrorId: form.querySelector('input[name=mirror-id]').value,
+             capacity: form.querySelector('input[name=capacity]').value
+           };
+         }"))
+      "a new face starts with the selected acceptance type and one section")
   (s/click! *driver* "input[name=accepts][value=weapon]")
   (s/click! *driver* "input[name=accepts][value=turret]")
   (is (true? (s/js *driver* "() => {
@@ -499,6 +509,15 @@
     const turret = document.querySelector('input[name=accepts][value=turret]');
     return turret.checked && !weapon.checked;
   }")))
+  (is (= {:mountId "turret-1" :mirrorId "turret-1-mirror"}
+         (s/js *driver* "() => {
+           const form = document.querySelector('.mount-wizard__form');
+           return {
+             mountId: form.querySelector('input[name=mount-id]').value,
+             mirrorId: form.querySelector('input[name=mirror-id]').value
+           };
+         }"))
+      "changing acceptance updates generated mount and mirror prefixes")
   (s/js *driver* "() => { document.querySelector('.mount-wizard__form input[name=capacity]').value = '2'; }")
   (s/click! *driver* "input[name=mirror]")
   (let [mirrored (s/wait-until
@@ -529,7 +548,7 @@
   (is (s/wait-until
        #(= "port-2" (s/js *driver* "() => document.querySelector('.mount-wizard__form input[name=mount-id]').value"))))
   (is (= "socket" (s/js *driver* "() => document.querySelector('.mount-wizard__form select[name=kind]').value")))
-  (is (= "2" (s/js *driver* "() => document.querySelector('.mount-wizard__form input[name=capacity]').value")))
+  (is (= "1" (s/js *driver* "() => document.querySelector('.mount-wizard__form input[name=capacity]').value")))
   (is (s/wait-until
        #(true? (s/js *driver* "() => document.querySelector('.mount-wizard__form input[name=accepts][value=turret]').checked"))))
   (s/click! *driver* ".mount-wizard__actions button[value=create]")

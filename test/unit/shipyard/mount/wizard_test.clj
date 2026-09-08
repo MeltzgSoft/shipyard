@@ -54,6 +54,15 @@
     (is (= [{:id :turret :label "Turret pit" :accepts #{:turret}}]
            (wizard/acceptance-profiles :weapon)))))
 
+(deftest acceptance-profile-test
+  (is (= :turret-or-antenna
+         (:id (wizard/acceptance-profile :hull #{:turret :antenna}))))
+  (is (nil? (wizard/acceptance-profile :weapon #{:weapon}))))
+
+(deftest suggest-mount-id-test
+  (is (= :weapon-2 (wizard/suggest-mount-id :weapon [{:mount/id :weapon-1}])))
+  (is (= :turret-1 (wizard/suggest-mount-id :turret [{:mount/id :weapon-1}]))))
+
 (deftest rotate-roll-test
   (testing "rotates around the mount axis"
     (is (vec-close? [0.0 1.0 0.0]
@@ -217,10 +226,9 @@
     (is (:error (wizard/part-role-request {"part-role" "spaceship"})))))
 
 (deftest suggest-mirror-id-test
-  (testing "uses deterministic port and starboard counterparts"
-    (is (= :starboard-1 (wizard/suggest-mirror-id :port-1)))
-    (is (= :port-2 (wizard/suggest-mirror-id :starboard-2))))
-  (testing "falls back to a deterministic mirror suffix"
+  (testing "uses the original mount id as the mirror prefix"
+    (is (= :port-1-mirror (wizard/suggest-mirror-id :port-1)))
+    (is (= :starboard-2-mirror (wizard/suggest-mirror-id :starboard-2)))
     (is (= :prow-mirror (wizard/suggest-mirror-id :prow)))))
 
 (deftest suggest-repeat-id-test
@@ -264,8 +272,7 @@
       (is (= [1 1] (mapv :mount/capacity mounts)))
       (is (= {:mount-id "port-2"
               :kind "socket"
-              :accepts #{:weapon}
-              :capacity 1}
+              :accepts #{:weapon}}
              repeat-values))))
   (testing "mirrors and repeats capacity"
     (let [{:keys [mounts repeat-values]}
@@ -276,7 +283,7 @@
                                         "repeat" "true"})
                                [])]
       (is (= [2 2] (mapv :mount/capacity mounts)))
-      (is (= 2 (:capacity repeat-values)))))
+      (is (nil? (:capacity repeat-values)))))
   (testing "rejects centerline mounts and id conflicts"
     (is (:error (wizard/save-request (params {"mount-id" "port-1"
                                               "mirror" "true"

@@ -45,6 +45,11 @@
 
       :else singleton-profiles)))
 
+(defn acceptance-profile
+  "The named profile matching a durable accepts set, if this host permits it."
+  [part-role accepts]
+  (some #(when (= accepts (:accepts %)) %) (acceptance-profiles part-role)))
+
 (defn- accepted-roles [params part-role]
   (let [values (many (get params "accepts"))
         profiles (into {} (map (juxt :id identity) (acceptance-profiles part-role)))]
@@ -135,12 +140,14 @@
   (vec (remove #(= id (:mount/id %)) mounts)))
 
 (defn suggest-mirror-id [id]
-  (let [s (name id)]
-    (keyword
-     (cond
-       (str/starts-with? s "port-") (str "starboard-" (subs s 5))
-       (str/starts-with? s "starboard-") (str "port-" (subs s 10))
-       :else (str s "-mirror")))))
+  (keyword (str (name id) "-mirror")))
+
+(defn suggest-mount-id
+  "The first free, role-prefixed id for a new mount."
+  [profile-id mounts]
+  (let [prefix (str (name profile-id) "-")
+        used (set (map :mount/id mounts))]
+    (first (remove used (map #(keyword (str prefix %)) (iterate inc 1))))))
 
 (defn suggest-repeat-id [mounts id]
   (let [base (name id)
@@ -190,9 +197,7 @@
 (defn repeat-values [mount mounts]
   (cond-> {:mount-id (some->> (:mount/id mount) (suggest-repeat-id mounts) (name))
            :kind (some-> (:mount/kind mount) (name))
-           :accepts (:mount/accepts mount)
-           :capacity (:mount/capacity mount)}
-    (:mount/split mount) (assoc :split-direction (get-in mount [:mount/split :direction]))))
+           :accepts (:mount/accepts mount)}))
 
 (defn preview-values
   ([params] (preview-values params nil))
