@@ -442,10 +442,16 @@
   (is (s/wait-until #(and (str/includes? (s/text *driver* "#detail") "mount-1")
                           (not (str/includes? (s/text *driver* "#detail") "already exists"))))
       "dismissing the error should restore the normal loaded detail")
-  (s/select-option! *driver* ".part-metadata__form select[name=part-role]" "hull")
-  (s/click! *driver* ".part-metadata__form button")
-  (is (s/wait-until #(str/includes? (s/text *driver* "#detail") "Manual"))
-      "part-level role edits should live in the metadata form")
+  (let [cache-before (:interface-cache (s/stats *driver*))]
+    (s/select-option! *driver* ".part-metadata__form select[name=part-role]" "hull")
+    (s/click! *driver* ".part-metadata__form button")
+    (is (s/wait-until #(str/includes? (s/text *driver* "#detail") "Manual"))
+        "part-level role edits should live in the metadata form")
+    (is (s/wait-until
+         #(= (select-keys cache-before [:mesh-index-builds :facet-computes])
+             (select-keys (:interface-cache (s/stats *driver*))
+                          [:mesh-index-builds :facet-computes])))
+        "an unrelated HTMX swap should not rebuild mesh or facet data"))
   (s/select-option! *driver* "select[name=class]" "Cruiser")
   (is (s/wait-until #(= "hull" (s/js *driver* "() => {
     const card = [...document.querySelectorAll('.part')].find((el) => el.textContent.includes('Mount Test Plate'));

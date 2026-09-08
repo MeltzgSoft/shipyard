@@ -1827,6 +1827,12 @@ There is no arbitrary angle control. The preview and the durable interface overl
 the section dividing lines in the same frame on the model. Nonrectangular faces use projected
 bounds, not equal-area partitioning. Persist bounds, not triangle indices. Changes to
 twist or mirrored authoring must recompute/transform those bounds consistently.
+
+The browser caches decoded triangle points, normals, and geometric adjacency once per
+loaded `part-id`/mesh-key, then caches each saved mount's matched facet by position and
+axis. An unchanged mount payload keeps its existing Three.js overlay through unrelated
+htmx swaps. A part change discards the cache, so cached geometry never crosses a mesh
+revision boundary.
 Legacy capacity > 1 records without bounds need reauthoring; show an actionable error.
 Capacity is bounded to 256 sections per socket, nesting to 16 levels, and traversal
 to 4096 slots per draft; malformed authoring returns diagnostics instead of unbounded work.
