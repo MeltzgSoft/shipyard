@@ -184,6 +184,7 @@
                                                             :mount/roll [1 0 0]}
                                                     :values {:mount-id "mount-1"}}}))]
     (is (str/includes? html "mount-wizard__role-options"))
+    (is (str/includes? html "--mount-role-rows-3:6;--mount-role-rows-2:8"))
     (is (= ["antenna" "bridge" "detail" "engine" "fin" "hull" "hull-section"
             "ordinance" "prow" "section" "stern" "terrain" "turret"
             "turret-or-antenna" "unknown" "weapon"]

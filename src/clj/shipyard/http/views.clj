@@ -266,6 +266,7 @@
   (let [kind (or (:kind values) (default-kind part))
         accepts (or (:accepts values) #{:weapon})
         profiles (wizard/acceptance-profiles (:part/role-hint part))
+        sorted-profiles (sort-by (comp str/lower-case :label) profiles)
         selected-profile (or (some #(when (= accepts (:accepts %)) (:id %)) profiles)
                              (some #(when (contains? accepts (:id %)) (:id %)) profiles)
                              (:id (first profiles)))
@@ -291,7 +292,9 @@
      [:fieldset.mount-wizard__roles
       [:legend "Accepts"]
       [:div.mount-wizard__role-options
-       (for [{:keys [id label]} (sort-by (comp str/lower-case :label) profiles)]
+       {:style (str "--mount-role-rows-3:" (quot (+ (count profiles) 2) 3)
+                    ";--mount-role-rows-2:" (quot (+ (count profiles) 1) 2))}
+       (for [{:keys [id label]} sorted-profiles]
          [:label.mount-wizard__check
           [:input {:type "radio" :name "accepts" :value (name id)
                    :checked (= selected-profile id)}]
