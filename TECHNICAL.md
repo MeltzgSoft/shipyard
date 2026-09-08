@@ -1825,14 +1825,10 @@ divides the X extent into equal widths; horizontal divides Y into equal heights.
 Each slot origin is its section bounding-box center with the original axis and roll.
 There is no arbitrary angle control. The preview and the durable interface overlay draw
 the section dividing lines in the same frame on the model. Nonrectangular faces use projected
-bounds, not equal-area partitioning. Persist bounds, not triangle indices. Changes to
-twist or mirrored authoring must recompute/transform those bounds consistently.
-
-The browser caches decoded triangle points, normals, and geometric adjacency once per
-loaded `part-id`/mesh-key, then caches each saved mount's matched facet by position and
-axis. An unchanged mount payload keeps its existing Three.js overlay through unrelated
-htmx swaps. A part change discards the cache, so cached geometry never crosses a mesh
-revision boundary.
+bounds, not equal-area partitioning. The selected facet indices are retained with the mesh
+key that produced them: they are a derived render cache, ignored when that key changes, not
+portable geometric identity. Changes to twist or mirrored authoring must recompute/transform
+those bounds consistently.
 Legacy capacity > 1 records without bounds need reauthoring; show an actionable error.
 Capacity is bounded to 256 sections per socket, nesting to 16 levels, and traversal
 to 4096 slots per draft; malformed authoring returns diagnostics instead of unbounded work.

@@ -253,7 +253,7 @@
     (dispose-object! object))
   (reset! interfaces nil))
 
-(defn clear! [{:keys [^js scene ^js canvas parts authoring current repeat interface-cache] :as sys}]
+(defn clear! [{:keys [^js scene ^js canvas parts authoring current repeat] :as sys}]
   (when-let [assembly (:assembly sys)] (swap! assembly assembly-scene/leave))
   (when-let [generation (:browse-generation sys)] (swap! generation inc))
   (clear-authoring-preview! sys)
@@ -262,11 +262,6 @@
   (reset! authoring nil)
   (reset! current nil)
   (reset! repeat nil)
-  (when interface-cache
-    (reset! interface-cache {:entries {}
-                             :mesh-index-builds 0
-                             :facet-computes 0
-                             :facet-hits 0}))
   (.remove (.-classList canvas) "stage__canvas--authoring")
   (doseq [[_ ^js obj] @parts]
     (.remove scene obj)
@@ -318,8 +313,8 @@
 (defn- point-on-mount-plane? [pos axis p]
   (<= (Math/abs (math/dot axis (math/subtract p pos))) interface-plane-epsilon))
 
-(defn- interface-triangle? [pos axis {:keys [points normal]}]
-  (when normal
+(defn- interface-triangle? [pos axis points]
+  (when-let [normal (triangle-normal points)]
     (and (every? #(point-on-mount-plane? pos axis %) points)
          (>= (Math/abs (math/dot normal axis)) interface-normal-cos))))
 
@@ -358,37 +353,30 @@
      {}
      edges)))
 
-(defn- mesh-interface-index [^js obj]
-  (let [triangles (mapv (fn [triangle-index]
-                          (let [points (triangle-points obj triangle-index)]
-                            {:triangle-index triangle-index
-                             :points points
-                             :normal (triangle-normal points)
-                             :center (triangle-center points)}))
-                        (range (triangle-count obj)))]
-    {:triangles triangles
-     :adjacency (adjacency (mapv (juxt :triangle-index :points) triangles))}))
-
-(defn- connected-candidate-indices [adjacency start candidate-indices]
+(defn- connected-indices [adjacency start]
   (loop [queue (list start)
          seen #{}]
     (if-let [triangle-index (first queue)]
       (if (contains? seen triangle-index)
         (recur (rest queue) seen)
-        (recur (concat (rest queue)
-                       (filter candidate-indices (get adjacency triangle-index)))
+        (recur (concat (rest queue) (get adjacency triangle-index))
                (conj seen triangle-index)))
       (vec (sort seen)))))
 
-(defn- interface-facet [{:keys [triangles adjacency]} {:mount/keys [pos axis]}]
+(defn- interface-facet [^js obj {:mount/keys [pos axis]}]
   (when (and pos axis)
-    (let [candidates (filter #(interface-triangle? pos axis %) triangles)]
-      (when (seq candidates)
-        (let [start (:triangle-index (first (sort-by #(length-sq (math/subtract (:center %) pos))
-                                                     candidates)))
-              candidate-indices (set (map :triangle-index candidates))]
-          {:indices (connected-candidate-indices adjacency start candidate-indices)
-           :candidates (count candidates)})))))
+    (let [triangles (keep (fn [triangle-index]
+                            (let [points (triangle-points obj triangle-index)]
+                              (when (interface-triangle? pos axis points)
+                                [triangle-index points])))
+                          (range (triangle-count obj)))]
+      (when (seq triangles)
+        (let [start (first (first (sort-by (fn [[_ points]]
+                                             (length-sq
+                                              (math/subtract (triangle-center points) pos)))
+                                           triangles)))]
+          {:indices (connected-indices (adjacency triangles) start)
+           :candidates (count triangles)})))))
 
 (defn- object-geometry-count [^js obj]
   (let [n (atom 0)]
@@ -497,45 +485,14 @@
          :split-lines lines
          :split-centers (mapv :mount/pos frames)}))))
 
-(defn- mount-facet-key [mount]
-  [(:mount/pos mount) (:mount/axis mount)])
+(defn- saved-facet-indices [mesh-key mount]
+  (when (= mesh-key (get-in mount [:mount/facet :mesh-key]))
+    (seq (get-in mount [:mount/facet :indices]))))
 
-(defn- interface-cache-entry!
-  [interface-cache part-id mesh-key ^js obj]
-  (let [cache-key [part-id mesh-key]]
-    (or (get-in @interface-cache [:entries cache-key])
-        (get-in
-         (swap! interface-cache
-                (fn [cache]
-                  (if (get-in cache [:entries cache-key])
-                    cache
-                    (-> cache
-                        (assoc-in [:entries cache-key] {:index (mesh-interface-index obj)
-                                                        :facets {}})
-                        (update :mesh-index-builds inc)))))
-         [:entries cache-key]))))
-
-(defn- cached-interface-facet!
-  [interface-cache part-id mesh-key ^js obj mount]
-  (let [cache-key [part-id mesh-key]
-        facet-key (mount-facet-key mount)
-        entry (interface-cache-entry! interface-cache part-id mesh-key obj)]
-    (if (contains? (:facets entry) facet-key)
-      (do
-        (swap! interface-cache update :facet-hits inc)
-        (get-in entry [:facets facet-key]))
-      (let [facet (interface-facet (:index entry) mount)]
-        (swap! interface-cache
-               (fn [cache]
-                 (-> cache
-                     (assoc-in [:entries cache-key :facets facet-key] facet)
-                     (update :facet-computes inc))))
-        facet))))
-
-(defn- interface-highlight-object [^js obj mount facet]
+(defn- interface-highlight-object [^js obj mesh-key mount]
   (let [interface-type (interface-colors/type-of mount)
         color (color-int interface-type)
-        facet-indices (seq (:indices facet))
+        facet-indices (saved-facet-indices mesh-key mount)
         split-guide (split-guide-object mount color)
         group (three/Group.)]
     (when facet-indices
@@ -545,17 +502,13 @@
     {:type interface-type
      :mount-id (:mount/id mount)
      :triangles (count facet-indices)
-     :candidates (or (:candidates facet) 0)
+     :candidates (count facet-indices)
      :split-lines (or (:split-lines split-guide) [])
      :split-centers (or (:split-centers split-guide) [])
      :object (when (or facet-indices split-guide) group)}))
 
-(defn- interface-highlights [interface-cache part-id mesh-key ^js obj mounts]
-  (let [items (keep #(interface-highlight-object
-                      obj
-                      %
-                      (cached-interface-facet! interface-cache part-id mesh-key obj %))
-                    mounts)
+(defn- interface-highlights [^js obj mesh-key mounts]
+  (let [items (keep #(interface-highlight-object obj mesh-key %) mounts)
         group (three/Group.)]
     (doseq [{:keys [^js object]} items]
       (when object
@@ -566,7 +519,7 @@
 
 (defn- preview-facet-indices [^js obj facet-indices frame]
   (or (seq facet-indices)
-      (some-> (interface-facet (mesh-interface-index obj) frame) :indices seq)))
+      (some-> (interface-facet obj frame) :indices seq)))
 
 (defn- form-twist-degrees []
   (some-> (.querySelector js/document ".mount-wizard__form input[name=twist-deg]")
@@ -684,38 +637,27 @@
   (install-preview! sys (select-keys payload [:part-id :mesh-key :facet-indices :frame
                                               :roll-ambiguous? :roll-source])))
 
-(defn- interface-render-key [part-id mesh-key mounts]
-  [part-id mesh-key mounts])
-
-(defn- draw-interfaces! [{:keys [^js scene parts current interfaces interface-cache] :as sys}
+(defn- draw-interfaces! [{:keys [^js scene parts current interfaces] :as sys}
                          {:keys [part-id mesh-key mounts orientation]}]
   (when (current-part? {:current current} part-id mesh-key)
-    (let [render-key (interface-render-key part-id mesh-key mounts)
-          part-orientation (or orientation (:orientation @current))]
-      (if (= render-key (:render-key @interfaces))
-        (orient-object! (:object @interfaces) part-orientation)
-        (do
-          (clear-interface-highlights! sys)
-          (when-let [obj (get @parts part-id)]
-            (try
-              (let [{:keys [^js object items misses]}
-                    (interface-highlights interface-cache part-id mesh-key obj mounts)]
-                (orient-object! object part-orientation)
-                (when (seq items)
-                  (.add scene object))
-                (reset! interfaces {:object object
-                                    :part-id part-id
-                                    :mesh-key mesh-key
-                                    :render-key render-key
-                                    :items items
-                                    :misses misses}))
-              (catch :default e
-                (js/console.error "shipyard: interface highlights failed" e)
-                (reset! interfaces {:part-id part-id
-                                    :mesh-key mesh-key
-                                    :render-key render-key
-                                    :items []
-                                    :error (str e)})))))))))
+    (clear-interface-highlights! sys)
+    (when-let [obj (get @parts part-id)]
+      (try
+        (let [{:keys [^js object items misses]} (interface-highlights obj mesh-key mounts)]
+          (orient-object! object (or orientation (:orientation @current)))
+          (when (seq items)
+            (.add scene object))
+          (reset! interfaces {:object object
+                              :part-id part-id
+                              :mesh-key mesh-key
+                              :items items
+                              :misses misses}))
+        (catch :default e
+          (js/console.error "shipyard: interface highlights failed" e)
+          (reset! interfaces {:part-id part-id
+                              :mesh-key mesh-key
+                              :items []
+                              :error (str e)}))))))
 
 (defn- canvas-pointer! [^js pointer ^js canvas ^js e]
   (let [rect (.getBoundingClientRect canvas)
@@ -1056,7 +998,7 @@
   Asserting on WebGL through pixels is brittle - driver, antialiasing and
   timing all move it - so the tests read this instead. Compiled out of release
   builds by `TEST-HOOKS`, so it cannot ship."
-  [{:keys [^js renderer ^js camera ^js controls parts status authoring interface-cache] :as sys}]
+  [{:keys [^js renderer ^js camera ^js controls parts status authoring] :as sys}]
   (let [objs (vals @parts)]
     #js {:parts     (clj->js (vec (keys @parts)))
          :vertices  (reduce + 0 (map (fn [^js o] (.. o -geometry -attributes -position -count)) objs))
@@ -1083,8 +1025,6 @@
          :orientation (clj->js (some-> objs first object-orientation))
          :orientation-guide (orientation-guide-stats sys)
          :repeat    (clj->js @(:repeat sys))
-         :interface-cache (clj->js (select-keys @interface-cache
-                                                [:mesh-index-builds :facet-computes :facet-hits]))
          :interfaces (interface-stats sys)
          :preview   (preview-stats sys)}))
 
@@ -1199,10 +1139,6 @@
                     :current (atom nil) :authoring (atom nil) :preview (atom nil)
                     :assembly (atom assembly-scene/empty-state) :browse-generation (atom 0)
                     :interfaces (atom nil) :orientation-guide (atom nil) :repeat (atom nil)
-                    :interface-cache (atom {:entries {}
-                                            :mesh-index-builds 0
-                                            :facet-computes 0
-                                            :facet-hits 0})
                     :preview-revision (atom 0)
                     :raycaster (three/Raycaster.) :pointer (three/Vector2.)}]
       (set! (.-outputColorSpace renderer) three/SRGBColorSpace)

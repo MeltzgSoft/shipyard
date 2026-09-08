@@ -6,6 +6,7 @@
   handler tree is a pure function of its dependencies and can be exercised
   without a socket."
   (:require [babashka.fs :as fs]
+            [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.string :as str]
             [integrant.core :as ig]
@@ -220,6 +221,8 @@
                                                    (:part/mounts part))))
                       preview (cond-> {:part part
                                        :frame frame
+                                       :mesh-key mesh-key
+                                       :facet-indices facet-indices
                                        :values (merge (:values edit)
                                                       (wizard/preview-values params))}
                                 (:mount edit)
@@ -270,19 +273,44 @@
     (mount-response! deps part-id events view-options)
     (htmx/fragment (views/facet-error error))))
 
+(defn- selected-facet-indices [params mesh-key]
+  (try
+    (let [indices (edn/read-string (get params "facet-indices"))]
+      (when (and (= mesh-key (get params "mesh-key"))
+                 (vector? indices)
+                 (seq indices)
+                 (every? #(and (integer? %) (not (neg? %))) indices))
+        indices))
+    (catch Exception _ nil)))
+
+(defn- attach-selected-facet [result mesh-key facet-indices]
+  (if-not facet-indices
+    result
+    (let [mount-id (get-in result [:mount :mount/id])
+          face {:mesh-key mesh-key :indices facet-indices}]
+      (update result :mounts
+              (fn [mounts]
+                (mapv #(if (= mount-id (:mount/id %))
+                         (assoc % :mount/facet face)
+                         %)
+                      mounts))))))
+
 (defn- save-mount!
   [{:keys [catalog library] :as deps} {:keys [params]}]
   (let [part-id (get params "part-id")
-        part (db/part (db/snapshot! catalog) part-id)]
+        part (db/part (db/snapshot! catalog) part-id)
+        mesh-key (index/mesh-key! library part-id)]
     (cond
       (nil? (:part/id part))
       (facet-error :part-not-found "That part is no longer in the library." part-id 404)
 
       :else
-      (let [result (wizard/save-request params
-                                        (catalog-part/durable-mounts (:part/mounts part))
-                                        (:part/orientation part)
-                                        (:part/role-hint part))]
+      (let [result (-> (wizard/save-request params
+                                            (catalog-part/durable-mounts (:part/mounts part))
+                                            (:part/orientation part)
+                                            (:part/role-hint part))
+                       (attach-selected-facet mesh-key
+                                              (selected-facet-indices params mesh-key)))]
         (if-let [error (:error result)]
           (mount-error-response!
            deps

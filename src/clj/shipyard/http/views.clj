@@ -262,7 +262,7 @@
 (defn- default-kind [part]
   (if (#{:hull :hull-section} (:part/role-hint part)) :socket :plug))
 
-(defn- mount-form [{:keys [part frame mode original-mount-id values]}]
+(defn- mount-form [{:keys [part frame mesh-key facet-indices mode original-mount-id values]}]
   (let [kind (or (:kind values) (default-kind part))
         accepts (or (:accepts values) #{:weapon})
         profiles (wizard/acceptance-profiles (:part/role-hint part))
@@ -280,6 +280,10 @@
       :hx-swap   "innerHTML"}
      [:input {:type "hidden" :name "part-id" :value (:part/id part)}]
      [:input {:type "hidden" :name "frame" :value (pr-str frame)}]
+     (when (and mesh-key facet-indices)
+       [:input {:type "hidden" :name "facet-indices" :value (pr-str facet-indices)}])
+     (when mesh-key
+       [:input {:type "hidden" :name "mesh-key" :value mesh-key}])
      (when edit?
        [:input {:type "hidden" :name "original-mount-id" :value (name original-mount-id)}])
      [:label.mount-wizard__field "Mount id"
