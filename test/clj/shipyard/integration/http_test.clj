@@ -322,7 +322,11 @@
     (is (= [0.0 0.0 1.0] (get-in preview [:frame :mount/axis])))
     (is (= [1.0 0.0 0.0] (get-in preview [:frame :mount/roll])))
     (is (false? (:roll-ambiguous? preview)))
-    (is (= :part-orientation (:roll-source preview)))))
+    (is (= :part-orientation (:roll-source preview)))
+    ;; The flat fixture is deliberately role-hinted as a hull. Geometry takes
+    ;; precedence only for the initial, still-editable kind form default.
+    (is (re-find #"<option selected=\"selected\" value=\"plug\">plug</option>" (:body r)))
+    (is (str/includes? (:body r) "Geometry suggests plug. You can change this."))))
 
 (deftest mount-wizard-saves-replaces-and-deletes
   (let [root (library-tree)

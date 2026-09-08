@@ -343,6 +343,32 @@
      :roll-ambiguous? roll-ambiguous?
      :roll-source roll-source}))
 
+(defn- surrounding-heights
+  "Return each non-coplanar boundary neighbour's signed height from the facet.
+
+  The facet normal points toward the side on which a mount is authored.  A
+  neighbouring surface above that plane therefore forms the wall of a recess;
+  one below it forms an outward projection."
+  [mesh indices frame {:keys [facet-plane-epsilon-mm]}]
+  (let [selected (set indices)
+        adjacent (adjacency mesh)
+        origin (:mount/pos frame)
+        axis (:mount/axis frame)]
+    (->> indices
+         (mapcat #(get adjacent %))
+         (remove selected)
+         distinct
+         (mapcat #(triangle-points mesh %))
+         (map #(math/dot axis (math/subtract % origin)))
+         (filter #(> (Math/abs (double %)) facet-plane-epsilon-mm)))))
+
+(defn- kind-hint [mesh indices frame opts]
+  (let [heights (surrounding-heights mesh indices frame opts)]
+    ;; An open or mixed boundary is not a reliable recess, so use the requested
+    ;; conservative fallback.  This is only a form default; authors can always
+    ;; choose the other kind.
+    (if (and (seq heights) (every? pos? heights)) :socket :plug)))
+
 (defn select
   "Return the connected facet and derived mount frame for `triangle-index`.
 
@@ -351,7 +377,9 @@
   ([mesh triangle-index] (select mesh triangle-index nil))
   ([mesh triangle-index opts]
    (let [opts (merge default-options opts)
-         indices (facet-indices mesh triangle-index opts)]
+         indices (facet-indices mesh triangle-index opts)
+         frame-data (frame mesh indices opts)]
      (merge {:triangle-index triangle-index
-             :facet-indices indices}
-            (frame mesh indices opts)))))
+             :facet-indices indices
+             :kind-hint (kind-hint mesh indices (:frame frame-data) opts)}
+            frame-data))))

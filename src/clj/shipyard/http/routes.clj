@@ -214,7 +214,7 @@
 
               :else
               (try
-                (let [{:keys [facet-indices frame points]}
+                (let [{:keys [facet-indices frame points kind-hint]}
                       (facet/select (wire/decode (read-bytes! tier0)) triangle-index
                                     (select-keys cache [:facet-angle-deg :facet-plane-epsilon-mm]))
                       frame (assoc (orientation/orient-mount-frame frame (:part/orientation part))
@@ -228,8 +228,11 @@
                                        :frame frame
                                        :mesh-key mesh-key
                                        :facet-indices facet-indices
-                                       :values (merge (:values edit)
+                                       :values (merge {:kind kind-hint}
+                                                      (:values edit)
                                                       (wizard/preview-values params))}
+                                (not (:mount edit))
+                                (assoc :kind-hint kind-hint)
                                 (:mount edit)
                                 (assoc :mode :edit
                                        :original-mount-id (:original-mount-id edit)))]

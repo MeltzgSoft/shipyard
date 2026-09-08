@@ -188,6 +188,18 @@
     (is (str/includes? html "data-accept-prefix=\"weapon\""))
     (is (re-find #"name=\"mirror-id\"[^>]+value=\"weapon-1-mirror\"" html))))
 
+(deftest new-mount-kind-shows-the-editable-geometry-suggestion
+  (let [html (render (views/detail-ready hull
+                                         (apply str (repeat 64 "1"))
+                                         {:preview {:part hull
+                                                    :frame {:mount/pos [0 0 0]
+                                                            :mount/axis [0 0 1]
+                                                            :mount/roll [1 0 0]}
+                                                    :kind-hint :plug
+                                                    :values {:kind :plug}}}))]
+    (is (re-find #"<option selected=\"selected\" value=\"plug\">plug</option>" html))
+    (is (str/includes? html "Geometry suggests plug. You can change this."))))
+
 (deftest mount-acceptance-profiles-are-sorted-in-a-grid
   (let [html (render (views/detail-ready hull
                                          (apply str (repeat 64 "1"))

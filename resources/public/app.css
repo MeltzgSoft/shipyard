@@ -412,6 +412,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
   font: inherit;
   font-size: 0.82rem;
 }
+.mount-wizard__hint { font-size: 0.72rem; color: var(--ink-dim); }
 .mount-wizard__roles, .mount-wizard__mirror {
   grid-column: span 2;
   border: 1px solid var(--line);

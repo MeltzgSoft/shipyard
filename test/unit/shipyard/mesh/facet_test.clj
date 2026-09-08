@@ -49,6 +49,15 @@
     [[0 0 3] [2 0 3] [0 2 3]]
     [[2 0 3] [2 2 3] [0 2 3]]]))
 
+(defn- recessed-mesh [height]
+  (mesh
+   [[[0 0 0] [2 0 0] [0 2 0]]
+    [[2 0 0] [2 2 0] [0 2 0]]
+    [[0 0 0] [2 0 0] [1 -1 height]]
+    [[2 0 0] [2 2 0] [3 1 height]]
+    [[2 2 0] [0 2 0] [1 3 height]]
+    [[0 2 0] [0 0 0] [-1 1 height]]]))
+
 (deftest select-test
   (testing "groups the connected coplanar facet across geometric, not vertex-id, edges"
     (let [{:keys [facet-indices frame roll-ambiguous? roll-source]} (facet/select contract-mesh 0)]
@@ -141,6 +150,15 @@
     (let [m (mesh [[[0 0 0] [2 0 0] [0 2 0]]
                    [[2 0 0] [0 2 0] [2 2 0]]])]
       (is (= [0] (:facet-indices (facet/select m 0)))))))
+
+(deftest kind-hint-test
+  (testing "surfaces surrounding a recess default to an editable socket"
+    (is (= :socket (:kind-hint (facet/select (recessed-mesh 1) 0)))))
+
+  (testing "projections and open faces default to plug"
+    (is (= :plug (:kind-hint (facet/select (recessed-mesh -1) 0))))
+    (let [flat (mesh [[[0 0 0] [2 0 0] [0 2 0]]])]
+      (is (= :plug (:kind-hint (facet/select flat 0)))))))
 
 (deftest non-manifold-edge-test
   (testing "three triangles incident on one geometric edge are not unambiguous neighbours"

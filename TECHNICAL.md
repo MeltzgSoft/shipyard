@@ -1587,6 +1587,12 @@ error. Degenerate neighbours and triangles whose winding reverses their normal a
 crossed. The returned facet indices are sorted ascending for repeatable tests and event
 payloads, although they remain transient.
 
+For a newly picked face, the wizard uses the facet boundary as a non-binding kind hint.
+If every non-coplanar boundary neighbour lies on the positive side of the selected
+normal, the face is surrounded by a recess and the initial kind is `:socket`; a convex,
+mixed, or open boundary starts as `:plug`. The select remains editable, and an explicit
+form value or existing mount always wins over this geometric suggestion.
+
 ### 12.3 A stable mount frame
 
 Frame derivation is pure JVM geometry over the selected facet and proceeds in sorted

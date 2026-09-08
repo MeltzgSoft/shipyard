@@ -367,7 +367,12 @@
   (is (s/wait-until
        #(false? (s/js *driver* "() => !!document.querySelector('.mount-wizard__form select[name=part-role]')")))
       "part role should be edited outside the mount wizard")
+  (is (= "plug" (s/js *driver* "() => document.querySelector('.mount-wizard__form select[name=kind]').value")))
+  (is (= "Geometry suggests plug. You can change this."
+         (s/text *driver* ".mount-wizard__hint")))
   (s/select-option! *driver* ".mount-wizard__form select[name=kind]" "socket")
+  (is (= "socket" (s/js *driver* "() => document.querySelector('.mount-wizard__form select[name=kind]').value"))
+      "the geometry default must remain manually editable")
   (s/js *driver* "() => { const input = document.querySelector('.mount-wizard__form input[name=capacity]'); input.value = '2'; input.dispatchEvent(new Event('input', {bubbles: true})); }")
   (is (s/wait-until #(= 2 (count (get-in (s/stats *driver*) [:preview :split-centers]))))
       "vertical split previews both positions")

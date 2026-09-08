@@ -262,7 +262,7 @@
 (defn- default-kind [part]
   (if (#{:hull :hull-section} (:part/role-hint part)) :socket :plug))
 
-(defn- mount-form [{:keys [part frame mesh-key facet-indices mode original-mount-id values]}]
+(defn- mount-form [{:keys [part frame mesh-key facet-indices kind-hint mode original-mount-id values]}]
   (let [kind (or (:kind values) (default-kind part))
         accepts (or (:accepts values) #{:weapon})
         profiles (wizard/acceptance-profiles (:part/role-hint part))
@@ -294,7 +294,10 @@
      [:label.mount-wizard__field "Kind"
       [:select {:name "kind"}
        (for [k wizard/kind-options]
-         [:option {:value (name k) :selected (= k kind)} (name k)])]]
+         [:option {:value (name k) :selected (= k kind)} (name k)])]
+      (when kind-hint
+        [:span.mount-wizard__hint
+         "Geometry suggests " (name kind-hint) ". You can change this."])]
      [:fieldset.mount-wizard__roles
       [:legend "Accepts"]
       [:div.mount-wizard__role-options
