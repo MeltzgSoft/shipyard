@@ -450,26 +450,26 @@
   (is (some? (await-preview)))
   (s/select-option! *driver* ".mount-wizard__form select[name=kind]" "socket")
   (is (= "radio" (s/js *driver* "() => document.querySelector('input[name=accepts][value=weapon]').type")))
-  (is (= {:columns 3
-          :columnOrdered true}
-         (s/js *driver* "() => {
-           const group = document.querySelector('.mount-wizard__role-options');
-           const choices = [...group.querySelectorAll('input[name=accepts]')]
-             .map(input => ({value: input.value, rect: input.getBoundingClientRect()}));
-           const columns = [...new Set(choices.map(({rect}) => Math.round(rect.left)))].sort((a, b) => a - b);
-           return {
-             columns: getComputedStyle(group).gridTemplateColumns.split(' ').length,
-             columnOrdered: JSON.stringify(columns.map(left => choices
-               .filter(({rect}) => Math.round(rect.left) === left)
-               .sort((a, b) => a.rect.top - b.rect.top)
-               .map(({value}) => value))) === JSON.stringify([
-                 ['antenna', 'bridge', 'detail', 'engine', 'fin'],
-                 ['hull', 'hull-section', 'ordinance', 'prow', 'section'],
-                 ['stern', 'terrain', 'turret', 'unknown', 'weapon']
-               ])
-           };
-         }"))
-      "acceptance profiles are alphabetized top-to-bottom in aligned columns")
+  (let [layout (s/js *driver* "() => {
+                               const group = document.querySelector('.mount-wizard__role-options');
+                               const style = getComputedStyle(group);
+                               return {
+                                 columns: style.gridTemplateColumns.split(' ').length,
+                                 rows: style.gridTemplateRows.split(' ').length,
+                                 flow: style.gridAutoFlow,
+                                 roles: [...group.querySelectorAll('input[name=accepts]')]
+                                   .map(input => input.value)
+                               };
+                             }")]
+    (is (= {:columns 3
+            :rows 5
+            :flow "column"
+            :roles ["antenna" "bridge" "detail" "engine" "fin"
+                    "hull" "hull-section" "ordinance" "prow" "section"
+                    "stern" "terrain" "turret" "unknown" "weapon"]}
+           layout)
+        (str "acceptance profiles should be alphabetized in a five-row, "
+             "three-column grid; layout was " (pr-str layout))))
   (s/click! *driver* "input[name=accepts][value=weapon]")
   (s/click! *driver* "input[name=accepts][value=turret]")
   (is (true? (s/js *driver* "() => {
