@@ -55,7 +55,13 @@
     (testing "the M3 audit makes incomplete capacity authoring actionable"
       (is (= :blocked (get-in report [:m3-assembly :status])))
       (is (some #(= :incomplete-split (:code %))
-                (get-in report [:m3-assembly :diagnostics]))))))
+                (get-in report [:m3-assembly :diagnostics]))))
+    (testing "every authored child sharing a socket role receives an attachment check"
+      (let [checks (get-in report [:m3-assembly :attachment-checks])]
+        (is (= 11 (count checks)))
+        (is (= #{(:weapon proof/parts) (:lance proof/parts)}
+               (set (map :child-part-id
+                         (filter #(= :port-1 (:mount-id %)) checks)))))))))
 
 (deftest proof-reports-missing-real-targets
   (let [root (temp-dir)]

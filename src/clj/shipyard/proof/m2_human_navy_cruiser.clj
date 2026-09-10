@@ -17,6 +17,7 @@
             [shipyard.math :as math]
             [shipyard.mesh.facet :as facet]
             [shipyard.mesh.stl :as stl]
+            [shipyard.proof.geometry :as proof-geometry]
             [shipyard.report :as report]))
 
 (def parts
@@ -144,65 +145,6 @@
 (defn- distance3 [a b]
   (math/length (math/subtract a b)))
 
-(defn- point-at [^floats positions offset]
-  [(double (aget positions offset))
-   (double (aget positions (+ offset 1)))
-   (double (aget positions (+ offset 2)))])
-
-(defn- closest-point-on-triangle
-  "Closest point using the region tests from Real-Time Collision Detection.
-  This stays in the proof tool: it audits user geometry without adding a
-  run-time mesh-processing concern to the assembly path."
-  [p a b c]
-  (let [ab (math/subtract b a) ac (math/subtract c a) ap (math/subtract p a)
-        d1 (math/dot ab ap) d2 (math/dot ac ap)]
-    (cond
-      (and (<= d1 0.0) (<= d2 0.0)) a
-      :else
-      (let [bp (math/subtract p b) d3 (math/dot ab bp) d4 (math/dot ac bp)]
-        (cond
-          (and (>= d3 0.0) (<= d4 d3)) b
-          :else
-          (let [vc (- (* d1 d4) (* d3 d2))]
-            (cond
-              (and (<= vc 0.0) (>= d1 0.0) (<= d3 0.0))
-              (math/add a (math/scale (/ d1 (- d1 d3)) ab))
-              :else
-              (let [cp (math/subtract p c) d5 (math/dot ab cp) d6 (math/dot ac cp)]
-                (cond
-                  (and (>= d6 0.0) (<= d5 d6)) c
-                  :else
-                  (let [vb (- (* d5 d2) (* d1 d6))]
-                    (cond
-                      (and (<= vb 0.0) (>= d2 0.0) (<= d6 0.0))
-                      (math/add a (math/scale (/ d2 (- d2 d6)) ac))
-                      :else
-                      (let [va (- (* d3 d6) (* d5 d4))]
-                        (if (and (<= va 0.0) (>= (- d4 d3) 0.0) (>= (- d5 d6) 0.0))
-                          (math/add b (math/scale (/ (- d4 d3)
-                                                     (+ (- d4 d3) (- d5 d6)))
-                                                  (math/subtract c b)))
-                          (let [denom (/ 1.0 (+ va vb vc))]
-                            (math/add a
-                                      (math/add (math/scale (* vb denom) ab)
-                                                (math/scale (* vc denom) ac)))))))))))))))))
-
-(defn- nearest-surface [mesh point]
-  (let [^floats positions (:positions mesh)
-        n (:triangle-count mesh)]
-    (reduce
-     (fn [nearest triangle]
-       (let [offset (* 9 triangle)
-             a (point-at positions offset) b (point-at positions (+ offset 3)) c (point-at positions (+ offset 6))
-             closest (closest-point-on-triangle point a b c)
-             distance (distance3 point closest)]
-         (if (< distance (:distance-mm nearest))
-           {:triangle triangle :point closest :distance-mm distance
-            :normal (math/normalize (math/cross (math/subtract b a) (math/subtract c a)))}
-           nearest)))
-     {:distance-mm Double/POSITIVE_INFINITY}
-     (range n))))
-
 (defn- source-surface-diagnostics
   "Mount origins must land on an actual source surface and their axes must be
   normal to it. This catches stale coordinates even though attachment math can
@@ -213,7 +155,7 @@
     (fn [[part-id {:keys [mounts]}]]
       (let [mesh (stl/parse-file! (mesh-file root scanned-by-id part-id))]
         (keep (fn [{:mount/keys [id pos axis]}]
-                (let [{:keys [triangle distance-mm normal]} (nearest-surface mesh pos)
+                (let [{:keys [triangle distance-mm normal]} (proof-geometry/nearest-surface mesh pos)
                       axis-dot (when normal (math/dot axis normal))]
                   (cond
                     (> distance-mm 0.1)
@@ -252,12 +194,10 @@
         derived (assembly/slots database hull-id {})
         authored-parts (into {} (map (fn [[id facts]] [id (assoc facts :part/id id)])) authoring)
         hull (get authored-parts hull-id)
-        by-role (into {} (map (fn [[id {:keys [part-role] :as facts}]]
-                                [part-role (assoc facts :part/id id)])) authoring)
+        by-role (group-by :part-role (vals authored-parts))
         pairs (for [socket (:mounts hull)
-                    :let [role (first (:mount/accepts socket))
-                          child (get by-role role)]
-                    :when child]
+                    :let [role (first (:mount/accepts socket))]
+                    child (sort-by :part/id (get by-role role))]
                 (attachment-check hull-id socket child))
         transform-errors (filter #(= :transform-mismatch (:status %)) pairs)
         geometry-errors (source-surface-diagnostics root scanned-by-id)
