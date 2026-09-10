@@ -6,7 +6,6 @@
   handler tree is a pure function of its dependencies and can be exercised
   without a socket."
   (:require [babashka.fs :as fs]
-            [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.string :as str]
             [integrant.core :as ig]
@@ -26,6 +25,8 @@
             [shipyard.library.index :as index]
             [shipyard.mesh.cache :as cache]
             [shipyard.mesh.facet :as facet]
+            [shipyard.mount.facet-input :as facet-input]
+            [shipyard.mount.facet-recovery :as facet-recovery]
             [shipyard.mount.wizard :as wizard]
             [shipyard.mount.split :as split]
             [shipyard.part.orientation :as orientation]
@@ -82,63 +83,12 @@
   [library {:part/keys [id source]}]
   (fs/file (index/root! library) id (index/name-of source)))
 
-(declare read-bytes!)
-
-(defn- retained-facet? [mesh-key mount]
-  (and (= mesh-key (get-in mount [:mount/facet :mesh-key]))
-       (seq (get-in mount [:mount/facet :indices]))))
-
-(defn- legacy-mounts [mesh-key mounts]
-  (remove #(retained-facet? mesh-key %) mounts))
-
-(defn- same-mount-frame? [a b]
-  (= (select-keys a [:mount/id :mount/pos :mount/axis :mount/roll])
-     (select-keys b [:mount/id :mount/pos :mount/axis :mount/roll])))
-
-(defn- backfill-mount-facets!
-  "Recover legacy selected facets on a background worker and write only the
-  derived mesh-key-scoped result. A concurrent authoring edit always wins."
-  [{:keys [catalog library cache]} part-id mesh-key mounts]
-  (let [mesh (wire/decode (read-bytes! (cache/tier-file cache mesh-key 0)))
-        matches (into {}
-                      (keep identity)
-                      ;; Matching faces is independent per mount. `pmap` keeps
-                      ;; the one-time recovery off the UI and uses JVM workers
-                      ;; when a hull has several legacy mounts.
-                      (doall (pmap (fn [mount]
-                                     (when-let [indices (seq (facet/match-frame mesh mount))]
-                                       [(:mount/id mount)
-                                        {:mount mount :indices (vec indices)}]))
-                                   mounts)))]
-    (when (and (seq matches) (= mesh-key (index/mesh-key! library part-id)))
-      (let [current (catalog-part/durable-mounts
-                     (:part/mounts (db/part (db/snapshot! catalog) part-id)))
-            updated (mapv (fn [mount]
-                            (if-let [{saved :mount indices :indices} (get matches (:mount/id mount))]
-                              (if (and (not (retained-facet? mesh-key mount))
-                                       (same-mount-frame? saved mount))
-                                (assoc mount :mount/facet {:mesh-key mesh-key :indices indices})
-                                mount)
-                              mount))
-                          current)]
-        (when (not= current updated)
-          (db/save-mounts! catalog part-id updated))))))
-
-(defn- recover-legacy-facets!
-  [{:keys [jobs] :as deps} part mesh-key]
-  (let [mounts (catalog-part/durable-mounts (:part/mounts part))]
-    (when (seq (legacy-mounts mesh-key mounts))
-      (jobs/submit-facet-backfill!
-       jobs
-       [(:part/id part) mesh-key]
-       #(backfill-mount-facets! deps (:part/id part) mesh-key mounts)))))
-
 (defn- ready
   "The mesh is on disk. The fragment says so and the `HX-Trigger` hands the
   viewport the URL - the canvas is never swapped, so this header is the only
   channel to it (§7.1)."
   [deps part mesh-key]
-  (if (= :running (:state (recover-legacy-facets! deps part mesh-key)))
+  (if (= :running (:state (facet-recovery/recover! deps part mesh-key)))
     (htmx/fragment (views/detail-preparing part)
                    {:events {:status {:state :preparing
                                       :message "Restoring saved mount faces."}}})
@@ -328,15 +278,13 @@
     (mount-response! deps part-id events view-options)
     (htmx/fragment (views/facet-error error))))
 
-(defn- selected-facet-indices [params mesh-key]
-  (try
-    (let [indices (edn/read-string (get params "facet-indices"))]
-      (when (and (= mesh-key (get params "mesh-key"))
-                 (vector? indices)
-                 (seq indices)
-                 (every? #(and (integer? %) (not (neg? %))) indices))
-        indices))
-    (catch Exception _ nil)))
+(defn- selected-facet-indices [cache params mesh-key]
+  (when (and (= mesh-key (get params "mesh-key"))
+             (facet-input/valid-input? (get params "facet-indices")))
+    (let [indices (facet-input/parse-indices (get params "facet-indices"))
+          mesh (wire/decode (read-bytes! (cache/tier-file cache mesh-key 0)))]
+      (when (facet-input/in-mesh? mesh indices)
+        indices))))
 
 (defn- attach-selected-facet [result mesh-key facet-indices]
   (if-not facet-indices
@@ -351,7 +299,7 @@
                       mounts))))))
 
 (defn- save-mount!
-  [{:keys [catalog library] :as deps} {:keys [params]}]
+  [{:keys [catalog library cache] :as deps} {:keys [params]}]
   (let [part-id (get params "part-id")
         part (db/part (db/snapshot! catalog) part-id)
         mesh-key (index/mesh-key! library part-id)]
@@ -360,37 +308,42 @@
       (facet-error :part-not-found "That part is no longer in the library." part-id 404)
 
       :else
-      (let [result (-> (wizard/save-request params
-                                            (catalog-part/durable-mounts (:part/mounts part))
-                                            (:part/orientation part)
-                                            (:part/role-hint part))
-                       (attach-selected-facet mesh-key
-                                              (selected-facet-indices params mesh-key)))]
-        (if-let [error (:error result)]
-          (mount-error-response!
-           deps
-           part-id
-           error
-           {:authoring {:state :enter
-                        :part-id part-id
-                        :mesh-key (index/mesh-key! library part-id)}}
-           {:preview (wizard/error-preview part params error)})
-          (try
-            (db/save-authoring! catalog part-id (select-keys result [:mounts]))
-            (if-let [repeat-values (:repeat-values result)]
-              (mount-response! deps part-id {:clear-preview nil
-                                             :authoring {:state :enter
-                                                         :part-id part-id
-                                                         :mesh-key (index/mesh-key! library part-id)}
-                                             :mount-repeat repeat-values}
-                               {:repeat-values repeat-values})
-              (mount-response! deps part-id {:clear-preview nil
-                                             :authoring {:state :exit}}))
-            (catch Exception _
-              (facet-error :mount-save-failed
-                           "The mount was written, but the catalog did not update. Restart Shipyard to re-ingest it."
-                           part-id
-                           500))))))))
+      (let [facet-indices (selected-facet-indices cache params mesh-key)]
+        (if (and (contains? params "facet-indices") (nil? facet-indices))
+          (facet-error :invalid-facet-selection
+                       "The selected face is no longer present in this mesh. Pick it again."
+                       part-id
+                       422)
+          (let [result (-> (wizard/save-request params
+                                                (catalog-part/durable-mounts (:part/mounts part))
+                                                (:part/orientation part)
+                                                (:part/role-hint part))
+                           (attach-selected-facet mesh-key facet-indices))]
+            (if-let [error (:error result)]
+              (mount-error-response!
+               deps
+               part-id
+               error
+               {:authoring {:state :enter
+                            :part-id part-id
+                            :mesh-key (index/mesh-key! library part-id)}}
+               {:preview (wizard/error-preview part params error)})
+              (try
+                (db/save-authoring! catalog part-id (select-keys result [:mounts]))
+                (if-let [repeat-values (:repeat-values result)]
+                  (mount-response! deps part-id {:clear-preview nil
+                                                 :authoring {:state :enter
+                                                             :part-id part-id
+                                                             :mesh-key (index/mesh-key! library part-id)}
+                                                 :mount-repeat repeat-values}
+                                   {:repeat-values repeat-values})
+                  (mount-response! deps part-id {:clear-preview nil
+                                                 :authoring {:state :exit}}))
+                (catch Exception _
+                  (facet-error :mount-save-failed
+                               "The mount was written, but the catalog did not update. Restart Shipyard to re-ingest it."
+                               part-id
+                               500))))))))))
 
 (defn- edit-mount!
   [{:keys [catalog library] :as deps} {:keys [params]}]

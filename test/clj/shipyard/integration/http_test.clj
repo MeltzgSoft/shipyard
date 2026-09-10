@@ -386,6 +386,10 @@
         (is (str/includes? (:body rejected) "Choose one role"))
         (is (= #{:weapon}
                (:mount/accepts (first (:mounts (sidecar/read-sidecar! root hull-id))))))))
+
+    (testing "facet indices must be bounded and refer to the current mesh"
+      (is (= 400 (:status (mount-post h (assoc save-params :facet-indices "[999999999999999999999]")))))
+      (is (= 422 (:status (mount-post h (assoc save-params :facet-indices "[2]"))))))
     (testing "replace updates the durable mount instead of accumulating"
       (let [replaced (mount-post h (assoc save-params :accepts "prow" :action "replace"))
             mounts (:mounts (sidecar/read-sidecar! root hull-id))]
@@ -449,8 +453,8 @@
              (mapv #(select-keys % [:mount/id :mount/pos :mount/axis :mount/facet]) mounts)))
       (is (= [{:mesh-key mesh-key :indices [0 1]}]
              (mapv :mount/facet mounts)))
-       (is (= {:mesh-key mesh-key :indices [0 1]}
-              (:mount/facet (first (:mounts (sidecar/read-sidecar! root hull-id)))))))))
+      (is (= {:mesh-key mesh-key :indices [0 1]}
+             (:mount/facet (first (:mounts (sidecar/read-sidecar! root hull-id)))))))))
 
 (deftest mount-wizard-mirrors-and-repeats
   (let [root (library-tree)

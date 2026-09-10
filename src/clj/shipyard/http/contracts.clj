@@ -5,7 +5,8 @@
   a small health JSON document, or a mesh file. Domain validation still lives
   in pure functions; these schemas reject malformed transport shapes before a
   handler runs and verify the response shapes after it returns."
-  (:require [shipyard.http.urls :as urls]))
+  (:require [shipyard.http.urls :as urls]
+            [shipyard.mount.facet-input :as facet-input]))
 
 (def html-responses
   {200 {:body string?}
@@ -51,7 +52,8 @@
   [:map {:closed false}
    [:part-id string?]
    [:mount-id string?]
-   [:kind string?]])
+   [:kind string?]
+   [:facet-indices {:optional true} [:fn facet-input/valid-input?]]])
 
 (def mount-id-form
   [:map {:closed false}
