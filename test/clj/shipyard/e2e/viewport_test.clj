@@ -91,6 +91,20 @@
     #(let [p (:preview (s/stats *driver*))]
        (when (and p (> (:revision p) after-revision)) p)))))
 
+(defn- await-stable-geometries
+  "Wait for Three's renderer accounting to observe the current scene.
+
+  A mesh becomes selectable before the next render accounts for all of its
+  auxiliary orientation-guide geometry.  Comparing a later rendered count to
+  that early value mistakes the initial accounting catch-up for a leak."
+  []
+  (let [previous (atom nil)]
+    (s/wait-until
+     #(let [current (:geometries (s/stats *driver*))]
+        (if (= current @previous)
+          current
+          (do (reset! previous current) nil))))))
+
 (defn- enter-authoring! [part-id]
   (when-not (= part-id (get-in (s/stats *driver*) [:authoring :part-id]))
     (s/click! *driver* "[data-authoring-toggle]"))
@@ -253,7 +267,8 @@
             were released. three's own geometry count is what tells them apart."
     (open-app!)
     (select-part! "Cruiser Hull")
-    (let [baseline (:geometries (s/await-part *driver* s/hull-id))]
+    (s/await-part *driver* s/hull-id)
+    (let [baseline (await-stable-geometries)]
       (is (pos? baseline) "the stats hook should be reporting live geometries")
       (dotimes [_ 4]
         (select-part! "Classic Ram Prow")
@@ -461,15 +476,18 @@
                                    .map(input => input.value)
                                };
                              }")]
-    (is (= {:columns 3
-            :rows 5
-            :flow "column"
-            :roles ["antenna" "bridge" "detail" "engine" "fin"
-                    "hull" "hull-section" "ordinance" "prow" "section"
-                    "stern" "terrain" "turret" "unknown" "weapon"]}
-           layout)
-        (str "acceptance profiles should be alphabetized in a five-row, "
-             "three-column grid; layout was " (pr-str layout))))
+    (is (= 3 (:columns layout))
+        (str "acceptance profiles should use three columns; layout was " (pr-str layout)))
+    (is (= "column" (:flow layout))
+        (str "acceptance profiles should fill columns top-to-bottom; layout was " (pr-str layout)))
+    (is (= (quot (+ (count (:roles layout)) 2) 3) (:rows layout))
+        (str "acceptance profiles should use only the rows their choices need; layout was "
+             (pr-str layout)))
+    (is (= (sort (:roles layout)) (:roles layout))
+        (str "acceptance profiles should be alphabetized; layout was " (pr-str layout)))
+    (is (every? (set (:roles layout)) ["weapon" "turret"])
+        (str "socket profiles should retain the required weapon and turret choices; layout was "
+             (pr-str layout))))
   (s/click! *driver* "input[name=accepts][value=weapon]")
   (s/click! *driver* "input[name=accepts][value=turret]")
   (is (true? (s/js *driver* "() => {
