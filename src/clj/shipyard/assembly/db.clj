@@ -11,14 +11,17 @@
 (defmethod ig/init-key :shipyard.assembly/db [_ _]
   {:state (atom {:draft transforms/empty-draft :sequence 0 :root nil :scene {}})})
 
-(defn- sources! [database library]
-  (let [root (index/root! library)]
-    (into {} (for [part (catalog/browse database {})
-                   :when (and root (:part/renderable part) (:part/source part))
-                   :let [file (fs/file root (:part/id part) (index/name-of (:part/source part)))]
-                   :when (and (fs/regular-file? file)
-                              (index/fresh-source?! (:entry (index/part-state! library (:part/id part))) file))]
-               [(:part/id part) file]))))
+(defn- fresh-sources [library part-ids]
+  (into {}
+        (keep (fn [part-id]
+                (when-let [source (index/fresh-source-file! library part-id)]
+                  [part-id source])))
+        part-ids))
+
+(defn- active-part-ids [draft operation]
+  (cond-> (set (vals (:assignments draft)))
+    (:hull draft) (conj (:hull draft))
+    (:part-id operation) (conj (:part-id operation))))
 
 (defn- prepare! [{:keys [jobs library cache]} sources part-ids retry]
   (into {}
@@ -38,12 +41,16 @@
     (let [{:keys [draft sequence root scene]} @state
           database (catalog/snapshot! catalog)
           current-root (index/root! library)
-          sources (sources! database library)
+          cached-sources (index/source-files! library)
+          active-sources (fresh-sources library (active-part-ids draft operation))
+          available (reduce disj (set (keys cached-sources))
+                            (remove #(contains? active-sources %)
+                                    (active-part-ids draft operation)))
           changed-root? (and (:hull draft) (not= root current-root))
           result (cond
                    (and changed-root? (not (#{:reset :hull} (:op operation))))
                    {:draft draft :error :library-changed :status 409}
-                   operation (transforms/transition database draft operation (set (keys sources)))
+                   operation (transforms/transition database draft operation available)
                    :else {:draft draft :status 200})
           draft (:draft result)
           blocked-root? (= :library-changed (:error result))
@@ -51,6 +58,7 @@
                                 (catch clojure.lang.ExceptionInfo e
                                   {:scene {} :error (:code (ex-data e))}))
           after (:scene placement-result)
+          sources (fresh-sources library (map :part-id (vals after)))
           prepared (prepare! deps sources (map :part-id (vals after)) retry)
           mesh-keys (into {} (keep (fn [[id status]] (when (= :ready (:state status)) [id (:mesh-key status)]))) prepared)
           reset? (or resume? (and operation (not (:error result)) (#{:hull :reset} (:op operation))))
@@ -59,5 +67,5 @@
       (reset! state {:draft draft :sequence (inc sequence)
                      :root (if blocked-root? root current-root) :scene after})
       (merge result {:database database :prepared prepared :event envelope
-                     :available (set (keys sources))}
+                     :available available}
              (when (:error placement-result) {:error (:error placement-result) :status 422})))))

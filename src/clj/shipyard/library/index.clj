@@ -188,6 +188,37 @@
 
 (defn parts! [{:keys [state]}] (:parts @state))
 
+(defn source-files!
+  "The renderable source files discovered by the most recent library scan.
+
+  This is deliberately scan-derived rather than rebuilt by request handlers:
+  walking a full library to rediscover files turns a cheap UI poll into
+  thousands of filesystem calls. Callers that will open a particular file
+  should additionally use `fresh-source-file!` below."
+  [{:keys [state]}]
+  (:source-files @state))
+
+(defn fresh-source-file!
+  "The scanned source for `part-id` when it still matches its indexed stamp.
+
+  Assembly requests check only their active parts this way. A missing or
+  changed file must not be rendered from a stale mesh key, but checking every
+  catalog entry on every poll is unnecessary work."
+  [{:keys [state]} part-id]
+  (let [{:keys [entries source-files]} @state
+        source (get source-files part-id)]
+    (when (try
+            (fresh-source?! (get entries part-id) source)
+            (catch Exception _ false))
+      source)))
+
+(defn- source-files [root parts]
+  (into {}
+        (keep (fn [{:part/keys [id source renderable]}]
+                (when (and renderable source)
+                  [id (fs/file root id (name-of source))])))
+        parts))
+
 (defn- scan-state!
   "Scan `root` and build the component's whole value. Pure enough to be the one
   place that knows what a library's state consists of, so starting and
@@ -197,7 +228,7 @@
     ;; Nothing set. Not a failure - the settings form exists for exactly this
     ;; state, and there is nothing to scan, name a file for, or stamp until it
     ;; is used.
-    {:root nil :parts [] :entries {} :index-file nil}
+    {:root nil :parts [] :entries {} :source-files {} :index-file nil}
     (let [f   (index-file cache-home root)
           dir (fs/file root)]
       (when-not (fs/directory? dir)
@@ -210,7 +241,11 @@
         (log/infof "library: %d parts, %d with a cached mesh key"
                    (count parts) (count (filter :mesh-key (vals idx))))
         (when-not (= idx stored) (save-index! f root idx))
-        {:root (str root) :parts parts :entries idx :index-file f}))))
+        {:root (str root)
+         :parts parts
+         :entries idx
+         :source-files (source-files root parts)
+         :index-file f}))))
 
 (defn set-root!
   "Point the library at `root` and rescan, in place.
