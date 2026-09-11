@@ -176,25 +176,29 @@
 
 (defn- attachment-check [parent socket child]
   (let [plug (first (filter #(= :plug (:mount/kind %)) (:mounts child)))
-        matrix (geom/attachment-matrix geom/identity-matrix socket plug)
-        anchor-error (distance3 (:mount/pos socket)
-                                (geom/transform-point matrix (:mount/pos plug)))
-        axis-dot (math/dot (:mount/axis socket)
-                           (transform-vector matrix (:mount/axis plug)))
-        roll-dot (math/dot (:mount/roll socket)
-                           (transform-vector matrix (:mount/roll plug)))
-        up-dot (math/dot (math/cross (:mount/axis socket) (:mount/roll socket))
-                         (transform-vector matrix
-                                           (math/cross (:mount/axis plug)
-                                                       (:mount/roll plug))))]
-    {:parent-part-id parent :mount-id (:mount/id socket) :child-part-id (:part/id child)
-     :anchor-error-mm (round3 anchor-error) :axis-dot (round3 axis-dot) :roll-dot (round3 roll-dot)
-     :up-dot (round3 up-dot)
-     :status (if (and (<= anchor-error 1e-6)
-                      (<= axis-dot -0.999999)
-                      (<= roll-dot -0.999999)
-                      (>= up-dot 0.999999))
-               :pass :transform-mismatch)}))
+        check {:parent-part-id parent :mount-id (:mount/id socket) :child-part-id (:part/id child)}]
+    (try
+      (let [matrix (geom/attachment-matrix geom/identity-matrix socket plug)
+            anchor-error (distance3 (:mount/pos socket)
+                                    (geom/transform-point matrix (:mount/pos plug)))
+            axis-dot (math/dot (:mount/axis socket)
+                               (transform-vector matrix (:mount/axis plug)))
+            roll-dot (math/dot (:mount/roll socket)
+                               (transform-vector matrix (:mount/roll plug)))
+            up-dot (math/dot (math/cross (:mount/axis socket) (:mount/roll socket))
+                             (transform-vector matrix
+                                               (math/cross (:mount/axis plug)
+                                                           (:mount/roll plug))))]
+        (assoc check
+               :anchor-error-mm (round3 anchor-error) :axis-dot (round3 axis-dot)
+               :roll-dot (round3 roll-dot) :up-dot (round3 up-dot)
+               :status (if (and (<= anchor-error 1e-6)
+                                (<= axis-dot -0.999999)
+                                (<= roll-dot -0.999999)
+                                (>= up-dot 0.999999))
+                         :pass :transform-mismatch)))
+      (catch clojure.lang.ExceptionInfo e
+        (assoc check :status :transform-mismatch :error-code (:code (ex-data e)))))))
 
 (defn- m3-assembly-audit [root scanned-by-id catalog]
   (let [database (db/snapshot! catalog)

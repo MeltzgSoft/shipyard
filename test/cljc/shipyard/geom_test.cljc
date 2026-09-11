@@ -100,13 +100,13 @@
       (is (close? (:mount/pos frame) (geom/transform-point m (:mount/pos plug))))
       (is (close? [0 1 0]
                   (math/subtract (geom/transform-point m [0.0 1.0 0.0]) origin)))))
-  (testing "vertical joins point the child toward the assembled parent's forward direction"
+  (testing "vertical joins point the child toward the assembled parent's mount heading"
     (let [vertical-parent (assoc frame :mount/axis [0.0 1.0 0.0])
           vertical-child (assoc frame :mount/axis [0.0 -1.0 0.0])
           parent (geom/orientation-matrix (orientation/from-euler-degrees 90 0 0))
           child (geom/attachment-matrix parent vertical-parent vertical-child)
           parent-forward (math/normalize
-                          (math/subtract (geom/transform-point parent [0.0 0.0 1.0])
+                          (math/subtract (geom/transform-point parent [0.0 0.0 -1.0])
                                          (geom/transform-point parent [0.0 0.0 0.0])))
           child-forward (math/normalize
                          (math/subtract (geom/transform-point child [0.0 0.0 1.0])

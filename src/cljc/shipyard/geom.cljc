@@ -98,6 +98,11 @@
   (math/subtract (transform-point matrix direction)
                  (transform-point matrix [0.0 0.0 0.0])))
 
+(defn- mount-forward
+  "The in-plane forward direction encoded by a right-handed mount frame."
+  [mount]
+  (math/cross (:mount/axis mount) (:mount/roll mount)))
+
 (defn- horizontal-length [[x _ z]]
   (math/length [x z]))
 
@@ -105,7 +110,7 @@
   (#?(:clj Math/atan2 :cljs js/Math.atan2) x z))
 
 (defn- forward-aligning-yaw
-  "The global-Y turn that points the child toward the parent's forward heading.
+  "The global-Y turn that points the child toward the parent's mount heading.
 
   A forward vector with no horizontal component has no meaningful yaw, so the
   child's configured heading remains unchanged."
@@ -149,8 +154,8 @@
   The child's saved source-to-canonical orientation is retained. Assembly adds
   only the global-Y rotation needed to make the two outward mount normals
   oppose. Vertical mount faces leave yaw unconstrained, so their child instead
-  inherits the assembled parent's forward heading. The child is then translated
-  to the parent mount."
+  inherits the assembled parent's in-plane mount heading. The child is then
+  translated to the parent mount."
   ([parent parent-mount child-mount]
    (attachment-matrix parent parent-mount child-mount orientation/identity-quaternion 0.0))
   ([parent parent-mount child-mount gap]
@@ -166,8 +171,10 @@
                       (transform-direction parent (:mount/axis parent-mount)))
          child-axis (math/normalize
                      (transform-direction child-orientation (:mount/axis child-mount)))
-         parent-forward (math/normalize (transform-direction parent [0.0 0.0 1.0]))
-         child-forward (math/normalize (transform-direction child-orientation [0.0 0.0 1.0]))
+         parent-forward (math/normalize
+                         (transform-direction parent (mount-forward parent-mount)))
+         child-forward (math/normalize
+                        (transform-direction child-orientation (mount-forward child-mount)))
          child-pose (multiply (yaw-matrix (face-aligning-yaw parent-axis child-axis
                                                              parent-forward child-forward))
                               child-orientation)
