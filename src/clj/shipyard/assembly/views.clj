@@ -15,8 +15,9 @@
 (defn- slot-label [path]
   (str/join " / " (map (fn [[mount ordinal]] (str (name mount) " " (inc ordinal))) path)))
 
-(defn- slot-view [database root revision available {:keys [id socket ancestors assigned]}]
-  (let [candidates (filter #(available (:part/id %)) (model/candidates database root socket ancestors))
+(defn- slot-view [database root revision available {:keys [id mount parent-role ancestors assigned]}]
+  (let [candidates (filter #(available (:part/id %))
+                           (model/candidates database root parent-role mount ancestors))
         current (when assigned (catalog/part database assigned))]
     [:article.assembly__slot {:data-slot (pr-str id)}
      [:h3 (slot-label id)]
@@ -29,7 +30,7 @@
           (for [part candidates]
             [:option {:value (:part/id part) :selected (= assigned (:part/id part))} (:part/name part)])]]
         [:button {:type "submit"} (if assigned "Replace" "Assign")]]
-       [:p "No compatible parts. Author a role and one plug on an unsupported part in this bundle and class."])
+       [:p "No compatible parts. A socket accepts a child role; a plug requires one compatible child socket. Candidates also need an unsupported source in this bundle and class."])
      (when assigned
        [:form (form-attrs "/assembly/clear")
         (hidden "revision" revision) (hidden "slot" (pr-str id))
@@ -46,7 +47,7 @@
     [:section#assembly.assembly {:data-draft (pr-str draft)}
      [:header.assembly__header
       [:h2 "Assembly"]
-      [:p "Choose a hull, then fill its authored sockets. This draft lasts until the application stops."]]
+      [:p "Choose a hull, then fill its authored mount faces. This draft lasts until the application stops."]]
      (when error [:p.detail__error {:role "alert"} (get responses/messages error (name error))])
      [:form.assembly__hull (form-attrs "/assembly/hull")
       (hidden "revision" revision)
@@ -56,7 +57,7 @@
           [:option {:value (:part/id part) :selected (= (or selected-hull hull) (:part/id part))}
            (str (:part/name part) " — " (:part/bundle part))])]]
       [:button {:type "submit" :disabled (empty? hulls)} "Start assembly"]]
-     (when (empty? hulls) [:p "No authored renderable hulls. Open a hull in the library and save its role first."])
+     (when (empty? hulls) [:p "No renderable hulls are available in this library."])
      (when hull
        [:div
         [:p [:strong "Hull: "] (or (:part/name root) hull)]
@@ -64,7 +65,7 @@
          [:a {:href (urls/part-url hull) :hx-get (urls/part-url hull) :hx-target "#detail"} "Browse / author hull"]
          [:form (form-attrs "/assembly/reset")
           (hidden "revision" revision) [:button {:type "submit"} "Reset draft"]]]
-        (when (empty? (:slots derived)) [:p "This hull has no usable sockets. Pick and save its socket faces to add slots."])
+        (when (empty? (:slots derived)) [:p "This hull has no usable mount faces. Pick and save its plug or socket faces to add slots."])
         (for [{:keys [code slot part-id]} (:errors derived)]
           [:p.detail__error {:role "status"}
            (str (or (get responses/messages code)

@@ -57,7 +57,7 @@ Shipyard expects **one folder per part**, holding that part's variants:
 ```
 <Bundle>/[<Class>/][weapons/]<Part Name>/
     unsupported.stl              <- what Shipyard displays
-    unsupported-pitted.stl       <- preferred if present (magnet pits cut)
+    unsupported-pitted.stl       <- recorded, but never displayed (magnet pits cut)
     supported.stl                <- print scaffolding; never read
 ```
 
@@ -65,9 +65,10 @@ A folder counts as a part if it holds at least one of those three files. Folders
 `other` are skipped, so slicer projects and README files can live alongside your models
 without confusing anything.
 
-If a part only ships as `supported.stl`, it still appears in the library - greyed out,
-with the reason - rather than silently vanishing. You should be able to see everything
-you own, even the parts Shipyard cannot render.
+If a part lacks `unsupported.stl` - because it only ships as a pitted or supported STL -
+it still appears in the library, greyed out with the reason, rather than silently
+vanishing. You should be able to see everything you own, even parts Shipyard cannot
+render without showing pits or print scaffolding.
 
 ## 3. Browsing your library
 
@@ -106,10 +107,13 @@ You will tell Shipyard how two parts mate by clicking the flat face where they m
 back of a weapon module, or a hull's weapon seat. One click gives Shipyard everything it
 needs - where the part sits, which way it faces, and how it is rotated.
 
-After a part has loaded, choose **Pick mount face**, then click the face in the viewport.
+After a part has loaded, choose **Pick mount face** in the viewport's upper-left corner,
+then click the desired face.
+This is a global mode: it remains active as you move through the library, so you can
+configure mounts on several parts without enabling it again. Choose **Done picking** to
+turn it off.
 Shipyard highlights the selected flat facet and draws its complete orientation frame:
 the outward normal (`+Z`), in-plane twist reference (`+X`), and derived up direction (`+Y`).
-Choose **Done picking** to leave face-picking mode.
 Configured interfaces are always colored in the viewer when the part is loaded; the
 detail panel shows a legend for the plug and socket types present on that part.
 
@@ -119,17 +123,23 @@ When the preview looks right, fill in the mount form:
   and may contain letters, numbers, dashes and underscores.
 - **Kind** is `plug` for the back face of a module and `socket` for a place something
   attaches.
-- **Accepts** is used for sockets. It is a radio choice: normally choose one role. Hulls
+- **Accepts** is used only for sockets. It is a radio choice: normally choose one role. Hulls
   also offer a named **Turret or antenna hardpoint** profile for a shared upper seat;
   weapon sockets offer only **Turret pit**, so antennae cannot be mounted to weapons.
+  A plug has no acceptance profile: its compatibility comes from the part's saved role,
+  such as a weapon plug fitting a hull socket that accepts weapons.
 - **Capacity** is used for sockets whose selected face can hold more than one part.
   Human Navy Cruiser weapon sockets use capacity `2`.
 - **Twist** rotates the `+X` and `+Y` directions around the fixed outward `+Z` normal
   before saving. Most mounts should remain at zero once the part orientation is correct.
-- **Mirror** creates a second socket by reflecting the picked frame across a symmetry
+- **Mirror** creates a linked second socket by reflecting the picked frame across a symmetry
   plane. Human Navy Cruiser hulls use the X plane at offset `0`; change the plane or
-  offset only when the part's centreline is different. When mirror is selected,
+  offset only when the part's centreline is different. The pair is configured, edited,
+  and deleted together. When mirror is selected,
   Shipyard highlights the reflected face in blue before you save.
+
+Assembly turns a child around the mount's yaw (+Y) axis, preserving the adjusted model
+top on either side of a symmetric hull.
 - **Repeat classification** keeps the kind and accepted role ready for the next picked
   face. The next mount is still shown in the form and must be saved deliberately.
 
@@ -146,19 +156,22 @@ replaces the inferred role shown by browsing.
 
 Use **Part orientation** to put the source mesh into Shipyard's canonical pose: `+Y` is
 up, `+Z` is forward, and `+X` is starboard/right. Yaw rotates around Y, pitch around X,
-and roll around Z. A fixed widget in the viewport's upper-right corner shows an asymmetric
-wireframe box and canonical axes: red is `+X`/pitch, green is `+Y`/yaw, and blue is `+Z`/roll.
-Colored circular arrows show positive rotation using the right-hand rule. The widget
+and roll around Z. Those are fixed canonical axes: changing roll does not turn the axes
+that yaw or pitch controls. A fixed widget in the viewport's upper-right
+corner shows an asymmetric wireframe box and canonical axes: red is `+X`/pitch, green is
+`+Y`/yaw, and blue is `+Z`/roll. Colored circular arrows show positive rotation using the
+right-hand rule. The widget
 follows the model's view as you orbit the camera while staying fixed in its corner.
 Changes preview immediately; **Save orientation** stores the pose in the part's sidecar,
 while **Reset** returns it to the source STL orientation. Configure this before picking
 mounts so each new mount derives its up direction consistently.
+An empty angle field means `0` degrees; invalid or non-finite values are rejected.
 
 **Save mount** creates a new id. If that id already exists, Shipyard reports it instead
 of overwriting silently; use **Replace** only when you mean to update that mount. A part
 can have multiple sockets, but only one plug. Existing mounts appear below the loaded
-status with their picked or mirrored origin, plus capacity when it is greater than one,
-and can be deleted deliberately.
+status with their picked or mirrored origin, plus capacity when it is greater than one.
+Mirrored entries are shown as one pair and can be edited or deleted deliberately together.
 
 If the source mesh changes, the picked frame is malformed, a socket has no accepted role,
 the mirror would overwrite an existing id, a centreline face has no mirrored counterpart,

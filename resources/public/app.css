@@ -97,6 +97,22 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
 /* The canvas is an island: hx-preserve keeps the WebGL context alive across
    every swap on the page (SPEC §6.1). Nothing here may hide or replace it. */
 .stage__canvas { width: 100%; height: 100%; display: block; min-height: 0; }
+.stage__authoring-toggle {
+  position: absolute;
+  top: 0.9rem;
+  left: 0.9rem;
+  z-index: 1;
+  padding: 0.35rem 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(30, 38, 48, 0.9);
+  color: var(--ink);
+  font: 600 0.78rem/1 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  cursor: pointer;
+}
+.stage__authoring-toggle:hover:not(:disabled) { border-color: var(--accent); }
+.stage__authoring-toggle[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.stage__authoring-toggle:disabled { color: var(--ink-dim); cursor: not-allowed; }
 .stage__axis-legend {
   position: absolute;
   top: 10.4rem;

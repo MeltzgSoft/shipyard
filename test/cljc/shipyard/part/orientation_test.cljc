@@ -44,10 +44,26 @@
     (is (vector-close? [0.0 1.0 0.0]
                        (orientation/rotate-vector
                         (orientation/from-euler-degrees 0 0 90)
-                        [1.0 0.0 0.0])))))
+                        [1.0 0.0 0.0]))))
+  (testing "keeps roll on the canonical Z axis after yaw"
+    (is (vector-close? [0.0 -1.0 0.0]
+                       (orientation/rotate-vector
+                        (orientation/from-euler-degrees -90 0 90)
+                        [0.0 0.0 1.0])))))
+
+(deftest rotate-around-world-axis-test
+  (testing "each edit uses canonical space even after another axis changed"
+    (let [after-roll (orientation/rotate-around-world-axis
+                      orientation/identity-quaternion :z 90)
+          after-yaw (orientation/rotate-around-world-axis after-roll :y -90)]
+      (is (vector-close?
+           (orientation/quaternion-multiply
+            (orientation/from-euler-degrees -90 0 0)
+            (orientation/from-euler-degrees 0 0 90))
+           after-yaw)))))
 
 (deftest to-euler-degrees-test
-  (testing "round-trips ordinary YXZ angles"
+  (testing "round-trips ordinary ZXY angles"
     (let [angles [45.0 -30.0 20.0]]
       (is (vector-close? angles
                          (orientation/to-euler-degrees
@@ -138,6 +154,13 @@
                                             :z 1.0 [0.0 0.0 3.0])))))
 
 (deftest save-request-test
+  (testing "preserves the browser's world-space quaternion exactly"
+    (is (vector-close? [-0.5 -0.5 0.5 0.5]
+                       (:orientation
+                        (orientation/save-request
+                         {"action" "save"
+                          "part-orientation-mode" "world"
+                          "part-orientation-quaternion" "-0.5,-0.5,0.5,0.5"})))))
   (testing "parses finite absolute Euler angles into a quaternion"
     (is (vector-close? (orientation/from-euler-degrees 90 0 -90)
                        (:orientation
@@ -148,12 +171,15 @@
   (testing "resets to identity"
     (is (= {:orientation orientation/identity-quaternion}
            (orientation/save-request {"action" "reset"}))))
+  (testing "treats blank angle fields as zero"
+    (is (vector-close? (orientation/from-euler-degrees 90 0 0)
+                       (:orientation
+                        (orientation/save-request {"action" "save"
+                                                   "part-yaw-deg" "90"
+                                                   "part-pitch-deg" ""
+                                                   "part-roll-deg" " "})))))
   (testing "rejects missing, non-finite and unknown requests"
     (is (:error (orientation/save-request {"action" "save"})))
-    (is (:error (orientation/save-request {"action" "save"
-                                           "part-yaw-deg" " "
-                                           "part-pitch-deg" "0"
-                                           "part-roll-deg" "0"})))
     (is (:error (orientation/save-request {"action" "save"
                                            "part-yaw-deg" "NaN"
                                            "part-pitch-deg" "0"

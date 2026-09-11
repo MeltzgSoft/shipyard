@@ -23,7 +23,8 @@
                 (= op :clear) (when-not (contains? (:assignments draft) slot) :stale-slot)
                 (not= op :assign) :unknown-operation
                 (nil? target) :stale-slot
-                :else (or (model/candidate-error root (:socket target) (:ancestors target) candidate)
+                :else (or (model/candidate-error root (:parent-role target) (:mount target)
+                                                 (:ancestors target) candidate)
                           (when-not (available part-id) :unavailable-mesh)))
         next-draft (when-not error
                      (case op
@@ -57,12 +58,14 @@
           invalid (set (map :slot errors))]
       (if (model/root-error root)
         {}
-        (reduce (fn [scene {:keys [id parent socket assigned]}]
+        (reduce (fn [scene {:keys [id parent mount parent-role assigned]}]
                   (if (and assigned (not (invalid id)) (contains? scene parent))
                     (let [part (catalog/part database assigned)
-                          plug (first (filter #(= :plug (:mount/kind %)) (:part/mounts part)))]
+                          child-mount (model/attachment-mount parent-role mount part)]
                       (assoc scene id {:part-id assigned
-                                       :matrix (geom/attachment-matrix (get-in scene [parent :matrix]) socket plug)}))
+                                       :matrix (geom/attachment-matrix
+                                                (get-in scene [parent :matrix]) mount child-mount
+                                                (:part/orientation part) 0.0)}))
                     scene))
                 {[] {:part-id (:hull draft) :matrix (geom/orientation-matrix (:part/orientation root))}}
                 slots)))))

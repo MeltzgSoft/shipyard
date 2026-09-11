@@ -9,6 +9,7 @@
                       0.0 0.0 0.0 1.0])
 
 (def tolerance 1e-9)
+(def mount-alignment-tolerance 0.02)
 
 (defn valid-frame?
   "A finite position and perpendicular unit +X/+Z define a right-handed frame."
@@ -83,18 +84,73 @@
                          [[1.0 0.0 0.0] [0.0 1.0 0.0] [0.0 0.0 1.0]])
                  [0.0 0.0 0.0 1.0]))))
 
+(defn- yaw-matrix
+  "A right-handed world-space rotation around the fixed global +Y axis."
+  [radians]
+  (let [cosine (#?(:clj Math/cos :cljs js/Math.cos) radians)
+        sine (#?(:clj Math/sin :cljs js/Math.sin) radians)]
+    [cosine 0.0 (- sine) 0.0
+     0.0 1.0 0.0 0.0
+     sine 0.0 cosine 0.0
+     0.0 0.0 0.0 1.0]))
+
+(defn- transform-direction [matrix direction]
+  (math/subtract (transform-point matrix direction)
+                 (transform-point matrix [0.0 0.0 0.0])))
+
+(defn- horizontal-length [[x _ z]]
+  (math/length [x z]))
+
+(defn- heading [x z]
+  (#?(:clj Math/atan2 :cljs js/Math.atan2) x z))
+
+(defn- face-aligning-yaw
+  "Return the global-Y turn that makes child and parent face normals oppose.
+
+  A near-vertical join has no meaningful yaw, so preserve the configured
+  orientation. A non-vertical pair must have compatible vertical components;
+  otherwise a Y-only assembly rotation cannot make its faces mate."
+  [parent-axis child-axis]
+  (let [[px py pz] parent-axis
+        [cx cy cz] child-axis
+        parent-horizontal (horizontal-length parent-axis)
+        child-horizontal (horizontal-length child-axis)
+        close? #(<= (abs (double %)) mount-alignment-tolerance)]
+    (cond
+      (and (close? parent-horizontal) (close? child-horizontal)) 0.0
+      (or (close? parent-horizontal) (close? child-horizontal)
+          (not (close? (+ py cy)))
+          (not (close? (- parent-horizontal child-horizontal))))
+      (throw (ex-info "The parent and child mount faces cannot align using a global-Y rotation."
+                      {:code :incompatible-mount-orientation
+                       :parent-axis parent-axis :child-axis child-axis}))
+      :else
+      (- (heading (- px) (- pz)) (heading cx cz)))))
+
 (defn attachment-matrix
-  "Child source-to-world matrix. Parent already includes its orientation;
-  child orientation cancels against its canonical plug and must not be reapplied."
-  ([parent socket plug] (attachment-matrix parent socket plug 0.0))
-  ([parent socket plug gap]
+  "Place a child mount on a parent mount while preserving its configured pose.
+
+  The child's saved source-to-canonical orientation is retained. Assembly adds
+  only the global-Y rotation needed to make the two outward mount normals
+  oppose, then translates the child mount to the parent mount."
+  ([parent parent-mount child-mount]
+   (attachment-matrix parent parent-mount child-mount orientation/identity-quaternion 0.0))
+  ([parent parent-mount child-mount gap]
+   (attachment-matrix parent parent-mount child-mount orientation/identity-quaternion gap))
+  ([parent parent-mount child-mount child-orientation gap]
    (when-not (math/finite-number? gap)
      (throw (ex-info "Mount gap must be finite." {:code :invalid-gap})))
-   (let [flip-and-gap [1.0 0.0 0.0 0.0
-                       0.0 -1.0 0.0 0.0
-                       0.0 0.0 -1.0 0.0
-                       0.0 0.0 gap 1.0]]
-     (-> parent
-         (multiply (frame-matrix socket))
-         (multiply flip-and-gap)
-         (multiply (inverse-frame plug))))))
+   (frame-matrix parent-mount)
+   (frame-matrix child-mount)
+   (let [child-orientation (orientation-matrix child-orientation)
+         parent-pos (transform-point parent (:mount/pos parent-mount))
+         parent-axis (math/normalize
+                      (transform-direction parent (:mount/axis parent-mount)))
+         child-axis (math/normalize
+                     (transform-direction child-orientation (:mount/axis child-mount)))
+         child-pose (multiply (yaw-matrix (face-aligning-yaw parent-axis child-axis))
+                              child-orientation)
+         target-pos (math/add parent-pos (math/scale gap parent-axis))
+         child-offset (transform-point child-pose (:mount/pos child-mount))
+         [x y z] (math/subtract target-pos child-offset)]
+     (assoc child-pose 12 x 13 y 14 z))))

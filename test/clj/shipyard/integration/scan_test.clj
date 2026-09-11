@@ -26,6 +26,9 @@
     ;; supported-only: catalogued, not dropped
     (touch (io/file root "Human Navy Fleet Bundle" "Cruiser" "Voss Nova Prow")
            "supported.stl")
+    ;; pitted-only: catalogued, but never previewed as recessed geometry
+    (touch (io/file root "Human Navy Fleet Bundle" "Cruiser" "Pitted Only Prow")
+           "unsupported-pitted.stl")
     ;; ordinance and terrain come from the class segment
     (touch (io/file root "Human Navy Fleet Bundle" "ordinance" "Human Assault Boat Tall")
            "unsupported.stl")
@@ -46,7 +49,7 @@
 (deftest scans-a-fixture-tree
   (let [parts (scan/scan! (fixture-tree))
         m     (by-id parts)]
-    (is (= 8 (count parts)) "eight part folders; nothing under other/")
+    (is (= 9 (count parts)) "nine part folders; nothing under other/")
     (testing "other/ is skipped whole, including part folders nested inside it"
       (is (every? #(not (re-find #"/other/" (:part/id %))) parts)))
 
@@ -79,12 +82,17 @@
     (testing "variant discovery and preference"
       (let [p (m "Human Navy Fleet Bundle/Cruiser/Hull")]
         (is (= #{:supported :unsupported :unsupported-pitted} (:part/variants p)))
-        (is (= :unsupported-pitted (:part/source p)) "pitted wins")))
+        (is (= :unsupported (:part/source p)) "plain unsupported wins")))
 
     (testing "supported-only parts are catalogued and flagged, never dropped"
       (let [p (m "Human Navy Fleet Bundle/Cruiser/Voss Nova Prow")]
         (is (some? p) "the part must still appear in the library")
         (is (= #{:supported} (:part/variants p)))
+        (is (nil? (:part/source p)))
+        (is (false? (:part/renderable p)))))
+    (testing "pitted-only parts are catalogued but never displayed"
+      (let [p (m "Human Navy Fleet Bundle/Cruiser/Pitted Only Prow")]
+        (is (= #{:unsupported-pitted} (:part/variants p)))
         (is (nil? (:part/source p)))
         (is (false? (:part/renderable p)))))))
 

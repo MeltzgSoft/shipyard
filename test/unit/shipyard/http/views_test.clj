@@ -16,6 +16,10 @@
          :variants [:supported]
          :renderable false :role-hint :prow :role-source :inferred})
 
+(def ^:private pitted-only
+  (assoc supported-only :part/id "Human Navy Fleet Bundle/Cruiser/Pitted Prow"
+         :part/name "Pitted Prow" :part/variants [:unsupported-pitted]))
+
 (def ^:private hull-with-mounts
   (assoc hull :part/mounts [{:mount/id :weapon-1
                              :mount/kind :socket
@@ -36,6 +40,7 @@
 (deftest unrenderable-parts-carry-a-reason
   (is (nil? (views/unrenderable-reason hull)))
   (is (str/includes? (views/unrenderable-reason supported-only) "supported STL"))
+  (is (str/includes? (views/unrenderable-reason pitted-only) "unpitted"))
   (testing "a folder with no variant Shipyard can open still gets a reason"
     (is (some? (views/unrenderable-reason (assoc supported-only :part/variants []))))))
 
@@ -92,13 +97,15 @@
     (testing "the canonical frame has a labelled color key"
       (is (str/includes? shell "aria-label=\"Canonical axes\""))
       (doseq [axis ["+X / Pitch" "+Y / Yaw" "+Z / Roll"]]
-        (is (str/includes? shell axis)))))
-  (testing "nothing anywhere aims a swap at it"
-    (doseq [v every-view]
-      (let [html (render v)]
-        (is (not (re-find #"hx-target=\"#viewport\"" html)) html)
-        (is (not (re-find #"hx-select[^=]*=\"#viewport\"" html)) html)
-        (is (not (re-find #"hx-swap-oob[^>]*viewport" html)) html)))))
+        (is (str/includes? shell axis))))
+    (testing "global face picking is a viewport control, disabled until a part loads"
+      (is (re-find #"<button[^>]*class=\"stage__authoring-toggle\"[^>]*data-authoring-toggle=\"true\"[^>]*disabled" shell)))
+    (testing "nothing anywhere aims a swap at it"
+      (doseq [v every-view]
+        (let [html (render v)]
+          (is (not (re-find #"hx-target=\"#viewport\"" html)) html)
+          (is (not (re-find #"hx-select[^=]*=\"#viewport\"" html)) html)
+          (is (not (re-find #"hx-swap-oob[^>]*viewport" html)) html))))))
 
 ;; --- the shell --------------------------------------------------------------
 
@@ -166,7 +173,7 @@
       (is (str/includes? html "Twist reference (+X)"))
       (is (str/includes? html "Up (+Y)"))
       (is (not (str/includes? html "class=\"mount-wizard__field\">Part role")))
-      (is (str/includes? html "Pick mount face"))))
+      (is (str/includes? html "id=\"mount-authoring\""))))
 
   (testing "delete errors keep the part detail rather than replacing it"
     (let [html (render (views/detail-ready hull
@@ -174,7 +181,7 @@
                                            {:error "No mount with that id exists."}))]
       (is (str/includes? html "No mount with that id exists."))
       (is (str/includes? html "Dismiss"))
-      (is (str/includes? html "Pick mount face")))))
+      (is (str/includes? html "id=\"mount-authoring\"")))))
 
 (deftest new-mounts-use-the-acceptance-profile-as-the-id-prefix
   (let [html (render (views/detail-ready hull
@@ -198,7 +205,10 @@
                                                     :kind-hint :plug
                                                     :values {:kind :plug}}}))]
     (is (re-find #"<option selected=\"selected\" value=\"plug\">plug</option>" html))
-    (is (str/includes? html "Geometry suggests plug. You can change this."))))
+    (is (str/includes? html "Geometry suggests plug. You can change this."))
+    (is (re-find #"<fieldset(?=[^>]*class=\"mount-wizard__roles\")(?=[^>]*data-socket-only=\"true\")(?=[^>]*hidden=\"hidden\")[^>]*>"
+                 html)
+        "plug forms hide the socket acceptance profile")))
 
 (deftest mount-acceptance-profiles-are-sorted-in-a-grid
   (let [html (render (views/detail-ready hull

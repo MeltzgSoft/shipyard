@@ -557,6 +557,16 @@
                         coercion/coerce-request-middleware
                         coercion/coerce-response-middleware]}}))
 
+(def ^:private static-handler
+  (ring/create-resource-handler {:path "/"}))
+
+(defn- static-resource [request]
+  ;; Shadow's development output has stable filenames. Revalidating them keeps
+  ;; the browser viewport and this server's shared CLJC math in lockstep after
+  ;; an editor rebuild, instead of previewing with an older quaternion formula.
+  (some-> (static-handler request)
+          (update :headers assoc "cache-control" "no-cache")))
+
 (defn handler
   "Build the ring handler. `deps` carries :library, :catalog, :cache and :jobs,
   and may carry :config-dir - injectable so a test can relocate the library
@@ -565,7 +575,7 @@
   (ring/ring-handler
    (router deps)
    (ring/routes
-    (ring/create-resource-handler {:path "/"})
+    static-resource
     (ring/create-default-handler))))
 
 (defmethod ig/init-key :shipyard.http/routes [_ opts]

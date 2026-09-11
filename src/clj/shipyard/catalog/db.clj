@@ -46,6 +46,9 @@
    :mount/pos        {} :mount/axis {} :mount/roll {}
    :mount/magnet     {}
    :mount/origin     {}
+   :mount/mirror-id  {}
+   :mount/mirror-plane {}
+   :mount/mirror-offset {}
 
    :loadout/id       {:db/unique :db.unique/identity}
    :loadout/hull     {:db/valueType :db.type/ref}

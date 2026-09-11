@@ -188,16 +188,44 @@
            (:axes guide))
         "the guide should label fixed canonical X, Y, and Z directions"))
   (s/js *driver* "() => {
-    const input = document.querySelector('.part-orientation__form input[name=part-yaw-deg]');
-    input.value = '90';
-    input.dispatchEvent(new Event('input', {bubbles: true}));
+    const form = document.querySelector('.part-orientation__form');
+    const setAngle = (name, value) => {
+      form.querySelector(`input[name=${name}]`).value = value;
+    };
+    setAngle('part-yaw-deg', '0');
+    setAngle('part-pitch-deg', '90');
+    setAngle('part-roll-deg', '0');
+    form.querySelector('input[name=part-pitch-deg]').dispatchEvent(new Event('input', {bubbles: true}));
   }")
   (is (s/wait-until
        #(vec-close? (:orientation (s/stats *driver*))
-                    [0.0 0.7071068 0.0 0.7071068]))
-      "yaw should preview on the loaded mesh immediately")
+                    [0.7071068 0.0 0.0 0.7071068]))
+      "pitch should preview as a rotation around X")
+  (s/js *driver* "() => {
+    const form = document.querySelector('.part-orientation__form');
+    form.querySelector('input[name=part-pitch-deg]').value = '0';
+    form.querySelector('input[name=part-pitch-deg]').dispatchEvent(new Event('input', {bubbles: true}));
+  }")
+  (s/js *driver* "() => {
+    const form = document.querySelector('.part-orientation__form');
+    form.querySelector('input[name=part-roll-deg]').value = '90';
+    form.querySelector('input[name=part-roll-deg]').dispatchEvent(new Event('input', {bubbles: true}));
+  }")
+  (is (s/wait-until
+       #(vec-close? (:orientation (s/stats *driver*))
+                    [0.0 0.0 0.7071068 0.7071068]))
+      "roll should preview as a rotation around Z")
+  (s/js *driver* "() => {
+    const form = document.querySelector('.part-orientation__form');
+    form.querySelector('input[name=part-yaw-deg]').value = '-90';
+    form.querySelector('input[name=part-yaw-deg]').dispatchEvent(new Event('input', {bubbles: true}));
+  }")
+  (is (s/wait-until
+       #(vec-close? (:orientation (s/stats *driver*))
+                    [-0.5 -0.5 0.5 0.5]))
+      "yaw stays on the widget's canonical Y axis after roll")
   (let [guide (:orientation-guide (s/stats *driver*))]
-    (is (vec-close? (:orientation guide) [0.0 0.7071068 0.0 0.7071068])
+    (is (vec-close? (:orientation guide) [-0.5 -0.5 0.5 0.5])
         "the corner wireframe should preview the same orientation as the solid mesh"))
   (s/click! *driver* ".part-orientation__actions button[value=save]")
   (is (s/wait-until
@@ -205,14 +233,14 @@
                     [0.0 0.0 0.0 1.0]))
       "saving should make the current pose the wireframe's standard orientation")
   (is (vec-close? (:orientation (s/stats *driver*))
-                  [0.0 0.7071068 0.0 0.7071068])
+                  [-0.5 -0.5 0.5 0.5])
       "saving should leave the solid mesh in its canonical pose")
   (select-part! "Classic Ram Prow")
   (s/await-part *driver* s/prow-id)
   (select-part! "Mount Test Plate")
   (s/await-part *driver* s/mount-plate-id)
   (is (vec-close? (:orientation (s/stats *driver*))
-                  [0.0 0.7071068 0.0 0.7071068])
+                  [-0.5 -0.5 0.5 0.5])
       "loading the part again should restore its sidecar orientation")
   (is (vec-close? (get-in (s/stats *driver*) [:orientation-guide :orientation])
                   [0.0 0.0 0.0 1.0])
@@ -312,11 +340,25 @@
         (is (some? (await-preview revision)))
         (is (<= (:geometries (s/stats *driver*)) baseline)
             "repeated picks should not leak Three.js geometries"))))
-  (testing "part changes clear authoring previews"
+  (testing "part changes clear previews but retain global face picking"
     (select-part! "Cruiser Hull")
     (s/await-part *driver* s/hull-id)
     (is (s/wait-until #(nil? (:preview (s/stats *driver*))))
-        "the old facet preview should not survive a part change")))
+        "the old facet preview should not survive a part change")
+    (is (s/wait-until #(= s/hull-id (get-in (s/stats *driver*) [:authoring :part-id])))
+        "face picking should follow the newly loaded part")
+    (is (= "true"
+           (s/js *driver* "() => document.querySelector('[data-authoring-toggle]').getAttribute('aria-pressed')"))
+        "the viewport control should show that global face picking is active")
+    (is (= true
+           (s/js *driver* "() => {
+             const button = document.querySelector('[data-authoring-toggle]');
+             return button.closest('.stage') !== null && !document.querySelector('#detail [data-authoring-toggle]');
+           }"))
+        "the global mode control belongs to the viewport, not the changing detail panel")
+    (s/click! *driver* "[data-authoring-toggle]")
+    (is (s/wait-until #(nil? (:authoring (s/stats *driver*))))
+        "Done picking should disable the global mode")))
 
 (deftest orbit-controls-work-outside-authoring-mode
   (open-app!)
@@ -370,9 +412,15 @@
   (is (= "plug" (s/js *driver* "() => document.querySelector('.mount-wizard__form select[name=kind]').value")))
   (is (= "Geometry suggests plug. You can change this."
          (s/text *driver* ".mount-wizard__hint")))
+  (is (= true
+         (s/js *driver* "() => document.querySelector('.mount-wizard__roles').hidden"))
+      "plug authoring must not show a socket acceptance profile")
   (s/select-option! *driver* ".mount-wizard__form select[name=kind]" "socket")
   (is (= "socket" (s/js *driver* "() => document.querySelector('.mount-wizard__form select[name=kind]').value"))
       "the geometry default must remain manually editable")
+  (is (s/wait-until
+       #(false? (s/js *driver* "() => document.querySelector('.mount-wizard__roles').hidden")))
+      "socket controls appear immediately after changing Kind")
   (s/js *driver* "() => { const input = document.querySelector('.mount-wizard__form input[name=capacity]'); input.value = '2'; input.dispatchEvent(new Event('input', {bubbles: true})); }")
   (is (s/wait-until #(= 2 (count (get-in (s/stats *driver*) [:preview :split-centers]))))
       "vertical split previews both positions")
@@ -546,6 +594,14 @@
                           (str/includes? (s/text *driver* "#detail") "starboard-1")))
       (str "saving with mirror should persist both sockets; detail was "
            (pr-str (s/text *driver* "#detail"))))
+  (is (s/wait-until
+       #(let [items (get-in (s/stats *driver*) [:interfaces :items])
+              mirrored (filter (fn [item]
+                                 (contains? #{"port-1" "starboard-1"} (:mount-id item)))
+                               items)]
+          (and (= #{"port-1" "starboard-1"} (set (map :mount-id mirrored)))
+               (every? pos? (map :triangles mirrored)))))
+      "both saved faces are colored immediately, including the mirrored face")
   (is (s/wait-until #(= s/mount-plate-id (get-in (s/stats *driver*) [:authoring :part-id])))
       "repeat keeps face-picking active for the next socket")
   (let [{:keys [x y]} (viewport-center)]

@@ -161,6 +161,10 @@
     (is (= "no-store" (get headers "cache-control")))
     (is (str/starts-with? body "<!DOCTYPE html>"))
     (is (re-find #"<canvas[^>]*hx-preserve=\"true\"" body))
+    (testing "viewport assets revalidate after an editor rebuild"
+      (let [{:keys [status headers]} (GET h "/js/viewport.js")]
+        (is (= 200 status))
+        (is (= "no-cache" (get headers "cache-control")))))
     (testing "the filter menus come from the library that was scanned"
       (is (str/includes? body "Human Navy Fleet Bundle"))
       (is (str/includes? body "Cruiser")))))
@@ -378,7 +382,7 @@
       (let [duplicate (mount-post h save-params)]
         (is (= 200 (:status duplicate)))
         (is (str/includes? (:body duplicate) "already exists"))
-        (is (str/includes? (:body duplicate) "Pick mount face"))
+        (is (str/includes? (:body duplicate) "id=\"mount-authoring\""))
         (is (str/includes? (:body duplicate) "Replace"))
         (is (str/includes? (:body duplicate) "Dismiss"))
         (is (str/includes? (:body duplicate) "value=\"port-1\""))
@@ -492,6 +496,8 @@
            (get events "shipyard:mount-repeat")))
     (is (= :picked (get-in by-id [:port-1 :mount/origin])))
     (is (= :mirrored (get-in by-id [:starboard-1 :mount/origin])))
+    (is (= :starboard-1 (get-in by-id [:port-1 :mount/mirror-id])))
+    (is (= :port-1 (get-in by-id [:starboard-1 :mount/mirror-id])))
     (is (= 2 (get-in by-id [:port-1 :mount/capacity])))
     (is (= 2 (get-in by-id [:starboard-1 :mount/capacity])))
     (is (= [-2.0 1.0 0.0] (get-in by-id [:starboard-1 :mount/pos])))
@@ -628,7 +634,7 @@
                                               :action "save"})]
         (is (= 200 (:status invalid)))
         (is (str/includes? (:body invalid) "finite angles"))
-        (is (str/includes? (:body invalid) "Pick mount face"))))))
+        (is (str/includes? (:body invalid) "id=\"mount-authoring\""))))))
 
 (deftest mount-wizard-reports-validation-errors
   (let [sys (system (library-tree))

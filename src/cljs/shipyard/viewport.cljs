@@ -253,6 +253,8 @@
     (dispose-object! object))
   (reset! interfaces nil))
 
+(declare sync-authoring-button!)
+
 (defn clear! [{:keys [^js scene ^js canvas parts authoring current repeat] :as sys}]
   (when-let [assembly (:assembly sys)] (swap! assembly assembly-scene/leave))
   (when-let [generation (:browse-generation sys)] (swap! generation inc))
@@ -266,7 +268,8 @@
   (doseq [[_ ^js obj] @parts]
     (.remove scene obj)
     (dispose-object! obj))
-  (reset! parts {}))
+  (reset! parts {})
+  (sync-authoring-button! sys))
 
 ;; --- mount authoring --------------------------------------------------------
 
@@ -384,29 +387,27 @@
       (.traverse obj (fn [^js child] (when (.-geometry child) (swap! n inc)))))
     @n))
 
-(defn- current-authoring? [{:keys [authoring]} part-id mesh-key]
-  (let [a @authoring]
-    (and (= part-id (:part-id a))
-         (= mesh-key (:mesh-key a)))))
+(defn- sync-authoring-button! [{:keys [authoring-enabled current]}]
+  (when-let [button (when (and (exists? js/document) (.-querySelector js/document))
+                      (.querySelector js/document "[data-authoring-toggle]"))]
+    (let [enabled? @authoring-enabled]
+      (.setAttribute button "aria-pressed" (if enabled? "true" "false"))
+      (set! (.-disabled button) (nil? @current))
+      (set! (.-textContent button) (if enabled? "Done picking" "Pick mount face")))))
 
-(defn- sync-authoring-button! [{:keys [authoring]}]
-  (when-let [button (.querySelector js/document "[data-authoring-toggle]")]
-    (let [active? (current-authoring? {:authoring authoring}
-                                      (.getAttribute button "data-part-id")
-                                      (.getAttribute button "data-mesh-key"))]
-      (.setAttribute button "aria-pressed" (if active? "true" "false"))
-      (set! (.-textContent button) (if active? "Done picking" "Pick mount face")))))
-
-(defn- enter-authoring! [{:keys [^js canvas parts authoring current] :as sys} part-id mesh-key]
+(defn- enter-authoring! [{:keys [^js canvas parts authoring authoring-enabled current] :as sys}
+                         part-id mesh-key]
   (when (and (get @parts part-id)
              (current-part? {:current current} part-id mesh-key))
     (clear-authoring-preview! sys)
+    (reset! authoring-enabled true)
     (reset! authoring {:part-id part-id :mesh-key mesh-key})
     (.add (.-classList canvas) "stage__canvas--authoring")
     (sync-authoring-button! sys)))
 
-(defn- exit-authoring! [{:keys [^js canvas authoring repeat] :as sys}]
+(defn- exit-authoring! [{:keys [^js canvas authoring authoring-enabled repeat] :as sys}]
   (clear-authoring-preview! sys)
+  (reset! authoring-enabled false)
   (reset! authoring nil)
   (reset! repeat nil)
   (.remove (.-classList canvas) "stage__canvas--authoring")
@@ -430,10 +431,10 @@
                  (.closest target "[data-authoring-toggle]"))]
     (when button
       (.preventDefault e)
-      (let [part-id (.getAttribute button "data-part-id")
-            mesh-key (.getAttribute button "data-mesh-key")
-            state (if (current-authoring? sys part-id mesh-key) :exit :enter)]
-        (shipyard-event! "authoring" {:state state :part-id part-id :mesh-key mesh-key})))))
+      (when-let [{:keys [part-id mesh-key]} @(:current sys)]
+        (shipyard-event! "authoring" {:state (if @(:authoring-enabled sys) :exit :enter)
+                                      :part-id part-id
+                                      :mesh-key mesh-key})))))
 
 (defn- facet-geometry [^js obj facet-indices axis mirror]
   (let [source (.-geometry obj)
@@ -492,7 +493,11 @@
 (defn- interface-highlight-object [^js obj mesh-key mount]
   (let [interface-type (interface-colors/type-of mount)
         color (color-int interface-type)
-        facet-indices (saved-facet-indices mesh-key mount)
+        ;; A newly saved mirror has no server-side triangle ids yet. Recover the
+        ;; connected face from its durable frame in the live mesh so it is
+        ;; coloured immediately; the next server read may cache those ids.
+        facet-indices (or (saved-facet-indices mesh-key mount)
+                          (some-> (interface-facet obj mount) :indices seq))
         split-guide (split-guide-object mount color)
         group (three/Group.)]
     (when facet-indices
@@ -744,6 +749,21 @@
 (defn- checked-values [^js form selector]
   (mapv #(.-value %) (array-seq (.querySelectorAll form selector))))
 
+(defn- sync-socket-fields!
+  "Keep socket-only controls in the DOM while a plug is selected so choosing
+  socket does not discard their values, but hide and disable them until then."
+  [^js form]
+  (let [socket? (= "socket" (input-value form "select[name=kind]"))]
+    (doseq [^js field (array-seq (.querySelectorAll form "[data-socket-only]"))]
+      (set! (.-hidden field) (not socket?))
+      (set! (.-disabled field) (not socket?))
+      (doseq [^js control (array-seq (.querySelectorAll field "input, select"))]
+        (set! (.-disabled control) (not socket?))))))
+
+(defn- sync-socket-fields-from-dom! []
+  (when-let [form (.querySelector js/document ".mount-wizard__form")]
+    (sync-socket-fields! form)))
+
 (defn- mirror-id [mount-id] (str mount-id "-mirror"))
 
 (defn- update-mirror-id! [^js form previous-id]
@@ -794,15 +814,24 @@
              @(:preview sys))
     (install-preview! sys (preview-data @(:preview sys)))))
 
-(defn- form-orientation [^js form]
-  (let [yaw (some-> (input-value form "input[name=part-yaw-deg]")
-                    (math/parse-finite-double))
-        pitch (some-> (input-value form "input[name=part-pitch-deg]")
-                      (math/parse-finite-double))
-        roll (some-> (input-value form "input[name=part-roll-deg]")
-                     (math/parse-finite-double))]
-    (when (every? some? [yaw pitch roll])
-      (orientation/from-euler-degrees yaw pitch roll))))
+(def ^:private world-orientation-inputs
+  {"part-yaw-deg" {:axis :y :attribute "data-orientation-yaw"}
+   "part-pitch-deg" {:axis :x :attribute "data-orientation-pitch"}
+   "part-roll-deg" {:axis :z :attribute "data-orientation-roll"}})
+
+(defn- input-angle [^js input]
+  (let [value (.-value input)]
+    (if (= "" value)
+      0.0
+      (math/parse-finite-double value))))
+
+(defn- set-world-orientation! [^js form orientation]
+  (let [quaternion-input (.querySelector form "input[name=part-orientation-quaternion]")
+        mode-input (.querySelector form "input[name=part-orientation-mode]")]
+    (when quaternion-input
+      (set! (.-value quaternion-input) (.join (clj->js orientation) ",")))
+    (when mode-input
+      (set! (.-value mode-input) "world"))))
 
 (defn- orient-part! [{:keys [parts current interfaces preview] :as sys}
                      {:keys [part-id saved?] :as payload}]
@@ -828,10 +857,17 @@
 (defn- refresh-orientation-from-form! [sys ^js e]
   (let [target (.-target e)
         form (when (and target (.-closest target))
-               (.closest target ".part-orientation__form"))]
-    (when-let [part-orientation (and form (form-orientation form))]
-      (orient-part! sys {:part-id (input-value form "input[name=part-id]")
-                         :orientation part-orientation}))))
+               (.closest target ".part-orientation__form"))
+        {:keys [axis attribute]} (get world-orientation-inputs (.-name target))
+        previous (some-> form (.getAttribute attribute) math/parse-finite-double)
+        candidate (when axis (input-angle target))]
+    (when (and form axis (some? previous) (some? candidate))
+      (let [part-orientation (orientation/rotate-around-world-axis
+                              (:orientation @(:current sys)) axis (- candidate previous))]
+        (.setAttribute form attribute (str candidate))
+        (set-world-orientation! form part-orientation)
+        (orient-part! sys {:part-id (input-value form "input[name=part-id]")
+                           :orientation part-orientation})))))
 
 (defn- sync-interfaces-from-dom! [sys]
   (when-let [values (dom-interface-values)]
@@ -866,7 +902,7 @@
 (defn- load-mesh!
   "Fetch, decode, upload, and optionally reframe. Errors are reported and
   swallowed: a part that fails to load must not take the session with it."
-  [{:keys [^js scene ^js canvas authoring current repeat] :as sys}
+  [{:keys [^js scene ^js canvas authoring authoring-enabled current repeat] :as sys}
    {:keys [url part-id mesh-key frame mounts] :as payload}]
   (clear! sys)
   (let [generation @(:browse-generation sys)]
@@ -898,6 +934,8 @@
                      (reset! repeat nil)
                      (.remove (.-classList canvas) "stage__canvas--authoring")
                      (show-only! sys part-id obj)
+                     (when @authoring-enabled
+                       (enter-authoring! sys part-id mesh-key))
                      (install-orientation-guide! sys orientation/identity-quaternion)
                      (draw-interfaces! sys {:part-id part-id
                                             :mesh-key mesh-key
@@ -1130,6 +1168,7 @@
     (.addEventListener body "shipyard:part-orientation" #(orient-part! sys (payload %)))
     (.addEventListener body "htmx:afterSwap" (fn [_]
                                                (sync-authoring-button! sys)
+                                               (sync-socket-fields-from-dom!)
                                                (sync-interfaces-from-dom! sys)
                                                (refresh-preview-after-swap! sys)))
     (.addEventListener body "input" (fn [e]
@@ -1141,7 +1180,9 @@
     (.addEventListener body "change" (fn [e]
                                        (when-let [form (event-form e)]
                                          (when (= "accepts" (.-name (.-target e)))
-                                           (update-mount-id-prefix! form)))
+                                           (update-mount-id-prefix! form))
+                                         (when (= "kind" (.-name (.-target e)))
+                                           (sync-socket-fields! form)))
                                        (refresh-preview-from-form! sys e)
                                        (refresh-orientation-from-form! sys e)))
     (.addEventListener body "submit" #(remember-repeat-from-submit! sys %))
@@ -1174,7 +1215,8 @@
                     :orientation-scene orientation-scene
                     :orientation-camera orientation-camera
                     :controls controls :parts (atom {}) :status (atom {:state :idle})
-                    :current (atom nil) :authoring (atom nil) :preview (atom nil)
+                    :current (atom nil) :authoring (atom nil) :authoring-enabled (atom false)
+                    :preview (atom nil)
                     :assembly (atom assembly-scene/empty-state) :browse-generation (atom 0)
                     :interfaces (atom nil) :orientation-guide (atom nil) :repeat (atom nil)
                     :preview-revision (atom 0)

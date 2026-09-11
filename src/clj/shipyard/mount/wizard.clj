@@ -142,6 +142,15 @@
 (defn suggest-mirror-id [id]
   (keyword (str (name id) "-mirror")))
 
+(defn linked-mount
+  "The other member of a durable mirrored pair, if this mount belongs to one.
+  The relation is bidirectional so either visible side can open the same pair
+  editor or remove the whole pair."
+  [mounts mount]
+  (when mount
+    (or (mount-by-id mounts (:mount/mirror-id mount))
+        (first (filter #(= (:mount/id mount) (:mount/mirror-id %)) mounts)))))
+
 (defn suggest-mount-id
   "The first free, role-prefixed id for a new mount."
   [profile-id mounts]
@@ -187,7 +196,13 @@
    (when-let [frame (mirror-frame
                      (select-keys mount [:mount/pos :mount/axis :mount/roll])
                      plane offset part-orientation)]
-     (cond-> (merge mount frame {:mount/id mirror-id :mount/origin :mirrored})
+     (cond-> (merge (dissoc mount :mount/facet)
+                    frame
+                    {:mount/id mirror-id
+                     :mount/origin :mirrored
+                     :mount/mirror-id (:mount/id mount)
+                     :mount/mirror-plane plane
+                     :mount/mirror-offset offset})
        (:mount/split mount)
        (update-in [:mount/split :bounds]
                   (fn [[[xmin ymin] [xmax ymax]]]
@@ -206,28 +221,41 @@
          kind (parse-keyword (get params "kind") kind-options)
          accepts (accepted-roles params part-role)
          capacity (parse-positive-long (get params "capacity"))
-         twist-deg (or (get params "twist-deg") (get params "roll-deg"))]
+         twist-deg (or (get params "twist-deg") (get params "roll-deg"))
+         mirror? (checked? (get params "mirror"))]
      (cond-> {}
        mount-id (assoc :mount-id (name mount-id))
        kind (assoc :kind kind)
        capacity (assoc :capacity capacity)
        (get params "split-direction") (assoc :split-direction (keyword (get params "split-direction")))
        twist-deg (assoc :twist-deg twist-deg)
-       (seq accepts) (assoc :accepts accepts)))))
+       (seq accepts) (assoc :accepts accepts)
+       mirror? (assoc :mirror? true
+                      :mirror-id (get params "mirror-id")
+                      :mirror-plane (parse-keyword (get params "mirror-plane") symmetry-plane-options)
+                      :mirror-offset (or (math/parse-finite-double (get params "mirror-offset")) 0.0))))))
 
 (defn mount-values [mount]
   (cond-> {:mount-id (some-> (:mount/id mount) (name))
            :kind (:mount/kind mount)}
     (seq (:mount/accepts mount)) (assoc :accepts (set (:mount/accepts mount)))
     (:mount/capacity mount) (assoc :capacity (:mount/capacity mount))
-    (:mount/split mount) (assoc :split-direction (get-in mount [:mount/split :direction]))))
+    (:mount/split mount) (assoc :split-direction (get-in mount [:mount/split :direction]))
+    (:mount/mirror-id mount) (assoc :mirror? true
+                                    :mirror-id (name (:mount/mirror-id mount))
+                                    :mirror-plane (:mount/mirror-plane mount)
+                                    :mirror-offset (:mount/mirror-offset mount))))
 
 (defn mount-frame [mount]
   (normalize-frame (select-keys mount [:mount/pos :mount/axis :mount/roll :mount/split])))
 
 (defn edit-request [params existing-mounts]
   (let [mount-id (parse-mount-id (get params "mount-id"))
-        mount (mount-by-id existing-mounts mount-id)
+        selected (mount-by-id existing-mounts mount-id)
+        linked (linked-mount existing-mounts selected)
+        mount (if (and linked (= :mirrored (:mount/origin selected))) linked selected)
+        partner (when (not= mount selected) selected)
+        partner (or partner linked)
         frame (mount-frame mount)]
     (cond
       (nil? mount-id)
@@ -241,9 +269,14 @@
 
       :else
       {:mount mount
-       :original-mount-id mount-id
+       :original-mount-id (:mount/id mount)
        :frame frame
-       :values (mount-values mount)})))
+       :values (cond-> (mount-values mount)
+                 partner (assoc :mirror? true
+                                :mirror-id (name (:mount/id partner))
+                                :mirror-plane (:mount/mirror-plane mount)
+                                :mirror-offset (:mount/mirror-offset mount)
+                                :mirror-locked? true))})))
 
 (defn part-role-request [params]
   (if-let [role (parse-keyword (get params "part-role") role-options)]
@@ -282,9 +315,10 @@
          update? (= :update action)
          base-id (when update? original-mount-id)
          existing-base (when base-id (mount-by-id existing-mounts base-id))
-         other-mounts (if base-id
-                        (remove #(= base-id (:mount/id %)) existing-mounts)
-                        existing-mounts)
+         existing-mirror (linked-mount existing-mounts existing-base)
+         replaced-ids (cond-> (if base-id #{base-id} #{})
+                        existing-mirror (conj (:mount/id existing-mirror)))
+         other-mounts (remove #(contains? replaced-ids (:mount/id %)) existing-mounts)
          mirror? (checked? (get params "mirror"))
          repeat? (checked? (get params "repeat"))
          mirror-plane (parse-keyword (get params "mirror-plane") symmetry-plane-options)
@@ -309,6 +343,9 @@
 
        (and update? (nil? existing-base))
        {:error "No mount with that id exists."}
+
+       (and update? existing-mirror (not mirror?))
+       {:error "Mirrored sockets are configured as a pair. Delete the pair to remove it."}
 
        (and (= :socket kind) (not (accepted-by-host? part-role accepts)))
        {:error (acceptance-error part-role)}
@@ -346,7 +383,7 @@
        (and mirror? (centerline? frame mirror-plane mirror-offset part-orientation))
        {:error "That socket is on the symmetry plane, so it has no mirrored counterpart."}
 
-       (and mirror? (= :create action) (mount-by-id existing-mounts mirror-id))
+       (and mirror? (mount-by-id other-mounts mirror-id))
        {:error "A mount with the mirrored id already exists. Rename it or use replace deliberately."}
 
        :else
@@ -356,14 +393,18 @@
                             :mount/axis (:mount/axis frame)
                             :mount/roll (:mount/roll frame)
                             :mount/origin (or (:mount/origin existing-base) :picked)}
+                     (:mount/facet existing-base) (assoc :mount/facet (:mount/facet existing-base))
                      (= :socket kind) (assoc :mount/accepts accepts
                                              :mount/capacity capacity)
-                     (and (= :socket kind) (> capacity 1)) (assoc :mount/split split-data))]
+                     (and (= :socket kind) (> capacity 1)) (assoc :mount/split split-data)
+                     mirror? (assoc :mount/mirror-id mirror-id
+                                    :mount/mirror-plane mirror-plane
+                                    :mount/mirror-offset mirror-offset))]
          (if mirror?
            (if-let [mirrored (mirror-mount mount mirror-plane mirror-offset mirror-id
                                            part-orientation)]
-             (let [mounts (-> existing-mounts
-                              (replace-mount-by-id (or base-id mount-id) mount)
+             (let [mounts (-> other-mounts
+                              (replace-mount mount)
                               (replace-mount mirrored))]
                (cond-> {:mount mount
                         :mirrored-mount mirrored
@@ -379,6 +420,11 @@
 
 (defn delete-request [params existing-mounts]
   (if-let [mount-id (parse-mount-id (get params "mount-id"))]
-    {:mount-id mount-id
-     :mounts (delete-mount existing-mounts mount-id)}
+    (let [mount (mount-by-id existing-mounts mount-id)
+          partner (linked-mount existing-mounts mount)
+          ids (cond-> #{mount-id}
+                partner (conj (:mount/id partner)))]
+      {:mount-id mount-id
+       :mount-ids ids
+       :mounts (vec (remove #(contains? ids (:mount/id %)) existing-mounts))})
     {:error "Choose a mount to delete."}))

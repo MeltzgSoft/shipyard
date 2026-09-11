@@ -17,15 +17,21 @@
 (defn unrenderable-reason
   "Why a part cannot be previewed, in the user's terms, or nil when it can.
 
-  Never a reason to hide it. 73 folders in this library ship only
-  `supported.stl`, and a browser that omits what you own is lying to you
-  (§5.3)."
+  Never a reason to hide it. Some folders lack an unpitted `unsupported.stl`;
+  a browser that omits what you own is lying to you (§5.3)."
   [{:part/keys [renderable variants]}]
   (when-not renderable
-    (if (contains? (set variants) :supported)
-      (str "Ships only as a supported STL. The print supports are fused into "
-           "that mesh, so a preview would show the scaffold rather than the part.")
-      "No STL in this folder that Shipyard can open.")))
+    (let [variants (set variants)]
+      (cond
+        (contains? variants :unsupported-pitted)
+        (str "Ships only as a pitted/recessed unsupported STL. Shipyard previews "
+             "only the plain unsupported source so its displayed geometry stays unpitted.")
+
+        (contains? variants :supported)
+        (str "Ships only as a supported STL. The print supports are fused into "
+             "that mesh, so a preview would show the scaffold rather than the part.")
+
+        :else "No STL in this folder that Shipyard can open."))))
 
 (defn- role-label [{:part/keys [role-hint role-source]}]
   [:span.part__role
@@ -89,19 +95,26 @@
 
 (defn- mount-list [{:part/keys [id mounts]}]
   (when (seq mounts)
-    (let [part-id id]
+    (let [part-id id
+          visible-mounts (remove #(and (= :mirrored (:mount/origin %))
+                                       (:mount/mirror-id %))
+                                 mounts)]
       [:section.mounts
        [:h3.mounts__title "Mounts"]
        [:ul.mounts__list
-        (for [{:mount/keys [kind accepts capacity] :as mount} mounts]
+        (for [{:mount/keys [kind accepts capacity] :as mount} visible-mounts]
           [:li.mounts__row
            [:span.mounts__summary
             [:code (name (:mount/id mount))] " " (name kind)
+            (when-let [mirror-id (:mount/mirror-id mount)]
+              [:span.mounts__accepts " ↔ " [:code (name mirror-id)]])
             (when (seq accepts)
               [:span.mounts__accepts " -> " (str/join ", " (map name accepts))])
             (when (and (= :socket kind) (> (long (or capacity 1)) 1))
               [:span.mounts__accepts " x" capacity])
-            [:span.mounts__accepts " / " (name (or (:mount/origin mount) :picked))]]
+            [:span.mounts__accepts " / " (if (:mount/mirror-id mount)
+                                           "mirrored pair"
+                                           (name (or (:mount/origin mount) :picked)))]]
            [:div.mounts__actions
             [:form.mounts__action
              {:hx-post   "/mounts/edit"
@@ -109,14 +122,14 @@
               :hx-swap   "innerHTML"}
              [:input {:type "hidden" :name "part-id" :value part-id}]
              [:input {:type "hidden" :name "mount-id" :value (name (:mount/id mount))}]
-             [:button {:type "submit"} "Edit"]]
+             [:button {:type "submit"} (if (:mount/mirror-id mount) "Edit pair" "Edit")]]
             [:form.mounts__action
              {:hx-post   "/mounts/delete"
               :hx-target "#detail"
               :hx-swap   "innerHTML"}
              [:input {:type "hidden" :name "part-id" :value part-id}]
              [:input {:type "hidden" :name "mount-id" :value (name (:mount/id mount))}]
-             [:button {:type "submit"} "Delete"]]]])]])))
+             [:button {:type "submit"} (if (:mount/mirror-id mount) "Delete pair" "Delete")]]]])]])))
 
 (defn- interface-legend [{:part/keys [mounts]}]
   (when (seq mounts)
@@ -173,14 +186,22 @@
             :step "1"}]])
 
 (defn- part-orientation [{:part/keys [id] :as part} error]
-  (let [[yaw pitch roll] (orientation/to-euler-degrees (:part/orientation part))]
+  (let [[yaw pitch roll] (orientation/to-euler-degrees (:part/orientation part))
+        [x y z w] (orientation/orientation-of (:part/orientation part))]
     [:section.part-orientation
      [:h3.part-orientation__title "Part orientation"]
      [:form.part-orientation__form
       {:hx-post   "/parts/orientation"
        :hx-target "#detail"
-       :hx-swap   "innerHTML"}
+       :hx-swap   "innerHTML"
+       :data-orientation-yaw yaw
+       :data-orientation-pitch pitch
+       :data-orientation-roll roll}
       [:input {:type "hidden" :name "part-id" :value id}]
+      [:input {:type "hidden" :name "part-orientation-mode" :value "euler"}]
+      [:input {:type "hidden"
+               :name "part-orientation-quaternion"
+               :value (str x "," y "," z "," w)}]
       (orientation-field "Yaw (Y)" "part-yaw-deg" yaw)
       (orientation-field "Pitch (X)" "part-pitch-deg" pitch)
       (orientation-field "Roll (Z)" "part-roll-deg" roll)
@@ -203,8 +224,7 @@
     [:div.detail__summary
      (detail-head part)
      [:p.detail__status "Loaded."]
-     (when (and (= :manual (:part/role-source part))
-                (#{:hull :hull-section} (:part/role-hint part)))
+     (when (#{:hull :hull-section} (:part/role-hint part))
        [:a {:href (str "/assembly?part-id=" (urls/encode-id (:part/id part)))
             :hx-get (str "/assembly?part-id=" (urls/encode-id (:part/id part)))
             :hx-target "#detail"} "Assemble this hull"])
@@ -218,13 +238,6 @@
               :data-interface-mounts (pr-str (catalog-part/durable-mounts
                                               (:part/mounts part)))}
        repeat-values (assoc :data-repeat-values (pr-str repeat-values)))
-     [:button.mount-wizard__toggle
-      {:type                  "button"
-       :data-authoring-toggle "true"
-       :data-part-id          (:part/id part)
-       :data-mesh-key         mesh-key
-       :aria-pressed          "false"}
-      "Pick mount face"]
      [:div#facet-preview
       (cond
         preview (facet-preview preview)
@@ -262,6 +275,10 @@
 (defn- default-kind [part]
   (if (#{:hull :hull-section} (:part/role-hint part)) :socket :plug))
 
+(defn- socket-only-attrs [kind]
+  (cond-> {:data-socket-only "true"}
+    (= :plug kind) (assoc :hidden true :disabled true)))
+
 (defn- mount-form [{:keys [part frame mesh-key facet-indices kind-hint mode original-mount-id values]}]
   (let [kind (or (:kind values) (default-kind part))
         accepts (or (:accepts values) #{:weapon})
@@ -273,7 +290,12 @@
         capacity (or (:capacity values) 1)
         mount-id (or (:mount-id values)
                      (some-> (wizard/suggest-mount-id selected-profile (:part/mounts part)) (name)))
-        mirror-id (some-> mount-id (keyword) (wizard/suggest-mirror-id) (name))
+        mirror? (:mirror? values)
+        mirror-locked? (:mirror-locked? values)
+        mirror-id (or (:mirror-id values)
+                      (some-> mount-id (keyword) (wizard/suggest-mirror-id) (name)))
+        mirror-plane (or (:mirror-plane values) :x)
+        mirror-offset (or (:mirror-offset values) 0)
         edit? (= :edit mode)]
     [:form.mount-wizard__form
      {:hx-post   "/mounts"
@@ -298,7 +320,7 @@
       (when kind-hint
         [:span.mount-wizard__hint
          "Geometry suggests " (name kind-hint) ". You can change this."])]
-     [:fieldset.mount-wizard__roles
+     [:fieldset.mount-wizard__roles (socket-only-attrs kind)
       [:legend "Accepts"]
       [:div.mount-wizard__role-options
        {:style (str "--mount-role-rows-3:" (quot (+ (count profiles) 2) 3)
@@ -308,11 +330,11 @@
           [:input {:type "radio" :name "accepts" :value (name id)
                    :checked (= selected-profile id)}]
           label])]]
-     [:label.mount-wizard__field "Capacity"
+     [:label.mount-wizard__field (socket-only-attrs kind) "Capacity"
       [:input {:type "number" :name "capacity" :value capacity
-               :min "1" :max "256" :step "1"}]]
-     [:label.mount-wizard__field "Split direction"
-      [:select {:name "split-direction"}
+               :min "1" :max "256" :step "1" :disabled (= :plug kind)}]]
+     [:label.mount-wizard__field (socket-only-attrs kind) "Split direction"
+      [:select {:name "split-direction" :disabled (= :plug kind)}
        [:option {:value "vertical" :selected (not= :horizontal (:split-direction values))}
         "Vertical — equal widths"]
        [:option {:value "horizontal" :selected (= :horizontal (:split-direction values))}
@@ -320,17 +342,20 @@
      [:label.mount-wizard__field "Twist"
       [:input {:type "number" :name "twist-deg" :value (or (:twist-deg values) "0")
                :step "1"}]]
-     (when-not edit?
-       [:fieldset.mount-wizard__mirror
+     (when (or (not edit?) mirror?)
+       [:fieldset.mount-wizard__mirror (socket-only-attrs kind)
         [:legend "Mirror"]
-        [:label.mount-wizard__check
-         [:input {:type "checkbox" :name "mirror" :value "true"}]
-         "Mirror socket"]
+        (if mirror-locked?
+          [[:input {:type "hidden" :name "mirror" :value "true"}]
+           [:p.mount-wizard__hint "This mirrored pair is configured together."]]
+          [:label.mount-wizard__check
+           [:input {:type "checkbox" :name "mirror" :value "true" :checked mirror?}]
+           "Mirror socket"])
         [:label.mount-wizard__field "Plane"
          [:select {:name "mirror-plane"}
-          (map (partial plane-choice :x) wizard/symmetry-plane-options)]]
+          (map (partial plane-choice mirror-plane) wizard/symmetry-plane-options)]]
         [:label.mount-wizard__field "Offset"
-         [:input {:type "number" :name "mirror-offset" :value "0" :step "0.01"}]]
+         [:input {:type "number" :name "mirror-offset" :value mirror-offset :step "0.01"}]]
         [:label.mount-wizard__field "Mirrored id"
          [:input {:type "text" :name "mirror-id" :value mirror-id
                   :data-mirror-source mount-id
@@ -478,6 +503,9 @@
        [:p.muted "Loading the library…"]]]
      [:section.stage
       [:canvas#viewport.stage__canvas {:hx-preserve "true"}]
+      [:button.stage__authoring-toggle
+       {:type "button" :data-authoring-toggle "true" :aria-pressed "false" :disabled true}
+       "Pick mount face"]
       [:div.stage__axis-legend {:aria-label "Canonical axes"}
        [:span.stage__axis.stage__axis--x [:i {:aria-hidden "true"}] "+X / Pitch"]
        [:span.stage__axis.stage__axis--y [:i {:aria-hidden "true"}] "+Y / Yaw"]

@@ -7,10 +7,10 @@
             [clojure.string :as str]))
 
 (def source-files
-  "Variant filenames, in preference order. `supported.stl` is print scaffolding
+  "Recognised variant filenames. `supported.stl` is print scaffolding
   and is never read - it is recorded only so the UI can explain why a part it
   can see cannot be displayed."
-  ["unsupported-pitted.stl" "unsupported.stl" "supported.stl"])
+  ["unsupported.stl" "unsupported-pitted.stl" "supported.stl"])
 
 (def variant-key
   {"unsupported-pitted.stl" :unsupported-pitted
@@ -18,8 +18,9 @@
    "supported.stl"          :supported})
 
 (def renderable
-  "Variants the mesh pipeline will actually open, in preference order."
-  [:unsupported-pitted :unsupported])
+  "The sole source variant the mesh pipeline will open. Pitted geometry is
+  retained in `:part/variants` for inventory, never used as a display mesh."
+  [:unsupported])
 
 ;; --- role inference (§5.2) --------------------------------------------------
 ;;
@@ -181,9 +182,9 @@
                   source-files)))
 
 (defn source-variant
-  "The variant the mesh pipeline should open, or nil when the part ships only as
-  `supported.stl` (73 such folders). Those are catalogued and flagged, never
-  dropped - a library browser that hides what you own is lying to you."
+  "The unpitted unsupported variant the mesh pipeline should open, or nil when
+  it is absent. Pitted-only and supported-only folders are catalogued and
+  flagged, never dropped - a library browser that hides what you own is lying."
   [vs]
   (some vs renderable))
 

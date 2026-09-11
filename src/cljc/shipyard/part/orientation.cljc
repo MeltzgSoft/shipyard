@@ -30,38 +30,55 @@
     [(* x sine) (* y sine) (* z sine) cosine]))
 
 (defn from-euler-degrees
-  "Build a quaternion using Three.js-compatible YXZ order: yaw around +Y,
-  pitch around +X, then roll around +Z."
+  "Build a quaternion from extrinsic rotations around the fixed canonical
+  axes: yaw around +Y, pitch around +X, then roll around +Z."
   [yaw pitch roll]
   (normalize-quaternion
    (quaternion-multiply
-    (quaternion-multiply (axis-quaternion [0.0 1.0 0.0] yaw)
+    (quaternion-multiply (axis-quaternion [0.0 0.0 1.0] roll)
                          (axis-quaternion [1.0 0.0 0.0] pitch))
-    (axis-quaternion [0.0 0.0 1.0] roll))))
+    (axis-quaternion [0.0 1.0 0.0] yaw))))
+
+(defn rotate-around-world-axis
+  "Apply `degrees` around a fixed canonical/world `axis` to `orientation`.
+
+  The delta is deliberately on the left of the accumulated part orientation:
+  it therefore acts in scene space, not in the part's already-rotated local
+  frame."
+  [orientation axis degrees]
+  (let [axis-vector (case axis
+                      :x [1.0 0.0 0.0]
+                      :y [0.0 1.0 0.0]
+                      :z [0.0 0.0 1.0]
+                      nil)]
+    (when axis-vector
+      (orientation-of
+       (quaternion-multiply (axis-quaternion axis-vector degrees)
+                            (orientation-of orientation))))))
 
 (defn- clamp [x low high]
   (max low (min high x)))
 
 (defn to-euler-degrees
-  "Return `[yaw pitch roll]` for a normalized quaternion in YXZ order."
+  "Return `[yaw pitch roll]` for a normalized quaternion in ZXY order."
   [orientation]
   (let [[x y z w] (orientation-of orientation)
         xx (* x x)
         yy (* y y)
         zz (* z z)
         m11 (- 1.0 (* 2.0 (+ yy zz)))
-        m13 (* 2.0 (+ (* x z) (* w y)))
+        m12 (* 2.0 (- (* x y) (* w z)))
         m21 (* 2.0 (+ (* x y) (* w z)))
         m22 (- 1.0 (* 2.0 (+ xx zz)))
-        m23 (* 2.0 (- (* y z) (* w x)))
         m31 (* 2.0 (- (* x z) (* w y)))
+        m32 (* 2.0 (+ (* y z) (* w x)))
         m33 (- 1.0 (* 2.0 (+ xx yy)))
-        pitch (#?(:clj Math/asin :cljs js/Math.asin) (- (clamp m23 -1.0 1.0)))
-        [yaw roll] (if (< (#?(:clj Math/abs :cljs js/Math.abs) m23) 0.9999999)
-                     [(#?(:clj Math/atan2 :cljs js/Math.atan2) m13 m33)
-                      (#?(:clj Math/atan2 :cljs js/Math.atan2) m21 m22)]
-                     [(#?(:clj Math/atan2 :cljs js/Math.atan2) (- m31) m11)
-                      0.0])
+        pitch (#?(:clj Math/asin :cljs js/Math.asin) (clamp m32 -1.0 1.0))
+        [yaw roll] (if (< (#?(:clj Math/abs :cljs js/Math.abs) m32) 0.9999999)
+                     [(#?(:clj Math/atan2 :cljs js/Math.atan2) (- m31) m33)
+                      (#?(:clj Math/atan2 :cljs js/Math.atan2) (- m12) m22)]
+                     [0.0
+                      (#?(:clj Math/atan2 :cljs js/Math.atan2) m21 m11)])
         degrees #(* % (/ 180.0 #?(:clj Math/PI :cljs js/Math.PI)))]
     (mapv degrees [yaw pitch roll])))
 
@@ -149,20 +166,33 @@
     (- (math/dot normal point) offset)))
 
 (defn- parse-degrees [value]
-  (when-not (str/blank? (str value))
-    (when-let [number (math/parse-finite-double value)]
-      (when (<= #?(:clj  (Math/abs (double number))
-                   :cljs (js/Math.abs number))
-                max-degrees)
-        number))))
+  (cond
+    (nil? value) nil
+    (str/blank? (str value)) 0.0
+    :else (when-let [number (math/parse-finite-double value)]
+            (when (<= #?(:clj  (Math/abs (double number))
+                         :cljs (js/Math.abs number))
+                      max-degrees)
+              number))))
+
+(defn- parse-quaternion [value]
+  (when (string? value)
+    (let [components (mapv math/parse-finite-double (str/split value #","))]
+      (when (and (= 4 (count components))
+                 (every? some? components))
+        (normalize-quaternion components)))))
 
 (defn save-request [params]
   (case (get params "action")
     "reset" {:orientation identity-quaternion}
-    "save" (let [yaw (parse-degrees (get params "part-yaw-deg"))
-                 pitch (parse-degrees (get params "part-pitch-deg"))
-                 roll (parse-degrees (get params "part-roll-deg"))]
-             (if (every? some? [yaw pitch roll])
-               {:orientation (from-euler-degrees yaw pitch roll)}
-               {:error "Yaw, pitch and roll must be finite angles."}))
+    "save" (if (= "world" (get params "part-orientation-mode"))
+             (if-let [quaternion (parse-quaternion (get params "part-orientation-quaternion"))]
+               {:orientation quaternion}
+               {:error "The world-space orientation must be a finite quaternion."})
+             (let [yaw (parse-degrees (get params "part-yaw-deg"))
+                   pitch (parse-degrees (get params "part-pitch-deg"))
+                   roll (parse-degrees (get params "part-roll-deg"))]
+               (if (every? some? [yaw pitch roll])
+                 {:orientation (from-euler-degrees yaw pitch roll)}
+                 {:error "Yaw, pitch and roll must be finite angles."})))
     {:error "Choose whether to save or reset the part orientation."}))

@@ -118,6 +118,20 @@
     (is (:error (wizard/edit-request {"mount-id" "broken"}
                                      [{:mount/id :broken :mount/kind :socket}])))))
 
+(deftest mirrored-pair-edit-request-test
+  (let [base (assoc socket
+                    :mount/mirror-id :starboard-1
+                    :mount/mirror-plane :x
+                    :mount/mirror-offset 0.0)
+        mirrored (wizard/mirror-mount base :x 0.0 :starboard-1)
+        result (wizard/edit-request {"mount-id" "starboard-1"} [base mirrored])]
+    (testing "opening either side edits the picked member and keeps the pair linked"
+      (is (= base (:mount result)))
+      (is (= :port-1 (:original-mount-id result)))
+      (is (= "starboard-1" (get-in result [:values :mirror-id])))
+      (is (= :x (get-in result [:values :mirror-plane])))
+      (is (true? (get-in result [:values :mirror-locked?]))))))
+
 (deftest save-request-test
   (testing "creates a durable socket without facet indices"
     (let [{:keys [mount mounts]} (wizard/save-request (params {}) [])]
@@ -268,6 +282,8 @@
                                [])]
       (is (= :picked (:mount/origin mount)))
       (is (= :mirrored (:mount/origin mirrored-mount)))
+      (is (= :starboard-1 (:mount/mirror-id mount)))
+      (is (= :port-1 (:mount/mirror-id mirrored-mount)))
       (is (= [:port-1 :starboard-1] (mapv :mount/id mounts)))
       (is (= [1 1] (mapv :mount/capacity mounts)))
       (is (= {:mount-id "port-2"
@@ -297,8 +313,41 @@
                                               "mirror-id" "starboard-1"})
                                      [(assoc socket :mount/id :starboard-1)])))))
 
+(deftest mirrored-pair-save-request-test
+  (let [base (assoc socket
+                    :mount/mirror-id :starboard-1
+                    :mount/mirror-plane :x
+                    :mount/mirror-offset 0.0
+                    :mount/facet {:mesh-key "plate" :indices [0 1]})
+        mirrored (wizard/mirror-mount base :x 0.0 :starboard-1)
+        {:keys [mount mirrored-mount mounts]}
+        (wizard/save-request
+         (params {"mount-id" "port-2"
+                  "original-mount-id" "port-1"
+                  "mirror" "true"
+                  "mirror-plane" "x"
+                  "mirror-offset" "0"
+                  "mirror-id" "starboard-2"
+                  "action" "update"})
+         [base mirrored])]
+    (testing "updating either member replaces both and retains the picked face cache"
+      (is (= :port-2 (:mount/id mount)))
+      (is (= :starboard-2 (:mount/id mirrored-mount)))
+      (is (= {:mesh-key "plate" :indices [0 1]} (:mount/facet mount)))
+      (is (nil? (:mount/facet mirrored-mount)))
+      (is (= #{:port-2 :starboard-2} (set (map :mount/id mounts))))
+      (is (= :starboard-2 (:mount/mirror-id mount)))
+      (is (= :port-2 (:mount/mirror-id mirrored-mount))))))
+
 (deftest delete-request-test
   (testing "removes the named mount"
     (is (= [] (:mounts (wizard/delete-request {"mount-id" "port-1"} [socket])))))
+  (testing "removes both members of a mirrored pair"
+    (let [base (assoc socket
+                      :mount/mirror-id :starboard-1
+                      :mount/mirror-plane :x
+                      :mount/mirror-offset 0.0)
+          mirrored (wizard/mirror-mount base :x 0.0 :starboard-1)]
+      (is (= [] (:mounts (wizard/delete-request {"mount-id" "starboard-1"} [base mirrored]))))))
   (testing "validates the id"
     (is (:error (wizard/delete-request {"mount-id" ""} [socket])))))

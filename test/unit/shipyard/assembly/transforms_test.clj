@@ -1,7 +1,9 @@
 (ns shipyard.assembly.transforms-test
   (:require [clojure.test :refer [deftest is testing]]
+            [datascript.core :as d]
             [shipyard.assembly.model-test :as fixture]
             [shipyard.assembly.transforms :as transforms]
+            [shipyard.catalog.db :as catalog]
             [shipyard.geom :as geom]))
 
 (def available #{"hull" "weapon" "turret"})
@@ -48,6 +50,20 @@
       (is (= [2.0 0.0 0.0] (geom/transform-point (get-in result [[[:weapon 1]] :matrix]) [0 0 0])))))
   (testing "missing root has no renderable scene"
     (is (= {} (transforms/placements fixture/database {:hull "gone" :assignments {}})))))
+
+(deftest plug-to-socket-placement-test
+  (let [hull-plug (assoc fixture/plug :mount/id :prow :mount/pos [3.0 2.0 1.0])
+        prow-socket (assoc fixture/socket :mount/id :hull :mount/accepts [:hull]
+                           :mount/pos [1.0 0.0 0.0])
+        hull (assoc fixture/hull :part/mounts [hull-plug])
+        prow (assoc fixture/weapon :part/id "prow" :part/role-hint :prow :part/mounts [prow-socket])
+        database (d/db-with (d/empty-db catalog/schema) [hull prow])
+        placement (get-in (transforms/placements database {:hull "hull"
+                                                           :assignments {[[:prow 0]] "prow"}})
+                          [[[:prow 0]] :matrix])]
+    (testing "the selected prow socket lands on the hull plug"
+      (is (= [3.0 2.0 1.0]
+             (geom/transform-point placement (:mount/pos prow-socket)))))))
 
 (deftest commands-test
   (testing "removals precede ready sets and cold replacements remove old geometry"

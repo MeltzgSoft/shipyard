@@ -572,9 +572,8 @@ scan. Until that analysis exists, escort-class parts remain renderable with
 
 ```clojure
 (defn source-stl [part-dir]
-  (or (existing part-dir "unsupported-pitted.stl")
-      (existing part-dir "unsupported.stl")))
-;; supported.stl is never read - it carries print scaffolding
+  (existing part-dir "unsupported.stl"))
+;; pitted and supported variants are catalogued but never displayed
 ```
 
 A part with only `supported.stl` (73 exist) is catalogued with `:part/variants
@@ -1306,7 +1305,7 @@ greebled plate); STL parsing is tested against a `byte[]`, never a path.
 | Wire roundtrip | encode -> decode -> geometry equal within float tolerance |
 | Role inference | Table-driven over real folder names taken from the library (§5.2) |
 | Mount frame | Facet -> position/axis/roll; bbox midpoint not vertex average; longest hull **edge** not diagonal |
-| Assembly transform | `M = S . Tz(g) . Rx(pi) . P^-1` places a known plug on a known socket |
+| Assembly transform | `M = S . Tz(g) . Ry(pi) . P^-1` places a known plug on a known socket |
 | Symmetry mirroring | Mirrored mount is the exact reflection; roll handedness preserved |
 | Settings validation | Path normalization and validation messages from inspected facts |
 | Scan index refresh | Unchanged sources retain derived keys; changed sources drop them |
@@ -1327,7 +1326,7 @@ user's library.
 | Subject | Asserts |
 |---|---|
 | Scanner | Fixture tree yields expected ids, roles, variants; `other/` skipped; supported-only flagged not dropped |
-| Variant selection | `unsupported-pitted.stl` preferred; `supported.stl` never read (§5.3) |
+| Variant selection | Plain `unsupported.stl` only; pitted and supported variants never display (§5.3) |
 | Cache lifecycle | Miss -> generate -> hit; touching an STL invalidates its `mesh-key`; LRU evicts at the cap |
 | Atomic writes | A concurrent reader never observes a partial `.symesh` |
 | Concurrent preprocess | Two requests for one part produce one job, not two (§6.5) |
@@ -1660,8 +1659,9 @@ Reconstructing +Y as `axis'' × roll''` preserves a right-handed stored frame; a
 reflection matrix to all three basis vectors would instead create a left-handed frame. A
 position within the facet plane epsilon of the symmetry plane is a centreline mount and
 is not offered as a duplicate. Plane choice, offset, and suggested port/starboard ids
-remain wizard state; only an accepted mirrored mount is durable, with
-`:mount/origin :mirrored`.
+remain wizard state; only an accepted mirrored mount is durable. Both members carry
+reciprocal `:mount/mirror-id` values, with the generated member marked
+`:mount/origin :mirrored`, so edits and deletion remain pair operations.
 
 ### 12.5 HTTP and htmx contract
 
@@ -1771,7 +1771,7 @@ degenerate cases in memory; they do not need more committed binary fixtures.
 
 M2 may derive, preview, mirror, classify and persist frames. It may not place one part on
 another, evaluate `:mount/accepts`, choose compatible components, create loadout slots or
-apply `M = S . Tz(g) . Rx(pi) . P^-1`. Those are M3 behaviours even though the shared
+apply `M = S . Tz(g) . Ry(pi) . P^-1`. Those are M3 behaviours even though the shared
 frame representation and `geom.cljc` make them technically possible earlier. The M2
 end-to-end proof stops after mounts reload from their sidecars and render plausibly on the
 individual parts that own them.
@@ -1851,7 +1851,7 @@ All shared math is pure CLJC in `shipyard.geom`, reusing `shipyard.math` and
 acting on column vectors, with translation at indices 12–14. Validate finite unit
 axis/roll and perpendicularity to tolerance `1e-9`, deriving right-handed +Y by cross
 product. Gaps default to zero. A child source mesh matrix is
-`Wparent · Ssource · Tz(g) · Rx(π) · inverse(Psource)`; the root's matrix is its
+`Wparent · Ssource · Tz(g) · Ry(π) · inverse(Psource)`; the root's matrix is its
 source-to-canonical rotation. Equivalently, converting child mesh and plug by `Qchild`
 gives `inverse(Qchild · Psource) · Qchild = inverse(Psource)`. Apply no additional
 child quaternion in the viewport. Nested matrices are already composed server-side.

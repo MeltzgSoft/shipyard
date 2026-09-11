@@ -146,9 +146,10 @@
     (is (keyword? (role n)) (str "threw or returned non-keyword for " (pr-str n)))))
 
 (deftest source-variant-preference
-  (testing "pitted beats plain; supported is never a source"
-    (is (= :unsupported-pitted
+  (testing "plain unsupported beats pitted; supported and pitted-only are never sources"
+    (is (= :unsupported
            (scan/source-variant #{:supported :unsupported :unsupported-pitted})))
     (is (= :unsupported (scan/source-variant #{:supported :unsupported})))
+    (is (nil? (scan/source-variant #{:unsupported-pitted})))
     (is (nil? (scan/source-variant #{:supported}))
-        "supported-only parts have no renderable source, but are still catalogued")))
+        "unsupported sources are required for a displayed part")))
