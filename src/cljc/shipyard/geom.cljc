@@ -104,20 +104,36 @@
 (defn- heading [x z]
   (#?(:clj Math/atan2 :cljs js/Math.atan2) x z))
 
+(defn- forward-aligning-yaw
+  "The global-Y turn that points the child toward the parent's forward heading.
+
+  A forward vector with no horizontal component has no meaningful yaw, so the
+  child's configured heading remains unchanged."
+  [parent-forward child-forward]
+  (let [[px _ pz] parent-forward
+        [cx _ cz] child-forward
+        parent-horizontal (horizontal-length parent-forward)
+        child-horizontal (horizontal-length child-forward)]
+    (if (or (<= parent-horizontal mount-alignment-tolerance)
+            (<= child-horizontal mount-alignment-tolerance))
+      0.0
+      (- (heading px pz) (heading cx cz)))))
+
 (defn- face-aligning-yaw
   "Return the global-Y turn that makes child and parent face normals oppose.
 
   A near-vertical join has no meaningful yaw, so preserve the configured
   orientation. A non-vertical pair must have compatible vertical components;
   otherwise a Y-only assembly rotation cannot make its faces mate."
-  [parent-axis child-axis]
+  [parent-axis child-axis parent-forward child-forward]
   (let [[px py pz] parent-axis
         [cx cy cz] child-axis
         parent-horizontal (horizontal-length parent-axis)
         child-horizontal (horizontal-length child-axis)
         close? #(<= (abs (double %)) mount-alignment-tolerance)]
     (cond
-      (and (close? parent-horizontal) (close? child-horizontal)) 0.0
+      (and (close? parent-horizontal) (close? child-horizontal))
+      (forward-aligning-yaw parent-forward child-forward)
       (or (close? parent-horizontal) (close? child-horizontal)
           (not (close? (+ py cy)))
           (not (close? (- parent-horizontal child-horizontal))))
@@ -132,7 +148,9 @@
 
   The child's saved source-to-canonical orientation is retained. Assembly adds
   only the global-Y rotation needed to make the two outward mount normals
-  oppose, then translates the child mount to the parent mount."
+  oppose. Vertical mount faces leave yaw unconstrained, so their child instead
+  inherits the assembled parent's forward heading. The child is then translated
+  to the parent mount."
   ([parent parent-mount child-mount]
    (attachment-matrix parent parent-mount child-mount orientation/identity-quaternion 0.0))
   ([parent parent-mount child-mount gap]
@@ -148,7 +166,10 @@
                       (transform-direction parent (:mount/axis parent-mount)))
          child-axis (math/normalize
                      (transform-direction child-orientation (:mount/axis child-mount)))
-         child-pose (multiply (yaw-matrix (face-aligning-yaw parent-axis child-axis))
+         parent-forward (math/normalize (transform-direction parent [0.0 0.0 1.0]))
+         child-forward (math/normalize (transform-direction child-orientation [0.0 0.0 1.0]))
+         child-pose (multiply (yaw-matrix (face-aligning-yaw parent-axis child-axis
+                                                             parent-forward child-forward))
                               child-orientation)
          target-pos (math/add parent-pos (math/scale gap parent-axis))
          child-offset (transform-point child-pose (:mount/pos child-mount))
