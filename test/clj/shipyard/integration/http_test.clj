@@ -161,8 +161,13 @@
     (is (= "no-store" (get headers "cache-control")))
     (is (str/starts-with? body "<!DOCTYPE html>"))
     (is (re-find #"<canvas[^>]*hx-preserve=\"true\"" body))
-    (testing "viewport assets revalidate after an editor rebuild"
-      (let [{:keys [status headers]} (GET h "/js/viewport.js")]
+    (testing "static assets revalidate after an editor rebuild"
+      ;; The viewport bundle is generated and deliberately ignored by git, so
+      ;; a clean CI checkout does not contain it until the frontend build.  The
+      ;; static handler applies this policy uniformly; app.css is a committed
+      ;; representative that makes the integration assertion independent of
+      ;; that separate build step.
+      (let [{:keys [status headers]} (GET h "/app.css")]
         (is (= 200 status))
         (is (= "no-cache" (get headers "cache-control")))))
     (testing "the filter menus come from the library that was scanned"
