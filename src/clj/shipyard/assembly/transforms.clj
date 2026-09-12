@@ -60,11 +60,13 @@
         {}
         (reduce (fn [scene {:keys [id parent mount parent-role assigned]}]
                   (if (and assigned (not (invalid id)) (contains? scene parent))
-                    (let [part (catalog/part database assigned)
+                    (let [parent-part (catalog/part database (get-in scene [parent :part-id]))
+                          part (catalog/part database assigned)
                           child-mount (model/attachment-mount parent-role mount part)]
                       (assoc scene id {:part-id assigned
                                        :matrix (geom/attachment-matrix
                                                 (get-in scene [parent :matrix]) mount child-mount
+                                                (:part/orientation parent-part)
                                                 (:part/orientation part) 0.0)}))
                     scene))
                 {[] {:part-id (:hull draft) :matrix (geom/orientation-matrix (:part/orientation root))}}

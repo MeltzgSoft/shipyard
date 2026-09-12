@@ -106,7 +106,7 @@
           parent (geom/orientation-matrix (orientation/from-euler-degrees 90 0 0))
           child (geom/attachment-matrix parent vertical-parent vertical-child)
           parent-forward (math/normalize
-                          (math/subtract (geom/transform-point parent [0.0 0.0 -1.0])
+                          (math/subtract (geom/transform-point parent [0.0 0.0 1.0])
                                          (geom/transform-point parent [0.0 0.0 0.0])))
           child-forward (math/normalize
                          (math/subtract (geom/transform-point child [0.0 0.0 1.0])
@@ -114,6 +114,20 @@
       (is (close? parent-forward child-forward))
       (is (close? (:mount/pos vertical-parent)
                   (geom/transform-point child (:mount/pos vertical-child))))))
+  (testing "canonical forward does not assume the raw STL's +Z axis is forward"
+    (let [vertical-parent (assoc frame :mount/axis [0.0 1.0 0.0])
+          vertical-child (assoc frame :mount/axis [0.0 0.0 -1.0] :mount/roll [0.0 1.0 0.0])
+          child-orientation [-0.5 -0.5 -0.5 0.5]
+          parent (geom/frame-matrix (assoc frame :mount/axis [1.0 0.0 0.0]
+                                           :mount/roll [0.0 0.0 -1.0]))
+          child (geom/attachment-matrix parent vertical-parent vertical-child
+                                        orientation/identity-quaternion child-orientation 0.0)
+          source-forward (orientation/rotate-vector (orientation/inverse child-orientation)
+                                                    [0.0 0.0 1.0])]
+      (is (close? [1.0 0.0 0.0]
+                  (math/normalize
+                   (math/subtract (geom/transform-point child source-forward)
+                                  (geom/transform-point child [0.0 0.0 0.0])))))))
   (testing "incompatible pitch or roll authoring is rejected instead of creating an intersecting join"
     (is (= :incompatible-mount-orientation
            (error-code #(geom/attachment-matrix geom/identity-matrix frame frame

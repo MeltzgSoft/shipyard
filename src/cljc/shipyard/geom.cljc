@@ -98,10 +98,10 @@
   (math/subtract (transform-point matrix direction)
                  (transform-point matrix [0.0 0.0 0.0])))
 
-(defn- mount-forward
-  "The in-plane forward direction encoded by a right-handed mount frame."
-  [mount]
-  (math/cross (:mount/axis mount) (:mount/roll mount)))
+(defn- canonical-forward-source
+  "The source vector that a saved part orientation maps to canonical +Z."
+  [part-orientation]
+  (orientation/rotate-vector (orientation/inverse part-orientation) [0.0 0.0 1.0]))
 
 (defn- horizontal-length [[x _ z]]
   (math/length [x z]))
@@ -110,7 +110,7 @@
   (#?(:clj Math/atan2 :cljs js/Math.atan2) x z))
 
 (defn- forward-aligning-yaw
-  "The global-Y turn that points the child toward the parent's mount heading.
+  "The global-Y turn that points the child toward the parent's canonical heading.
 
   A forward vector with no horizontal component has no meaningful yaw, so the
   child's configured heading remains unchanged."
@@ -154,30 +154,36 @@
   The child's saved source-to-canonical orientation is retained. Assembly adds
   only the global-Y rotation needed to make the two outward mount normals
   oppose. Vertical mount faces leave yaw unconstrained, so their child instead
-  inherits the assembled parent's in-plane mount heading. The child is then
+  inherits the assembled parent's canonical forward heading. The child is then
   translated to the parent mount."
   ([parent parent-mount child-mount]
-   (attachment-matrix parent parent-mount child-mount orientation/identity-quaternion 0.0))
+   (attachment-matrix parent parent-mount child-mount orientation/identity-quaternion
+                      orientation/identity-quaternion 0.0))
   ([parent parent-mount child-mount gap]
-   (attachment-matrix parent parent-mount child-mount orientation/identity-quaternion gap))
+   (attachment-matrix parent parent-mount child-mount orientation/identity-quaternion
+                      orientation/identity-quaternion gap))
   ([parent parent-mount child-mount child-orientation gap]
+   (attachment-matrix parent parent-mount child-mount orientation/identity-quaternion
+                      child-orientation gap))
+  ([parent parent-mount child-mount parent-orientation child-orientation gap]
    (when-not (math/finite-number? gap)
      (throw (ex-info "Mount gap must be finite." {:code :invalid-gap})))
    (frame-matrix parent-mount)
    (frame-matrix child-mount)
-   (let [child-orientation (orientation-matrix child-orientation)
+   (let [child-pose-base (orientation-matrix child-orientation)
          parent-pos (transform-point parent (:mount/pos parent-mount))
          parent-axis (math/normalize
                       (transform-direction parent (:mount/axis parent-mount)))
          child-axis (math/normalize
-                     (transform-direction child-orientation (:mount/axis child-mount)))
+                     (transform-direction child-pose-base (:mount/axis child-mount)))
          parent-forward (math/normalize
-                         (transform-direction parent (mount-forward parent-mount)))
+                         (transform-direction parent (canonical-forward-source parent-orientation)))
          child-forward (math/normalize
-                        (transform-direction child-orientation (mount-forward child-mount)))
+                        (transform-direction child-pose-base
+                                             (canonical-forward-source child-orientation)))
          child-pose (multiply (yaw-matrix (face-aligning-yaw parent-axis child-axis
                                                              parent-forward child-forward))
-                              child-orientation)
+                              child-pose-base)
          target-pos (math/add parent-pos (math/scale gap parent-axis))
          child-offset (transform-point child-pose (:mount/pos child-mount))
          [x y z] (math/subtract target-pos child-offset)]
