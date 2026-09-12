@@ -164,23 +164,27 @@ than the mechanism.
 
 ### 5.3 Assembly transform
 
-Given socket frame `S` on the hull and plug frame `P` on the module, both with +Z
-pointing outward from their mating surfaces, the module's world transform is:
+Given parent and child mount frames, both with +Z pointing outward from their mating
+surfaces, assembly keeps the child's saved source-to-canonical pose `Qc`. It adds only
+the global-Y turn `Ry(θ)` needed to oppose the two mount normals, then translates the
+child mount onto the parent mount:
 
 ```
-M = S · Tz(g) · Ry(π) · P⁻¹
+M = T(parent-pos + g · parent-axis - Ry(θ) · Qc · child-pos) · Ry(θ) · Qc
 ```
 
-`Ry(π)` flips the plug to face the socket, mapping its +Z to the socket's -Z while
-preserving the +Y top reference. `Tz(g)` is an optional gap along the socket axis,
-default 0 - the virtual model mates flush, but a small positive `g` can represent the
-physical standoff introduced by magnets if that turns out to matter visually.
+`θ` is chosen in world space, so the configured top remains up on either side of a hull.
+For vertical mount faces, yaw is unconstrained by the normals; the child instead inherits
+the assembled parent's canonical forward heading. A pair whose normals cannot oppose
+under a global-Y turn is rejected rather than intersected. `g` is an optional gap along
+the parent outward axis, default 0 - the virtual model mates flush, but a small positive
+value can represent the physical standoff introduced by magnets if that turns out to
+matter visually.
 
-Frames are persisted in source mesh coordinates. For a parent with source-to-world
-matrix `W`, a child's source-to-world matrix is `W · S · Tz(g) · Ry(π) · P⁻¹`.
-The root uses its source-to-canonical orientation. Converting both child mesh and plug
-to canonical coordinates cancels the child's orientation; do not rotate it a second
-time after mating. Matrix payloads use 16 column-major numbers (TECHNICAL.md §13).
+Frames are persisted in source mesh coordinates. The root matrix is its
+source-to-canonical orientation; every child matrix already includes its saved pose and
+the alignment turn, so the viewport must not apply another part-orientation transform.
+Matrix payloads use 16 column-major numbers (TECHNICAL.md §13).
 
 Socket capacity divides the selected face into equal-width **vertical** sections or
 equal-height **horizontal** sections in its authored frame. The user chooses the

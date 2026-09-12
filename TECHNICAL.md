@@ -1305,7 +1305,7 @@ greebled plate); STL parsing is tested against a `byte[]`, never a path.
 | Wire roundtrip | encode -> decode -> geometry equal within float tolerance |
 | Role inference | Table-driven over real folder names taken from the library (§5.2) |
 | Mount frame | Facet -> position/axis/roll; bbox midpoint not vertex average; longest hull **edge** not diagonal |
-| Assembly transform | `M = S . Tz(g) . Ry(pi) . P^-1` places a known plug on a known socket |
+| Assembly transform | Global-Y alignment mates a known child face to a parent face while preserving the saved child pose |
 | Symmetry mirroring | Mirrored mount is the exact reflection; roll handedness preserved |
 | Settings validation | Path normalization and validation messages from inspected facts |
 | Scan index refresh | Unchanged sources retain derived keys; changed sources drop them |
@@ -1771,8 +1771,9 @@ degenerate cases in memory; they do not need more committed binary fixtures.
 
 M2 may derive, preview, mirror, classify and persist frames. It may not place one part on
 another, evaluate `:mount/accepts`, choose compatible components, create loadout slots or
-apply `M = S . Tz(g) . Ry(pi) . P^-1`. Those are M3 behaviours even though the shared
-frame representation and `geom.cljc` make them technically possible earlier. The M2
+align a child mount to its parent with the global-Y assembly transform. Those are M3
+behaviours even though the shared frame representation and `geom.cljc` make them
+technically possible earlier. The M2
 end-to-end proof stops after mounts reload from their sidecars and render plausibly on the
 individual parts that own them.
 
@@ -1850,11 +1851,14 @@ All shared math is pure CLJC in `shipyard.geom`, reusing `shipyard.math` and
 `shipyard.part.orientation`. Serialized matrices are column-major 16-element vectors,
 acting on column vectors, with translation at indices 12–14. Validate finite unit
 axis/roll and perpendicularity to tolerance `1e-9`, deriving right-handed +Y by cross
-product. Gaps default to zero. A child source mesh matrix is
-`Wparent · Ssource · Tz(g) · Ry(π) · inverse(Psource)`; the root's matrix is its
-source-to-canonical rotation. Equivalently, converting child mesh and plug by `Qchild`
-gives `inverse(Qchild · Psource) · Qchild = inverse(Psource)`. Apply no additional
-child quaternion in the viewport. Nested matrices are already composed server-side.
+product. Gaps default to zero. A child source mesh matrix retains its saved
+source-to-canonical pose `Qchild`, with a world-space `Ry(θ)` chosen to oppose the
+parent and child mount normals. The resulting translation maps the child mount position
+onto the parent mount position plus the gap along the parent axis. For vertical faces,
+where the normals do not determine yaw, `θ` aligns the child's canonical forward heading
+with the assembled parent's. Incompatible normals are rejected rather than forcing a
+non-Y rotation. The root's matrix is its source-to-canonical rotation. Nested matrices
+are already composed server-side; the viewport applies no additional part quaternion.
 
 One `shipyard:assembly` HX-Trigger event carries an EDN envelope:
 

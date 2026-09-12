@@ -138,8 +138,9 @@ When the preview looks right, fill in the mount form:
   and deleted together. When mirror is selected,
   Shipyard highlights the reflected face in blue before you save.
 
-Assembly turns a child around the mount's yaw (+Y) axis, preserving the adjusted model
-top on either side of a symmetric hull.
+Assembly turns a child only around the global yaw (+Y) axis, preserving the adjusted
+model top on either side of a symmetric hull. For a vertical mount, where the face does
+not determine yaw, the child faces forward with the part it is mounted to.
 - **Repeat classification** keeps the kind and accepted role ready for the next picked
   face. The next mount is still shown in the form and must be saved deliberately.
 
