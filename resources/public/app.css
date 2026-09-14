@@ -641,6 +641,9 @@ body {
 }
 .panel { padding: 0; }
 #library {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   border-right: 1px solid var(--line);
   overflow: hidden;
 }
@@ -671,7 +674,8 @@ body {
 }
 .filters__field:first-child select { border-color: #2f5568; background: #1d2b34; color: #9ccbe8; }
 #library-results {
-  height: calc(100% - 108px);
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   padding: 0 0 16px;
 }
@@ -860,6 +864,9 @@ body {
 .bulk-grid__divider { height: 22px; width: 1px; background: var(--line); }
 .bulk-grid__control { display: inline-flex; align-items: center; gap: 3px; }
 .bulk-grid__control button { width: 25px; height: 25px; padding: 0; }
+.bulk-grid__control input { width: 4.75rem; height: 25px; box-sizing: border-box; border: 1px solid var(--line); border-radius: 5px; background: var(--bg); color: var(--ink); font: 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace; text-align: center; }
+.bulk-grid__control input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.bulk-grid__control input:disabled { opacity: .5; }
 .bulk-grid__steps { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); }
 .bulk-grid__steps button { padding: 4px 8px; border: 0; background: transparent; }
 .bulk-grid__steps button[aria-pressed="true"] { background: var(--panel-2); color: var(--ink); }

@@ -1174,6 +1174,23 @@
       (.setAttribute card "data-dirty" "true"))
     (sync-bulk-save-button! sys)))
 
+(def ^:private bulk-euler-index
+  "The UI's canonical axes map to `[yaw pitch roll]`, not their display order."
+  {:x 1 :y 0 :z 2})
+
+(defn- bulk-set-angle! [{:keys [bulk] :as sys} axis value]
+  (when-let [degrees (math/parse-finite-double value)]
+    (when-let [angle-index (get bulk-euler-index axis)]
+      (doseq [[part-id {:keys [^js object orientation] :as entry}] @bulk
+              :when object]
+        (let [angles (assoc (orientation/to-euler-degrees orientation) angle-index degrees)
+              next-orientation (apply orientation/from-euler-degrees angles)]
+          (orient-object! object next-orientation)
+          (swap! bulk assoc part-id (assoc entry :orientation next-orientation :dirty true))))
+      (doseq [^js card (bulk-elements)]
+        (.setAttribute card "data-dirty" "true"))
+      (sync-bulk-save-button! sys))))
+
 (defn- bulk-step! [{:keys [bulk-step]} ^js button]
   (reset! bulk-step (js/parseFloat (.getAttribute button "data-bulk-step")))
   (doseq [^js choice (array-seq (.querySelectorAll js/document "[data-bulk-step]"))]
@@ -1465,7 +1482,9 @@
                                          (when (= "kind" (.-name (.-target e)))
                                            (sync-socket-fields! form)))
                                        (refresh-preview-from-form! sys e)
-                                       (refresh-orientation-from-form! sys e)))
+                                       (refresh-orientation-from-form! sys e)
+                                       (when-let [^js input (some-> (.-target e) (.closest "[data-bulk-angle]"))]
+                                         (bulk-set-angle! sys (keyword (.getAttribute input "data-axis")) (.-value input)))))
     ;; Capture before HTMX's bubbling listener serializes the form. Updating the
     ;; hidden field from a later submit listener leaves the current request with
     ;; its original `{}` value.

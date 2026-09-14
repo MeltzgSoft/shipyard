@@ -145,6 +145,21 @@
     (s/fill! *driver* "input[name=q]" "Ram")
     (is (s/wait-until #(= 2 (s/count-els *driver* "#library-results .part"))))))
 
+(deftest browser-results-scroll-within-the-library-panel
+  (try
+    (s/resize! *driver* 1280 360)
+    (open-app!)
+    (s/scroll-into-view! *driver* "#library-results .part:last-child")
+    (let [library (s/bounds *driver* "#library")
+          last-part (s/bounds *driver* "#library-results .part:last-child")]
+      (is (>= (:y last-part) (:y library))
+          (str "the final result should not scroll above the library: " {:library library :last-part last-part}))
+      (is (<= (+ (:y last-part) (:height last-part))
+              (+ (:y library) (:height library)))
+          (str "the final result should remain visible inside the library: " {:library library :last-part last-part})))
+    (finally
+      (s/resize! *driver* 1280 900))))
+
 (deftest bulk-orientation-renders-rotates-and-saves-a-selection
   (open-app!)
   (s/click! *driver* ".masthead__mode[href='/orient']")
@@ -167,6 +182,10 @@
   (s/click! *driver* "[data-bulk-rotate][data-axis='y'][data-direction='1']")
   (is (s/wait-until #(= 2 (get-in (s/stats *driver*) [:bulk :dirty])))
       "one toolbar action should update every selected mesh")
+  (s/fill-and-blur! *driver* "[data-bulk-angle][data-axis='y']" "90")
+  (is (s/wait-until #(every? (fn [q] (vec-close? q [0.0 0.7071 0.0 0.7071]))
+                             (vals (get-in (s/stats *driver*) [:bulk :orientations]))))
+      "a manual yaw value should set every selected mesh to that absolute angle")
   (s/click! *driver* "[data-bulk-save] button[type='submit']")
   (is (s/wait-until #(str/includes? (s/text *driver* "#bulk-orient-status")
                                     "Saved 2 orientations")))
@@ -174,7 +193,7 @@
       "a successful response should establish a new saved baseline")
   ;; Restore the fixture sidecars so the once-scoped server remains independent
   ;; of randomized test order.
-  (s/click! *driver* "[data-bulk-rotate][data-axis='y'][data-direction='-1']")
+  (s/fill-and-blur! *driver* "[data-bulk-angle][data-axis='y']" "0")
   (s/click! *driver* "[data-bulk-save] button[type='submit']")
   (is (s/wait-until #(zero? (get-in (s/stats *driver*) [:bulk :dirty]))))
   (s/click! *driver* "[data-bulk-back]")

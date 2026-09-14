@@ -252,6 +252,13 @@
   [{:keys [^Page page]} sel value]
   (.pressSequentially (.locator page sel) value))
 
+(defn fill-and-blur!
+  "Set a value in a regular form control and commit its change event."
+  [{:keys [^Page page]} sel value]
+  (let [input (.locator page sel)]
+    (.fill input value)
+    (.blur input)))
+
 (defn select-option!
   "Pick an option by its **label**, not its value.
 

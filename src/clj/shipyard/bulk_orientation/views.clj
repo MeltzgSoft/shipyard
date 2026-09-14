@@ -68,6 +68,9 @@
       (for [[axis label] [["x" "Pitch"] ["y" "Yaw"] ["z" "Roll"]]]
         [:span.bulk-grid__control [:span {:class (str "bulk-grid__axis bulk-grid__axis--" axis)} label]
          [:button {:type "button" :disabled preparing? :data-bulk-rotate "true" :data-axis axis :data-direction "-1"} "−"]
+         [:input {:type "number" :disabled preparing? :step "1" :inputmode "decimal"
+                  :placeholder "degrees" :aria-label (str "Set " label " degrees for selection")
+                  :data-bulk-angle "true" :data-axis axis}]
          [:button {:type "button" :disabled preparing? :data-bulk-rotate "true" :data-axis axis :data-direction "1"} "+"]])
       [:span.bulk-grid__steps {:aria-label "Rotation step"}
        (for [step [1 15 90]]
