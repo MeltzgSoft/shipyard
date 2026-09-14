@@ -1760,7 +1760,12 @@ entry is ready or failed.
 The viewport owns only the transient editing session: loaded Three.js objects, current
 quaternions, dirty flags, and the in-page selection set. Toolbar turns reuse the fixed
 world-axis orientation functions used by the single-part editor and update every loaded
-object before one layout/frame pass. The save form serializes only dirty orientations
+object before the next render pass. Each preview card has its own scene and camera,
+framed around that model's bounding sphere with a common viewing direction. One WebGL
+renderer draws these scenes into the cards' DOM rectangles, using scissor rectangles
+clipped to the scrolling grid and canvas. Scroll and resize therefore move or clip
+previews without placing models in a shared world-space grid or creating additional
+WebGL contexts. The save form serializes only dirty orientations
 into the request body. The server validates the complete map, writes each known part
 through the catalog sidecar API, and reports saved and failed ids separately. No
 orientation payload or accumulated session state is stored in response headers.

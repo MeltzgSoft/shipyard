@@ -184,6 +184,52 @@
   (is (zero? (get-in (s/stats *driver*) [:bulk :count]))
       "returning to the table should release its mesh grid"))
 
+(defn- assert-bulk-preview-pixels! [part-id]
+  (let [selector (str "[data-bulk-part='" part-id "'] [data-bulk-preview]")
+        shot (io/file (System/getProperty "java.io.tmpdir")
+                      (str "shipyard-bulk-preview-" (last (str/split part-id #"/")) ".png"))]
+    (s/scroll-into-view! *driver* selector)
+    ;; These rectangles contain only the model, without labels or borders.
+    ;; A pixel assertion here catches a shared global scene even if its stats
+    ;; truthfully report that all the selected meshes have loaded.
+    (is (s/wait-until
+         #(do
+            (s/screenshot-el! *driver* selector shot)
+            (let [img (ImageIO/read shot)
+                  w (.getWidth img)
+                  h (.getHeight img)
+                  bright (for [x (range 2 (- w 2) 2)
+                               y (range 2 (- h 2) 2)
+                               :let [rgb (.getRGB img x y)]
+                               :when (every? (fn [shift] (> (bit-and 255 (bit-shift-right rgb shift)) 85))
+                                             [0 8 16])]
+                           [x y])]
+              (and (> (count bright) 40)
+                   (every? (fn [[x y]] (and (< 4 x (- w 5)) (< 4 y (- h 5)))) bright))))
+         10000)
+        (str "the model should render and fit inside its own preview: " part-id))))
+
+(deftest bulk-models-render-inside-their-cards
+  (open-app!)
+  (s/click! *driver* ".masthead__mode[href='/orient']")
+  (s/wait-visible! *driver* "[data-bulk-select]")
+  (doseq [id [s/hull-id s/prow-id s/mount-plate-id s/ork-id]]
+    (s/check! *driver* (str "[data-bulk-select][value='" id "']")))
+  (s/click! *driver* "[data-bulk-render-button]")
+  (is (s/wait-until #(= 4 (get-in (s/stats *driver*) [:bulk :count]))))
+  (doseq [id [s/hull-id s/prow-id s/mount-plate-id s/ork-id]]
+    (assert-bulk-preview-pixels! id))
+  (s/click! *driver* "[data-bulk-rotate][data-axis='y'][data-direction='1']")
+  (assert-bulk-preview-pixels! s/prow-id)
+  (try
+    (s/resize! *driver* 420 450)
+    (assert-bulk-preview-pixels! s/ork-id)
+    (is (pos? (s/js *driver* "() => document.querySelector('.bulk-grid__cards').scrollTop"))
+        "the small grid should scroll to reveal its last model")
+    (assert-bulk-preview-pixels! s/prow-id)
+    (finally
+      (s/resize! *driver* 1280 900))))
+
 ;; --- loading ----------------------------------------------------------------
 
 (deftest loading-a-part-renders-and-frames-it

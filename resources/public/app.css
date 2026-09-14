@@ -865,8 +865,9 @@ body {
 .bulk-grid__axis--x { color: #ff5c5c; }
 .bulk-grid__axis--y { color: #5ce080; }
 .bulk-grid__axis--z { color: #57a7ff; }
-.bulk-grid__cards { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(var(--bulk-columns, 1), minmax(0, 1fr)); grid-auto-rows: 168px; gap: 10px; overflow: auto; padding: 14px; pointer-events: none; }
-.bulk-grid__card { position: relative; display: flex; align-items: end; border: 1px solid rgba(111, 177, 216, .55); border-radius: 6px; background: linear-gradient(to top, rgba(20,23,28,.88), rgba(20,23,28,.08) 45%); overflow: hidden; }
+.bulk-grid__cards { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); grid-auto-rows: 168px; gap: 10px; overflow: auto; padding: 14px; pointer-events: auto; }
+.bulk-grid__card { position: relative; display: flex; flex-direction: column; min-width: 0; border: 1px solid rgba(111, 177, 216, .55); border-radius: 6px; overflow: hidden; }
+.bulk-grid__preview { position: relative; flex: 1; min-height: 0; }
 .bulk-grid__card p { width: 100%; margin: 0; padding: 6px 8px; border-top: 1px solid var(--line); background: rgba(28,33,40,.92); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bulk-grid__card-state { position: absolute; top: 6px; left: 7px; color: var(--ink-dim); font-size: 10px; }
 .bulk-grid__card[data-dirty="true"] { border-color: var(--warn); }

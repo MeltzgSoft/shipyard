@@ -291,7 +291,7 @@
 
 (declare sync-authoring-button!)
 
-(defn clear! [{:keys [^js scene ^js canvas parts authoring current repeat bulk] :as sys}]
+(defn clear! [{:keys [^js canvas parts authoring current repeat bulk] :as sys}]
   (when-let [assembly (:assembly sys)] (swap! assembly assembly-scene/leave))
   (when-let [generation (:browse-generation sys)] (swap! generation inc))
   (clear-authoring-preview! sys)
@@ -303,7 +303,7 @@
   (reset! repeat nil)
   (.remove (.-classList canvas) "stage__canvas--authoring")
   (doseq [[_ ^js obj] @parts]
-    (.remove scene obj)
+    (.removeFromParent obj)
     (dispose-object! obj))
   (reset! parts {})
   (when bulk (reset! bulk {}))
@@ -1093,53 +1093,36 @@
 (defn- bulk-elements []
   (array-seq (.querySelectorAll js/document "[data-bulk-part]")))
 
-(defn- layout-bulk! [{:keys [parts bulk] :as sys}]
-  (let [entries (->> @bulk
-                     (filter (comp :object val))
-                     (sort-by key))
-        columns (max 1 (min (count entries) (Math/floor (/ (max 160 (.-clientWidth (:canvas sys))) 170))))]
-    (when-let [^js cards (.querySelector js/document ".bulk-grid__cards")]
-      (.setProperty (.-style cards) "--bulk-columns" columns))
-    (doseq [[index [part-id {:keys [^js object]}]] (map-indexed vector entries)]
-      (let [column (mod index columns)
-            row (quot index columns)
-            geometry (.-geometry object)
-            _ (.computeBoundingBox geometry)
-            box (.-boundingBox geometry)
-            size (.getSize box (three/Vector3.))
-            center (.getCenter box (three/Vector3.))
-            scale (/ 2.0 (max 1e-6 (.-x size) (.-y size) (.-z size)))
-            x (* (- column (/ (dec columns) 2.0)) 3.2)
-            y (* (- (/ (dec (Math/ceil (/ (count entries) columns))) 2.0) row) 3.2)]
-        (.set (.-scale object) scale scale scale)
-        (.set (.-position object) (- x (* scale (.-x center))) (- y (* scale (.-y center)))
-              (* -1.0 scale (.-z center)))
-        (swap! parts assoc part-id object)))
-    (frame-assembly! sys)))
-
-(defn- load-bulk-mesh! [{:keys [bulk] :as sys} ^js element]
+(defn- load-bulk-mesh! [{:keys [bulk parts ^js scene]} ^js element]
   (let [part-id (.getAttribute element "data-bulk-part")
         url (.getAttribute element "data-mesh-url")
-        saved (edn/read-string (.getAttribute element "data-orientation"))]
+        saved (edn/read-string (.getAttribute element "data-orientation"))
+        token (random-uuid)]
     (when (and url (not (contains? @bulk part-id)))
-      (swap! bulk assoc part-id {:loading true})
+      (swap! bulk assoc part-id {:loading true :token token})
       (-> (js/fetch url)
           (.then (fn [^js response]
                    (if (.-ok response) (.arrayBuffer response)
                        (throw (js/Error. (str "Bulk mesh request failed: " (.-status response)))))))
           (.then (fn [buffer]
-                   (when (some #(= part-id (.getAttribute % "data-bulk-part")) (bulk-elements))
+                   (when (= token (:token (get @bulk part-id)))
                      (let [mesh (wire/decode buffer)
                            object (three/Mesh. (decode->geometry mesh) (material))
+                           tile-scene (three/Scene.)
+                           tile-camera (three/PerspectiveCamera. 35 1 0.1 1000)
                            saved (orientation/orientation-of saved)]
+                       (.computeBoundingSphere (.-geometry object))
+                       (set! (.-environment tile-scene) (.-environment scene))
                        (set! (.-name object) part-id)
                        (orient-object! object saved)
-                       (.add (:scene sys) object)
-                       (swap! bulk assoc part-id {:object object :saved saved :orientation saved})
-                       (layout-bulk! sys)))))
+                       (.add tile-scene object)
+                       (swap! parts assoc part-id object)
+                       (swap! bulk assoc part-id {:object object :saved saved :orientation saved
+                                                  :scene tile-scene :camera tile-camera :token token})))))
           (.catch (fn [error]
                     (js/console.error "shipyard: could not load bulk mesh" part-id error)
-                    (swap! bulk dissoc part-id)))))))
+                    (when (= token (:token (get @bulk part-id)))
+                      (swap! bulk dissoc part-id))))))))
 
 (defn- sync-bulk-from-dom! [{:keys [bulk parts] :as sys}]
   (let [elements (vec (bulk-elements))
@@ -1189,8 +1172,7 @@
         (swap! bulk assoc part-id (assoc entry :orientation next-orientation :dirty true))))
     (doseq [^js card (bulk-elements)]
       (.setAttribute card "data-dirty" "true"))
-    (sync-bulk-save-button! sys)
-    (layout-bulk! sys)))
+    (sync-bulk-save-button! sys)))
 
 (defn- bulk-step! [{:keys [bulk-step]} ^js button]
   (reset! bulk-step (js/parseFloat (.getAttribute button "data-bulk-step")))
@@ -1204,8 +1186,7 @@
       (orient-object! object orientation)
       (swap! bulk assoc part-id (assoc entry :orientation orientation :dirty true)))
     (doseq [^js card (bulk-elements)] (.setAttribute card "data-dirty" "true"))
-    (sync-bulk-save-button! sys)
-    (layout-bulk! sys)))
+    (sync-bulk-save-button! sys)))
 
 (defn- bulk-reset! [{:keys [bulk] :as sys}]
   (doseq [[part-id {:keys [^js object saved] :as entry}] @bulk
@@ -1213,8 +1194,7 @@
     (orient-object! object saved)
     (swap! bulk assoc part-id (assoc entry :orientation saved :dirty false)))
   (doseq [^js card (bulk-elements)] (.removeAttribute card "data-dirty"))
-  (sync-bulk-save-button! sys)
-  (layout-bulk! sys))
+  (sync-bulk-save-button! sys))
 
 (defn- switch-workspace! [{:keys [bulk-selection] :as sys} event]
   (when-let [^js link (some-> (.-target event) (.closest "[data-workspace-mode]"))]
@@ -1360,16 +1340,65 @@
     (.copy (.-quaternion orientation-camera) (.-quaternion camera))
     (.updateMatrixWorld orientation-camera true)))
 
+(defn- render-bulk!
+  "Draw each scene into its DOM preview rectangle. The viewport uses the full
+  tile size, while the scissor intersects the scroll container and canvas, so
+  scrolling clips the model without changing its camera or framing."
+  [{:keys [bulk ^js renderer ^js canvas]}]
+  (when-let [^js cards (.querySelector js/document ".bulk-grid__cards")]
+    (let [canvas-rect (.getBoundingClientRect canvas)
+          clip (.getBoundingClientRect cards)]
+      (.setScissorTest renderer true)
+      (doseq [^js card (bulk-elements)
+              :let [{:keys [^js object ^js scene ^js camera]}
+                    (get @bulk (.getAttribute card "data-bulk-part"))]
+              :when object]
+        (let [^js preview (.querySelector card "[data-bulk-preview]")
+              rect (.getBoundingClientRect preview)
+              width (.-width rect)
+              height (.-height rect)
+              left (max (.-left rect) (.-left clip) (.-left canvas-rect))
+              right (min (.-right rect) (.-right clip) (.-right canvas-rect))
+              top (max (.-top rect) (.-top clip) (.-top canvas-rect))
+              bottom (min (.-bottom rect) (.-bottom clip) (.-bottom canvas-rect))]
+          (when (and (pos? width) (pos? height) (< left right) (< top bottom))
+            (let [sphere (.. object -geometry -boundingSphere)
+                  center (.applyQuaternion (.clone (.-center sphere)) (.-quaternion object))
+                  radius (max 0.001 (.-radius sphere))
+                  half-fov (/ (* (.-fov camera) Math/PI) 360.0)
+                  aspect (/ width height)
+                  limiting-angle (Math/atan (* (Math/tan half-fov) (min 1.0 aspect)))
+                  distance (/ (* radius 1.12) (Math/sin limiting-angle))
+                  position (.-position camera)]
+              (set! (.-aspect camera) aspect)
+              (set! (.-near camera) (max 0.0001 (- distance (* radius 1.5))))
+              (set! (.-far camera) (+ distance (* radius 2)))
+              (.set position 3.0 2.6 4.0)
+              (.normalize position)
+              (.multiplyScalar position distance)
+              (.add position center)
+              (.lookAt camera center)
+              (.updateProjectionMatrix camera)
+              (.setViewport renderer (- (.-left rect) (.-left canvas-rect))
+                            (- (.-bottom canvas-rect) (.-bottom rect)) width height)
+              (.setScissor renderer (- left (.-left canvas-rect))
+                           (- (.-bottom canvas-rect) bottom) (- right left) (- bottom top))
+              (.clearDepth renderer)
+              (.render renderer scene camera)))))
+      (.setScissorTest renderer false))))
+
 (defn- render-frame!
   [{:keys [^js renderer ^js scene ^js camera ^js controls ^js canvas
-           ^js orientation-scene ^js orientation-camera orientation-guide]}]
+           ^js orientation-scene ^js orientation-camera orientation-guide bulk] :as sys}]
   (let [w (max 1 (.-clientWidth canvas))
         h (max 1 (.-clientHeight canvas))]
     (.update controls)
     (.setScissorTest renderer false)
     (.setViewport renderer 0 0 w h)
     (.clear renderer true true true)
-    (.render renderer scene camera)
+    (if (seq @bulk)
+      (render-bulk! sys)
+      (.render renderer scene camera))
     (when @orientation-guide
       (let [size (min orientation-guide-size
                       (max 72.0 (* 0.38 (min w h))))
@@ -1509,14 +1538,14 @@
       (set! (.-outputColorSpace renderer) three/SRGBColorSpace)
       (.setPixelRatio renderer (min 2 (.-devicePixelRatio js/window)))
       (set! (.-autoClear renderer) false)
+      (.setClearColor renderer 0x14171c)
       (set! (.-background scene) (three/Color. 0x14171c))
       (.set (.-position orientation-camera) 3.0 2.6 4.0)
       (.lookAt orientation-camera 0.0 0.0 0.0)
       (set! (.-enableDamping controls) true)
       (environment! renderer scene)
       (resize! sys)
-      (.observe (js/ResizeObserver. #(do (resize! sys)
-                                         (when (seq @(:bulk sys)) (layout-bulk! sys)))) canvas)
+      (.observe (js/ResizeObserver. #(resize! sys)) canvas)
       (.addEventListener canvas "click" #(pick-face! sys %))
       (.setAnimationLoop renderer #(render-frame! sys))
       (listen! sys)

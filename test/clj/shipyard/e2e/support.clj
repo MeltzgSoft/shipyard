@@ -226,6 +226,12 @@
 
 (defn check! [{:keys [^Page page]} sel] (.check page sel))
 
+(defn resize! [{:keys [^Page page]} width height]
+  (.setViewportSize page width height))
+
+(defn scroll-into-view! [{:keys [^Page page]} sel]
+  (.scrollIntoViewIfNeeded (.locator page sel)))
+
 (defn click-point! [{:keys [^Page page]} x y]
   (.click (.mouse page) (double x) (double y)))
 

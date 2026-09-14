@@ -59,7 +59,6 @@
 
 (defn grid [entries]
   (let [ids (mapv :part/id entries)
-        columns (max 1 (long (Math/ceil (Math/sqrt (count entries)))))
         preparing? (some #(= :preparing (:state %)) entries)]
     [:section.bulk-grid {:data-bulk-grid "true"}
      [:header.bulk-grid__toolbar
@@ -80,13 +79,14 @@
         {:hx-post "/orient/render" :hx-trigger "load delay:400ms"
          :hx-target "#bulk-orient" :hx-swap "innerHTML"
          :hx-vals (json/write-str {"part-ids" (pr-str ids)})}])
-     [:div.bulk-grid__cards {:style (str "--bulk-columns:" columns)}
+     [:div.bulk-grid__cards
       (for [{:part/keys [id name orientation] :keys [mesh-url mesh-key state message]} entries]
         [:article.bulk-grid__card
          (cond-> {:data-bulk-part id :data-orientation (pr-str orientation)}
            mesh-url (assoc :data-mesh-url mesh-url :data-mesh-key mesh-key)
            (= state :preparing) (assoc :data-preparing "true"))
-         [:span.bulk-grid__card-state (if mesh-url "Preview" (or message "Preparing…"))]
+         [:div.bulk-grid__preview {:data-bulk-preview "true"}
+          [:span.bulk-grid__card-state (when-not mesh-url (or message "Preparing…"))]]
          [:p name]])]
      [:footer.bulk-grid__footer
       [:span#bulk-orient-status "Preview changes are not saved."]
