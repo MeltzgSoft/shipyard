@@ -24,6 +24,42 @@
                   [(mapv (fn [[mount ordinal]] [(keyword mount) ordinal]) (:slot item)) item]))
         (get-in (s/stats driver) [:assembly :slots])))
 
+(defn- assert-visible-assembly! [driver]
+  (is (s/wait-until #(= (:hull fixture/ids) (get-in (slots driver) [[] :part-id])))
+      "the resumed hull should load without issuing a test-only assembly request")
+  (let [rail (s/bounds driver "#library")
+        viewport (s/bounds driver "#viewport")]
+    (is (<= (+ (:x rail) (:width rail)) (inc (:x viewport)))
+        (str "the rail must sit beside the viewport, not cover it: " {:rail rail :viewport viewport}))
+    (is (> (:width viewport) 500) "assembly should retain usable viewport space"))
+  (is (true? (s/js driver "() => { const canvas = document.querySelector('#viewport'); const r = canvas.getBoundingClientRect(); return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === canvas; }"))
+      "the rendered canvas must be exposed to the user, not hidden under another panel"))
+
+(deftest assembly-viewport-survives-orient-mode-transitions
+  (let [started (fixture/start! true) driver (s/make-driver)]
+    (try
+      (s/go! driver (s/base-url (:system started)))
+      (s/wait-visible! driver "#library-results .part")
+      (s/click! driver ".masthead a:has-text('Assemble')")
+      (s/wait-visible! driver ".assembly__hull")
+      (s/select-option! driver ".assembly__hull select[name=part-id]" "hull")
+      (s/click! driver ".assembly__hull button")
+      (assert-visible-assembly! driver)
+      (doseq [render-grid? [false true]]
+        (testing (if render-grid? "return from Orient previews" "return from the Orient table")
+          (s/click! driver ".masthead a:has-text('Orient')")
+          (s/wait-visible! driver "[data-bulk-select]")
+          (when render-grid?
+            (s/check! driver (str "[data-bulk-select][value='" (:hull fixture/ids) "']"))
+            (s/click! driver "[data-bulk-render-button]")
+            (is (s/wait-until #(= 1 (get-in (s/stats driver) [:bulk :count])))))
+          (s/click! driver ".masthead a:has-text('Assemble')")
+          (s/wait-visible! driver ".assembly__hull")
+          (assert-visible-assembly! driver)
+          (is (zero? (s/count-els driver "[data-bulk-grid]")))
+          (is (zero? (get-in (s/stats driver) [:bulk :count])))))
+      (finally (s/quit! driver) (fixture/stop! started)))))
+
 (deftest large-assembly-updates-use-the-response-body
   ;; Real catalog paths can be long and contain characters escaped in HTML.
   ;; Exercise both the old header ceiling and a lossless body round trip.

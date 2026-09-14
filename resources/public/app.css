@@ -813,14 +813,16 @@ body {
 #detail:has(#assembly) { display: none; }
 
 /* --- bulk orientation --------------------------------------------------- */
-.layout:has(#library.bulk-orient) { grid-template-columns: 1fr; }
-.layout:has(#library.bulk-orient) > #library,
-.layout:has(#library.bulk-orient) > .stage { grid-column: 1; grid-row: 1; }
-.layout:has(#library.bulk-orient) > #library { z-index: 4; }
+/* Assembly swaps #library's contents, retaining its outer attributes. Scope
+   Orient's covering layout to the current fragment, not the retained class. */
+.layout:has(#bulk-orient-filters) { grid-template-columns: 1fr; }
+.layout:has(#bulk-orient-filters) > #library,
+.layout:has(#bulk-orient-filters) > .stage { grid-column: 1; grid-row: 1; }
+.layout:has(#bulk-orient-filters) > #library { z-index: 4; }
 .layout:has(#bulk-orient:not(:empty)) > #library { visibility: hidden; pointer-events: none; }
 .layout:has(#bulk-orient:not(:empty)) > .stage { z-index: 5; }
-.layout:has(#library.bulk-orient) .stage__detail { display: none; }
-.bulk-orient { display: flex; flex-direction: column; min-height: 0; }
+.layout:has(#bulk-orient-filters) .stage__detail { display: none; }
+#library:has(#bulk-orient-filters) { display: flex; flex-direction: column; min-height: 0; }
 .bulk-orient__head { padding: 12px; border-bottom: 1px solid var(--line); }
 .bulk-orient__head h2 { margin: 0; font-size: 14px; }
 .bulk-orient__head p { margin: 3px 0 0; color: var(--ink-dim); font-size: 12px; }

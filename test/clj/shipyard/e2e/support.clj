@@ -265,6 +265,10 @@
 (defn width [{:keys [^Page page]} sel]
   (.-width ^BoundingBox (.boundingBox (.locator page sel))))
 
+(defn bounds [{:keys [^Page page]} sel]
+  (when-let [^BoundingBox box (.boundingBox (.locator page sel))]
+    {:x (.-x box) :y (.-y box) :width (.-width box) :height (.-height box)}))
+
 (defn text [{:keys [^Page page]} sel] (or (.textContent page sel) ""))
 
 (defn screenshot-el! [{:keys [^Page page]} sel ^File target]
