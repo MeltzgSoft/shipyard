@@ -26,8 +26,16 @@
 
 ;; --- eviction ---------------------------------------------------------------
 
+(defn- cache-tier-file?
+  "A completed cache tier, as opposed to a writer's temporary file."
+  [f]
+  (boolean (re-matches #"[0-9a-f]{64}\.\d+\.symesh" (str (fs/file-name f)))))
+
+(defn- cache-tier-files [dir]
+  (filter (every-pred fs/regular-file? cache-tier-file?) (fs/list-dir dir)))
+
 (defn cache-size! ^long [{:keys [dir]}]
-  (reduce + 0 (map fs/size (filter fs/regular-file? (fs/list-dir dir)))))
+  (reduce + 0 (map fs/size (cache-tier-files dir))))
 
 (defn eviction-plan
   "Choose oldest cache entries until their remaining size fits the cap."
@@ -47,8 +55,7 @@
   Recency is the file's mtime, touched on every read: `lastAccessTime` is
   unreliable because most filesystems mount `noatime`."
   [{:keys [dir ^long cap-bytes]}]
-  (let [files (->> (fs/list-dir dir)
-                   (filter fs/regular-file?)
+  (let [files (->> (cache-tier-files dir)
                    (mapv (fn [f]
                            {:file f
                             :size (fs/size f)
