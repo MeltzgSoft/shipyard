@@ -544,7 +544,7 @@
            (get edit-events "shipyard:authoring")))
     (is (= (:frame preview) (:frame edit-preview)))
     (is (= :saved-mount (:roll-source edit-preview)))
-    (testing "picking another face preserves edit mode and current values"
+    (testing "picking another face preserves edit mode and non-kind values"
       (let [repicked (facet-post h hull-id mesh-key 0
                                  {"original-mount-id" "port-1"
                                   "mount-id" "port-1"
@@ -555,6 +555,7 @@
         (is (= 200 (:status repicked)))
         (is (str/includes? (:body repicked) "Save changes"))
         (is (str/includes? (:body repicked) "name=\"original-mount-id\""))
+        (is (re-find #"<option selected=\"selected\" value=\"plug\">plug</option>" (:body repicked)))
         (is (re-find #"selected=\"selected\"[^>]+value=\"weapon\"" (:body repicked)))
         (is (re-find #"name=\"capacity\"[^>]+value=\"3\"" (:body repicked)))))
     (testing "update changes the existing mount instead of leaving the old id behind"

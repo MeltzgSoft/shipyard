@@ -225,15 +225,18 @@
                              (wizard/edit-request {"mount-id" original-mount-id}
                                                   (catalog-part/durable-mounts
                                                    (:part/mounts part))))
+                      ;; Every picked face gets a fresh geometry default. Other
+                      ;; in-progress fields remain useful, but retaining Kind
+                      ;; would turn a previous manual choice into an override
+                      ;; of this face's own classification.
                       preview (cond-> {:part part
                                        :frame frame
                                        :mesh-key mesh-key
                                        :facet-indices facet-indices
-                                       :values (merge {:kind kind-hint}
-                                                      (:values edit)
-                                                      (wizard/preview-values params))}
-                                (not (:mount edit))
-                                (assoc :kind-hint kind-hint)
+                                       :kind-hint kind-hint
+                                       :values (assoc (merge (:values edit)
+                                                             (wizard/preview-values params))
+                                                      :kind kind-hint)}
                                 (:mount edit)
                                 (assoc :mode :edit
                                        :original-mount-id (:original-mount-id edit)))]

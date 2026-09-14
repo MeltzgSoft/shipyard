@@ -767,7 +767,6 @@
     (when-let [original-mount-id (input-value form "input[name=original-mount-id]")]
       {"original-mount-id" original-mount-id
        "mount-id" (input-value form "input[name=mount-id]")
-       "kind" (input-value form "select[name=kind]")
        "accepts" (input-value form "select[name=accepts]")
        "capacity" (input-value form "input[name=capacity]")
        "split-direction" (input-value form "select[name=split-direction]")
@@ -780,9 +779,9 @@
       (-> (js/fetch "/facet"
                     #js {:method "POST"
                          :headers #js {"Content-Type" "application/x-www-form-urlencoded"}
-                         :body (form-body (merge @repeat
-                                                 (dom-repeat-values)
-                                                 (dom-edit-values)
+                         :body (form-body (merge (dissoc @repeat "kind" :kind)
+                                                 (dissoc (dom-repeat-values) "kind" :kind)
+                                                 (dissoc (dom-edit-values) "kind" :kind)
                                                  {"part-id" part-id
                                                   "mesh-key" mesh-key
                                                   "triangle-index" (str triangle-index)}))})

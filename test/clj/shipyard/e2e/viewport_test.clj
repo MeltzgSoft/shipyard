@@ -706,8 +706,10 @@
   (is (some? (await-preview)))
   (is (s/wait-until
        #(= "port-2" (s/js *driver* "() => document.querySelector('.mount-wizard__form input[name=mount-id]').value"))))
-  (is (= "socket" (s/js *driver* "() => document.querySelector('.mount-wizard__form select[name=kind]').value")))
+  (is (= "plug" (s/js *driver* "() => document.querySelector('.mount-wizard__form select[name=kind]').value"))
+      "a newly picked face uses its geometry hint instead of the repeated socket kind")
   (is (= "1" (s/js *driver* "() => document.querySelector('.mount-wizard__form input[name=capacity]').value")))
+  (s/select-option! *driver* ".mount-wizard__form select[name=kind]" "socket")
   (is (s/wait-until
        #(= "turret" (s/js *driver* "() => document.querySelector('.mount-wizard__form select[name=accepts]').value"))))
   (s/click! *driver* ".mount-wizard__actions button[value=create]")

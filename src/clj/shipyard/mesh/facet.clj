@@ -364,10 +364,10 @@
 
 (defn- kind-hint [mesh indices frame opts]
   (let [heights (surrounding-heights mesh indices frame opts)]
-    ;; An open or mixed boundary is not a reliable recess, so use the requested
-    ;; conservative fallback.  This is only a form default; authors can always
-    ;; choose the other kind.
-    (if (and (seq heights) (every? pos? heights)) :socket :plug)))
+    ;; A plug has no inward wall at all. One positive neighbour is enough to
+    ;; suggest a recess; mixed boundaries occur on real hardpoints where an
+    ;; otherwise valid socket joins an outer hull surface.
+    (if (some pos? heights) :socket :plug)))
 
 (defn select
   "Return the connected facet and derived mount frame for `triangle-index`.

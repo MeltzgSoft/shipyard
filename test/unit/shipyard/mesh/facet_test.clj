@@ -58,6 +58,15 @@
     [[2 2 0] [0 2 0] [1 3 height]]
     [[0 2 0] [0 0 0] [-1 1 height]]]))
 
+(def ^:private mixed-recess-mesh
+  (mesh
+   [[[0 0 0] [2 0 0] [0 2 0]]
+    [[2 0 0] [2 2 0] [0 2 0]]
+    [[0 0 0] [2 0 0] [1 -1 1]]
+    [[2 0 0] [2 2 0] [3 1 -1]]
+    [[2 2 0] [0 2 0] [1 3 -1]]
+    [[0 2 0] [0 0 0] [-1 1 -1]]]))
+
 (deftest select-test
   (testing "groups the connected coplanar facet across geometric, not vertex-id, edges"
     (let [{:keys [facet-indices frame roll-ambiguous? roll-source]} (facet/select contract-mesh 0)]
@@ -152,8 +161,10 @@
       (is (= [0] (:facet-indices (facet/select m 0)))))))
 
 (deftest kind-hint-test
-  (testing "surfaces surrounding a recess default to an editable socket"
+  (testing "any recess-forming side defaults to an editable socket"
     (is (= :socket (:kind-hint (facet/select (recessed-mesh 1) 0)))))
+  (testing "a hardpoint may also meet an outer surface"
+    (is (= :socket (:kind-hint (facet/select mixed-recess-mesh 0)))))
 
   (testing "projections and open faces default to plug"
     (is (= :plug (:kind-hint (facet/select (recessed-mesh -1) 0))))
