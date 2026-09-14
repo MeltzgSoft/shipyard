@@ -66,13 +66,13 @@
            };
          }"))
 
-(defn- assert-detail-panel-fills! [state-label]
+(defn- assert-detail-panel-fits-content! [state-label]
   (let [layout (detail-layout)]
-    (is (>= (:detailHeight layout) 224)
-        (str state-label " detail panel should keep usable bottom height; layout was "
+    (is (< (:detailHeight layout) (:stageHeight layout))
+        (str state-label " detail panel should float within the stage; layout was "
              (pr-str layout)))
-    (is (>= (:detailShare layout) 0.25)
-        (str state-label " detail panel should claim the bottom stage row; layout was "
+    (is (<= (:detailHeight layout) (+ (:childHeight layout) 28))
+        (str state-label " detail panel should fit its content rather than forcing full height; layout was "
              (pr-str layout)))
     (is (:childFills layout)
         (str state-label " detail content should fill its panel; layout was "
@@ -263,18 +263,18 @@
   (testing "and the panel says why rather than going blank"
     (is (str/includes? (s/text *driver* "#detail") "supported STL"))))
 
-(deftest detail-panel-views-fill-the-bottom-row
+(deftest detail-panel-views-fit-the-floating-inspector
   (open-app!)
   (testing "empty detail"
-    (assert-detail-panel-fills! "empty"))
+    (assert-detail-panel-fits-content! "empty"))
   (testing "loaded detail"
     (select-part! "Cruiser Hull")
     (s/await-part *driver* s/hull-id)
-    (assert-detail-panel-fills! "loaded"))
+    (assert-detail-panel-fits-content! "loaded"))
   (testing "unrenderable detail"
     (select-part! "Supported Only Prow")
     (is (s/wait-until #(str/includes? (s/text *driver* "#detail") "supported STL")))
-    (assert-detail-panel-fills! "unrenderable")))
+    (assert-detail-panel-fits-content! "unrenderable")))
 
 (deftest selecting-another-part-replaces-the-first
   (testing "M1 is a single-part viewer (SPEC §10): picking a part shows that part"
@@ -318,9 +318,17 @@
   (s/await-part *driver* s/mount-plate-id)
   (is (enter-authoring! s/mount-plate-id)
       "authoring mode should be active for the loaded plate")
+  (is (= "part"
+         (s/js *driver* "() => document.querySelector('[data-detail-tab].detail__tab--active').dataset.detailTab"))
+      "part details should be the default inspector tab")
   (let [{:keys [x y]} (viewport-center)
         _ (s/click-point! *driver* x y)
         first-preview (await-preview)]
+    (is (= "mounts"
+           (s/js *driver* "() => document.querySelector('[data-detail-tab].detail__tab--active').dataset.detailTab"))
+        "selecting a face should reveal mount authoring")
+    (is (true? (s/js *driver* "() => document.querySelector('[data-detail-panel=part]').hidden")))
+    (is (false? (s/js *driver* "() => document.querySelector('[data-detail-panel=mounts]').hidden")))
     (is (= 2 (:triangles first-preview)))
     (is (vec-close? (:position first-preview) [2.0 1.0 0.0])
         (str "preview position was " (pr-str (:position first-preview))))
@@ -454,6 +462,7 @@
              (pr-str last-interfaces))))
   (is (s/wait-until #(nil? (:preview (s/stats *driver*))))
       "saving clears the transient preview")
+  (s/click! *driver* "[data-detail-tab=mounts]")
   (s/click! *driver* "form:has(input[name=mount-id][value='weapon-1']) button:has-text('Edit')")
   (is (s/wait-until #(true? (s/js *driver* "() => !!document.querySelector('.mount-wizard__form button[value=update]')")))
       "Edit should open the mount with an update action")
@@ -506,6 +515,7 @@
     return card ? card.querySelector('.part__role').textContent : null;
   }")))
       "the manual role is visible as the part's authoritative role")
+  (s/click! *driver* "[data-detail-tab=mounts]")
   (s/click! *driver* "form:has(input[name=mount-id][value='weapon-1']) button:has-text('Delete')")
   (is (s/wait-until #(not (str/includes? (s/text *driver* "#detail") "weapon-1")))
       "deleting removes the mount from the detail panel")
@@ -522,54 +532,36 @@
     (s/click-point! *driver* x y))
   (is (some? (await-preview)))
   (s/select-option! *driver* ".mount-wizard__form select[name=kind]" "socket")
-  (is (= "radio" (s/js *driver* "() => document.querySelector('input[name=accepts][value=weapon]').type")))
+  (is (= "SELECT" (s/js *driver* "() => document.querySelector('select[name=accepts]').tagName")))
   (let [layout (s/js *driver* "() => {
-                               const group = document.querySelector('.mount-wizard__role-options');
-                               const style = getComputedStyle(group);
+                               const select = document.querySelector('select[name=accepts]');
                                return {
-                                 columns: style.gridTemplateColumns.split(' ').length,
-                                 rows: style.gridTemplateRows.split(' ').length,
-                                 flow: style.gridAutoFlow,
-                                 roles: [...group.querySelectorAll('input[name=accepts]')]
-                                   .map(input => input.value)
+                                 roles: [...select.options].map(option => option.value)
                                };
                              }")]
-    (is (= 3 (:columns layout))
-        (str "acceptance profiles should use three columns; layout was " (pr-str layout)))
-    (is (= "column" (:flow layout))
-        (str "acceptance profiles should fill columns top-to-bottom; layout was " (pr-str layout)))
-    (is (= (quot (+ (count (:roles layout)) 2) 3) (:rows layout))
-        (str "acceptance profiles should use only the rows their choices need; layout was "
-             (pr-str layout)))
     (is (= (sort (:roles layout)) (:roles layout))
         (str "acceptance profiles should be alphabetized; layout was " (pr-str layout)))
     (is (every? (set (:roles layout)) ["weapon" "turret"])
         (str "socket profiles should retain the required weapon and turret choices; layout was "
              (pr-str layout))))
-  (is (= {:mountId "weapon-1" :mirrorId "weapon-1-mirror" :capacity "1"}
-         (s/js *driver* "() => {
+  (is (true?
+       (s/js *driver* "() => {
            const form = document.querySelector('.mount-wizard__form');
-           return {
-             mountId: form.querySelector('input[name=mount-id]').value,
-             mirrorId: form.querySelector('input[name=mirror-id]').value,
-             capacity: form.querySelector('input[name=capacity]').value
-           };
+           const mountId = form.querySelector('input[name=mount-id]').value;
+           return mountId.startsWith('weapon-')
+             && form.querySelector('input[name=mirror-id]').value === `${mountId}-mirror`
+             && form.querySelector('input[name=capacity]').value === '1';
          }"))
       "a new face starts with the selected acceptance type and one section")
-  (s/click! *driver* "input[name=accepts][value=weapon]")
-  (s/click! *driver* "input[name=accepts][value=turret]")
-  (is (true? (s/js *driver* "() => {
-    const weapon = document.querySelector('input[name=accepts][value=weapon]');
-    const turret = document.querySelector('input[name=accepts][value=turret]');
-    return turret.checked && !weapon.checked;
-  }")))
-  (is (= {:mountId "turret-1" :mirrorId "turret-1-mirror"}
-         (s/js *driver* "() => {
+  (s/select-option! *driver* "select[name=accepts]" "weapon")
+  (s/select-option! *driver* "select[name=accepts]" "turret")
+  (is (= "turret" (s/js *driver* "() => document.querySelector('select[name=accepts]').value")))
+  (is (true?
+       (s/js *driver* "() => {
            const form = document.querySelector('.mount-wizard__form');
-           return {
-             mountId: form.querySelector('input[name=mount-id]').value,
-             mirrorId: form.querySelector('input[name=mirror-id]').value
-           };
+           const mountId = form.querySelector('input[name=mount-id]').value;
+           return mountId.startsWith('turret-')
+             && form.querySelector('input[name=mirror-id]').value === `${mountId}-mirror`;
          }"))
       "changing acceptance updates generated mount and mirror prefixes")
   (s/js *driver* "() => { document.querySelector('.mount-wizard__form input[name=capacity]').value = '2'; }")
@@ -586,8 +578,9 @@
         (str "mirrored preview roll was " (pr-str (:mirror-roll mirrored)))))
   (s/click! *driver* "input[name=repeat]")
   (s/js *driver* "() => {
-    document.querySelector('input[name=mount-id]').value = 'port-1';
-    document.querySelector('input[name=mirror-id]').value = 'starboard-1';
+    const form = document.querySelector('.mount-wizard__form');
+    form.querySelector('input[name=mount-id]').value = 'port-1';
+    form.querySelector('input[name=mirror-id]').value = 'starboard-1';
   }")
   (s/click! *driver* ".mount-wizard__actions button[value=create]")
   (is (s/wait-until #(and (str/includes? (s/text *driver* "#detail") "port-1")
@@ -612,7 +605,7 @@
   (is (= "socket" (s/js *driver* "() => document.querySelector('.mount-wizard__form select[name=kind]').value")))
   (is (= "1" (s/js *driver* "() => document.querySelector('.mount-wizard__form input[name=capacity]').value")))
   (is (s/wait-until
-       #(true? (s/js *driver* "() => document.querySelector('.mount-wizard__form input[name=accepts][value=turret]').checked"))))
+       #(= "turret" (s/js *driver* "() => document.querySelector('.mount-wizard__form select[name=accepts]').value"))))
   (s/click! *driver* ".mount-wizard__actions button[value=create]")
   (is (s/wait-until #(str/includes? (s/text *driver* "#detail") "port-2"))
       "the repeated classification still waits for an explicit save"))

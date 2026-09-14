@@ -932,8 +932,9 @@ data reaches a handler and after a response leaves it. These schemas describe
 transport shape; domain decisions such as whether a mount id is valid remain
 in the pure mount and orientation functions.
 
-The canvas is `hx-preserve` and never a swap target (SPEC §6.1). All viewport
-communication is `HX-Trigger`.
+The canvas is `hx-preserve` and never a swap target (SPEC §6.1). Small viewport
+notifications use `HX-Trigger`. Assembly scene envelopes travel in the HTML
+response body to avoid HTTP header-size limits (see §13.3).
 
 **JSON is htmx's envelope; EDN is the payload.** htmx parses this header itself and
 dispatches one event per key of the outer object (`handleTriggerHeader`), so the envelope
@@ -1860,7 +1861,12 @@ with the assembled parent's. Incompatible normals are rejected rather than forci
 non-Y rotation. The root's matrix is its source-to-canonical rotation. Nested matrices
 are already composed server-side; the viewport applies no additional part quaternion.
 
-One `shipyard:assembly` HX-Trigger event carries an EDN envelope:
+Each assembly response carries an EDN envelope in an inert hidden input's
+`data-assembly-event` attribute, alongside the panel HTML. Hiccup escapes the
+attribute; the viewport reads the decoded attribute after `htmx:afterSwap`,
+removes the input, and applies the envelope. Assembly payloads must not be sent
+in `HX-Trigger`: matrices, URLs and mount markers can exceed Jetty's response
+header limit even for a modest assembly.
 
 ```clojure
 {:revision 3 :sequence 5 :commands

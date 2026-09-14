@@ -82,6 +82,16 @@
    [:p.detail__crumbs (str/join " › " (remove nil? [bundle class]))]
    [:p.detail__id id]])
 
+(def ^:private mode-activation
+  "Keep the shell's mode selector in sync for HTMX navigations. The shell is
+  not replaced when a mode loads into #detail, so this small click hook is the
+  right level for the visual state."
+  "this.closest('.masthead__modes').querySelectorAll('.masthead__mode').forEach(function (el) { el.classList.remove('masthead__mode--active'); }); this.classList.add('masthead__mode--active');")
+
+(def ^:private detail-tab-activation
+  "Switch inspector tabs without replacing the detail fragment or viewport."
+  "var root=this.closest('.detail'); var tab=this.dataset.detailTab; root.querySelectorAll('[data-detail-tab]').forEach(function (el) { var active=el.dataset.detailTab===tab; el.classList.toggle('detail__tab--active', active); el.setAttribute('aria-selected', active); }); root.querySelectorAll('[data-detail-panel]').forEach(function (el) { el.hidden=el.dataset.detailPanel!==tab; });")
+
 (defn- poll
   "Self-sustaining poll. `load` fires again every time this element is inserted,
   so the cycle continues while the server keeps sending it and stops the moment
@@ -220,28 +230,40 @@
 (defn detail-ready
   ([part mesh-key] (detail-ready part mesh-key nil))
   ([part mesh-key {:keys [error orientation-error preview repeat-values]}]
-   [:div.detail.detail--ready
-    [:div.detail__summary
-     (detail-head part)
-     [:p.detail__status "Loaded."]
-     (when (#{:hull :hull-section} (:part/role-hint part))
-       [:a {:href (str "/assembly?part-id=" (urls/encode-id (:part/id part)))
-            :hx-get (str "/assembly?part-id=" (urls/encode-id (:part/id part)))
-            :hx-target "#detail"} "Assemble this hull"])
-     (part-metadata part)
-     (part-orientation part orientation-error)
-     (interface-legend part)
-     (mount-list part)]
-    [:div#mount-authoring.mount-wizard
-     (cond-> {:data-part-id (:part/id part)
-              :data-mesh-key mesh-key
-              :data-interface-mounts (pr-str (catalog-part/durable-mounts
-                                              (:part/mounts part)))}
-       repeat-values (assoc :data-repeat-values (pr-str repeat-values)))
-     [:div#facet-preview
-      (cond
-        preview (facet-preview preview)
-        error (facet-error error part))]]]))
+   (let [mount-active? (boolean (or preview error))]
+     [:div.detail.detail--ready
+      [:nav.detail__tabs {:role "tablist" :aria-label "Part inspector"}
+       [:button.detail__tab
+        {:type "button" :role "tab" :aria-selected (str (not mount-active?))
+         :data-detail-tab "part" :class (when-not mount-active? "detail__tab--active")
+         :hx-on:click detail-tab-activation} "Part"]
+       [:button.detail__tab
+        {:type "button" :role "tab" :aria-selected (str mount-active?)
+         :data-detail-tab "mounts" :class (when mount-active? "detail__tab--active")
+         :hx-on:click detail-tab-activation} "Mounts"]]
+      [:div.detail__summary {:data-detail-panel "part" :role "tabpanel" :hidden mount-active?}
+       (detail-head part)
+       [:p.detail__status "Loaded."]
+       (when (#{:hull :hull-section} (:part/role-hint part))
+         [:a {:href (str "/assembly?part-id=" (urls/encode-id (:part/id part)))
+              :hx-get (str "/assembly?part-id=" (urls/encode-id (:part/id part)))
+              :hx-target "#detail"
+              :hx-on:click mode-activation} "Assemble this hull"])
+       (part-metadata part)
+       (part-orientation part orientation-error)]
+      [:div.detail__tab-panel {:data-detail-panel "mounts" :role "tabpanel" :hidden (not mount-active?)}
+       (interface-legend part)
+       (mount-list part)
+       [:div#mount-authoring.mount-wizard
+        (cond-> {:data-part-id (:part/id part)
+                 :data-mesh-key mesh-key
+                 :data-interface-mounts (pr-str (catalog-part/durable-mounts
+                                                 (:part/mounts part)))}
+          repeat-values (assoc :data-repeat-values (pr-str repeat-values)))
+        [:div#facet-preview
+         (cond
+           preview (facet-preview preview)
+           error (facet-error error part))]]]])))
 
 (defn detail-failed [{:part/keys [id] :as part} message]
   [:div.detail
@@ -320,16 +342,10 @@
       (when kind-hint
         [:span.mount-wizard__hint
          "Geometry suggests " (name kind-hint) ". You can change this."])]
-     [:fieldset.mount-wizard__roles (socket-only-attrs kind)
-      [:legend "Accepts"]
-      [:div.mount-wizard__role-options
-       {:style (str "--mount-role-rows-3:" (quot (+ (count profiles) 2) 3)
-                    ";--mount-role-rows-2:" (quot (+ (count profiles) 1) 2))}
+     [:label.mount-wizard__roles (socket-only-attrs kind) "Accepts"
+      [:select {:name "accepts" :disabled (= :plug kind)}
        (for [{:keys [id label]} sorted-profiles]
-         [:label.mount-wizard__check
-          [:input {:type "radio" :name "accepts" :value (name id)
-                   :checked (= selected-profile id)}]
-          label])]]
+         [:option {:value (name id) :selected (= selected-profile id)} label])]]
      [:label.mount-wizard__field (socket-only-attrs kind) "Capacity"
       [:input {:type "number" :name "capacity" :value capacity
                :min "1" :max "256" :step "1" :disabled (= :plug kind)}]]
@@ -472,6 +488,17 @@
    [:label.filters__field "Name"
     [:input {:type "search" :name "q" :placeholder "Search names" :autocomplete "off"}]]])
 
+(def ^:private preserve-assembly-drawers
+  "Copy live disclosure state into the incoming rail before its OOB swap.
+  This runs independently of WebGL and does not retain obsolete form values."
+  (str "var previous=this.querySelector('.assembly__rail-slots');"
+       "var incoming=event.detail.fragment.querySelector('.assembly__rail-slots');"
+       "if(previous && incoming && previous.dataset.hullId===incoming.dataset.hullId){"
+       "var states=new Map();"
+       "previous.querySelectorAll('details[data-slot]').forEach(function(drawer){states.set(drawer.dataset.slot,{open:drawer.open,complete:drawer.dataset.complete});});"
+       "incoming.querySelectorAll('details[data-slot]').forEach(function(drawer){var state=states.get(drawer.dataset.slot);if(state){drawer.open=state.complete===drawer.dataset.complete?state.open:drawer.dataset.complete!=='true';}});"
+       "}"))
+
 (defn shell
   "`GET /`. The canvas is created once here and never again: it is an island
   holding a WebGL context and hundreds of megabytes of GPU buffers, so it is
@@ -492,10 +519,16 @@
    [:body
     [:header.masthead
      [:h1 "Shipyard"]
-     [:a {:href "/assembly" :hx-get "/assembly" :hx-target "#detail"} "Assembly"]
-     [:p.masthead__tagline "Preview and assemble Battlefleet Gothic miniatures."]]
+     [:nav.masthead__modes {:aria-label "Workspace modes"}
+      [:a.masthead__mode.masthead__mode--active {:href "/" :hx-on:click mode-activation} "Browse"]
+      [:a.masthead__mode {:href "/assembly" :hx-get "/assembly" :hx-target "#detail"
+                          :hx-on:click mode-activation} "Assemble"]
+      [:a.masthead__mode {:href "#orientation" :hx-on:click mode-activation} "Orient"]]
+     [:div.masthead__spacer]
+     [:p.masthead__stats "Library ready · select a part to begin"]]
     [:main.layout
      [:section#library.panel
+      {"hx-on::oob-before-swap" preserve-assembly-drawers}
       [:h2.panel__title "Library"]
       (settings-panel root)
       (filter-form facets)
@@ -506,6 +539,9 @@
       [:button.stage__authoring-toggle
        {:type "button" :data-authoring-toggle "true" :aria-pressed "false" :disabled true}
        "Pick mount face"]
+      [:button.stage__mount-colors-toggle
+       {:type "button" :data-mount-colors-toggle "true" :aria-pressed "true"}
+       "Mount colors"]
       [:div.stage__axis-legend {:aria-label "Canonical axes"}
        [:span.stage__axis.stage__axis--x [:i {:aria-hidden "true"}] "+X / Pitch"]
        [:span.stage__axis.stage__axis--y [:i {:aria-hidden "true"}] "+Y / Yaw"]

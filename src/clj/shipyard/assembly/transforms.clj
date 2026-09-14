@@ -1,6 +1,7 @@
 (ns shipyard.assembly.transforms
   "Pure draft transitions and server-derived scene commands."
   (:require [shipyard.assembly.model :as model]
+            [shipyard.assembly.scene :as scene]
             [shipyard.catalog.db :as catalog]
             [shipyard.geom :as geom]
             [shipyard.http.urls :as urls]))
@@ -67,7 +68,11 @@
                                        :matrix (geom/attachment-matrix
                                                 (get-in scene [parent :matrix]) mount child-mount
                                                 (:part/orientation parent-part)
-                                                (:part/orientation part) 0.0)}))
+                                                (:part/orientation part) 0.0)
+                                       :mount-position
+                                       (geom/transform-point
+                                        (get-in scene [parent :matrix])
+                                        (:mount/pos mount))}))
                     scene))
                 {[] {:part-id (:hull draft) :matrix (geom/orientation-matrix (:part/orientation root))}}
                 slots)))))
@@ -81,8 +86,28 @@
     (when-not reset?
       (for [slot (sort-by pr-str (keys before)) :when (not= (get before slot) (get after slot))]
         {:op :remove :slot slot}))
-    (for [[slot {:keys [part-id matrix]}] (sort-by (comp pr-str key) after)
+    (for [[slot {:keys [part-id matrix mount-position]}] (sort-by (comp pr-str key) after)
           :let [mesh-key (get mesh-keys part-id)]
           :when mesh-key]
       {:op :set :slot slot :part-id part-id :matrix matrix
-       :mesh-key mesh-key :url (urls/mesh-url mesh-key 0)}))))
+       :mesh-key mesh-key :url (urls/mesh-url mesh-key 0)
+       :color (:hex (scene/color-for-slot slot))
+       :mount-position mount-position}))))
+
+(defn mount-markers
+  "World-space marker positions for every reachable mount, including empty slots."
+  [database draft]
+  (let [placements (try (placements database draft)
+                        (catch clojure.lang.ExceptionInfo _ {}))
+        placements (if (contains? placements [])
+                     placements
+                     (if-let [root (catalog/part database (:hull draft))]
+                       {[] {:matrix (geom/orientation-matrix (:part/orientation root))}}
+                       {}))
+        {:keys [slots]} (model/slots database (:hull draft) (:assignments draft))]
+    (into {}
+          (keep (fn [{:keys [id parent mount]}]
+                  (when-let [parent-matrix (get-in placements [parent :matrix])]
+                    [id {:mount-position (geom/transform-point parent-matrix (:mount/pos mount))
+                         :color (:hex (scene/color-for-slot id))}]))
+                slots))))

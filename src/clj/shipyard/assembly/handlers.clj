@@ -7,15 +7,23 @@
 
 (defn- response [result]
   (htmx/fragment
-   (views/panel result)
-   {:status (:status result) :events {:assembly (:event result)}}))
+   ;; Matrices and mount data grow with the assembly and exceed Jetty's
+   ;; response-header limit. Hiccup escapes the EDN in this inert body field;
+   ;; the viewport consumes it once after HTMX swaps the response into #detail.
+   (list (views/panel result)
+         [:input {:type "hidden" :data-assembly-event (pr-str (:event result))}])
+   {:status (:status result)}))
 
 (defn current! [deps {:keys [params]}]
   (response (assoc (db/request! deps nil {:resume? (not= "1" (get params "poll"))
                                           :retry (get params "retry")})
-                   :selected-hull (get params "part-id"))))
+                   :selected-hull (get params "part-id")
+                   :selected-bundle (not-empty (get params "bundle"))
+                   :selected-class (not-empty (get params "class")))))
 
 (defn mutate! [deps op {:keys [parameters]}]
-  (let [{:keys [revision slot part-id]} (:form parameters)]
-    (response (db/request! deps (cond-> {:op op :revision (parse-long revision) :part-id part-id}
-                                  slot (assoc :slot (edn/read-string slot))) {}))))
+  (let [{:keys [revision slot part-id bundle class]} (:form parameters)]
+    (response (assoc (db/request! deps (cond-> {:op op :revision (parse-long revision) :part-id part-id}
+                                         slot (assoc :slot (edn/read-string slot))) {})
+                     :selected-bundle (not-empty bundle)
+                     :selected-class (not-empty class)))))

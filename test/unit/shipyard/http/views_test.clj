@@ -100,6 +100,10 @@
         (is (str/includes? shell axis))))
     (testing "global face picking is a viewport control, disabled until a part loads"
       (is (re-find #"<button[^>]*class=\"stage__authoring-toggle\"[^>]*data-authoring-toggle=\"true\"[^>]*disabled" shell)))
+    (testing "mount coloring has a persistent viewport control"
+      (is (re-find #"<button[^>]*class=\"stage__mount-colors-toggle\"" shell))
+      (is (str/includes? shell "data-mount-colors-toggle=\"true\""))
+      (is (str/includes? shell "aria-pressed=\"true\"")))
     (testing "nothing anywhere aims a swap at it"
       (doseq [v every-view]
         (let [html (render v)]
@@ -206,23 +210,22 @@
                                                     :values {:kind :plug}}}))]
     (is (re-find #"<option selected=\"selected\" value=\"plug\">plug</option>" html))
     (is (str/includes? html "Geometry suggests plug. You can change this."))
-    (is (re-find #"<fieldset(?=[^>]*class=\"mount-wizard__roles\")(?=[^>]*data-socket-only=\"true\")(?=[^>]*hidden=\"hidden\")[^>]*>"
+    (is (re-find #"<label(?=[^>]*class=\"mount-wizard__roles\")(?=[^>]*data-socket-only=\"true\")(?=[^>]*hidden=\"hidden\")[^>]*>"
                  html)
         "plug forms hide the socket acceptance profile")))
 
-(deftest mount-acceptance-profiles-are-sorted-in-a-grid
+(deftest mount-acceptance-profiles-are-sorted-in-a-dropdown
   (let [html (render (views/detail-ready hull
                                          (apply str (repeat 64 "1"))
                                          {:preview {:part hull
                                                     :frame {:mount/pos [0 0 0]
                                                             :mount/axis [0 0 1]
                                                             :mount/roll [1 0 0]}
-                                                    :values {:mount-id "mount-1"}}}))]
-    (is (str/includes? html "mount-wizard__role-options"))
-    (is (str/includes? html "--mount-role-rows-3:6;--mount-role-rows-2:8"))
+                                                    :values {:mount-id "mount-1"}}}))
+        accepts-html (second (re-find #"(?s)<select name=\"accepts\">(.*?)</select>" html))]
     (is (= ["antenna" "bridge" "detail" "engine" "fin" "hull" "hull-section"
             "ordinance" "prow" "section" "stern" "terrain" "turret"
             "turret-or-antenna" "unknown" "weapon"]
            (mapv second
-                 (re-seq #"(?s)<input(?=[^>]*name=\"accepts\")(?=[^>]*value=\"([^\"]+)\")[^>]*>"
-                         html))))))
+                 (re-seq #"(?s)<option(?=[^>]*value=\"([^\"]+)\")[^>]*>"
+                         accepts-html))))))

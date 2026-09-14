@@ -39,6 +39,7 @@
   [{:keys [catalog library] {state :state} :assembly :as deps} operation {:keys [resume? retry]}]
   (locking state
     (let [{:keys [draft sequence root scene]} @state
+          draft-before draft
           database (catalog/snapshot! catalog)
           current-root (index/root! library)
           cached-sources (index/source-files! library)
@@ -57,14 +58,16 @@
           placement-result (try {:scene (if blocked-root? {} (transforms/placements database draft))}
                                 (catch clojure.lang.ExceptionInfo e
                                   {:scene {} :error (:code (ex-data e))}))
-          after (:scene placement-result)
+          after (if (:error placement-result) scene (:scene placement-result))
+          effective-draft (if (:error placement-result) draft-before draft)
           sources (fresh-sources library (map :part-id (vals after)))
           prepared (prepare! deps sources (map :part-id (vals after)) retry)
           mesh-keys (into {} (keep (fn [[id status]] (when (= :ready (:state status)) [id (:mesh-key status)]))) prepared)
           reset? (or resume? (and operation (not (:error result)) (#{:hull :reset} (:op operation))))
           envelope {:revision (:revision draft) :sequence (inc sequence)
-                    :commands (transforms/commands scene after mesh-keys reset?)}]
-      (reset! state {:draft draft :sequence (inc sequence)
+                    :commands (transforms/commands scene after mesh-keys reset?)
+                    :mount-markers (transforms/mount-markers database effective-draft)}]
+      (reset! state {:draft effective-draft :sequence (inc sequence)
                      :root (if blocked-root? root current-root) :scene after})
       (merge result {:database database :prepared prepared :event envelope
                      :available available}

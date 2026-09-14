@@ -16,6 +16,8 @@
    :parts (atom {})
    :preview (atom nil)
    :interfaces (atom nil)
+   :mount-markers (atom {})
+   :mount-colors-enabled (atom true)
    :orientation-guide (atom nil)
    :authoring (atom {:state :enter})
    :current (atom {:part-id "hull"})

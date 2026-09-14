@@ -514,7 +514,7 @@
                                          "accepts" "turret"}))]
         (is (str/includes? repeated "value=\"port-2\""))
         (is (re-find #"name=\"capacity\"[^>]+value=\"1\"" repeated))
-        (is (re-find #"checked=\"checked\"[^>]+value=\"turret\"" repeated))))))
+        (is (re-find #"selected=\"selected\"[^>]+value=\"turret\"" repeated))))))
 
 (deftest mount-wizard-edits-existing-mounts
   (let [root (library-tree)
@@ -539,7 +539,7 @@
     (is (str/includes? (:body edit) "value=\"port-1\""))
     (is (str/includes? (:body edit) "Normal (+Z)"))
     (is (str/includes? (:body edit) "Twist"))
-    (is (re-find #"checked=\"checked\"[^>]+value=\"weapon\"" (:body edit)))
+    (is (re-find #"selected=\"selected\"[^>]+value=\"weapon\"" (:body edit)))
     (is (= {:state :enter :part-id hull-id :mesh-key mesh-key}
            (get edit-events "shipyard:authoring")))
     (is (= (:frame preview) (:frame edit-preview)))
@@ -555,7 +555,7 @@
         (is (= 200 (:status repicked)))
         (is (str/includes? (:body repicked) "Save changes"))
         (is (str/includes? (:body repicked) "name=\"original-mount-id\""))
-        (is (re-find #"checked=\"checked\"[^>]+value=\"weapon\"" (:body repicked)))
+        (is (re-find #"selected=\"selected\"[^>]+value=\"weapon\"" (:body repicked)))
         (is (re-find #"name=\"capacity\"[^>]+value=\"3\"" (:body repicked)))))
     (testing "update changes the existing mount instead of leaving the old id behind"
       (let [updated (mount-post h {:part-id hull-id

@@ -25,14 +25,17 @@
   [["/assembly" {:get {:handler (partial handlers/current! deps)
                        :responses contracts/html-responses}}]
    ["/assembly/hull" {:post {:handler (partial handlers/mutate! deps :hull)
-                             :parameters {:form [:map [:revision revision-schema] [:part-id id-schema]]}
+                             :parameters {:form [:map [:revision revision-schema] [:part-id id-schema]
+                                                 [:bundle {:optional true} string?] [:class {:optional true} string?]]}
                              :responses contracts/html-responses}}]
    ["/assembly/assign" {:post {:handler (partial handlers/mutate! deps :assign)
                                :parameters {:form [:map [:revision revision-schema] [:part-id id-schema]
-                                                   [:slot [:fn slot-string?]]]}
+                                                   [:slot [:fn slot-string?]]
+                                                   [:bundle {:optional true} string?] [:class {:optional true} string?]]}
                                :responses contracts/html-responses}}]
    ["/assembly/clear" {:post {:handler (partial handlers/mutate! deps :clear)
-                              :parameters {:form [:map [:revision revision-schema] [:slot [:fn slot-string?]]]}
+                              :parameters {:form [:map [:revision revision-schema] [:slot [:fn slot-string?]]
+                                                  [:bundle {:optional true} string?] [:class {:optional true} string?]]}
                               :responses contracts/html-responses}}]
    ["/assembly/reset" {:post {:handler (partial handlers/mutate! deps :reset)
                               :parameters {:form [:map [:revision revision-schema]]}

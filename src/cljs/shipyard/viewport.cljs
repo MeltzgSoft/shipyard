@@ -26,6 +26,7 @@
 (goog-define ^boolean TEST-HOOKS false)
 
 (defonce ^:private state (atom nil))
+(def ^:private neutral-part-color 0x9aa4af)
 
 ;; --- geometry ---------------------------------------------------------------
 
@@ -253,6 +254,41 @@
     (dispose-object! object))
   (reset! interfaces nil))
 
+(defn- clear-mount-markers! [{:keys [^js scene mount-markers]}]
+  (doseq [[_ ^js marker] @mount-markers]
+    (.remove scene marker)
+    (dispose-object! marker))
+  (reset! mount-markers {}))
+
+(defn- put-mount-marker! [{:keys [^js scene mount-markers mount-colors-enabled]} slot payload]
+  (when-let [position (:mount-position payload)]
+    (when-let [old (get @mount-markers slot)]
+      (.remove scene old)
+      (dispose-object! old))
+    (let [marker (three/Mesh.
+                  (three/SphereGeometry. 0.8 12 8)
+                  (three/MeshBasicMaterial. #js {:color (:color payload)
+                                                 :transparent true
+                                                 :opacity 0.95
+                                                 :depthTest false
+                                                 :depthWrite false}))]
+      (.set (.-position marker) (nth position 0) (nth position 1) (nth position 2))
+      (set! (.-visible marker) @mount-colors-enabled)
+      (set! (.-renderOrder marker) 20)
+      (set! (.-name marker) (str "mount-marker-" slot))
+      (swap! mount-markers assoc slot marker)
+      (.add scene marker))))
+
+(defn- sync-mount-markers! [sys marker-data]
+  (let [{:keys [mount-markers]} sys
+        wanted (set (keys marker-data))]
+    (doseq [[slot marker] @mount-markers :when (not (contains? wanted slot))]
+      (.remove (:scene sys) marker)
+      (dispose-object! marker)
+      (swap! mount-markers dissoc slot))
+    (doseq [[slot payload] marker-data]
+      (put-mount-marker! sys slot payload))))
+
 (declare sync-authoring-button!)
 
 (defn clear! [{:keys [^js scene ^js canvas parts authoring current repeat] :as sys}]
@@ -260,6 +296,7 @@
   (when-let [generation (:browse-generation sys)] (swap! generation inc))
   (clear-authoring-preview! sys)
   (clear-interface-highlights! sys)
+  (clear-mount-markers! sys)
   (clear-orientation-guide! sys)
   (reset! authoring nil)
   (reset! current nil)
@@ -436,6 +473,24 @@
                                       :part-id part-id
                                       :mesh-key mesh-key})))))
 
+(defn- set-mount-colors! [{:keys [parts mount-markers mount-colors-enabled]} enabled?]
+  (reset! mount-colors-enabled enabled?)
+  (doseq [[_ ^js object] @parts]
+    (when-let [color (.. object -userData -mountColor)]
+      (.setHex (.. object -material -color) (if enabled? color neutral-part-color))))
+  (doseq [[_ ^js marker] @mount-markers]
+    (set! (.-visible marker) enabled?))
+  (when-let [button (.querySelector js/document "[data-mount-colors-toggle]")]
+    (.setAttribute button "aria-pressed" (str enabled?))))
+
+(defn- mount-colors-toggle! [sys ^js e]
+  (let [target (.-target e)
+        button (when (and target (.-closest target))
+                 (.closest target "[data-mount-colors-toggle]"))]
+    (when button
+      (.preventDefault e)
+      (set-mount-colors! sys (not @(:mount-colors-enabled sys))))))
+
 (defn- facet-geometry [^js obj facet-indices axis mirror]
   (let [source (.-geometry obj)
         position (.getAttribute source "position")
@@ -458,7 +513,7 @@
     (when-not (.-boundingSphere g) (.computeBoundingSphere g))
     (max 0.25 (* 0.35 (.. g -boundingSphere -radius)))))
 
-(declare input-value checked? checked-values)
+(declare input-value checked?)
 
 (defn- face-highlight [^js obj facet-indices frame mirror color opacity]
   (three/Mesh.
@@ -712,7 +767,7 @@
       {"original-mount-id" original-mount-id
        "mount-id" (input-value form "input[name=mount-id]")
        "kind" (input-value form "select[name=kind]")
-       "accepts" (checked-values form "input[name=accepts]:checked")
+       "accepts" (input-value form "select[name=accepts]")
        "capacity" (input-value form "input[name=capacity]")
        "split-direction" (input-value form "select[name=split-direction]")
        "twist-deg" (input-value form "input[name=twist-deg]")})))
@@ -746,9 +801,6 @@
 (defn- checked? [^js form selector]
   (boolean (some-> (.querySelector form selector) .-checked)))
 
-(defn- checked-values [^js form selector]
-  (mapv #(.-value %) (array-seq (.querySelectorAll form selector))))
-
 (defn- sync-socket-fields!
   "Keep socket-only controls in the DOM while a plug is selected so choosing
   socket does not discard their values, but hide and disable them until then."
@@ -775,7 +827,7 @@
 
 (defn- update-mount-id-prefix! [^js form]
   (when-let [mount-id (.querySelector form "input[name=mount-id]")]
-    (when-let [selected (.querySelector form "input[name=accepts]:checked")]
+    (when-let [selected (.querySelector form "select[name=accepts]")]
       (let [previous-prefix (.getAttribute mount-id "data-accept-prefix")
             next-prefix (.-value selected)
             current-id (.-value mount-id)]
@@ -884,8 +936,19 @@
       (if (checked? form "input[name=repeat]")
         (reset! repeat {:mount-id (suggest-repeat-id (input-value form "input[name=mount-id]"))
                         :kind (input-value form "select[name=kind]")
-                        :accepts (checked-values form "input[name=accepts]:checked")})
+                        :accepts (input-value form "select[name=accepts]")})
         (reset! repeat nil)))))
+
+(defn- activate-detail-tab! [tab]
+  (when-let [root (.querySelector js/document ".detail")]
+    (doseq [^js button (array-seq (.querySelectorAll root "[data-detail-tab]"))]
+      (let [active? (= tab (.. button -dataset -detailTab))]
+        (if active?
+          (.add (.-classList button) "detail__tab--active")
+          (.remove (.-classList button) "detail__tab--active"))
+        (.setAttribute button "aria-selected" (str active?))))
+    (doseq [^js panel (array-seq (.querySelectorAll root "[data-detail-panel]"))]
+      (set! (.-hidden panel) (not= tab (.. panel -dataset -detailPanel))))))
 
 (defn- pick-face! [{:keys [^js canvas ^js camera parts authoring ^js raycaster ^js pointer] :as sys} ^js e]
   (when-let [{:keys [part-id]} @authoring]
@@ -897,6 +960,7 @@
           (let [^js hit (aget hits 0)
                 face-index (.-faceIndex hit)]
             (when (some? face-index)
+              (activate-detail-tab! "mounts")
               (post-facet! sys face-index))))))))
 
 (defn- load-mesh!
@@ -958,7 +1022,7 @@
         (frame! sys [(.-x minimum) (.-y minimum) (.-z minimum)]
                 [(.-x maximum) (.-y maximum) (.-z maximum)])))))
 
-(defn- load-assembly-slot! [{:keys [assembly] :as sys} slot {:keys [token payload]}]
+(defn- load-assembly-slot! [{:keys [assembly mount-colors-enabled] :as sys} slot {:keys [token payload]}]
   (-> (js/fetch (:url payload))
       (.then (fn [^js response]
                (if (.-ok response) (.arrayBuffer response)
@@ -969,6 +1033,9 @@
                        surface (material)
                        object (three/Mesh. geometry surface)]
                    (try
+                     (when-let [color (:color payload)]
+                       (set! (.. object -userData -mountColor) color)
+                       (.setHex (.-color surface) (if @mount-colors-enabled color neutral-part-color)))
                      (set! (.-matrixAutoUpdate object) false)
                      (.fromArray (.-matrix object) (clj->js (:matrix payload)))
                      (set! (.. object -userData -partId) (:part-id payload))
@@ -997,10 +1064,28 @@
           (.remove scene object)
           (dispose-object! object)
           (swap! parts dissoc slot)))
+      (doseq [[slot marker] @(:mount-markers sys)
+              :when (not= (get-in before [:slots slot :token])
+                          (get-in after [:slots slot :token]))]
+        (.remove scene marker)
+        (dispose-object! marker)
+        (swap! (:mount-markers sys) dissoc slot))
       (reset! assembly after)
+      (sync-mount-markers! sys (:mount-markers event))
+      (doseq [{:keys [op slot] :as command} (:commands event)
+              :when (= :set op)]
+        (put-mount-marker! sys slot command))
       (doseq [[slot entry] (:slots after)
               :when (not= (:token entry) (get-in before [:slots slot :token]))]
         (load-assembly-slot! sys slot entry)))))
+
+(defn- sync-assembly-from-dom! [sys]
+  (doseq [element (array-seq (.querySelectorAll js/document "#detail [data-assembly-event]"))]
+    (let [event (edn/read-string (.getAttribute element "data-assembly-event"))]
+      ;; Remove before applying: unrelated swaps must not replay this response.
+      ;; apply-assembly! retains its sequence/token checks for stale responses.
+      (.remove element)
+      (apply-assembly! sys event))))
 
 ;; --- test hook --------------------------------------------------------------
 
@@ -1085,6 +1170,9 @@
          :geometries (.. renderer -info -memory -geometries)
          :status    (clj->js (:state @status))
          :authoring (clj->js @authoring)
+         :mount-colors-enabled @(:mount-colors-enabled sys)
+         :visible-mount-markers (count (filter (fn [[_ ^js marker]] (.-visible marker))
+                                               @(:mount-markers sys)))
          :assembly (clj->js
                     {:mode (:mode @(:assembly sys))
                      :slots (when (= :assembly (:mode @(:assembly sys)))
@@ -1127,8 +1215,10 @@
     (when @orientation-guide
       (let [size (min orientation-guide-size
                       (max 72.0 (* 0.38 (min w h))))
-            x (max 0.0 (- w size orientation-guide-padding))
-            y (max 0.0 (- h size orientation-guide-top))]
+            ;; The guide is a lower-left viewport overlay, just above the
+            ;; canonical axis legend. WebGL coordinates are bottom-left.
+            x orientation-guide-padding
+            y (+ orientation-guide-top 28.0)]
         (sync-orientation-camera! camera orientation-camera)
         (.clearDepth renderer)
         (.setViewport renderer x y size size)
@@ -1167,6 +1257,7 @@
     (.addEventListener body "shipyard:interfaces" #(draw-interfaces! sys (payload %)))
     (.addEventListener body "shipyard:part-orientation" #(orient-part! sys (payload %)))
     (.addEventListener body "htmx:afterSwap" (fn [_]
+                                               (sync-assembly-from-dom! sys)
                                                (sync-authoring-button! sys)
                                                (sync-socket-fields-from-dom!)
                                                (sync-interfaces-from-dom! sys)
@@ -1186,7 +1277,9 @@
                                        (refresh-preview-from-form! sys e)
                                        (refresh-orientation-from-form! sys e)))
     (.addEventListener body "submit" #(remember-repeat-from-submit! sys %))
-    (.addEventListener body "click" #(authoring-toggle! sys %))))
+    (.addEventListener body "click" (fn [e]
+                                      (authoring-toggle! sys e)
+                                      (mount-colors-toggle! sys e)))))
 
 (defn- renderer!
   "nil rather than a throw when this browser cannot give us a WebGL context -
@@ -1218,7 +1311,9 @@
                     :current (atom nil) :authoring (atom nil) :authoring-enabled (atom false)
                     :preview (atom nil)
                     :assembly (atom assembly-scene/empty-state) :browse-generation (atom 0)
-                    :interfaces (atom nil) :orientation-guide (atom nil) :repeat (atom nil)
+                    :interfaces (atom nil) :orientation-guide (atom nil)
+                    :mount-markers (atom {}) :mount-colors-enabled (atom true)
+                    :repeat (atom nil)
                     :preview-revision (atom 0)
                     :raycaster (three/Raycaster.) :pointer (three/Vector2.)}]
       (set! (.-outputColorSpace renderer) three/SRGBColorSpace)

@@ -15,9 +15,14 @@
 (defn- assign! [driver path label]
   (await-ready! driver)
   (let [selector (slot-selector path)]
-    (s/select-option! driver (str selector " select[name=part-id]") label)
-    (s/click! driver (str selector " form[action='/assembly/assign'] button"))
-    (s/wait-until #(str/includes? (s/text driver (str selector " .assembly__current")) label))))
+    (when-not (s/js driver (str "() => document.querySelector(" (pr-str selector) ").open"))
+      (s/click! driver (str selector " > summary")))
+    (s/click! driver (str selector " button[name=part-id]:has(.assembly__candidate-name:text-is('" label "'))"))
+    (s/wait-until #(str/includes? (s/text driver (str selector " > summary .assembly__mount-state")) label))))
+
+(defn- clear! [driver path]
+  (let [selector (str ".assembly__slot-wrap:has(> " (slot-selector path) ")")]
+    (s/click! driver (str selector " > .assembly__mount-actions button"))))
 
 (defn- workflow! [blocked?]
   (let [started (fixture/start! true)
@@ -29,8 +34,9 @@
       (s/go! driver (s/base-url (:system started)))
       (s/wait-visible! driver "#library-results .part")
       (s/js driver "() => { window.assemblyCanvas = document.querySelector('#viewport'); }")
-      (s/click! driver ".masthead a:has-text('Assembly')")
-      (s/wait-visible! driver "#assembly")
+      (s/click! driver ".masthead a:has-text('Assemble')")
+      (s/wait-visible! driver ".assembly__hull")
+      (s/select-option! driver ".assembly__hull select[name=part-id]" "hull")
       (s/click! driver ".assembly__hull button")
       (s/wait-visible! driver (slot-selector [[:weapon 0]]))
       (testing "capacity-two choices and nested turrets are server rendered"
@@ -38,13 +44,13 @@
         (assign! driver [[:weapon 1]] "weapon")
         (s/wait-visible! driver (slot-selector [[:weapon 0] [:turret 0]]))
         (assign! driver [[:weapon 0] [:turret 0]] "turret")
-        (is (= 2 (s/count-els driver (str (slot-selector [[:weapon 0]]) " option"))))
-        (is (not (str/includes? (s/text driver (str (slot-selector [[:weapon 0]]) " select")) "hint")))
-        (is (not (str/includes? (s/text driver (str (slot-selector [[:weapon 0]]) " select")) "supported"))))
+        (is (= 2 (s/count-els driver (str (slot-selector [[:weapon 0]]) " > .assembly__candidate-form button[name=part-id]"))))
+        (is (not (str/includes? (s/text driver (str (slot-selector [[:weapon 0]]) " > .assembly__candidate-form .assembly__candidates")) "hint")))
+        (is (not (str/includes? (s/text driver (str (slot-selector [[:weapon 0]]) " > .assembly__candidate-form .assembly__candidates")) "supported"))))
       (testing "replace/clear remove descendants and preserve the canvas"
         (assign! driver [[:weapon 0]] "weapon-alt")
-        (is (= "Empty" (s/text driver (str (slot-selector [[:weapon 0] [:turret 0]]) " .assembly__current"))))
-        (s/click! driver (str (slot-selector [[:weapon 0]]) " form[action='/assembly/clear'] button"))
+        (is (= "Empty" (s/text driver (str (slot-selector [[:weapon 0] [:turret 0]]) " > summary .assembly__mount-state"))))
+        (clear! driver [[:weapon 0]])
         (is (s/wait-until #(zero? (s/count-els driver (slot-selector [[:weapon 0] [:turret 0]])))))
         (is (true? (s/js driver "() => window.assemblyCanvas === document.querySelector('#viewport')"))))
       (testing "stale revision shows a recoverable error in HTML"
@@ -65,8 +71,9 @@
     (try
       (s/go! driver (s/base-url (:system started)))
       (s/wait-visible! driver "#library-results .part")
-      (s/click! driver ".masthead a:has-text('Assembly')")
-      (s/wait-visible! driver "#assembly")
+      (s/click! driver ".masthead a:has-text('Assemble')")
+      (s/wait-visible! driver ".assembly__hull")
+      (s/select-option! driver ".assembly__hull select[name=part-id]" "hull")
       (s/click! driver ".assembly__hull button")
       (s/wait-visible! driver (slot-selector [[:weapon 0]]))
       (doseq [[path label] [[[[:prow 0]] "prow"] [[[:bridge 0]] "bridge"]

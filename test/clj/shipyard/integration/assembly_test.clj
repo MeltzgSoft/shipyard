@@ -1,5 +1,5 @@
 (ns shipyard.integration.assembly-test
-  (:require [clojure.data.json :as json]
+  (:require [clojure.xml :as xml]
             [babashka.fs :as fs]
             [clojure.edn :as edn]
             [clojure.test :refer [deftest is testing use-fixtures]]
@@ -21,10 +21,9 @@
   ((:handler *fixture*) (mock/request :post path params)))
 
 (defn envelope [response]
-  (-> (get-in response [:headers "HX-Trigger"])
-      (json/read-str)
-      (get "shipyard:assembly")
-      (edn/read-string)))
+  (let [field (re-find #"<input[^>]*data-assembly-event=[^>]* />" (:body response))]
+    (with-open [in (java.io.ByteArrayInputStream. (.getBytes field "UTF-8"))]
+      (-> (xml/parse in) :attrs :data-assembly-event edn/read-string))))
 
 (deftest draft-http-workflow
   (testing "the response includes available sources for server-rendered choices"

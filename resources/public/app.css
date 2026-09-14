@@ -113,6 +113,28 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
 .stage__authoring-toggle:hover:not(:disabled) { border-color: var(--accent); }
 .stage__authoring-toggle[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
 .stage__authoring-toggle:disabled { color: var(--ink-dim); cursor: not-allowed; }
+.stage__mount-colors-toggle {
+  display: none;
+  position: absolute;
+  top: 3rem;
+  left: 0.9rem;
+  z-index: 1;
+  padding: 0.35rem 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(30, 38, 48, 0.9);
+  color: var(--ink-dim);
+  font: 600 0.78rem/1 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  cursor: pointer;
+}
+.stage:has(#assembly) .stage__mount-colors-toggle { display: block; }
+.stage__mount-colors-toggle:hover { border-color: var(--accent); }
+.stage__mount-colors-toggle[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+body:has(.stage__mount-colors-toggle[aria-pressed="false"]) .assembly__slot-wrap { border-left-color: var(--line); }
+body:has(.stage__mount-colors-toggle[aria-pressed="false"]) .assembly__mount-dot,
+body:has(.stage__mount-colors-toggle[aria-pressed="false"]) .assembly__mount-subpart-dot { background: var(--ink-faint); }
+body:has(.stage__mount-colors-toggle[aria-pressed="false"]) .assembly__candidate:hover,
+body:has(.stage__mount-colors-toggle[aria-pressed="false"]) .assembly__candidate--selected { border-color: var(--line); }
 .stage__axis-legend {
   position: absolute;
   top: 10.4rem;
@@ -566,3 +588,226 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
 }
 .settings__save:hover { border-color: var(--accent); }
 .settings__message:empty { display: none; }
+
+/* --- design shell -------------------------------------------------------
+   The exported UX treats the application as one continuous workspace: a
+   narrow library rail, an expansive viewport, and an inspector floating over
+   the right side of the stage. Keep these rules at the end so the existing
+   component styles remain useful for fragments and tests. */
+
+body {
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.masthead {
+  flex: 0 0 46px;
+  height: 46px;
+  padding: 0 14px;
+  align-items: center;
+  gap: 16px;
+  background: var(--panel);
+}
+.masthead h1 {
+  font-size: 14px;
+  line-height: 1;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+.masthead__modes {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.masthead__mode {
+  padding: 5px 12px;
+  border-radius: 4px;
+  color: var(--ink-dim);
+  font: 600 12px/1 system-ui, sans-serif;
+  text-decoration: none;
+}
+.masthead__mode:hover { color: var(--ink); background: var(--panel-2); }
+.masthead__mode--active { background: var(--line); color: var(--ink); }
+.masthead__spacer { flex: 1; }
+.masthead__stats { margin: 0; color: var(--ink-faint); font: 12px/1.3 system-ui, sans-serif; }
+
+.layout {
+  grid-template-columns: 304px minmax(0, 1fr);
+  gap: 0;
+  background: var(--line);
+}
+.panel { padding: 0; }
+#library {
+  border-right: 1px solid var(--line);
+  overflow: hidden;
+}
+#library > .panel__title { display: none; }
+.settings { margin: 10px 12px 8px; }
+.settings__summary { font-size: 11px; }
+.filters {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.filters__field {
+  display: block;
+  position: relative;
+  font-size: 0;
+}
+.filters__field::before { display: none; }
+.filters select, .filters input {
+  width: 100%;
+  height: 31px;
+  padding: 6px 9px;
+  background: var(--bg);
+  font-size: 13px;
+}
+.filters__field:first-child select { border-color: #2f5568; background: #1d2b34; color: #9ccbe8; }
+#library-results {
+  height: calc(100% - 108px);
+  overflow-y: auto;
+  padding: 0 0 16px;
+}
+.results__count {
+  margin: 0;
+  padding: 9px 12px 7px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+  font-size: 11px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.parts { gap: 0; }
+.part {
+  padding: 8px 12px;
+  border-radius: 0;
+  border-left: 2px solid transparent;
+  background: transparent;
+}
+.part:nth-child(even) { background: rgba(35, 42, 51, .42); }
+.part:hover { background: var(--panel-2); }
+.part:has(.part__select:focus-visible), .part:focus-within { border-left-color: var(--accent); }
+.part__select { gap: 8px; }
+.part__name { font-size: 13px; }
+.part__role { font-size: 11px; }
+.part__path { margin-top: 2px; font-size: 11px; }
+.part__reason { margin-top: 4px; font-size: 11px; }
+
+.stage {
+  grid-template-rows: 1fr;
+  background: radial-gradient(120% 90% at 42% 42%, #1b2027 0%, #0f1216 70%);
+  overflow: hidden;
+}
+.stage:has(.assembly), .stage:has(.mount-wizard__form) { grid-template-rows: 1fr; }
+.stage__canvas { background: transparent; }
+.stage__authoring-toggle {
+  top: 14px;
+  left: 14px;
+  background: rgba(30, 38, 48, .9);
+}
+.stage__axis-legend {
+  top: auto;
+  right: auto;
+  bottom: 14px;
+  left: 14px;
+}
+.stage__detail {
+  position: absolute;
+  z-index: 3;
+  top: 14px;
+  right: 14px;
+  bottom: auto;
+  width: min(400px, calc(100% - 28px));
+  height: fit-content;
+  max-height: calc(100% - 28px);
+  border: 1px solid #3a434f;
+  border-radius: 8px;
+  background: rgba(28, 33, 40, .95);
+  box-shadow: 0 18px 48px rgba(0,0,0,.6);
+  overflow-y: auto;
+  padding: 12px 14px;
+}
+.stage__detail:empty { display: none; }
+.detail--empty { display: flex; align-items: center; justify-content: center; text-align: center; }
+.detail--ready { grid-template-columns: 1fr; gap: 0; }
+.detail--ready { min-height: 0; }
+.detail__summary { min-width: 0; }
+.mount-wizard { margin-top: 14px; }
+.detail--ready { display: flex; flex-direction: column; align-items: stretch; }
+.detail__tabs { display: flex; gap: 2px; margin: 0 -14px 12px; padding: 2px 14px 0; border-bottom: 1px solid var(--line); }
+.detail__tab { padding: 7px 10px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--ink-dim); font: 600 12px/1 system-ui, sans-serif; cursor: pointer; }
+.detail__tab:hover { color: var(--ink); }
+.detail__tab--active { border-bottom-color: var(--accent); color: var(--ink); }
+.detail__tab-panel[hidden] { display: none; }
+.detail__tab-panel { min-width: 0; }
+.detail__tab-panel .mount-wizard { margin-top: 14px; }
+.mount-wizard__roles { min-width: 0; }
+.mount-wizard__roles select { width: 100%; }
+
+@media (max-width: 62rem) {
+  .masthead__stats { display: none; }
+  .stage__detail { width: min(380px, calc(100% - 28px)); }
+}
+@media (max-width: 44rem) {
+  .layout { grid-template-columns: 220px minmax(0, 1fr); }
+  .masthead { gap: 8px; }
+  .masthead__mode { padding-inline: 8px; }
+  .stage__detail { top: 8px; right: 8px; width: calc(100% - 16px); max-height: calc(100% - 16px); }
+}
+
+/* --- assembly workspace ------------------------------------------------- */
+.assembly-response { display: contents; }
+.assembly { min-height: 100%; }
+.assembly__header { padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.assembly__header h2 { margin: 0; font-size: 15px; }
+.assembly__header p { margin: 3px 0 0; color: var(--ink-dim); font-size: 12px; }
+.assembly__body { min-width: 0; }
+.assembly__actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 12px 0; }
+.assembly__actions form { margin: 0; }
+.assembly__actions button, .assembly__actions a { font-size: 12px; }
+.assembly__slots { display: grid; grid-template-columns: 1fr; gap: 8px; }
+.assembly__slot-wrap { position: relative; border: 1px solid var(--line); border-left: 3px solid var(--mount-color); border-radius: 6px; background: var(--panel-2); }
+.assembly__slot { position: relative; padding: 0 10px 9px; border: 0; border-radius: 0; background: transparent; }
+.assembly__mount-header { display: grid; grid-template-columns: 8px minmax(0, 1fr); align-items: start; gap: 7px; min-height: 31px; padding: 9px 82px 9px 0; cursor: pointer; list-style: none; }
+.assembly__mount-header::-webkit-details-marker { display: none; }
+.assembly__mount-header::after { content: "▾"; position: absolute; right: 10px; color: var(--ink-faint); }
+.assembly__slot:not([open]) .assembly__mount-header::after { content: "▸"; }
+.assembly__mount-copy { display: grid; min-width: 0; gap: 2px; }
+.assembly__mount-header h3 { min-width: 0; margin: 0; overflow: hidden; font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.assembly__mount-state { min-width: 0; overflow: hidden; color: var(--ink-dim); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.assembly__mount-actions { position: absolute; top: 7px; right: 30px; z-index: 1; }
+.assembly__mount-actions form { margin: 0; }
+.assembly__mount-actions button { padding: 2px 6px; font-size: 11px; }
+.assembly__mount-dot { width: 8px; height: 8px; margin-top: 3px; border-radius: 2px; background: var(--mount-color, var(--ink-faint)); }
+.assembly__mount-subparts { display: grid; gap: 2px; margin-top: 3px; }
+.assembly__mount-subpart { display: grid; grid-template-columns: 6px minmax(0, auto) minmax(0, 1fr); align-items: center; gap: 5px; min-width: 0; color: var(--ink-dim); font-size: 9px; }
+.assembly__mount-subpart-dot { width: 6px; height: 6px; border-radius: 1px; background: var(--subpart-color); }
+.assembly__mount-subpart-slot, .assembly__mount-subpart-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.assembly__mount-subpart-name { color: var(--ink); }
+.assembly__nested { display: grid; gap: 6px; margin: 9px 0 0 9px; padding-left: 7px; border-left: 1px solid var(--line); }
+.assembly__current { margin: 4px 0 7px; color: var(--ink-dim); font-size: 11px; }
+.assembly__candidate-form { margin: 0; }
+.assembly__candidates { display: grid; gap: 3px; }
+.assembly__candidate { display: flex; align-items: baseline; gap: 8px; width: 100%; padding: 7px 8px; border: 1px solid transparent; border-radius: 5px; background: var(--bg); color: var(--ink); text-align: left; cursor: pointer; }
+.assembly__candidate:hover, .assembly__candidate--selected { border-color: var(--mount-color); background: #1d2b34; }
+.assembly__candidate-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.assembly__candidate-meta { color: var(--ink-faint); font-size: 10px; }
+.assembly__empty, .assembly__rail-count { color: var(--warn); font-size: 11px; }
+.assembly__filters { display: grid; gap: 8px; margin: 0; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.assembly__filters label, .assembly__hull label { display: grid; gap: 4px; color: var(--ink-dim); font-size: 11px; }
+.assembly__filters select, .assembly__hull select { width: 100%; min-width: 0; padding: 6px 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--bg); color: var(--ink); font: inherit; font-size: 12px; }
+.assembly__hull { display: grid; gap: 8px; margin: 0; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.assembly__hull button { justify-self: start; padding: 7px 10px; border: 0; border-radius: 5px; background: var(--accent); color: var(--bg); font: 600 12px/1 system-ui, sans-serif; cursor: pointer; }
+.assembly__hull button:disabled { opacity: .5; cursor: not-allowed; }
+.assembly__rail-count { margin: 0; padding: 8px 12px; color: var(--ink-faint); }
+#library:has(.assembly__rail-slots) { display: flex; flex-direction: column; }
+.assembly__rail-slots { flex: 1 1 auto; height: 0; min-height: 0; overflow-y: auto; padding: 8px 10px 16px; }
+
+#detail:has(#assembly) { display: none; }
