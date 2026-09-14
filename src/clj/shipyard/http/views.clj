@@ -520,13 +520,13 @@
     [:header.masthead
      [:h1 "Shipyard"]
      [:nav.masthead__modes {:aria-label "Workspace modes"}
+      [:a.masthead__mode {:href "/orient" :hx-get "/orient" :hx-target "#library"
+                          :hx-swap "outerHTML" :data-workspace-mode "orient"
+                          :hx-on:click mode-activation} "Orient"]
       [:a.masthead__mode.masthead__mode--active {:href "/" :data-workspace-mode "browse"
                                                  :hx-on:click mode-activation} "Browse"]
       [:a.masthead__mode {:href "/assembly" :hx-get "/assembly" :hx-target "#detail"
-                          :data-workspace-mode "assembly" :hx-on:click mode-activation} "Assemble"]
-      [:a.masthead__mode {:href "/orient" :hx-get "/orient" :hx-target "#library"
-                          :hx-swap "outerHTML" :data-workspace-mode "orient"
-                          :hx-on:click mode-activation} "Orient"]]
+                          :data-workspace-mode "assembly" :hx-on:click mode-activation} "Assemble"]]
      [:div.masthead__spacer]
      [:p.masthead__stats "Library ready · select a part to begin"]]
     [:main.layout

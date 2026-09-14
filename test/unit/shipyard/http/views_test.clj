@@ -62,6 +62,12 @@
 
 ;; --- links ------------------------------------------------------------------
 
+(deftest workspace-modes-lead-with-orient
+  (let [html (render (views/shell {:bundles [] :classes [] :roles []} nil))]
+    (is (< (.indexOf html ">Orient<")
+           (.indexOf html ">Browse<")
+           (.indexOf html ">Assemble<")))))
+
 (deftest cards-link-to-percent-encoded-ids
   (let [html (render (views/part-card hull))]
     (is (str/includes? html "hx-get=\"/part/Human%20Navy%20Fleet%20Bundle/Cruiser/Hull\""))
