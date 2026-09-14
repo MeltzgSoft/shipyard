@@ -72,8 +72,10 @@ render without showing pits or print scaffolding.
 
 ## 3. Browsing your library
 
-The library panel lists every part Shipyard found. Filter by bundle, hull class, or role,
-or search by name.
+Use **Browse**, **Assemble**, and **Orient** in the masthead to switch workspace modes.
+Browse lists every part Shipyard found; filter by bundle, hull class, or role, or search
+by name. Selecting a part opens a floating inspector with separate **Part** and **Mounts**
+tabs, while the viewport remains in place.
 
 **About the role labels.** Shipyard guesses a part's role from its folder name, and shows
 that guess in a lighter style because it is only a guess. Roughly one part in ten is
@@ -123,8 +125,8 @@ When the preview looks right, fill in the mount form:
   and may contain letters, numbers, dashes and underscores.
 - **Kind** is `plug` for the back face of a module and `socket` for a place something
   attaches.
-- **Accepts** is used only for sockets. It is a radio choice: normally choose one role. Hulls
-  also offer a named **Turret or antenna hardpoint** profile for a shared upper seat;
+- **Accepts** is used only for sockets. Choose one profile from the dropdown: normally one
+  role. Hulls also offer a named **Turret or antenna hardpoint** profile for a shared upper seat;
   weapon sockets offer only **Turret pit**, so antennae cannot be mounted to weapons.
   A plug has no acceptance profile: its compatibility comes from the part's saved role,
   such as a weapon plug fitting a hull socket that accepts weapons.
@@ -158,7 +160,7 @@ replaces the inferred role shown by browsing.
 Use **Part orientation** to put the source mesh into Shipyard's canonical pose: `+Y` is
 up, `+Z` is forward, and `+X` is starboard/right. Yaw rotates around Y, pitch around X,
 and roll around Z. Those are fixed canonical axes: changing roll does not turn the axes
-that yaw or pitch controls. A fixed widget in the viewport's upper-right
+that yaw or pitch controls. A fixed widget in the viewport's lower-left
 corner shows an asymmetric wireframe box and canonical axes: red is `+X`/pitch, green is
 `+Y`/yaw, and blue is `+Z`/roll. Colored circular arrows show positive rotation using the
 right-hand rule. The widget
@@ -184,11 +186,17 @@ if you reorganise or move your library.
 
 ## Assembly draft
 
-Choose **Assembly** in the header, or **Assemble this hull** on a loaded, manually
-classified hull. Choose **Start assembly**, then assign compatible parts to its sockets.
-Numbered positions are separate assignments; you can use the same printable part more
-than once. Assigning a component with sockets reveals its nested slots, such as turrets
-on a weapon. **Replace** or **Clear** removes that component's nested assignments.
+Choose **Assemble** in the header, then select a bundle, class, and hull and choose
+**Start assembly**. The left rail lists every mount as a collapsible drawer, with only
+the compatible parts for that mount. Select a part to assign it immediately; numbered
+positions are separate assignments, so you can use the same printable part more than
+once. Assigning a component with sockets reveals its nested drawers, such as turrets on
+a weapon. **Clear** removes that component and every nested assignment.
+
+Each mount has a stable color in its drawer header and on the model; selected parts take
+their mount's color. Split-capacity positions have distinct colors. Use **Mount colors**
+to toggle these cues. Completed mount subtrees collapse by default and summarize their
+selected descendants; incomplete subtrees stay open so their remaining choices are visible.
 
 Only authored roles, accepted socket roles, a single valid plug, available unsupported
 geometry, and matching bundle/class authorize a choice. Inferred roles cannot do so.
