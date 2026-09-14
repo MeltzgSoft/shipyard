@@ -14,6 +14,7 @@
             [reitit.ring.coercion :as coercion]
             [ring.middleware.params :as params]
             [shipyard.assembly.routes :as assembly-routes]
+            [shipyard.bulk-orientation.routes :as bulk-routes]
             [shipyard.catalog.db :as db]
             [shipyard.catalog.part :as catalog-part]
             [shipyard.http.contracts :as contracts]
@@ -550,7 +551,9 @@
 
 (defn router [deps]
   (ring/router
-   (into (routes deps) (when (:assembly deps) (assembly-routes/routes deps)))
+   (into (routes deps)
+         (concat (bulk-routes/routes deps)
+                 (when (:assembly deps) (assembly-routes/routes deps))))
    {:data {:coercion malli-coercion/coercion
            :middleware [params/wrap-params
                         coercion/coerce-exceptions-middleware

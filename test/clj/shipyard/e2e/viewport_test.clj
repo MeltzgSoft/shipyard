@@ -145,6 +145,45 @@
     (s/fill! *driver* "input[name=q]" "Ram")
     (is (s/wait-until #(= 2 (s/count-els *driver* "#library-results .part"))))))
 
+(deftest bulk-orientation-renders-rotates-and-saves-a-selection
+  (open-app!)
+  (s/click! *driver* ".masthead__mode[href='/orient']")
+  (s/wait-visible! *driver* "#bulk-orient-filters")
+  (is (s/wait-until #(= 5 (s/count-els *driver* "[data-bulk-select]")))
+      "the orientation table should finish its initial HTMX load")
+  (is (> (s/width *driver* "#library.bulk-orient") 1000)
+      "the selection table should own the workspace rather than stay in the browse rail")
+  (s/check! *driver* (str "[data-bulk-select][value='" s/hull-id "']"))
+  (s/check! *driver* (str "[data-bulk-select][value='" s/prow-id "']"))
+  (is (= "2 selected" (s/text *driver* "[data-bulk-count]")))
+  (s/click! *driver* "[data-bulk-render-button]")
+  (s/wait-visible! *driver* "[data-bulk-grid]")
+  (is (> (s/width *driver* "[data-bulk-grid]") 1000)
+      "the rendered grid should replace the table at workspace width")
+  (let [loaded (s/wait-until #(let [bulk (:bulk (s/stats *driver*))]
+                                (when (= 2 (:count bulk)) bulk)))]
+    (is (some? loaded) "both selected meshes should reach the grid"))
+  (s/click! *driver* "[data-bulk-step='15']")
+  (s/click! *driver* "[data-bulk-rotate][data-axis='y'][data-direction='1']")
+  (is (s/wait-until #(= 2 (get-in (s/stats *driver*) [:bulk :dirty])))
+      "one toolbar action should update every selected mesh")
+  (s/click! *driver* "[data-bulk-save] button[type='submit']")
+  (is (s/wait-until #(str/includes? (s/text *driver* "#bulk-orient-status")
+                                    "Saved 2 orientations")))
+  (is (zero? (get-in (s/stats *driver*) [:bulk :dirty]))
+      "a successful response should establish a new saved baseline")
+  ;; Restore the fixture sidecars so the once-scoped server remains independent
+  ;; of randomized test order.
+  (s/click! *driver* "[data-bulk-rotate][data-axis='y'][data-direction='-1']")
+  (s/click! *driver* "[data-bulk-save] button[type='submit']")
+  (is (s/wait-until #(zero? (get-in (s/stats *driver*) [:bulk :dirty]))))
+  (s/click! *driver* "[data-bulk-back]")
+  (is (zero? (s/count-els *driver* "[data-bulk-grid]")))
+  (is (= "2 selected" (s/text *driver* "[data-bulk-count]"))
+      "returning to the table should preserve the working selection")
+  (is (zero? (get-in (s/stats *driver*) [:bulk :count]))
+      "returning to the table should release its mesh grid"))
+
 ;; --- loading ----------------------------------------------------------------
 
 (deftest loading-a-part-renders-and-frames-it

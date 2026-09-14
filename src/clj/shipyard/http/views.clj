@@ -463,7 +463,7 @@
 
 ;; --- shell ------------------------------------------------------------------
 
-(defn- options [selected-label values]
+(defn options [selected-label values]
   (cons [:option {:value ""} selected-label]
         (for [v values] [:option {:value (str v)} (str v)])))
 
@@ -520,10 +520,13 @@
     [:header.masthead
      [:h1 "Shipyard"]
      [:nav.masthead__modes {:aria-label "Workspace modes"}
-      [:a.masthead__mode.masthead__mode--active {:href "/" :hx-on:click mode-activation} "Browse"]
+      [:a.masthead__mode.masthead__mode--active {:href "/" :data-workspace-mode "browse"
+                                                 :hx-on:click mode-activation} "Browse"]
       [:a.masthead__mode {:href "/assembly" :hx-get "/assembly" :hx-target "#detail"
-                          :hx-on:click mode-activation} "Assemble"]
-      [:a.masthead__mode {:href "#orientation" :hx-on:click mode-activation} "Orient"]]
+                          :data-workspace-mode "assembly" :hx-on:click mode-activation} "Assemble"]
+      [:a.masthead__mode {:href "/orient" :hx-get "/orient" :hx-target "#library"
+                          :hx-swap "outerHTML" :data-workspace-mode "orient"
+                          :hx-on:click mode-activation} "Orient"]]
      [:div.masthead__spacer]
      [:p.masthead__stats "Library ready · select a part to begin"]]
     [:main.layout
@@ -546,6 +549,7 @@
        [:span.stage__axis.stage__axis--x [:i {:aria-hidden "true"}] "+X / Pitch"]
        [:span.stage__axis.stage__axis--y [:i {:aria-hidden "true"}] "+Y / Yaw"]
        [:span.stage__axis.stage__axis--z [:i {:aria-hidden "true"}] "+Z / Roll"]]
+      [:section#bulk-orient.bulk-orient__stage]
       [:aside#detail.panel.stage__detail (detail-empty)]]]]])
 
 (defn library-needs-root

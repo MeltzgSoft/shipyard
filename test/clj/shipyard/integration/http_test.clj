@@ -800,6 +800,36 @@
     (testing "one job ran, not eight"
       (is (= :ready (await-job-state (:jobs sys) hull-id :ready))))))
 
+(deftest bulk-orientation-filters-renders-and-saves
+  (let [sys (system (library-tree))
+        h (handler sys)]
+    (testing "the mode and filtered table are server-rendered"
+      (is (str/includes? (:body (GET h "/orient")) "Bulk orientation"))
+      (let [body (:body (GET h "/orient/parts" "role=hull&orientation=unset"))]
+        (is (str/includes? body "Cruiser Hull"))
+        (is (not (str/includes? body "Classic Ram Prow")))))
+    (testing "a cold selected mesh prepares and becomes a grid entry"
+      (let [deadline (+ (System/currentTimeMillis) 30000)
+            ready (loop []
+                    (let [response (POST h "/orient/render" {"part-ids" (pr-str [hull-id])})]
+                      (cond
+                        (str/includes? (:body response) "data-mesh-url") response
+                        (> (System/currentTimeMillis) deadline) response
+                        :else (do (Thread/sleep 50) (recur)))))]
+        (is (= 200 (:status ready)))
+        (is (str/includes? (:body ready) "data-bulk-part"))
+        (is (str/includes? (:body ready) "Save orientations"))))
+    (testing "saving writes each valid orientation through the catalog boundary"
+      (let [q [0.0 0.7071067811865475 0.0 0.7071067811865476]
+            response (POST h "/orient/save" {"orientations" (pr-str {hull-id q})})]
+        (is (= 200 (:status response)))
+        (is (str/includes? (:body response) "Saved 1 orientation"))
+        (is (= q (:part/orientation (catalog-db/part
+                                     (catalog-db/snapshot! (:catalog sys)) hull-id))))))
+    (testing "invalid and unknown bulk data stays recoverable"
+      (is (= 422 (:status (POST h "/orient/render" {"part-ids" "broken"}))))
+      (is (= 422 (:status (POST h "/orient/save" {"orientations" "{}"})))))))
+
 (deftest an-unwritable-index-does-not-fail-a-good-part
   (testing "recording the mesh key is an optimisation. Windows CI caught this:
             a transient AccessDeniedException on the index write reported a part

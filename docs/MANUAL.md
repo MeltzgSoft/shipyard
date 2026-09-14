@@ -170,6 +170,15 @@ while **Reset** returns it to the source STL orientation. Configure this before 
 mounts so each new mount derives its up direction consistently.
 An empty angle field means `0` degrees; invalid or non-finite values are rejected.
 
+For a set of parts, switch to **Orient** in the workspace header. Filter by bundle,
+class, role, name, or whether an orientation has already been saved, then select the
+parts to edit and choose **Render selection**. Shipyard lays the selected models out in
+a grid. Choose a 1°, 15°, or 90° step; the toolbar's Pitch, Yaw, and Roll buttons turn
+every model by that amount around the same fixed canonical axes. **Copy first** applies the first model's current pose to
+the whole selection, and **Reset** restores every model to its last saved pose. Previewed
+changes remain transient until **Save orientations** succeeds; a partial save identifies
+the parts that failed without claiming they were saved.
+
 **Save mount** creates a new id. If that id already exists, Shipyard reports it instead
 of overwriting silently; use **Replace** only when you mean to update that mount. A part
 can have multiple sockets, but only one plug. Existing mounts appear below the loaded

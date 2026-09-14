@@ -14,7 +14,7 @@
   (:import [com.microsoft.playwright Browser Browser$NewPageOptions BrowserType$LaunchOptions
             Locator$ScreenshotOptions Page Page$WaitForSelectorOptions
             Playwright]
-           [com.microsoft.playwright.options SelectOption]
+           [com.microsoft.playwright.options BoundingBox SelectOption]
            [java.io File]
            [org.eclipse.jetty.server Server ServerConnector]))
 
@@ -224,6 +224,8 @@
 
 (defn click! [{:keys [^Page page]} sel] (.click page sel))
 
+(defn check! [{:keys [^Page page]} sel] (.check page sel))
+
 (defn click-point! [{:keys [^Page page]} x y]
   (.click (.mouse page) (double x) (double y)))
 
@@ -253,6 +255,9 @@
   (.selectOption page sel (doto (SelectOption.) (.setLabel label))))
 
 (defn count-els [{:keys [^Page page]} sel] (.count (.locator page sel)))
+
+(defn width [{:keys [^Page page]} sel]
+  (.-width ^BoundingBox (.boundingBox (.locator page sel))))
 
 (defn text [{:keys [^Page page]} sel] (or (.textContent page sel) ""))
 

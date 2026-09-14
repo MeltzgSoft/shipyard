@@ -291,7 +291,7 @@
 
 (declare sync-authoring-button!)
 
-(defn clear! [{:keys [^js scene ^js canvas parts authoring current repeat] :as sys}]
+(defn clear! [{:keys [^js scene ^js canvas parts authoring current repeat bulk] :as sys}]
   (when-let [assembly (:assembly sys)] (swap! assembly assembly-scene/leave))
   (when-let [generation (:browse-generation sys)] (swap! generation inc))
   (clear-authoring-preview! sys)
@@ -306,6 +306,7 @@
     (.remove scene obj)
     (dispose-object! obj))
   (reset! parts {})
+  (when bulk (reset! bulk {}))
   (sync-authoring-button! sys))
 
 ;; --- mount authoring --------------------------------------------------------
@@ -1087,6 +1088,156 @@
       (.remove element)
       (apply-assembly! sys event))))
 
+;; --- bulk orientation -------------------------------------------------------
+
+(defn- bulk-elements []
+  (array-seq (.querySelectorAll js/document "[data-bulk-part]")))
+
+(defn- layout-bulk! [{:keys [parts bulk] :as sys}]
+  (let [entries (->> @bulk
+                     (filter (comp :object val))
+                     (sort-by key))
+        columns (max 1 (min (count entries) (Math/floor (/ (max 160 (.-clientWidth (:canvas sys))) 170))))]
+    (when-let [^js cards (.querySelector js/document ".bulk-grid__cards")]
+      (.setProperty (.-style cards) "--bulk-columns" columns))
+    (doseq [[index [part-id {:keys [^js object]}]] (map-indexed vector entries)]
+      (let [column (mod index columns)
+            row (quot index columns)
+            geometry (.-geometry object)
+            _ (.computeBoundingBox geometry)
+            box (.-boundingBox geometry)
+            size (.getSize box (three/Vector3.))
+            center (.getCenter box (three/Vector3.))
+            scale (/ 2.0 (max 1e-6 (.-x size) (.-y size) (.-z size)))
+            x (* (- column (/ (dec columns) 2.0)) 3.2)
+            y (* (- (/ (dec (Math/ceil (/ (count entries) columns))) 2.0) row) 3.2)]
+        (.set (.-scale object) scale scale scale)
+        (.set (.-position object) (- x (* scale (.-x center))) (- y (* scale (.-y center)))
+              (* -1.0 scale (.-z center)))
+        (swap! parts assoc part-id object)))
+    (frame-assembly! sys)))
+
+(defn- load-bulk-mesh! [{:keys [bulk] :as sys} ^js element]
+  (let [part-id (.getAttribute element "data-bulk-part")
+        url (.getAttribute element "data-mesh-url")
+        saved (edn/read-string (.getAttribute element "data-orientation"))]
+    (when (and url (not (contains? @bulk part-id)))
+      (swap! bulk assoc part-id {:loading true})
+      (-> (js/fetch url)
+          (.then (fn [^js response]
+                   (if (.-ok response) (.arrayBuffer response)
+                       (throw (js/Error. (str "Bulk mesh request failed: " (.-status response)))))))
+          (.then (fn [buffer]
+                   (when (some #(= part-id (.getAttribute % "data-bulk-part")) (bulk-elements))
+                     (let [mesh (wire/decode buffer)
+                           object (three/Mesh. (decode->geometry mesh) (material))
+                           saved (orientation/orientation-of saved)]
+                       (set! (.-name object) part-id)
+                       (orient-object! object saved)
+                       (.add (:scene sys) object)
+                       (swap! bulk assoc part-id {:object object :saved saved :orientation saved})
+                       (layout-bulk! sys)))))
+          (.catch (fn [error]
+                    (js/console.error "shipyard: could not load bulk mesh" part-id error)
+                    (swap! bulk dissoc part-id)))))))
+
+(defn- sync-bulk-from-dom! [{:keys [bulk parts] :as sys}]
+  (let [elements (vec (bulk-elements))
+        wanted (set (map #(.getAttribute % "data-bulk-part") elements))]
+    (cond
+      (and (empty? wanted) (seq @bulk)) (clear! sys)
+      (seq wanted)
+      (do
+        (when (or (and (empty? @bulk) (seq @parts))
+                  (not (every? wanted (keys @bulk))))
+          (clear! sys))
+        (doseq [element elements] (load-bulk-mesh! sys element))))))
+
+(defn- sync-bulk-save-result! [{:keys [bulk]}]
+  (when-let [element (.querySelector js/document "[data-bulk-save-result]")]
+    (let [{:keys [saved]} (edn/read-string (.getAttribute element "data-bulk-save-result"))]
+      (doseq [part-id saved]
+        (when-let [{:keys [orientation] :as entry} (get @bulk part-id)]
+          (swap! bulk assoc part-id (assoc entry :saved orientation :dirty false)))
+        (when-let [card (.querySelector js/document
+                                        (str "[data-bulk-part='" (js/CSS.escape part-id) "']"))]
+          (.removeAttribute card "data-dirty"))))
+    (when-let [^js button (.querySelector js/document "[data-bulk-save-button]")]
+      (set! (.-disabled button) (not-any? (comp :dirty val) @bulk)))))
+
+(defn- sync-bulk-save-button! [{:keys [bulk]}]
+  (when-let [^js button (.querySelector js/document "[data-bulk-save-button]")]
+    (set! (.-disabled button) (not-any? (comp :dirty val) @bulk))))
+
+(defn- sync-bulk-selection! [{:keys [bulk-selection]}]
+  (doseq [^js input (array-seq (.querySelectorAll js/document "[data-bulk-select]"))]
+    (set! (.-checked input) (contains? @bulk-selection (.-value input))))
+  (let [count (count @bulk-selection)]
+    (doseq [^js label (array-seq (.querySelectorAll js/document "[data-bulk-count]"))]
+      (set! (.-textContent label) (str count " selected")))
+    (doseq [^js button (array-seq (.querySelectorAll js/document "[data-bulk-render-button]"))]
+      (set! (.-disabled button) (zero? count)))
+    (doseq [^js input (array-seq (.querySelectorAll js/document "[data-bulk-ids]"))]
+      (set! (.-value input) (pr-str (vec (sort @bulk-selection)))))))
+
+(defn- bulk-rotate! [{:keys [bulk bulk-step] :as sys} axis direction]
+  (let [degrees (* direction @bulk-step)]
+    (doseq [[part-id {:keys [^js object orientation] :as entry}] @bulk
+            :when object]
+      (let [next-orientation (orientation/rotate-around-world-axis orientation axis degrees)]
+        (orient-object! object next-orientation)
+        (swap! bulk assoc part-id (assoc entry :orientation next-orientation :dirty true))))
+    (doseq [^js card (bulk-elements)]
+      (.setAttribute card "data-dirty" "true"))
+    (sync-bulk-save-button! sys)
+    (layout-bulk! sys)))
+
+(defn- bulk-step! [{:keys [bulk-step]} ^js button]
+  (reset! bulk-step (js/parseFloat (.getAttribute button "data-bulk-step")))
+  (doseq [^js choice (array-seq (.querySelectorAll js/document "[data-bulk-step]"))]
+    (.setAttribute choice "aria-pressed" (if (= choice button) "true" "false"))))
+
+(defn- bulk-copy-first! [{:keys [bulk] :as sys}]
+  (when-let [[_ {:keys [orientation]}] (first (sort-by key (filter (comp :object val) @bulk)))]
+    (doseq [[part-id {:keys [^js object] :as entry}] @bulk
+            :when object]
+      (orient-object! object orientation)
+      (swap! bulk assoc part-id (assoc entry :orientation orientation :dirty true)))
+    (doseq [^js card (bulk-elements)] (.setAttribute card "data-dirty" "true"))
+    (sync-bulk-save-button! sys)
+    (layout-bulk! sys)))
+
+(defn- bulk-reset! [{:keys [bulk] :as sys}]
+  (doseq [[part-id {:keys [^js object saved] :as entry}] @bulk
+          :when object]
+    (orient-object! object saved)
+    (swap! bulk assoc part-id (assoc entry :orientation saved :dirty false)))
+  (doseq [^js card (bulk-elements)] (.removeAttribute card "data-dirty"))
+  (sync-bulk-save-button! sys)
+  (layout-bulk! sys))
+
+(defn- switch-workspace! [{:keys [bulk-selection] :as sys} event]
+  (when-let [^js link (some-> (.-target event) (.closest "[data-workspace-mode]"))]
+    (let [mode (.getAttribute link "data-workspace-mode")]
+      (when (#{"orient" "assembly"} mode)
+        (when-let [^js stage (.querySelector js/document "#bulk-orient")]
+          (set! (.-innerHTML stage) ""))
+        (clear! sys))
+      (when (= "orient" mode)
+        (reset! bulk-selection #{})))))
+
+(defn- back-to-bulk-table! [sys]
+  (when-let [^js stage (.querySelector js/document "#bulk-orient")]
+    (set! (.-innerHTML stage) ""))
+  (clear! sys)
+  (sync-bulk-selection! sys))
+
+(defn- prepare-bulk-save! [{:keys [bulk]} ^js form]
+  (when-let [input (.querySelector form "[data-bulk-orientations]")]
+    (set! (.-value input)
+          (pr-str (into {} (keep (fn [[part-id {:keys [orientation dirty]}]]
+                                   (when dirty [part-id orientation])) @bulk))))))
+
 ;; --- test hook --------------------------------------------------------------
 
 (defn- preview-stats [{:keys [preview]}]
@@ -1147,6 +1298,12 @@
               :positive-rotation-arcs (mapv :axis canonical-axes)
               :axes (mapv #(select-keys % [:axis :direction :color-css]) canonical-axes)})))
 
+(defn- bulk-stats [{:keys [bulk]}]
+  {:count (count (filter (comp :object val) @bulk))
+   :dirty (count (filter (comp :dirty val) @bulk))
+   :orientations (into {} (keep (fn [[part-id {:keys [object orientation]}]]
+                                  (when object [part-id orientation]))) @bulk)})
+
 (defn stats
   "Scene facts for the E2E suite (§10.3).
 
@@ -1180,6 +1337,7 @@
                                       {:slot slot :part-id (.. object -userData -partId)
                                        :uuid (.-uuid object) :matrix (vec (.. object -matrix -elements))})
                                     @parts))})
+         :bulk (clj->js (bulk-stats sys))
          :orientation (clj->js (some-> objs first object-orientation))
          :orientation-guide (orientation-guide-stats sys)
          :repeat    (clj->js @(:repeat sys))
@@ -1258,6 +1416,9 @@
     (.addEventListener body "shipyard:part-orientation" #(orient-part! sys (payload %)))
     (.addEventListener body "htmx:afterSwap" (fn [_]
                                                (sync-assembly-from-dom! sys)
+                                               (sync-bulk-selection! sys)
+                                               (sync-bulk-from-dom! sys)
+                                               (sync-bulk-save-result! sys)
                                                (sync-authoring-button! sys)
                                                (sync-socket-fields-from-dom!)
                                                (sync-interfaces-from-dom! sys)
@@ -1276,10 +1437,38 @@
                                            (sync-socket-fields! form)))
                                        (refresh-preview-from-form! sys e)
                                        (refresh-orientation-from-form! sys e)))
-    (.addEventListener body "submit" #(remember-repeat-from-submit! sys %))
+    ;; Capture before HTMX's bubbling listener serializes the form. Updating the
+    ;; hidden field from a later submit listener leaves the current request with
+    ;; its original `{}` value.
+    (.addEventListener body "submit" (fn [event]
+                                       (remember-repeat-from-submit! sys event)
+                                       (when-let [^js form (.-target event)]
+                                         (when (.hasAttribute form "data-bulk-save")
+                                           (prepare-bulk-save! sys form))))
+                       true)
+    (.addEventListener body "change" (fn [event]
+                                       (let [^js target (.-target event)]
+                                         (when (.hasAttribute target "data-bulk-select")
+                                           (swap! (:bulk-selection sys)
+                                                  (fn [selected]
+                                                    (if (.-checked target)
+                                                      (conj selected (.-value target))
+                                                      (disj selected (.-value target)))))
+                                           (sync-bulk-selection! sys)))))
     (.addEventListener body "click" (fn [e]
+                                      (switch-workspace! sys e)
                                       (authoring-toggle! sys e)
-                                      (mount-colors-toggle! sys e)))))
+                                      (mount-colors-toggle! sys e)
+                                      (let [^js target (.-target e)]
+                                        (when-let [^js button (some-> target (.closest "[data-bulk-rotate]"))]
+                                          (bulk-rotate! sys (keyword (.getAttribute button "data-axis"))
+                                                        (js/parseFloat (.getAttribute button "data-direction"))))
+                                        (when-let [^js button (some-> target (.closest "[data-bulk-step]"))]
+                                          (bulk-step! sys button))
+                                        (when (some-> target (.closest "[data-bulk-back]"))
+                                          (back-to-bulk-table! sys))
+                                        (when (some-> target (.closest "[data-bulk-copy]")) (bulk-copy-first! sys))
+                                        (when (some-> target (.closest "[data-bulk-reset]")) (bulk-reset! sys)))))))
 
 (defn- renderer!
   "nil rather than a throw when this browser cannot give us a WebGL context -
@@ -1313,6 +1502,7 @@
                     :assembly (atom assembly-scene/empty-state) :browse-generation (atom 0)
                     :interfaces (atom nil) :orientation-guide (atom nil)
                     :mount-markers (atom {}) :mount-colors-enabled (atom true)
+                    :bulk (atom {}) :bulk-selection (atom #{}) :bulk-step (atom 90.0)
                     :repeat (atom nil)
                     :preview-revision (atom 0)
                     :raycaster (three/Raycaster.) :pointer (three/Vector2.)}]
@@ -1325,7 +1515,8 @@
       (set! (.-enableDamping controls) true)
       (environment! renderer scene)
       (resize! sys)
-      (.observe (js/ResizeObserver. #(resize! sys)) canvas)
+      (.observe (js/ResizeObserver. #(do (resize! sys)
+                                         (when (seq @(:bulk sys)) (layout-bulk! sys)))) canvas)
       (.addEventListener canvas "click" #(pick-face! sys %))
       (.setAnimationLoop renderer #(render-frame! sys))
       (listen! sys)

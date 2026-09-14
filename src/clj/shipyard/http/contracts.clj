@@ -31,6 +31,22 @@
    [:role {:optional true} string?]
    [:q {:optional true} string?]])
 
+(def orientation-query
+  [:map {:closed false}
+   [:bundle {:optional true} string?]
+   [:class {:optional true} string?]
+   [:role {:optional true} string?]
+   [:orientation {:optional true} string?]
+   [:q {:optional true} string?]])
+
+(def bulk-render-form
+  [:map {:closed false}
+   [:part-ids string?]])
+
+(def bulk-save-form
+  [:map {:closed false}
+   [:orientations string?]])
+
 (def settings-form
   [:map {:closed false}
    [:root string?]])
