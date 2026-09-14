@@ -202,8 +202,20 @@
                                                             :mount/roll [1 0 0]}
                                                     :values {}}}))]
     (is (re-find #"name=\"mount-id\"[^>]+value=\"weapon-1\"" html))
-    (is (str/includes? html "data-accept-prefix=\"weapon\""))
+    (is (str/includes? html "data-mount-prefix=\"weapon\""))
+    (is (str/includes? html "data-used-mount-ids=\"[]\""))
     (is (re-find #"name=\"mirror-id\"[^>]+value=\"weapon-1-mirror\"" html))))
+
+(deftest new-plugs-use-a-plug-id-prefix
+  (let [html (render (views/detail-ready hull
+                                         (apply str (repeat 64 "1"))
+                                         {:preview {:part hull
+                                                    :frame {:mount/pos [0 0 0]
+                                                            :mount/axis [0 0 1]
+                                                            :mount/roll [1 0 0]}
+                                                    :values {:kind :plug}}}))]
+    (is (re-find #"name=\"mount-id\"[^>]+value=\"plug-1\"" html))
+    (is (str/includes? html "data-mount-prefix=\"plug\""))))
 
 (deftest new-mount-kind-shows-the-editable-geometry-suggestion
   (let [html (render (views/detail-ready hull

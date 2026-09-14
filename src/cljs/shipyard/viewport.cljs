@@ -779,8 +779,8 @@
       (-> (js/fetch "/facet"
                     #js {:method "POST"
                          :headers #js {"Content-Type" "application/x-www-form-urlencoded"}
-                         :body (form-body (merge (dissoc @repeat "kind" :kind)
-                                                 (dissoc (dom-repeat-values) "kind" :kind)
+                         :body (form-body (merge (dissoc @repeat "kind" :kind "mount-id" :mount-id)
+                                                 (dissoc (dom-repeat-values) "kind" :kind "mount-id" :mount-id)
                                                  (dissoc (dom-edit-values) "kind" :kind)
                                                  {"part-id" part-id
                                                   "mesh-key" mesh-key
@@ -825,19 +825,37 @@
         (set! (.-value mirror-input) (mirror-id next-id))
         (.setAttribute mirror-input "data-mirror-source" next-id)))))
 
+(defn- next-mount-id [prefix used-ids]
+  (loop [ordinal 1]
+    (let [candidate (str prefix "-" ordinal)]
+      (if (contains? used-ids candidate)
+        (recur (inc ordinal))
+        candidate))))
+
+(defn- used-mount-ids [^js mount-id]
+  (try
+    (set (edn/read-string (or (.getAttribute mount-id "data-used-mount-ids") "[]")))
+    (catch :default _ #{})))
+
+(defn- selected-mount-prefix [^js form]
+  (if (= "plug" (input-value form "select[name=kind]"))
+    "plug"
+    (input-value form "select[name=accepts]")))
+
 (defn- update-mount-id-prefix! [^js form]
   (when-let [mount-id (.querySelector form "input[name=mount-id]")]
-    (when-let [selected (.querySelector form "select[name=accepts]")]
-      (let [previous-prefix (.getAttribute mount-id "data-accept-prefix")
-            next-prefix (.-value selected)
-            current-id (.-value mount-id)]
-        (when (and previous-prefix
-                   (or (= current-id previous-prefix)
-                       (.startsWith current-id (str previous-prefix "-"))))
-          (let [next-id (str next-prefix (subs current-id (count previous-prefix)))]
-            (set! (.-value mount-id) next-id)
-            (update-mirror-id! form current-id)))
-        (.setAttribute mount-id "data-accept-prefix" next-prefix)))))
+    (let [previous-prefix (.getAttribute mount-id "data-mount-prefix")
+          next-prefix (selected-mount-prefix form)
+          current-id (.-value mount-id)]
+      (when (and previous-prefix
+                 next-prefix
+                 (or (= current-id previous-prefix)
+                     (.startsWith current-id (str previous-prefix "-"))))
+        (let [next-id (next-mount-id next-prefix (used-mount-ids mount-id))]
+          (set! (.-value mount-id) next-id)
+          (update-mirror-id! form current-id)))
+      (when next-prefix
+        (.setAttribute mount-id "data-mount-prefix" next-prefix)))))
 
 (defn- sync-mirror-id-from-mount-id! [^js form]
   (when-let [mirror-input (.querySelector form "input[name=mirror-id]")]
@@ -1479,7 +1497,8 @@
                                          (when (= "accepts" (.-name (.-target e)))
                                            (update-mount-id-prefix! form))
                                          (when (= "kind" (.-name (.-target e)))
-                                           (sync-socket-fields! form)))
+                                           (sync-socket-fields! form)
+                                           (update-mount-id-prefix! form)))
                                        (refresh-preview-from-form! sys e)
                                        (refresh-orientation-from-form! sys e)
                                        (when-let [^js input (some-> (.-target e) (.closest "[data-bulk-angle]"))]

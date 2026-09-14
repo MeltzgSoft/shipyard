@@ -61,7 +61,8 @@
 
 (deftest suggest-mount-id-test
   (is (= :weapon-2 (wizard/suggest-mount-id :weapon [{:mount/id :weapon-1}])))
-  (is (= :turret-1 (wizard/suggest-mount-id :turret [{:mount/id :weapon-1}]))))
+  (is (= :bridge-1 (wizard/suggest-mount-id :bridge [{:mount/id :weapon-1}])))
+  (is (= :plug-1 (wizard/suggest-mount-id :plug [{:mount/id :weapon-1}]))))
 
 (deftest rotate-roll-test
   (testing "rotates around the mount axis"

@@ -309,9 +309,10 @@
         selected-profile (or (:id (wizard/acceptance-profile (:part/role-hint part) accepts))
                              (some #(when (contains? accepts (:id %)) (:id %)) profiles)
                              (:id (first profiles)))
+        id-prefix (if (= :plug kind) :plug selected-profile)
         capacity (or (:capacity values) 1)
         mount-id (or (:mount-id values)
-                     (some-> (wizard/suggest-mount-id selected-profile (:part/mounts part)) (name)))
+                     (some-> (wizard/suggest-mount-id id-prefix (:part/mounts part)) (name)))
         mirror? (:mirror? values)
         mirror-locked? (:mirror-locked? values)
         mirror-id (or (:mirror-id values)
@@ -333,7 +334,8 @@
        [:input {:type "hidden" :name "original-mount-id" :value (name original-mount-id)}])
      [:label.mount-wizard__field "Mount id"
       [:input {:type "text" :name "mount-id" :value mount-id
-               :data-accept-prefix (name selected-profile)
+               :data-mount-prefix (name id-prefix)
+               :data-used-mount-ids (pr-str (vec (sort (map (comp name :mount/id) (:part/mounts part)))))
                :autocomplete "off" :spellcheck "false"}]]
      [:label.mount-wizard__field "Kind"
       [:select {:name "kind"}

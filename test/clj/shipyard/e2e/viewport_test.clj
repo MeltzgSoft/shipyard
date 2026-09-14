@@ -669,6 +669,7 @@
          }"))
       "changing acceptance updates generated mount and mirror prefixes")
   (s/js *driver* "() => { document.querySelector('.mount-wizard__form input[name=capacity]').value = '2'; }")
+  (s/select-option! *driver* "select[name=accepts]" "weapon")
   (s/click! *driver* "input[name=mirror]")
   (let [mirrored (s/wait-until
                   #(let [preview (:preview (s/stats *driver*))]
@@ -681,22 +682,17 @@
     (is (vec-close? (:mirror-roll mirrored) [-1.0 0.0 0.0])
         (str "mirrored preview roll was " (pr-str (:mirror-roll mirrored)))))
   (s/click! *driver* "input[name=repeat]")
-  (s/js *driver* "() => {
-    const form = document.querySelector('.mount-wizard__form');
-    form.querySelector('input[name=mount-id]').value = 'port-1';
-    form.querySelector('input[name=mirror-id]').value = 'starboard-1';
-  }")
   (s/click! *driver* ".mount-wizard__actions button[value=create]")
-  (is (s/wait-until #(and (str/includes? (s/text *driver* "#detail") "port-1")
-                          (str/includes? (s/text *driver* "#detail") "starboard-1")))
+  (is (s/wait-until #(and (str/includes? (s/text *driver* "#detail") "weapon-1")
+                          (str/includes? (s/text *driver* "#detail") "weapon-1-mirror")))
       (str "saving with mirror should persist both sockets; detail was "
            (pr-str (s/text *driver* "#detail"))))
   (is (s/wait-until
        #(let [items (get-in (s/stats *driver*) [:interfaces :items])
               mirrored (filter (fn [item]
-                                 (contains? #{"port-1" "starboard-1"} (:mount-id item)))
+                                 (contains? #{"weapon-1" "weapon-1-mirror"} (:mount-id item)))
                                items)]
-          (and (= #{"port-1" "starboard-1"} (set (map :mount-id mirrored)))
+          (and (= #{"weapon-1" "weapon-1-mirror"} (set (map :mount-id mirrored)))
                (every? pos? (map :triangles mirrored)))))
       "both saved faces are colored immediately, including the mirrored face")
   (is (s/wait-until #(= s/mount-plate-id (get-in (s/stats *driver*) [:authoring :part-id])))
@@ -705,15 +701,19 @@
     (s/click-point! *driver* x y))
   (is (some? (await-preview)))
   (is (s/wait-until
-       #(= "port-2" (s/js *driver* "() => document.querySelector('.mount-wizard__form input[name=mount-id]').value"))))
+       #(= "plug-1" (s/js *driver* "() => document.querySelector('.mount-wizard__form input[name=mount-id]').value"))))
   (is (= "plug" (s/js *driver* "() => document.querySelector('.mount-wizard__form select[name=kind]').value"))
       "a newly picked face uses its geometry hint instead of the repeated socket kind")
   (is (= "1" (s/js *driver* "() => document.querySelector('.mount-wizard__form input[name=capacity]').value")))
   (s/select-option! *driver* ".mount-wizard__form select[name=kind]" "socket")
   (is (s/wait-until
-       #(= "turret" (s/js *driver* "() => document.querySelector('.mount-wizard__form select[name=accepts]').value"))))
+       #(= "weapon" (s/js *driver* "() => document.querySelector('.mount-wizard__form select[name=accepts]').value"))))
+  (is (= "weapon-2" (s/js *driver* "() => document.querySelector('.mount-wizard__form input[name=mount-id]').value")))
+  (s/select-option! *driver* "select[name=accepts]" "bridge")
+  (is (= "bridge-1" (s/js *driver* "() => document.querySelector('.mount-wizard__form input[name=mount-id]').value"))
+      "changing acceptance uses the first available ID for its own prefix")
   (s/click! *driver* ".mount-wizard__actions button[value=create]")
-  (is (s/wait-until #(str/includes? (s/text *driver* "#detail") "port-2"))
+  (is (s/wait-until #(str/includes? (s/text *driver* "#detail") "bridge-1"))
       "the repeated classification still waits for an explicit save"))
 
 ;; --- the island -------------------------------------------------------------
