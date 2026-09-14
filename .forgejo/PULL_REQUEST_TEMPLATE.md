@@ -17,6 +17,6 @@ SPEC.md §12 makes these merge obligations, not follow-ups.
 
 ## Checks
 
-- [ ] `clojure -M:test` passes
+- [ ] `clojure -M:test:natives-linux` passes
 - [ ] `clojure -M:cljfmt check src test build.clj` passes
 - [ ] `clojure -M:clj-kondo --lint src --lint test --lint build.clj` passes
