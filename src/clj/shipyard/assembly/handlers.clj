@@ -3,6 +3,7 @@
   (:require [clojure.edn :as edn]
             [shipyard.assembly.db :as db]
             [shipyard.assembly.views :as views]
+            [shipyard.loadout.operations :as loadouts]
             [shipyard.http.htmx :as htmx]))
 
 (defn- response [result]
@@ -17,6 +18,7 @@
 (defn current! [deps {:keys [params]}]
   (response (assoc (db/request! deps nil {:resume? (not= "1" (get params "poll"))
                                           :retry (get params "retry")})
+                   :loadouts (loadouts/list! (:loadout-store deps))
                    :selected-hull (get params "part-id")
                    :selected-bundle (not-empty (get params "bundle"))
                    :selected-class (not-empty (get params "class")))))
@@ -27,3 +29,11 @@
                                          slot (assoc :slot (edn/read-string slot))) {})
                      :selected-bundle (not-empty bundle)
                      :selected-class (not-empty class)))))
+
+(defn loadout! [deps op {:keys [parameters]}]
+  (let [{:keys [id name]} (:form parameters)
+        result (case op
+                 :save (db/save-loadout! deps name)
+                 :load (db/load-loadout! deps (parse-uuid id))
+                 :duplicate (db/duplicate-loadout! deps (parse-uuid id) name))]
+    (response (assoc result :loadouts (loadouts/list! (:loadout-store deps))))))

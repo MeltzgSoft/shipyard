@@ -103,7 +103,7 @@
      [:div.assembly__rail-slots {:data-hull-id hull}
       (slot-tree database root revision available selected-bundle selected-class slots)])])
 
-(defn panel [{:keys [database draft available prepared error selected-hull selected-bundle selected-class]}]
+(defn panel [{:keys [database draft available prepared error selected-hull selected-bundle selected-class loadouts]}]
   (let [{:keys [revision hull assignments]} draft
         root (when hull (catalog/part database hull))
         derived (when hull (model/slots database hull assignments))
@@ -119,6 +119,22 @@
        [:p (if root (str (:part/name root) " · " (count (filter :assigned slots)) " of " (count slots) " mounts filled")
                "Choose a hull, then fill its authored mount faces.")]]
       (when error [:p.detail__error {:role "alert"} (get responses/messages error (name error))])
+      [:section.loadouts
+       [:h3 "Saved loadouts"]
+       [:form {:hx-post "/loadouts/save" :hx-target "#detail" :hx-swap "innerHTML"}
+        [:label "Name " [:input {:name "name" :maxlength 160 :required true}]]
+        [:button {:type "submit"} "Save loadout"]]
+       (if (seq loadouts)
+         [:ul (for [{:loadout/keys [id name]} loadouts]
+                [:li [:strong name]
+                 [:form {:hx-post "/loadouts/load" :hx-target "#detail" :hx-swap "innerHTML"}
+                  [:input {:type "hidden" :name "id" :value (str id)}]
+                  [:button {:type "submit"} "Load"]]
+                 [:form {:hx-post "/loadouts/duplicate" :hx-target "#detail" :hx-swap "innerHTML"}
+                  [:input {:type "hidden" :name "id" :value (str id)}]
+                  [:input {:name "name" :placeholder "Copy name" :maxlength 160 :required true}]
+                  [:button {:type "submit"} "Duplicate"]]])]
+         [:p "No saved loadouts yet."])]
       (when (empty? hulls) [:p "No renderable hulls are available in this library."])
       (when hull
         [:div.assembly__body

@@ -218,8 +218,12 @@ and nested turrets remain separate objects. Replacing or clearing a part removes
 object and everything beneath it before the new scene is shown. Returning to browse mode
 clears the assembly scene; returning to Assembly restores the current in-memory draft.
 
-The draft is in memory only. Resetting or stopping Shipyard loses it; named loadouts,
-save/load, paint schemes and thumbnails are not available in M3.
+The draft is in memory only until you save it. In **Saved loadouts**, give the current
+complete assembly a name and choose **Save loadout**. Saved entries survive restarts;
+use **Load** to restore the hull and every repeated or nested assignment, or
+**Duplicate** to make an independent copy with a new name. If a library has changed and
+a saved assignment is no longer compatible, Shipyard reports the problem and keeps your
+current draft intact. Paint schemes and thumbnails are not available yet.
 
 ## Troubleshooting
 

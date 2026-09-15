@@ -39,4 +39,13 @@
                               :responses contracts/html-responses}}]
    ["/assembly/reset" {:post {:handler (partial handlers/mutate! deps :reset)
                               :parameters {:form [:map [:revision revision-schema]]}
-                              :responses contracts/html-responses}}]])
+                              :responses contracts/html-responses}}]
+   ["/loadouts/save" {:post {:handler (partial handlers/loadout! deps :save)
+                             :parameters {:form [:map [:name string?]]}
+                             :responses contracts/html-responses}}]
+   ["/loadouts/load" {:post {:handler (partial handlers/loadout! deps :load)
+                             :parameters {:form [:map [:id string?]]}
+                             :responses contracts/html-responses}}]
+   ["/loadouts/duplicate" {:post {:handler (partial handlers/loadout! deps :duplicate)
+                                  :parameters {:form [:map [:id string?] [:name string?]]}
+                                  :responses contracts/html-responses}}]])

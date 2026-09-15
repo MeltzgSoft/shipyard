@@ -4,6 +4,7 @@
             [integrant.core :as ig]
             [shipyard.assembly.transforms :as transforms]
             [shipyard.catalog.db :as catalog]
+            [shipyard.loadout.operations :as loadouts]
             [shipyard.http.jobs :as jobs]
             [shipyard.library.index :as index]
             [shipyard.mesh.cache :as cache]))
@@ -72,3 +73,27 @@
       (merge result {:database database :prepared prepared :event envelope
                      :available available}
              (when (:error placement-result) {:error (:error placement-result) :status 422})))))
+
+(defn- loadout-available [library]
+  (->> (index/source-files! library) keys
+       (filter #(index/fresh-source-file! library %)) set))
+
+(defn save-loadout! [{:keys [catalog library loadout-store] {state :state} :assembly :as deps} name]
+  (locking state
+    (let [result (loadouts/save! loadout-store (catalog/snapshot! catalog) (:draft @state)
+                                 (loadout-available library) name)]
+      (assoc (request! deps nil {}) :error (:error result)))))
+
+(defn load-loadout! [{:keys [catalog library loadout-store] {state :state} :assembly :as deps} id]
+  (locking state
+    (let [result (loadouts/load! loadout-store (catalog/snapshot! catalog) (:draft @state)
+                                 (loadout-available library) id)]
+      (if (:error result)
+        (assoc (request! deps nil {}) :error (:error result) :status 422)
+        (do (swap! state assoc :draft (:draft result))
+            (request! deps nil {:resume? true}))))))
+
+(defn duplicate-loadout! [{:keys [catalog library loadout-store] :as deps} id name]
+  (let [result (loadouts/duplicate! loadout-store (catalog/snapshot! catalog)
+                                    (loadout-available library) id name)]
+    (assoc (request! deps nil {}) :error (:error result))))
