@@ -5,6 +5,18 @@ reading CI. What Shipyard is and why is in [SPEC.md](SPEC.md); how it is built i
 [TECHNICAL.md](TECHNICAL.md); how to build, run and test it is in [README.md](README.md).
 Nothing here repeats those.
 
+## Required contracts before implementation
+
+Read the relevant SPEC.md and TECHNICAL.md contracts and the issue's acceptance criteria
+before changing behavior. Workspace work must follow SPEC §9.2–9.3 and TECHNICAL §14:
+independent state on server and client, explicit model transfers, and one synchronized
+workspace transition contract. Refactor ownership and its callers when shared state
+violates those contracts; local UI fixes alone do not satisfy them.
+
+Every behavior change includes new or updated E2E tests in the same pull request
+(SPEC §12.4, TECHNICAL §10.3). Test the user workflow and resulting state, including the
+viewport where relevant. Keep the manual limited to implemented, supported behavior.
+
 ## The forge
 
 Self-hosted Forgejo at `https://forgejo.tail943578.ts.net`, repo `MeltzgSoft/shipyard`,

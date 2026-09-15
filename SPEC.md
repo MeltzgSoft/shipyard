@@ -513,7 +513,8 @@ markings.
 
 All server-rendered hiccup driven by htmx, except the viewport.
 
-- **Library browser** - filter by bundle, class, role. Search by name.
+- **Part Browser** - browse individual library parts; filter by bundle, class, role.
+  Search by name. This is the user-facing name of the former Browse workspace.
 - **Assembly view** - the viewport plus a slot panel. Each slot lists compatible parts,
   filtered by the socket's `:mount/accepts`. Selecting one issues the `HX-Trigger` event
   that swaps geometry in the scene.
@@ -522,6 +523,8 @@ All server-rendered hiccup driven by htmx, except the viewport.
   `:mount/origin` so mirrored and seeded mounts can be confirmed.
 - **Paint editor** - per-role swatches against the live model.
 - **Fleet roster** - list of loadouts, select to load into the viewport.
+- **Ship Browser** - a separate workspace immediately after Assemble in the workspace
+  selector, for viewing saved assembled ships. See §9.3.
 
 ### 9.1 Thumbnails
 
@@ -530,6 +533,52 @@ back to be stored against the loadout. This avoids a headless GL renderer on the
 entirely, which would otherwise be the most annoying part of the feature. The cost is
 that a loadout has no thumbnail until it has been viewed once - acceptable, and the
 capture can be triggered automatically on save.
+
+### 9.2 Independent workspace state
+
+Every workspace, including Part Browser, Orient, Assemble and Ship Browser, owns its
+own selection, transient working state, filters and viewport display settings.
+Switching workspaces restores the destination's state on both the server and in the
+viewport. A workspace with no selection shows its own empty state. Returning to a
+workspace restores its previous selection and settings.
+
+The mount-color toggle belongs to its workspace: changing it affects only that
+workspace, and leaving and returning preserves its value and rendered effect.
+Shared durable catalog facts remain authoritative; workspace independence does not
+create separate copies of authored parts or saved loadouts.
+
+Every workspace transition, whether selected manually or triggered by an action,
+updates the workspace selector to match the active workspace, panels and viewport.
+Loading or previewing a model in one workspace does not implicitly replace another
+workspace's model or assembly draft. Transfers such as Edit and Duplicate are explicit
+actions with defined destinations.
+
+### 9.3 Ship Browser and editing saved ships
+
+Ship Browser lists saved loadouts as selectable cards, with browsing and filtering
+similar to Part Browser. Filters are by bundle/faction and class, derived from the
+saved assembly's root hull. Selecting a card displays that complete assembly in
+Ship Browser, including repeated parts and nested slots, and preserves the Assemble
+workspace's draft. A floating inspector shows the selected assembly's part tree and
+color legend, consistent with the displayed ship and that workspace's mount-color
+setting.
+
+Each card provides two separate actions:
+
+- **Edit** opens Assemble, updates the workspace selector, and loads the selected
+  saved ship for editing. Its saved identity is retained so saving edits updates that
+  ship; entering Edit alone does not write changes to disk.
+- **Duplicate** opens Assemble, updates the workspace selector, and loads an
+  independent draft with the same hull, assignments and optional scheme override.
+  The name is pre-populated with exactly `<original name> - Copy` and remains editable.
+  Duplicate only pre-populates Assemble; it creates no saved entity. Saving creates
+  a new loadout identity and cannot overwrite the source ship.
+
+Invalid or unavailable saved data produces an actionable error without destroying
+the existing draft or preview. Merely returning to Assemble resumes its own draft;
+only an explicit Edit or Duplicate action replaces it with the selected saved ship.
+Ship Browser does not require fleet ordering, fleet default schemes or thumbnails;
+those remain in M6.
 
 ---
 
@@ -593,3 +642,12 @@ whole ships, that welding would reach `V ≈ T/2`. Documentation drifts the same
 more quietly, because nothing fails when it does. Making currency a merge obligation is
 the only mechanism that reliably works; a periodic documentation pass is a promise to
 future-you that future-you will not keep.
+
+### 12.4 Behavior changes require E2E coverage
+
+Every behavior change must include new or updated E2E tests in the same pull request.
+Tests exercise the changed workflow through the running application and assert its
+observable results, including state preservation and failure behavior where relevant.
+Unit and integration tests supplement this coverage. Workspace changes must verify
+the selector, server-owned model state and rendered viewport agree, including after
+leaving and returning. See TECHNICAL.md §10.3 and §14.4.

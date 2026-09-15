@@ -17,6 +17,7 @@ SPEC.md §12 makes these merge obligations, not follow-ups.
 
 ## Checks
 
+- [ ] Behavior changed -> E2E tests added or updated in this PR (SPEC §12.4; describe coverage above)
 - [ ] `clojure -M:test:natives-linux` passes
 - [ ] `clojure -M:cljfmt check src test build.clj` passes
 - [ ] `clojure -M:clj-kondo --lint src --lint test --lint build.clj` passes

@@ -1343,6 +1343,13 @@ depends on temp-file-plus-rename being atomic.
 
 ### 10.3 E2E - headless browser
 
+**Every behavior change includes new or updated E2E coverage in the same pull request**
+(SPEC §12.4). Exercise the user action through the UI and verify the resulting behavior;
+unit tests of an event handler or HTML fragment alone do not establish that the flow
+works. For workspace transitions, verify selector synchronization, restored model and
+display settings, and preservation of the other workspaces' state. M4's required
+scenarios are in §14.4.
+
 **Playwright** driving its own Chromium against a real server started on an ephemeral
 port, backed by the fixture library. Clojure end to end, no separate JS test stack.
 
@@ -1930,3 +1937,96 @@ preparation uses the existing background jobs/poll/retry flow; do not block requ
 on preprocessing, and do not emit a mesh set until its source is ready. No authentication
 is introduced for the existing local application. Names, saved loadouts, duplication,
 paint schemes and thumbnails remain outside M3.
+
+## 14. Workspace ownership and M4 named-loadout workflows
+
+This is the required contract for M4 and subsequent workspace changes. It extends the
+M3 draft and viewport protocol in §13; it is not a claim that these workflows have
+already shipped. Product requirements are in SPEC §9.2–9.3.
+
+### 14.1 State ownership
+
+Model transient application state by workspace identity. Each workspace owns its
+selected part or loadout, filters, working state and mount-color setting. In particular,
+Ship Browser's selected saved assembly and Assemble's editable draft are separate
+server-side state. Part Browser and Orient likewise have independent part selections.
+Client display state must have the same workspace ownership. A single shared renderer
+and canvas may be reused without sharing the logical selection or display settings.
+
+Saved loadouts and authored catalog data remain shared durable facts. Opening a
+workspace resolves its own selection against those facts and produces its own viewport
+snapshot. If it has no selection, clear the previous workspace's scene and show the
+destination's empty state. Invalid selections render an actionable error rather than
+silently falling back to another workspace's model.
+
+Implement ownership at the state and operation boundaries. Refactor shared mutable
+selection/toggle state and callers that violate this contract; hiding panels, adding
+workspace-specific reset callbacks, or restoring only the visible checkbox does not
+establish independent state. Workspace switching itself must preserve each workspace's
+working state. Explicit Edit and Duplicate are defined transfers into Assemble (§14.3).
+
+### 14.2 Workspace transition contract
+
+All manual and programmatic navigation uses one transition contract: select the
+destination workspace, resolve its state, synchronize the selector and panels, and
+render its model with its display settings. The selector must reflect automated
+transitions such as Edit and Duplicate without requiring another user action.
+
+Scope server operations, response envelopes, polling and client mesh requests to their
+owning workspace. Extend the revision/sequence and request-token guards in §13.3 with
+workspace identity and activation generation so late responses from a previous
+activation cannot replace the active scene, panels, selector or settings. Returning to
+the same workspace must also reject responses from its earlier activation. Reuse the
+assembly placement and snapshot logic for saved-ship previews without mutating the
+Assemble draft. Preserve the canvas and dispose superseded scene resources as in §13.3.
+
+### 14.3 Saved-ship operations and UI
+
+- Rename the visible Browse workspace to **Part Browser**. Add **Ship Browser**
+  immediately after **Assemble** in the selector.
+- List saved ships as cards and filter them by the root hull's catalog bundle/faction
+  and class. Use existing catalog identities and classification; filters belong to
+  Ship Browser. Do not discard missing or stale loadouts silently during listing.
+- Selecting a card validates and loads a read-only assembly snapshot into Ship Browser.
+  It does not navigate to Assemble or replace its draft or editing identity.
+- A floating inspector renders that snapshot's part tree and color legend. Identify
+  instances by full slot path so repeated and nested occurrences remain distinct;
+  tree, legend and viewport must describe the same selected assembly.
+- Edit validates the selected saved loadout and explicitly transfers it into Assemble,
+  retaining its loadout id and name. Saving updates that id through the atomic store
+  boundary; selecting Edit alone makes no durable write.
+- Duplicate validates and transfers the same hull, full assignment tree and optional
+  scheme override into an independent Assemble draft. Pre-populate the editable name
+  with exactly `<original name> - Copy`. Clear the source's editing identity; saving
+  allocates a new UUID and cannot update the source record. Duplicate alone does not
+  persist a new record. New drafts use create semantics; edited drafts use update
+  semantics, decided by explicit identity rather than name matching.
+- Revalidate authoritative catalog facts for preview, edit, duplicate and save. A
+  failed operation preserves the previous usable draft/preview and reports a
+  structured, actionable error. Apply an Edit/Duplicate transfer only after validation
+  succeeds. Names, assignments and loadout identity must change together.
+
+Fleet ordering, fleet default schemes and thumbnails remain outside M4.
+
+### 14.4 Required E2E acceptance scenarios
+
+Behavior changes include E2E tests in the same PR (§10.3). Use the fixture library,
+real HTTP/server operations and the existing viewport introspection hook; assertions
+must inspect rendered scene facts as well as the visible controls. Do not establish
+the behavior by calling internal transition handlers directly from the test.
+
+| Scenario | Required assertions |
+|---|---|
+| Workspace naming/order | Part Browser replaces Browse; Ship Browser immediately follows Assemble in the selector |
+| Selection isolation | Select different models in Part Browser and Orient, keep draft A in Assemble and preview saved ship B in Ship Browser; leave and return to each and verify its own server selection and viewport model |
+| Display isolation | Give workspaces different mount-color values; switching restores both each toggle and its actual rendered effect without changing other workspaces |
+| Empty destination | Enter a workspace with no selection; it shows its own empty state and none of the previous model |
+| Delayed responses | Switch while model loading/polling is pending, including away and back to the same workspace; old responses cannot change the active model, panels, selector or settings |
+| Saved-ship browsing | Save a complete named assembly; its card appears; bundle/faction and class filters narrow the results correctly and survive workspace switches |
+| Ship preview and inspector | Select a saved card containing nested and repeated parts; viewport and floating inspector show the exact tree and matching color legend while Assemble's draft remains unchanged |
+| Edit | Card Edit opens Assemble and synchronizes the selector; selected ship, name and identity load; saving edits updates that ship and survives a store reload |
+| Duplicate | Card Duplicate opens Assemble and synchronizes the selector; exact Copy name is pre-populated and editable; store contents and saved-ship count remain unchanged before Save; saving produces a different id, survives reload and leaves the source name, assignments and scheme unchanged |
+| Failure preservation | Missing/stale/incompatible saved ships and invalid saves show actionable errors while preserving the prior usable draft/preview and consistent selector |
+
+Use fixtures with distinct workspace selections, at least two bundle/class combinations,
+and repeated and nested slot paths so state leakage and incorrect filtering are observable.

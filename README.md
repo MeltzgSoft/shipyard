@@ -113,6 +113,10 @@ Tests come in three levels separated by **what they are allowed to touch**, not 
 unit touches nothing outside the process, integration gets the filesystem and natives,
 e2e drives a real browser. See TECHNICAL.md §10.
 
+Every behavior change includes new or updated E2E tests in the same pull request
+(SPEC.md §12.4). Workspace behavior must satisfy the state-isolation and transition
+acceptance scenarios in TECHNICAL.md §14.
+
 The e2e suite brings its own browser. Fetch it once per machine:
 
 ```bash
