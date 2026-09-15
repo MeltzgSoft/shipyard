@@ -1843,24 +1843,14 @@ acknowledged entries advance their saved baseline and clear dirty flags; failed 
 remain available for retry. No orientation map or accumulated session state is carried
 in response headers.
 
-**Workspace restoration gap.** The current `switch-workspace!` path clears the grid and
-resets selection when entering Orient; its shared renderer state is not an independent
-workspace session. That behavior does not satisfy §14 and must not become an acceptance
-criterion merely because it already exists. M4 must preserve Orient's filters, selected
+**Workspace restoration.** Preserve Orient's filters, selected
 ids, table/grid mode, step, working poses, baselines, dirty flags and display settings
 across workspace switches, reconstruct its own preview and synchronize the selector.
 Resource disposal may release GPU objects while retaining this logical state. Delayed
 mesh, poll and save responses must respect the owning workspace and activation (§14.2).
 
-**Verification.** Existing E2E coverage in `shipyard.e2e.viewport-test` exercises selection,
-relative and absolute yaw, saving/dirty-state acknowledgement, Back to table, and
-per-card rendering across rotation, scrolling and resizing. Integration coverage in
-`shipyard.integration.http-test` exercises filtering, cold-mesh preparation, persistence
-and malformed payloads. Unit/shared-runtime tests cover view contracts, selection/EDN
-validation and quaternion math. These tests do not establish full workspace restoration
-or every failure path.
-
-Required E2E coverage for behavior changes (§10.3) includes filter/selection retention,
+**Verification.** Required E2E coverage for behavior changes (§10.3) includes
+per-card rendering across rotation, scrolling and resizing, filter/selection retention,
 disabled unpreviewable rows, all three axes and step sizes, deterministic Copy first,
 Reset to differing saved baselines, no writes before Save, partial-save retry and
 round-trip persistence. M4 must additionally exercise leaving and returning with dirty
@@ -2030,8 +2020,7 @@ paint schemes and thumbnails remain outside M3.
 ## 14. Workspace ownership and M4 named-loadout workflows
 
 This is the required contract for M4 and subsequent workspace changes. It extends the
-M3 draft and viewport protocol in §13; it is not a claim that these workflows have
-already shipped. Product requirements are in SPEC §9.2–9.3.
+M3 draft and viewport protocol in §13. Product requirements are in SPEC §9.2–9.3.
 
 ### 14.1 State ownership
 

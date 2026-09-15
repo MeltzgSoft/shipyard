@@ -631,10 +631,8 @@ rotation step, current poses, saved baselines, dirty state and display
 settings. Returning restores that session and synchronizes the selector. Unsaved poses
 must not change another workspace's model or the durable catalog.
 
-The selection/grid/edit/save workflow above documents the existing feature
-retroactively. Full workspace-session restoration is the M4 requirement in §9.2;
-the existing implementation does not yet meet it. TECHNICAL.md §12.6.1 records the
-implementation boundary and verification coverage.
+TECHNICAL.md §12.6.1 defines the implementation boundaries and required verification
+for this workflow, including workspace-session restoration under §9.2.
 
 ---
 
