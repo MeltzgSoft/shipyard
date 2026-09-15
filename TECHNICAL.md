@@ -1930,3 +1930,14 @@ preparation uses the existing background jobs/poll/retry flow; do not block requ
 on preprocessing, and do not emit a mesh set until its source is ready. No authentication
 is introduced for the existing local application. Names, saved loadouts, duplication,
 paint schemes and thumbnails remain outside M3.
+
+### 13.5 Named-loadout store
+
+M4 stores named loadouts at `$XDG_DATA_HOME/shipyard/loadouts.edn`. It is an
+explicit, versioned EDN envelope, `{ :shipyard/version 1 :loadouts [...] }`,
+whose entries use the `:loadout/*` representation in SPEC §8.3. Writes use the
+same atomic write helper as library settings and sidecars; a startup parse or
+shape error is reported rather than quietly becoming an empty list. The store
+boundary verifies durable types, bounded path shape, and unique UUIDs. It does
+not claim catalog compatibility: M4 operations revalidate that changing fact
+against the current catalog before they alter the active assembly draft.

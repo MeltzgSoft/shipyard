@@ -31,6 +31,11 @@
  :shipyard.catalog/db
  {:library #ig/ref :shipyard.library/index}
 
+ ;; Named loadouts are user data, not part-library metadata.  The component
+ ;; defaults to $XDG_DATA_HOME/shipyard/loadouts.edn (§1.2).
+ :shipyard.loadout/store
+ {}
+
  ;; Preprocessing runs here rather than on the Jetty thread: a cold hull takes
  ;; seconds and GET /part/:id must return immediately (TECHNICAL.md §7).
  :shipyard.http/jobs
