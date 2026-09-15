@@ -364,7 +364,7 @@
        [:fieldset.mount-wizard__mirror (socket-only-attrs kind)
         [:legend "Mirror"]
         (if mirror-locked?
-          [[:input {:type "hidden" :name "mirror" :value "true"}]
+          [:input {:type "hidden" :name "mirror" :value "true"}
            [:p.mount-wizard__hint "This mirrored pair is configured together."]]
           [:label.mount-wizard__check
            [:input {:type "checkbox" :name "mirror" :value "true" :checked mirror?}]
