@@ -589,6 +589,10 @@
         "changing Twist should rotate the cyan +X arrow immediately")
     (is (s/wait-until #(vec-close? (:up (:preview (s/stats *driver*))) [-1.0 0.0 0.0]))
         "changing Twist should rotate the pink +Y arrow with it"))
+  (s/select-option! *driver* ".mount-wizard__form select[name=kind]" "socket")
+  (is (s/wait-until
+       #(false? (s/js *driver* "() => document.querySelector('.mount-wizard__form input[name=capacity]').disabled")))
+      "socket capacity should be editable after changing a repicked plug back to a socket")
   (s/js *driver* "() => { document.querySelector('.mount-wizard__form input[name=capacity]').value = '3'; }")
   (s/click! *driver* ".mount-wizard__actions button[value=update]")
   (is (s/wait-until #(str/includes? (s/text *driver* "#detail") "x3"))
