@@ -513,6 +513,8 @@ markings.
 
 All server-rendered hiccup driven by htmx, except the viewport.
 
+- **Orient** - select library parts and edit their source-to-canonical poses together
+  in a preview grid before authoring mounts or assembling ships. See §9.4.
 - **Part Browser** - browse individual library parts; filter by bundle, class, role.
   Search by name. This is the user-facing name of the former Browse workspace.
 - **Assembly view** - the viewport plus a slot panel. Each slot lists compatible parts,
@@ -579,6 +581,60 @@ the existing draft or preview. Merely returning to Assemble resumes its own draf
 only an explicit Edit or Duplicate action replaces it with the selected saved ship.
 Ship Browser does not require fleet ordering, fleet default schemes or thumbnails;
 those remain in M6.
+
+### 9.4 Orient workspace
+
+Orient provides bulk part-orientation authoring. It establishes which way a source
+mesh faces in Shipyard's canonical coordinates (§8.1): `+Y` up, `+Z` forward and `+X`
+starboard/right. It edits reusable part metadata, so saved poses apply wherever those
+parts are subsequently viewed or assembled. Source STL files and existing mount
+records remain unchanged. Orient appears before Part Browser in the workspace selector.
+
+**Select.** A table fills the workspace and supports filters by bundle, class, role,
+name and saved-orientation status (any, unset or saved). Each row shows the part name,
+role, class, saved yaw/pitch/roll and orientation status. An explicitly saved identity
+pose counts as Saved; a part without saved orientation is Unset. Parts that cannot be
+previewed remain visible as No preview, with selection disabled. No matches produces
+an explicit empty state.
+
+Selection persists across filter changes, including selected parts hidden by the
+current filters. The selected count describes the whole selection. **Render selection**
+is enabled only for a nonempty selection and replaces the table with a workspace-width
+grid. Each selected previewable part has its own named preview card, independently
+framed from a common viewing direction. Preparing or failed meshes show their status;
+scrolling and resizing must keep each model within its own card.
+
+**Preview.** One toolbar applies to every loaded model in the selection:
+
+- Pitch (X), Yaw (Y) and Roll (Z) **−/+** buttons apply a relative turn around the fixed
+  canonical axis. Choose a 1°, 15° or 90° step; the initial step is 90°.
+- The numeric field for each axis sets that absolute Euler angle on each model,
+  preserving its other two Euler components. This is distinct from a relative turn.
+  Finite values preview locally when committed; invalid/non-finite values must not
+  corrupt the pose.
+- **Copy first** copies the first loaded part's current complete pose to every loaded
+  part. The order is stable by part id, not mesh-load completion order.
+- **Reset** restores each part's own last successfully saved pose and clears its dirty
+  state. For a part without a saved pose that is identity. Bulk Reset is a preview
+  action; the single-part editor's Reset instead persists the source orientation.
+
+**Save.** Preview changes do not write to disk. **Save orientations** is enabled when
+there are dirty poses and saves only those parts. Success establishes a new saved
+baseline for each saved part. A partial failure reports the failed parts and retains
+their dirty previews for retry; successful writes remain saved. Saving preserves other
+part metadata and mount records. **Back to table** ends the grid preview, discards its
+unsaved changes and releases its rendering resources while preserving the selected ids.
+
+**Workspace ownership.** Merely switching to another workspace is not Back to table
+or Reset. Under §9.2, Orient must retain its filters, selection, table/grid mode,
+rotation step, current poses, saved baselines, dirty state and display
+settings. Returning restores that session and synchronizes the selector. Unsaved poses
+must not change another workspace's model or the durable catalog.
+
+The selection/grid/edit/save workflow above documents the existing feature
+retroactively. Full workspace-session restoration is the M4 requirement in §9.2;
+the existing implementation does not yet meet it. TECHNICAL.md §12.6.1 records the
+implementation boundary and verification coverage.
 
 ---
 

@@ -1758,24 +1758,113 @@ first (§1.2). Positions, normals and index buffers never otherwise enter Datasc
 
 #### 12.6.1 Bulk orientation
 
-Bulk orientation keeps the same authority boundary as single-part editing. The server
-renders the filterable part table and validates the selected ids. It resolves or queues
-each tier-0 mesh, then returns grid cards carrying mesh URLs and saved quaternions. A
-short HTMX poll replaces the grid while any mesh is still preparing and stops when every
-entry is ready or failed.
+The **Orient** workspace implements SPEC §9.4. Its server boundary is
+`shipyard.bulk-orientation.{routes,handlers,transforms,views}`; client selection, editing
+and card rendering live in `src/cljs/shipyard/viewport.cljs`. Shared quaternion math
+lives in `src/cljc/shipyard/part/orientation.cljc` and runs on both runtimes. This section
+documents the existing workflow and explicitly identifies the remaining M4 requirement.
 
-The viewport owns only the transient editing session: loaded Three.js objects, current
-quaternions, dirty flags, and the in-page selection set. Toolbar turns reuse the fixed
-world-axis orientation functions used by the single-part editor and update every loaded
-object before the next render pass. Each preview card has its own scene and camera,
-framed around that model's bounding sphere with a common viewing direction. One WebGL
-renderer draws these scenes into the cards' DOM rectangles, using scissor rectangles
-clipped to the scrolling grid and canvas. Scroll and resize therefore move or clip
-previews without placing models in a shared world-space grid or creating additional
-WebGL contexts. The save form serializes only dirty orientations
-into the request body. The server validates the complete map, writes each known part
-through the catalog sidecar API, and reports saved and failed ids separately. No
-orientation payload or accumulated session state is stored in response headers.
+**Authority and selection.** The server owns catalog queries, preview eligibility, mesh
+preparation and durable writes. Table filters reuse catalog bundle/class/role/name
+queries and add `orientation=all|unset|saved`; absent orientation filter means all.
+Saved means a valid saved quaternion exists, including identity. Missing/invalid
+metadata is treated as unset and previews at identity at this boundary (§12.6).
+
+The client holds an in-page set of selected part ids, independently of which filtered
+rows are currently visible. HTMX table swaps reapply the checkboxes and total count.
+Render submissions sort the selection by id for stable card order. The server parses
+an EDN vector of string ids, removes duplicates while preserving order, resolves ids
+against the current catalog, and excludes unknown or unpreviewable parts. Empty/invalid
+selections, or selections with no remaining previewable entries, return 422.
+
+**HTTP and mesh preparation.** Routes use the Malli transport schemas in
+`shipyard.http.contracts`; malformed form/query transport is rejected before handlers.
+The nested EDN values have separate shape and domain validation.
+
+| Route | Inputs | HTML result |
+|---|---|---|
+| GET /orient | none | Filter form, result container and selection controls in `#library` |
+| GET /orient/parts | optional bundle, class, role, q, orientation | Filtered rows in `#bulk-orient-results` |
+| POST /orient/render | `part-ids`: EDN vector of string ids | Preview grid inside `#bulk-orient`, or 422 selection error |
+| POST /orient/save | `orientations`: nonempty EDN map of string ids to quaternion vectors | Result inside `#bulk-orient-status`; 200 all saved, 422 invalid payload or any failed part |
+
+Render uses cached tier-0 meshes or queues source preprocessing through the existing
+background jobs. Cards carry `data-bulk-part`, `data-orientation` and, when ready,
+`data-mesh-key`/`data-mesh-url`. A 400 ms HTMX poll posts the selected ids again while
+any entry is preparing; polling stops once every entry is ready or failed. Rotation,
+angle, copy and reset controls are disabled while server preparation remains pending.
+Missing sources and preprocessing failures are reported per card. Each client mesh
+fetch has a token; a completion may install a mesh only if its entry still owns that
+token. Scene cleanup must invalidate pending completions.
+
+**Editing semantics.** Each loaded entry has a normalized source-to-canonical
+quaternion `[x y z w]`, a saved baseline and a dirty flag. Selection, working quaternions,
+rotation step and dirty flags are transient; they are not catalog or sidecar entities.
+
+Relative toolbar turns use `rotate-around-world-axis`, multiplying the delta on the
+left: `q-next = q-axis(delta) * q-current`. That preserves fixed canonical axes after
+earlier turns. The numeric controls instead read `[yaw pitch roll]` from the current
+quaternion, replace the selected component, and rebuild with
+`q = qZ(roll) * qX(pitch) * qY(yaw)` (ZXY convention). Input commits on `change`, accepts
+finite degree values, and applies independently to each loaded entry. Do not implement
+an absolute field as a delta or overwrite the other two components across the set.
+
+Copy first chooses the loaded entry with the lowest part id and copies its complete
+current quaternion to all loaded entries. Relative turns, absolute edits and copy mark
+the affected entries dirty. Reset restores each entry's saved baseline and clears dirty
+flags without sending a save request. Save is disabled when there are no dirty entries.
+
+**Grid rendering and lifetime.** Each preview card has its own Three.js scene and
+perspective camera, framed around that model's bounding sphere with a common viewing
+direction. One shared WebGL renderer draws these scenes into the cards' DOM rectangles.
+Use the full card rectangle as the viewport and its intersection with the scrolling
+grid and canvas as the scissor rectangle. Recompute camera aspect/framing for the card
+size; scrolling clips the model without changing its framing. A collection of parts in
+one shared world-space scene does not implement independent card previews.
+
+Back to table ends the preview session: dispose its meshes/materials, invalidate
+pending mesh fetches and retain the selected-id set. A subsequent Render selection
+starts from the catalog's saved poses. This explicit action is distinct from changing
+workspaces, which must preserve Orient's logical session under §14.
+
+**Persistence and partial failure.** In the capture phase of form submission, serialize
+only dirty entries into the hidden `orientations` field before HTMX reads the form.
+The server parses and validates the entire map before writing: it must be nonempty,
+have string keys and have four-component, finite, nonzero quaternions that can be
+normalized. An invalid member rejects the whole payload without writing any member.
+
+For a valid map, save known parts individually through `catalog.db/save-part-orientation!`.
+Each write atomically updates `:part/orientation` in that part's sidecar before updating
+Datascript, preserving mounts and unrelated metadata (§1.2). This is atomic per part,
+not one transaction across the selection. Unknown ids and write failures are reported
+as failed; successful writes are retained. The result carries saved ids in the HTML
+`data-bulk-save-result` attribute and names failures in the visible status text. Only
+acknowledged entries advance their saved baseline and clear dirty flags; failed entries
+remain available for retry. No orientation map or accumulated session state is carried
+in response headers.
+
+**Workspace restoration gap.** The current `switch-workspace!` path clears the grid and
+resets selection when entering Orient; its shared renderer state is not an independent
+workspace session. That behavior does not satisfy §14 and must not become an acceptance
+criterion merely because it already exists. M4 must preserve Orient's filters, selected
+ids, table/grid mode, step, working poses, baselines, dirty flags and display settings
+across workspace switches, reconstruct its own preview and synchronize the selector.
+Resource disposal may release GPU objects while retaining this logical state. Delayed
+mesh, poll and save responses must respect the owning workspace and activation (§14.2).
+
+**Verification.** Existing E2E coverage in `shipyard.e2e.viewport-test` exercises selection,
+relative and absolute yaw, saving/dirty-state acknowledgement, Back to table, and
+per-card rendering across rotation, scrolling and resizing. Integration coverage in
+`shipyard.integration.http-test` exercises filtering, cold-mesh preparation, persistence
+and malformed payloads. Unit/shared-runtime tests cover view contracts, selection/EDN
+validation and quaternion math. These tests do not establish full workspace restoration
+or every failure path.
+
+Required E2E coverage for behavior changes (§10.3) includes filter/selection retention,
+disabled unpreviewable rows, all three axes and step sizes, deterministic Copy first,
+Reset to differing saved baselines, no writes before Save, partial-save retry and
+round-trip persistence. M4 must additionally exercise leaving and returning with dirty
+poses and distinct workspace settings, plus delayed responses, as required by §14.4.
 
 ### 12.7 Fixture that fixes the contract
 
