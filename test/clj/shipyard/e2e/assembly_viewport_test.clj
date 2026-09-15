@@ -7,12 +7,13 @@
 
 (defn- request! [driver path params]
   (s/js driver
-        (str "async () => { let status; const capture = e => { status = e.detail.xhr.status; };"
-             "document.body.addEventListener('htmx:afterRequest', capture);"
+        (str "async () => { let status; let resolve; const settled = new Promise(r => resolve = r);"
+             "const capture = e => { status = e.detail.xhr.status; resolve(); };"
+             "document.body.addEventListener('htmx:afterSettle', capture, {once:true});"
              "try { await htmx.ajax(" (json/write-str (if params "POST" "GET")) ","
              (json/write-str path) ", {target:'#detail', swap:'innerHTML', values:"
-             (json/write-str (or params {})) "}); return status; }"
-             "finally { document.body.removeEventListener('htmx:afterRequest', capture); } }")))
+             (json/write-str (or params {})) "}); await settled; return status; }"
+             "finally { document.body.removeEventListener('htmx:afterSettle', capture); } }")))
 
 (defn- await-count! [driver n]
   (s/wait-until
