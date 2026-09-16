@@ -91,14 +91,6 @@
     #(let [p (:preview (s/stats *driver*))]
        (when (and p (> (:revision p) after-revision)) p)))))
 
-(defn- await-stable-geometries
-  "Wait for actual rendered frames to account for all auxiliary geometry."
-  []
-  (let [frame (:render-frame (s/stats *driver*))]
-    (s/wait-until
-     #(let [stats (s/stats *driver*)]
-        (when (> (:render-frame stats) (+ frame 2)) (:geometries stats))))))
-
 (defn- enter-authoring! [part-id]
   (when-not (= part-id (get-in (s/stats *driver*) [:authoring :part-id]))
     (s/click! *driver* "[data-authoring-toggle]"))
@@ -406,7 +398,7 @@
     (open-app!)
     (select-part! "Cruiser Hull")
     (s/await-part *driver* s/hull-id)
-    (let [baseline (await-stable-geometries)]
+    (let [baseline (s/await-rendered-geometries *driver*)]
       (is (pos? baseline) "the stats hook should be reporting live geometries")
       (dotimes [_ 4]
         (select-part! "Classic Ram Prow")
@@ -451,12 +443,12 @@
     (is (= 7 (:geometries first-preview))
         "highlight and all three frame arrows should be observable")
     (testing "a new pick replaces the previous preview instead of growing GPU geometry"
-      (let [baseline (await-stable-geometries)
+      (let [baseline (s/await-rendered-geometries *driver*)
             revision (:revision first-preview)
             center (viewport-center)]
         (s/click-point! *driver* (:x center) (:y center))
         (is (some? (await-preview revision)))
-        (is (<= (await-stable-geometries) baseline)
+        (is (<= (s/await-rendered-geometries *driver*) baseline)
             "repeated picks should not leak Three.js geometries"))))
   (testing "part changes clear previews but retain global face picking"
     (select-part! "Cruiser Hull")

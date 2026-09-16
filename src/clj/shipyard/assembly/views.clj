@@ -41,7 +41,7 @@
      {:style (str "--mount-color:" (:css (scene/color-for-slot id)))}
      [:details.assembly__slot details-attrs
       [:summary.assembly__mount-header
-       {:hx-post "/assembly/drawer" :hx-target "#detail" :hx-swap "innerHTML"
+       {:hx-post "/assembly/drawer" :hx-target "#detail" :hx-swap "innerHTML" :hx-sync "#detail:replace"
         :hx-vals (json/write-str {"revision" (str revision) "slot" (pr-str id) "open" (str (not open?))})}
        [:span.assembly__mount-dot]
        [:span.assembly__mount-copy

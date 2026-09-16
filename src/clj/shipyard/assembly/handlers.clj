@@ -54,4 +54,5 @@
   (let [{:keys [slot open revision]} (:form parameters)]
     (when (= (parse-long revision) (get-in @(:state assembly) [:draft :revision]))
       (workspace/update-workspace! workspace :assembly assoc-in [:drawers (edn/read-string slot) :open] (= open "true")))
-    (current! deps {:params {}})))
+    ;; Disclosure changes HTML only; an incremental envelope retains the scene.
+    (current! deps {:params {"poll" "1"}})))

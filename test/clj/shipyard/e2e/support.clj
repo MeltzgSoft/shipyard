@@ -336,6 +336,14 @@
   [driver]
   (js driver "() => window.__shipyard ? window.__shipyard.stats() : null"))
 
+(defn await-rendered-geometries
+  "Wait for rendered frames before measuring Three.js's lazily allocated geometry."
+  [driver]
+  (let [frame (:render-frame (stats driver))]
+    (wait-until
+     #(let [current (stats driver)]
+        (when (> (:render-frame current) (+ frame 2)) (:geometries current))))))
+
 (defn loaded-parts [driver]
   (some-> (stats driver) :parts vec))
 

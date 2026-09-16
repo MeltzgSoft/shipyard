@@ -130,7 +130,13 @@
       (s/wait-visible! driver ".assembly__hull")
       (request! driver "/assembly/hull" {"revision" "0" "part-id" (:hull fixture/ids)})
       (is (await-count! driver 1))
-      (s/click! driver (str (drawer [[:bridge 0]]) " summary"))
+      (let [before (get-in (slots driver) [[] :uuid])]
+        (s/js driver "() => { window.drawerComplete=false; document.body.addEventListener('htmx:afterRequest', e => { if(e.detail.xhr.responseURL.endsWith('/assembly/drawer')) window.drawerComplete=true; }); }")
+        (s/click! driver (str (drawer [[:bridge 0]]) " summary"))
+        (is (s/wait-until #(s/js driver "() => window.drawerComplete")))
+        (is (await-count! driver 1))
+        (is (= before (get-in (slots driver) [[] :uuid]))
+            "a disclosure update must not replace the viewport's mesh"))
       (s/click! driver (str (drawer [[:antenna 0]]) " summary"))
       (choose! [[:weapon 0]] :weapon)
       (is (await-count! driver 2))
@@ -224,7 +230,7 @@
         (s/click! driver ".masthead [data-workspace-mode='assembly']")
         (s/wait-visible! driver ".assembly__hull")
         (is (await-count! driver 2))
-        (let [before (:geometries (s/stats driver))]
+        (let [before (s/await-rendered-geometries driver)]
           (request! driver "/assembly/reset" {"revision" "7"})
           (is (await-count! driver 0))
           (is (s/wait-until #(<= (:geometries (s/stats driver)) (- before 2)))))
