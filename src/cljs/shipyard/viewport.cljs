@@ -1330,6 +1330,7 @@
          :vertices  (reduce + 0 (map (fn [^js o] (.. o -geometry -attributes -position -count)) objs))
          :triangles (reduce + 0 (map (fn [^js o] (/ (.. o -geometry -index -count) 3)) objs))
          :draws     (.. renderer -info -render -calls)
+         :render-frame (.. renderer -info -render -frame)
          :target    (let [t (.-target controls)] #js [(.-x t) (.-y t) (.-z t)])
          :camera    (let [p (.-position camera)] #js [(.-x p) (.-y p) (.-z p)])
          :materials (clj->js (mapv (fn [^js o] (.getHexString (.. o -material -color))) objs))

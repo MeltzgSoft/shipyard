@@ -91,18 +91,12 @@
        (when (and p (> (:revision p) after-revision)) p)))))
 
 (defn- await-stable-geometries
-  "Wait for Three's renderer accounting to observe the current scene.
-
-  A mesh becomes selectable before the next render accounts for all of its
-  auxiliary orientation-guide geometry.  Comparing a later rendered count to
-  that early value mistakes the initial accounting catch-up for a leak."
+  "Wait for actual rendered frames to account for all auxiliary geometry."
   []
-  (let [previous (atom nil)]
+  (let [frame (:render-frame (s/stats *driver*))]
     (s/wait-until
-     #(let [current (:geometries (s/stats *driver*))]
-        (if (= current @previous)
-          current
-          (do (reset! previous current) nil))))))
+     #(let [stats (s/stats *driver*)]
+        (when (> (:render-frame stats) (+ frame 2)) (:geometries stats))))))
 
 (defn- enter-authoring! [part-id]
   (when-not (= part-id (get-in (s/stats *driver*) [:authoring :part-id]))
