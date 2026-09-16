@@ -11,7 +11,8 @@
   {:state (atom {:active :browse :activation 0
                  :workspaces (-> (zipmap modes (repeat {:filters {} :colors true}))
                                  (assoc-in [:assembly :model] assembly)
-                                 (assoc-in [:ships :model] preview))})})
+                                 (assoc-in [:ships :model] preview)
+                                 (assoc-in [:ships :colors] false))})})
 
 (defn workspace! [{:keys [state]} mode] (get-in @state [:workspaces mode]))
 (defn update-workspace! [{:keys [state]} mode f & args]

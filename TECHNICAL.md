@@ -2100,11 +2100,16 @@ Assemble draft. Preserve the canvas and dispose superseded scene resources as in
 - List saved ships as cards and filter them by the root hull's catalog bundle/faction
   and class. Use existing catalog identities and classification; filters belong to
   Ship Browser. Do not discard missing or stale loadouts silently during listing.
-- Selecting a card validates and loads a read-only assembly snapshot into Ship Browser.
+- A native submit button covers the card; pointer and keyboard activation validate
+  and load a read-only assembly snapshot into Ship Browser. Edit and Duplicate remain
+  separate sibling controls; there is no separate Preview button.
   It does not navigate to Assemble or replace its draft or editing identity.
 - A floating inspector renders that snapshot's part tree and color legend. Identify
   instances by full slot path so repeated and nested occurrences remain distinct;
-  tree, legend and viewport must describe the same selected assembly.
+  tree, legend and viewport must describe the same selected assembly. Order the tree
+  with its hull first, followed by depth-first slot subtrees and numeric sibling
+  ordinals. Ship Browser exposes its own server-owned mount-color toggle, initially
+  off; transitions restore its value independently of Assemble.
 - Edit validates the selected saved loadout and explicitly transfers it into Assemble,
   retaining its loadout id and name. Saving updates that id through the atomic store
   boundary; selecting Edit alone makes no durable write.

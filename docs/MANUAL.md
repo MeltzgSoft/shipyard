@@ -246,9 +246,15 @@ Paint schemes and thumbnails are not yet available.
 ## Saved ships
 
 Open **Ship Browser** to find saved assemblies. Filter by the root hull’s bundle /
-faction and class. **Preview** opens a read-only ship with a floating inspector that
-lists every nested and repeated part and its matching mount color. Previewing a ship
-preserves your Assemble draft. Missing parts remain visible as a recoverable error.
+faction and class. Click a ship card, or focus its name and press Enter or Space, to
+load the ship without changing your Assemble draft. There is no separate Preview
+button. The floating inspector lists the hull first, then each component followed by
+its nested parts. Repeated parts remain separate entries.
+
+**Mount colors** starts off in Ship Browser. Turn it on to color the ship and its
+part-tree legend by mount. This setting belongs to Ship Browser and is restored when
+you return; changing it does not affect Assemble. Missing parts remain visible as a
+recoverable error.
 
 **Edit** opens the saved ship in Assemble, preserving its name and identity.
 **Duplicate** opens an independent draft named `<original name> - Copy`; change that

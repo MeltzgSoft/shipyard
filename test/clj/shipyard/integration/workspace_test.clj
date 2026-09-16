@@ -15,6 +15,9 @@
                                (mock/header "X-Shipyard-Workspace" mode)
                                (mock/header "X-Shipyard-Activation" (str generation)))))]
     (try
+      (testing "Ship Browser starts with its own colors disabled"
+        (is (false? (get-in @state [:workspaces :ships :colors])))
+        (is (true? (get-in @state [:workspaces :assembly :colors]))))
       (testing "only the server advances the activation"
         (is (= 204 (:status (request :get "/workspace/orient" "orient" 999 {}))))
         (is (= [:browse 0] ((juxt :active :activation) @state)))

@@ -51,3 +51,20 @@
                      (or (not (seq class)) (= class (:class %)))))
        (sort-by (juxt #(get-in % [:loadout :loadout/name]) #(str (get-in % [:loadout :loadout/id]))))
        (vec)))
+
+(defn- compare-slot-paths [left right]
+  (loop [left (seq left) right (seq right)]
+    (cond
+      (nil? left) (if (nil? right) 0 -1)
+      (nil? right) 1
+      :else (let [order (compare (first left) (first right))]
+              (if (zero? order)
+                (recur (next left) (next right))
+                order)))))
+
+(defn part-tree
+  "Hull first, then each slot's complete subtree before its next sibling."
+  [{:keys [hull assignments]}]
+  (if hull
+    (vec (sort-by key compare-slot-paths (assoc assignments [] hull)))
+    []))

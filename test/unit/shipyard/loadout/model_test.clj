@@ -57,3 +57,17 @@
                              [[:weapon 0] [:turret 0]] "turret" [[:weapon 1] [:turret 0]] "turret"})))
     (is (nil? (count-empty {[[:gone 0]] "weapon"})))
     (is (nil? (m/empty-mount-count assembly/database (assoc record :loadout/hull "gone"))))))
+
+(deftest part-tree-test
+  (is (= [] (m/part-tree {})))
+  (is (= [[[] "hull"]] (m/part-tree {:hull "hull"})))
+  (let [assignments {[[:weapon 10]] "weapon"
+                     [[:weapon 2] [:turret 0]] "turret"
+                     [[:bridge 0]] "bridge"
+                     [[:weapon 2]] "weapon"}]
+    (is (= [[[] "hull"]
+            [[[:bridge 0]] "bridge"]
+            [[[:weapon 2]] "weapon"]
+            [[[:weapon 2] [:turret 0]] "turret"]
+            [[[:weapon 10]] "weapon"]]
+           (m/part-tree {:hull "hull" :assignments assignments})))))

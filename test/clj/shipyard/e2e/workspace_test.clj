@@ -11,7 +11,9 @@
            [java.util.function Consumer]))
 
 (defn switch! [driver mode]
-  (s/click! driver (str ".masthead [data-workspace-mode='" mode "']")))
+  (s/click! driver (str ".masthead [data-workspace-mode='" mode "']"))
+  (when-not (s/wait-until #(= mode (s/js driver "() => document.querySelector('.masthead__mode--active').dataset.workspaceMode")))
+    (throw (ex-info "Workspace navigation did not complete" {:mode mode}))))
 
 (defn await-ship! [driver]
   (is (s/wait-until #(= 13 (count (get-in (s/stats driver) [:assembly :slots]))))))
@@ -41,11 +43,27 @@
         (s/wait-visible! driver card)
         (is (empty? (get-in (s/stats driver) [:assembly :slots])))
         (let [draft-before (:draft @state)]
-          (s/click! driver (str card " button:text-is('Preview')"))
+          (s/wait-visible! driver "[data-mount-colors-toggle]")
+          (is (= "false" (s/js driver "() => document.querySelector('[data-mount-colors-toggle]').getAttribute('aria-pressed')")))
+          (is (zero? (s/count-els driver ".ship-card button:text-is('Preview')")))
+          (s/click! driver card)
           (await-ship! driver)
           (is (= 13 (s/count-els driver "[data-ship-slot]")))
           (is (= draft-before (:draft @state)))
-          (is (true? (:mount-colors-enabled (s/stats driver))))
+          (is (false? (:mount-colors-enabled (s/stats driver))))
+          (is (every? #{"9aa4af"} (:materials (s/stats driver))))
+          (is (= ["rgb(154, 164, 175)"] (s/js driver "() => [...new Set([...document.querySelectorAll('.ship-tree__color')].map(e=>getComputedStyle(e).backgroundColor))]")))
+          (is (= ["[]" "[[:antenna 0]]" "[[:antenna 1]]" "[[:bridge 0]]"
+                  "[[:mirrored-weapon 0]]" "[[:mirrored-weapon 0] [:turret 0]]"
+                  "[[:mirrored-weapon 1]]" "[[:mirrored-weapon 1] [:turret 0]]"
+                  "[[:prow 0]]" "[[:weapon 0]]" "[[:weapon 0] [:turret 0]]"
+                  "[[:weapon 1]]" "[[:weapon 1] [:turret 0]]"]
+                 (s/js driver "() => [...document.querySelectorAll('[data-ship-slot]')].map(e=>e.dataset.shipSlot)")))
+          (s/click! driver "[data-mount-colors-toggle]")
+          (is (s/wait-until #(true? (:mount-colors-enabled (s/stats driver)))))
+          (is (> (count (set (:materials (s/stats driver)))) 1))
+          (is (> (s/js driver "() => new Set([...document.querySelectorAll('.ship-tree__color')].map(e=>getComputedStyle(e).backgroundColor)).size") 1))
+          (is (= "true" (s/js driver "() => document.querySelector('[data-mount-colors-toggle]').getAttribute('aria-pressed')")))
           (is (= "ships" (:workspace (s/stats driver)))))
         (switch! driver "browse")
         (s/await-part driver (:bridge fixture/ids))
@@ -56,6 +74,9 @@
         (is (some #(= (:prow-alt fixture/ids) (:part-id %)) (get-in (s/stats driver) [:assembly :slots])))
         (switch! driver "ships")
         (await-ship! driver)
+        (is (true? (:mount-colors-enabled (s/stats driver))))
+        (is (> (count (set (:materials (s/stats driver)))) 1))
+        (is (= "true" (s/js driver "() => document.querySelector('[data-mount-colors-toggle]').getAttribute('aria-pressed')")))
         (let [bytes (slurp (str file))]
           (s/click! driver (str card " button:text-is('Duplicate')"))
           (s/wait-visible! driver ".assembly__save")
@@ -139,10 +160,10 @@
       (s/select-option! driver "#ship-filters select[name=bundle]" "All bundle / faction")
       (s/select-option! driver "#ship-filters select[name=class]" "All class")
       (is (s/wait-until #(= 3 (s/count-els driver ".ship-card"))))
-      (s/click! driver ".ship-card:has(h3:text-is('Navy cruiser')) button:text-is('Preview')")
+      (.press (.locator ^Page (:page driver) ".ship-card__load[aria-label='Load Navy cruiser']") "Enter")
       (await-ship! driver)
       (let [before (get-in (s/stats driver) [:assembly :slots])]
-        (s/click! driver ".ship-card:has(h3:text-is('Missing hull')) button:text-is('Edit')")
+        (s/click! driver ".ship-card:has(.ship-card__load[aria-label='Load Missing hull']) button:text-is('Edit')")
         (s/wait-visible! driver ".ship-inspector [role=alert]")
         (is (= "Ship Browser" (s/text driver ".masthead__mode--active")))
         (is (= before (get-in (s/stats driver) [:assembly :slots])))
@@ -225,7 +246,7 @@
               (reify Consumer
                 (accept [_ route]
                   (let [^Route route route] (reset! held [route (.fetch route)])))))
-      (switch! driver "assembly")
+      (s/click! driver "[data-workspace-mode=assembly]")
       (is (s/wait-until #(do (s/stats driver) (some? @held))))
       (is (= "Part Browser" (s/text driver ".masthead__mode--active")))
       (is (true? (s/js driver "() => [...document.querySelectorAll('.masthead__mode')].every(e => e.disabled)")))

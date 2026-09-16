@@ -4,13 +4,18 @@
             [shipyard.assembly.scene :as scene]
             [shipyard.catalog.db :as catalog]
             [shipyard.http.urls :as urls]
+            [shipyard.loadout.model :as model]
             [shipyard.workspace.views :as workspace-views]))
 
 (defn- action [id action label]
-  [:form (merge (when (#{"edit" "duplicate"} action) workspace-views/transition-attrs)
-                {:hx-post (str "/ships/" action) :hx-target "#detail" :hx-swap "innerHTML settle:0ms"})
-   [:input {:type "hidden" :name "id" :value (str id)}]
-   [:button {:type "submit" :data-workspace-transition (when (#{"edit" "duplicate"} action) "true")} label]])
+  (let [select? (= "preview" action)]
+    [:form (merge (if select? {:hx-sync "#detail:replace"} workspace-views/transition-attrs)
+                  {:class (if select? "ship-card__select" "ship-card__action")
+                   :hx-post (str "/ships/" action) :hx-target "#detail" :hx-swap "innerHTML settle:0ms"})
+     [:input {:type "hidden" :name "id" :value (str id)}]
+     (if select?
+       [:h3 [:button.ship-card__load {:type "submit" :aria-label (str "Load " label)} label]]
+       [:button {:type "submit" :data-workspace-transition "true"} label])]))
 
 (defn results [entries filters]
   [:div#ship-results.ship-cards
@@ -20,9 +25,8 @@
        (for [{:keys [loadout bundle class missing?]} matches
              :let [{:loadout/keys [id name]} loadout]]
          [:article.ship-card {:data-loadout-id (str id)}
-          [:h3 name] [:p (str/join " · " (remove nil? [bundle class]))]
+          (action id "preview" name) [:p (str/join " · " (remove nil? [bundle class]))]
           (when missing? [:p.detail__error "Root hull missing from the library."])
-          (action id "preview" "Preview")
           (action id "edit" "Edit") (action id "duplicate" "Duplicate")])
        [:p "No saved ships match."]))])
 
@@ -47,7 +51,7 @@
       [:h2 (:name draft)]
       [:p "Saved assembly · preview"]
       [:ul.ship-tree
-       (for [[path id] (sort-by (comp pr-str key) (assoc (:assignments draft) [] (:hull draft)))
+       (for [[path id] (model/part-tree draft)
              :let [part (catalog/part database id) color (:css (scene/color-for-slot path))]]
          [:li {:data-ship-slot (pr-str path) :data-part-id id
                :style (str "--slot-color:" color ";padding-left:" (* 10 (count path)) "px")}
