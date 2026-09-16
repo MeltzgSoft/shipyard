@@ -195,6 +195,11 @@ dirty with Save available. Reset restores the last successfully saved pose.
 **Back to table** remains available while previews are preparing and retains your
 selected parts.
 
+**Back to table** refreshes saved angles and orientation status using the current
+filters. Newly saved parts disappear from an Unset-only result, but stay selected.
+Successful parts refresh after a partial save; failed parts retain their previous
+saved metadata. Saving an identity pose also marks that part Saved.
+
 **Save mount** creates a new id. If that id already exists, Shipyard reports it instead
 of overwriting silently; use **Replace** only when you mean to update that mount. A part
 can have multiple sockets, but only one plug. Existing mounts appear below the loaded

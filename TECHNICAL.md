@@ -1823,7 +1823,10 @@ size; scrolling clips the model without changing its framing. A collection of pa
 one shared world-space scene does not implement independent card previews.
 
 Back to table ends the preview session: dispose its meshes/materials, invalidate
-pending mesh fetches and retain the selected-id set. A subsequent Render selection
+pending mesh fetches and retain the selected-id set. Its server-owned workspace transition
+marks the session as table mode and renders the current filters. Rows, angles, counts
+and filter membership come from the catalog after Save, including partial successes;
+the server-owned selection survives the swap. A subsequent Render selection
 starts from the catalog's saved poses. This explicit action is distinct from changing
 workspaces, which must preserve Orient's logical session under §14. Preparation polls replace only the cards and editing controls; the Back button stays
 in place so polling cannot remove or move it during a click.
