@@ -75,6 +75,8 @@
       (try
         (s/go! driver (s/base-url (:system started)))
         (is (s/wait-until #(s/stats driver)))
+        (s/click! driver ".masthead [data-workspace-mode='assembly']")
+        (s/wait-visible! driver ".assembly__hull")
         (s/js driver "() => { window.assemblyResponses = []; document.body.addEventListener('htmx:afterRequest', e => { const xhr = e.detail.xhr; const doc = new DOMParser().parseFromString(xhr.responseText, 'text/html'); const field = doc.querySelector('[data-assembly-event]'); if (field) window.assemblyResponses.push({status:xhr.status, headers:xhr.getAllResponseHeaders().length, trigger:xhr.getResponseHeader('HX-Trigger'), size:field.getAttribute('data-assembly-event').length}); }); }")
         (is (= 200 (request! driver "/assembly/hull"
                              {"revision" "0" "part-id" (:hull fixture/ids)})))
@@ -124,6 +126,8 @@
     (try
       (s/go! driver (s/base-url (:system started)))
       (is (s/wait-until #(s/stats driver)))
+      (s/click! driver ".masthead [data-workspace-mode='assembly']")
+      (s/wait-visible! driver ".assembly__hull")
       (request! driver "/assembly/hull" {"revision" "0" "part-id" (:hull fixture/ids)})
       (is (await-count! driver 1))
       (s/click! driver (str (drawer [[:bridge 0]]) " summary"))
@@ -173,6 +177,8 @@
     (try
       (s/go! driver (s/base-url (:system started)))
       (s/wait-until #(s/stats driver))
+      (s/click! driver ".masthead [data-workspace-mode='assembly']")
+      (s/wait-visible! driver ".assembly__hull")
       (testing "a hull and duplicate weapons occupy distinct transforms"
         (is (= 200 (request! driver "/assembly/hull" {"revision" "0" "part-id" (:hull fixture/ids)})))
         (is (await-count! driver 1))
@@ -209,13 +215,19 @@
         (s/js driver "async () => { window.fetch = window.originalFetch; await Promise.all(window.pendingMeshes.map(release => release())); }")
         (is (await-count! driver 2))
         (is (not (contains? (slots driver) [[:weapon 0]]))))
-      (testing "browsing clears assembly and resuming restores only the current draft"
+      (testing "browsing restores its own model and resuming restores the current draft"
+        (s/click! driver ".masthead [data-workspace-mode='browse']")
+        (s/wait-visible! driver "#library-results .part")
         (request! driver (urls/part-url (:prow fixture/ids)) nil)
         (s/await-part driver (:prow fixture/ids))
         (is (= [(:prow fixture/ids)] (:parts (s/stats driver))))
-        (request! driver "/assembly" nil)
+        (s/click! driver ".masthead [data-workspace-mode='assembly']")
+        (s/wait-visible! driver ".assembly__hull")
         (is (await-count! driver 2))
-        (request! driver "/assembly/reset" {"revision" "7"})
-        (is (await-count! driver 0))
-        (is (s/wait-until #(<= (:geometries (s/stats driver)) 1))))
+        (let [before (:geometries (s/stats driver))]
+          (request! driver "/assembly/reset" {"revision" "7"})
+          (is (await-count! driver 0))
+          (is (s/wait-until #(<= (:geometries (s/stats driver)) (- before 2)))))
+        (s/click! driver ".masthead [data-workspace-mode='browse']")
+        (s/await-part driver (:prow fixture/ids)))
       (finally (s/quit! driver) (fixture/stop! started)))))

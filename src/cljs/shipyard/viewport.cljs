@@ -1,7 +1,7 @@
 (ns shipyard.viewport
   "The browser island (TECHNICAL.md §7.2).
 
-  The only client-side code we write. It owns the renderer, the scene, the
+  The WebGL client module. It owns the renderer, the scene, the
   camera, `OrbitControls`, a neutral studio environment, a map of part-id ->
   `Object3D`, and the `.symesh` decoder - and it listens for `shipyard:*`
   events on `document.body` rather than being driven by swaps, because a swap
