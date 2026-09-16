@@ -2143,7 +2143,9 @@ and repeated and nested slot paths so state leakage and incorrect filtering are 
 
 `shipyard.workspace.db` owns the active generation and per-workspace selection, filters
 and display settings; Assemble and Ship Browser reference separate assembly model cells.
-`/workspace/:mode` reconstructs the destination panels from its own state. Explicit
+`/workspace/:mode` reconstructs the destination panels from its own state. Ship
+filter requests replace only `#ship-results`, keeping controls stable while requests
+are pending. Explicit
 Ship Browser Edit and Duplicate return the destination header and an assembly envelope
 for the next activation. Ordinary navigation never transfers models.
 

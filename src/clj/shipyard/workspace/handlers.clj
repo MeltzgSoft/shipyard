@@ -17,7 +17,7 @@
 (defn- append [response node]
   (update response :body str (:body (htmx/fragment node))))
 
-(defn ships! [{:keys [workspace preview] :as deps} {:keys [params]}]
+(defn- ship-preview! [{:keys [workspace preview] :as deps} {:keys [params]}]
   (workspace/remember! workspace :ships params)
   (let [filters (:filters (workspace/workspace! workspace :ships))
         draft (:draft @(:state preview))
@@ -33,6 +33,14 @@
      (list (ship-views/cards (loadouts/list! deps {}) filters)
            (ship-views/inspector (or (:database result) ((:database deps))) current (:prepared result) error)
            (when result [:input {:type "hidden" :data-assembly-event (pr-str (:event result))}])))))
+
+(defn ships! [{:keys [workspace] :as deps} {:keys [headers params] :as request}]
+  (if (= "ship-results" (get headers "hx-target"))
+    (do
+      (workspace/remember! workspace :ships params)
+      (htmx/fragment (ship-views/results (loadouts/list! deps {})
+                                         (:filters (workspace/workspace! workspace :ships)))))
+    (ship-preview! deps request)))
 
 (defn transfer! [{:keys [workspace] :as deps} mode {:keys [parameters]}]
   (let [id (parse-uuid (get-in parameters [:form :id]))

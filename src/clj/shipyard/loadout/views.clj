@@ -10,28 +10,32 @@
    [:input {:type "hidden" :name "id" :value (str id)}]
    [:button {:type "submit"} label]])
 
+(defn results [entries filters]
+  [:div#ship-results.ship-cards
+   (let [matches (filter #(and (or (not (seq (get filters "bundle"))) (= (get filters "bundle") (:bundle %)))
+                               (or (not (seq (get filters "class"))) (= (get filters "class") (:class %)))) entries)]
+     (if (seq matches)
+       (for [{:keys [loadout bundle class missing?]} matches
+             :let [{:loadout/keys [id name]} loadout]]
+         [:article.ship-card {:data-loadout-id (str id)}
+          [:h3 name] [:p (str/join " · " (remove nil? [bundle class]))]
+          (when missing? [:p.detail__error "Root hull missing from the library."])
+          (action id "preview" "Preview")
+          (action id "edit" "Edit") (action id "duplicate" "Duplicate")])
+       [:p "No saved ships match."]))])
+
 (defn cards [entries filters]
   [:section#library.panel {:hx-swap-oob "outerHTML"}
    [:h2.panel__title "Saved ships"]
-   [:form#ship-filters.filters {:hx-get "/ships" :hx-target "#detail" :hx-trigger "change" :hx-sync "this:replace"}
+   [:form#ship-filters.filters {:hx-get "/ships" :hx-target "#ship-results" :hx-swap "outerHTML"
+                                :hx-trigger "change" :hx-sync "this:replace"}
     (for [[field label] [["bundle" "Bundle / faction"] ["class" "Class"]]]
       [:label label
        [:select {:name field}
         [:option {:value ""} (str "All " (str/lower-case label))]
         (for [value (sort (distinct (keep (keyword field) entries)))]
           [:option {:value value :selected (= value (get filters field))} value])]])]
-   [:div.ship-cards
-    (let [matches (filter #(and (or (not (seq (get filters "bundle"))) (= (get filters "bundle") (:bundle %)))
-                                (or (not (seq (get filters "class"))) (= (get filters "class") (:class %)))) entries)]
-      (if (seq matches)
-        (for [{:keys [loadout bundle class missing?]} matches
-              :let [{:loadout/keys [id name]} loadout]]
-          [:article.ship-card {:data-loadout-id (str id)}
-           [:h3 name] [:p (str/join " · " (remove nil? [bundle class]))]
-           (when missing? [:p.detail__error "Root hull missing from the library."])
-           (action id "preview" "Preview")
-           (action id "edit" "Edit") (action id "duplicate" "Duplicate")])
-        [:p "No saved ships match."]))]])
+   (results entries filters)])
 
 (defn inspector [database draft prepared error]
   [:section.ship-inspector
