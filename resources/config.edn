@@ -41,6 +41,8 @@
 
  :shipyard.loadout/db {}
  :shipyard.loadout.operations/preview {}
+ :shipyard.workspace/db {:assembly #ig/ref :shipyard.assembly/db
+                         :preview #ig/ref :shipyard.loadout.operations/preview}
 
  :shipyard.http/routes
  {:library #ig/ref :shipyard.library/index
@@ -49,7 +51,8 @@
   :jobs    #ig/ref :shipyard.http/jobs
   :assembly #ig/ref :shipyard.assembly/db
   :loadouts #ig/ref :shipyard.loadout/db
-  :preview #ig/ref :shipyard.loadout.operations/preview}
+  :preview #ig/ref :shipyard.loadout.operations/preview
+  :workspace #ig/ref :shipyard.workspace/db}
 
  :shipyard.http/server
  {:port    #or [#env PORT 8080]

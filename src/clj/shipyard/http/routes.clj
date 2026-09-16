@@ -14,6 +14,8 @@
             [reitit.ring.coercion :as coercion]
             [ring.middleware.params :as params]
             [shipyard.assembly.routes :as assembly-routes]
+            [shipyard.workspace.db :as workspace]
+            [shipyard.workspace.routes :as workspace-routes]
             [shipyard.bulk-orientation.routes :as bulk-routes]
             [shipyard.catalog.db :as db]
             [shipyard.catalog.part :as catalog-part]
@@ -62,7 +64,8 @@
 (defn- library!
   "`GET /library`. An absent or empty parameter means no filter, which is what
   the \"All bundles\" option submits."
-  [{:keys [catalog library]} {:keys [params]}]
+  [{:keys [catalog library] :as deps} {:keys [params]}]
+  (when (:workspace deps) (workspace/remember! (:workspace deps) :browse params))
   (if-not (index/available?! library)
     (htmx/fragment (if (index/root! library)
                      (views/library-unavailable (index/root! library))
@@ -124,6 +127,7 @@
   `?retry=1` is the only way a failed job runs again. The poll fragment does not
   carry it, so a failure is shown rather than silently retried on the next tick."
   [{:keys [catalog library cache jobs] :as deps} {:keys [params path-params]}]
+  (when (:workspace deps) (workspace/update-workspace! (:workspace deps) :browse assoc :selection (:id path-params)))
   (let [id   (:id path-params)
         part (db/part (db/snapshot! catalog) id)]
     (cond
@@ -556,7 +560,11 @@
   (ring/router
    (into (routes deps)
          (concat (bulk-routes/routes deps)
-                 (when (:assembly deps) (assembly-routes/routes deps))))
+                 (when (:assembly deps) (assembly-routes/routes deps))
+                 (when (:workspace deps)
+                   (workspace-routes/routes (assoc deps :part-handler (partial part! deps)
+                                                   :facets #(facets! (:catalog deps))
+                                                   :database #(db/snapshot! (:catalog deps)))))))
    {:data {:coercion malli-coercion/coercion
            :middleware [params/wrap-params
                         coercion/coerce-exceptions-middleware
@@ -578,11 +586,9 @@
   and may carry :config-dir - injectable so a test can relocate the library
   without writing into the developer's real config."
   [deps]
-  (ring/ring-handler
-   (router deps)
-   (ring/routes
-    static-resource
-    (ring/create-default-handler))))
+  (let [handler (ring/ring-handler (router deps)
+                                   (ring/routes static-resource (ring/create-default-handler)))]
+    (if (:workspace deps) (workspace/wrap handler (:workspace deps)) handler)))
 
 (defmethod ig/init-key :shipyard.http/routes [_ opts]
   (handler opts))

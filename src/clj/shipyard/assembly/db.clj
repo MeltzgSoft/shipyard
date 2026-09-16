@@ -6,7 +6,8 @@
             [shipyard.catalog.db :as catalog]
             [shipyard.http.jobs :as jobs]
             [shipyard.library.index :as index]
-            [shipyard.mesh.cache :as cache]))
+            [shipyard.mesh.cache :as cache]
+            [shipyard.workspace.db :as workspace]))
 
 (defmethod ig/init-key :shipyard.assembly/db [_ _]
   {:state (atom {:draft transforms/empty-draft :sequence 0 :root nil :scene {}})})
@@ -64,9 +65,9 @@
           prepared (prepare! deps sources (map :part-id (vals after)) retry)
           mesh-keys (into {} (keep (fn [[id status]] (when (= :ready (:state status)) [id (:mesh-key status)]))) prepared)
           reset? (or resume? (and operation (not (:error result)) (#{:hull :reset} (:op operation))))
-          envelope {:revision (:revision draft) :sequence (inc sequence)
-                    :commands (transforms/commands scene after mesh-keys reset?)
-                    :mount-markers (transforms/mount-markers database effective-draft)}]
+          envelope (merge workspace/*context* {:revision (:revision draft) :sequence (inc sequence)
+                                               :commands (transforms/commands scene after mesh-keys reset?)
+                                               :mount-markers (transforms/mount-markers database effective-draft)})]
       (reset! state {:draft effective-draft :sequence (inc sequence)
                      :root (if blocked-root? root current-root) :scene after})
       (merge result {:database database :prepared prepared :event envelope

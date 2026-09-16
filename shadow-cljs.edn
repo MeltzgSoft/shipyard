@@ -13,7 +13,8 @@
           {:target     :browser
            :output-dir "resources/public/js"
            :asset-path "/js"
-           :modules    {:viewport {:init-fn shipyard.viewport/init}}
+           :modules    {:workspace {:init-fn shipyard.workspace/init}
+                        :viewport {:init-fn shipyard.viewport/init :depends-on #{:workspace}}}
            ;; The E2E suite reads window.__shipyard.stats() rather than pixels
            ;; (TECHNICAL.md §10.3), so a dev build carries the hook and a
            ;; release build constant-folds it away. `clojure -T:build uber`

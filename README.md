@@ -56,7 +56,7 @@ clojure -M:dev:natives-linux -m nrepl.cmdline  # REPL; then (go), (reset), or (h
 clojure -M:test:natives-linux                       # all suites
 clojure -M:test --focus :unit                       # pure functions only, sub-second
 clojure -M:test:natives-linux --focus :integration  # filesystem, natives, HTTP
-npx shadow-cljs compile viewport                    # e2e needs the bundle, with test hooks
+npx shadow-cljs compile viewport                    # workspace + viewport bundles, with test hooks
 clojure -M:test:natives-linux --focus :e2e          # headless browser
 npx shadow-cljs compile test && node target/js/node-tests.js  # CLJS node unit tests
 

@@ -474,8 +474,9 @@
                                       :part-id part-id
                                       :mesh-key mesh-key})))))
 
-(defn- set-mount-colors! [{:keys [parts mount-markers mount-colors-enabled]} enabled?]
+(defn- set-mount-colors! [{:keys [parts mount-markers mount-colors-enabled interfaces]} enabled?]
   (reset! mount-colors-enabled enabled?)
+  (when-let [object (:object @interfaces)] (set! (.-visible object) enabled?))
   (doseq [[_ ^js object] @parts]
     (when-let [color (.. object -userData -mountColor)]
       (.setHex (.. object -material -color) (if enabled? color neutral-part-color))))
@@ -483,14 +484,6 @@
     (set! (.-visible marker) enabled?))
   (when-let [button (.querySelector js/document "[data-mount-colors-toggle]")]
     (.setAttribute button "aria-pressed" (str enabled?))))
-
-(defn- mount-colors-toggle! [sys ^js e]
-  (let [target (.-target e)
-        button (when (and target (.-closest target))
-                 (.closest target "[data-mount-colors-toggle]"))]
-    (when button
-      (.preventDefault e)
-      (set-mount-colors! sys (not @(:mount-colors-enabled sys))))))
 
 (defn- facet-geometry [^js obj facet-indices axis mirror]
   (let [source (.-geometry obj)
@@ -706,6 +699,7 @@
       (try
         (let [{:keys [^js object items misses]} (interface-highlights obj mesh-key mounts)]
           (orient-object! object (or orientation (:orientation @current)))
+          (set! (.-visible object) @(:mount-colors-enabled sys))
           (when (seq items)
             (.add scene object))
           (reset! interfaces {:object object
@@ -1103,18 +1097,21 @@
       ;; Remove before applying: unrelated swaps must not replay this response.
       ;; apply-assembly! retains its sequence/token checks for stale responses.
       (.remove element)
-      (apply-assembly! sys event))))
+      (when (and (or (nil? (:workspace event)) (= (:workspace sys) (:workspace event)))
+                 (or (nil? (:activation event)) (= @(:activation sys) (:activation event))))
+        (apply-assembly! sys event)))))
 
 ;; --- bulk orientation -------------------------------------------------------
 
 (defn- bulk-elements []
   (array-seq (.querySelectorAll js/document "[data-bulk-part]")))
 
-(defn- load-bulk-mesh! [{:keys [bulk parts ^js scene]} ^js element]
+(defn- load-bulk-mesh! [{:keys [bulk parts ^js scene active activation]} ^js element]
   (let [part-id (.getAttribute element "data-bulk-part")
         url (.getAttribute element "data-mesh-url")
         saved (edn/read-string (.getAttribute element "data-orientation"))
-        token (random-uuid)]
+        token (random-uuid)
+        generation @activation]
     (when (and url (not (contains? @bulk part-id)))
       (swap! bulk assoc part-id {:loading true :token token})
       (-> (js/fetch url)
@@ -1122,7 +1119,7 @@
                    (if (.-ok response) (.arrayBuffer response)
                        (throw (js/Error. (str "Bulk mesh request failed: " (.-status response)))))))
           (.then (fn [buffer]
-                   (when (= token (:token (get @bulk part-id)))
+                   (when (and @active (= generation @activation) (= token (:token (get @bulk part-id))))
                      (let [mesh (wire/decode buffer)
                            object (three/Mesh. (decode->geometry mesh) (material))
                            tile-scene (three/Scene.)
@@ -1138,20 +1135,23 @@
                                                   :scene tile-scene :camera tile-camera :token token})))))
           (.catch (fn [error]
                     (js/console.error "shipyard: could not load bulk mesh" part-id error)
-                    (when (= token (:token (get @bulk part-id)))
+                    (when (and @active (= generation @activation) (= token (:token (get @bulk part-id))))
                       (swap! bulk dissoc part-id))))))))
 
 (defn- sync-bulk-from-dom! [{:keys [bulk parts] :as sys}]
   (let [elements (vec (bulk-elements))
         wanted (set (map #(.getAttribute % "data-bulk-part") elements))]
     (cond
-      (and (empty? wanted) (seq @bulk)) (clear! sys)
+      (and (= :orient (:workspace sys)) (empty? wanted)) nil
       (seq wanted)
       (do
         (when (or (and (empty? @bulk) (seq @parts))
                   (not (every? wanted (keys @bulk))))
           (clear! sys))
-        (doseq [element elements] (load-bulk-mesh! sys element))))))
+        (doseq [element elements]
+          (load-bulk-mesh! sys element)
+          (when (:dirty (get @bulk (.getAttribute element "data-bulk-part")))
+            (.setAttribute element "data-dirty" "true")))))))
 
 (defn- sync-bulk-save-result! [{:keys [bulk]}]
   (when-let [element (.querySelector js/document "[data-bulk-save-result]")]
@@ -1170,6 +1170,9 @@
     (set! (.-disabled button) (not-any? (comp :dirty val) @bulk))))
 
 (defn- sync-bulk-selection! [{:keys [bulk-selection]}]
+  (when-let [element (.querySelector js/document "[data-bulk-restored-selection]")]
+    (reset! bulk-selection (set (edn/read-string (.getAttribute element "data-bulk-restored-selection"))))
+    (.remove element))
   (doseq [^js input (array-seq (.querySelectorAll js/document "[data-bulk-select]"))]
     (set! (.-checked input) (contains? @bulk-selection (.-value input))))
   (let [count (count @bulk-selection)]
@@ -1230,16 +1233,6 @@
   (doseq [^js card (bulk-elements)] (.removeAttribute card "data-dirty"))
   (sync-bulk-save-button! sys))
 
-(defn- switch-workspace! [{:keys [bulk-selection] :as sys} event]
-  (when-let [^js link (some-> (.-target event) (.closest "[data-workspace-mode]"))]
-    (let [mode (.getAttribute link "data-workspace-mode")]
-      (when (#{"orient" "assembly"} mode)
-        (when-let [^js stage (.querySelector js/document "#bulk-orient")]
-          (set! (.-innerHTML stage) ""))
-        (clear! sys))
-      (when (= "orient" mode)
-        (reset! bulk-selection #{})))))
-
 (defn- back-to-bulk-table! [sys]
   (when-let [^js stage (.querySelector js/document "#bulk-orient")]
     (set! (.-innerHTML stage) ""))
@@ -1290,6 +1283,7 @@
                         :split-centers split-centers})]
       (clj->js {:part-id part-id
                 :mesh-key mesh-key
+                :visible (boolean (some-> @interfaces :object .-visible))
                 :count (count items)
                 :misses (count misses)
                 :error error
@@ -1326,7 +1320,9 @@
   builds by `TEST-HOOKS`, so it cannot ship."
   [{:keys [^js renderer ^js camera ^js controls parts status authoring] :as sys}]
   (let [objs (vals @parts)]
-    #js {:parts     (clj->js (vec (keys @parts)))
+    #js {:workspace (name (:workspace sys))
+         :activation @(:activation sys)
+         :parts     (clj->js (vec (keys @parts)))
          :vertices  (reduce + 0 (map (fn [^js o] (.. o -geometry -attributes -position -count)) objs))
          :triangles (reduce + 0 (map (fn [^js o] (/ (.. o -geometry -index -count) 3)) objs))
          :draws     (.. renderer -info -render -calls)
@@ -1464,36 +1460,44 @@
     (set! (.-environment scene) (.-texture env))
     (.dispose pmrem)))
 
+(defn- listen-event! [body sys event handler & [capture?]]
+  (.addEventListener body event
+                     (fn [e] (when @(:active sys) (handler e)))
+                     (boolean capture?)))
+
 (defn- listen! [sys]
   (let [body (.-body js/document)
         payload (fn [^js e] (edn/read-string (.. e -detail -value)))]
-    (.addEventListener body "shipyard:load-mesh" #(load-mesh! sys (payload %)))
-    (.addEventListener body "shipyard:clear" (fn [_] (clear! sys)))
-    (.addEventListener body "shipyard:status" #(reset! (:status sys) (payload %)))
-    (.addEventListener body "shipyard:authoring" #(authoring! sys (payload %)))
-    (.addEventListener body "shipyard:clear-preview" (fn [_] (clear-authoring-preview! sys)))
-    (.addEventListener body "shipyard:assembly" #(apply-assembly! sys (payload %)))
-    (.addEventListener body "shipyard:facet-preview" #(draw-preview! sys (payload %)))
-    (.addEventListener body "shipyard:facet-error" (fn [_] (clear-authoring-preview! sys)))
-    (.addEventListener body "shipyard:mount-repeat" #(reset! (:repeat sys) (payload %)))
-    (.addEventListener body "shipyard:interfaces" #(draw-interfaces! sys (payload %)))
-    (.addEventListener body "shipyard:part-orientation" #(orient-part! sys (payload %)))
-    (.addEventListener body "htmx:afterSwap" (fn [_]
+    (listen-event! body sys "shipyard:load-mesh" #(load-mesh! sys (payload %)))
+    (listen-event! body sys "shipyard:clear" (fn [_] (clear! sys)))
+    (listen-event! body sys "shipyard:status" #(reset! (:status sys) (payload %)))
+    (listen-event! body sys "shipyard:authoring" #(authoring! sys (payload %)))
+    (listen-event! body sys "shipyard:clear-preview" (fn [_] (clear-authoring-preview! sys)))
+    (listen-event! body sys "shipyard:assembly" #(apply-assembly! sys (payload %)))
+    (listen-event! body sys "shipyard:facet-preview" #(draw-preview! sys (payload %)))
+    (listen-event! body sys "shipyard:facet-error" (fn [_] (clear-authoring-preview! sys)))
+    (listen-event! body sys "shipyard:mount-repeat" #(reset! (:repeat sys) (payload %)))
+    (listen-event! body sys "shipyard:interfaces" #(draw-interfaces! sys (payload %)))
+    (listen-event! body sys "shipyard:part-orientation" #(orient-part! sys (payload %)))
+    (listen-event! body sys "htmx:afterSwap" (fn [_]
                                                (sync-assembly-from-dom! sys)
                                                (sync-bulk-selection! sys)
                                                (sync-bulk-from-dom! sys)
                                                (sync-bulk-save-result! sys)
+                                               (sync-bulk-save-button! sys)
+                                               (doseq [button (array-seq (.querySelectorAll js/document "[data-bulk-step]"))]
+                                                 (.setAttribute button "aria-pressed" (str (= @(:bulk-step sys) (js/parseFloat (.getAttribute button "data-bulk-step"))))))
                                                (sync-authoring-button! sys)
                                                (sync-socket-fields-from-dom!)
                                                (sync-interfaces-from-dom! sys)
                                                (refresh-preview-after-swap! sys)))
-    (.addEventListener body "input" (fn [e]
+    (listen-event! body sys "input" (fn [e]
                                       (when-let [form (event-form e)]
                                         (when (= "mount-id" (.-name (.-target e)))
                                           (sync-mirror-id-from-mount-id! form)))
                                       (refresh-preview-from-form! sys e)
                                       (refresh-orientation-from-form! sys e)))
-    (.addEventListener body "change" (fn [e]
+    (listen-event! body sys "change" (fn [e]
                                        (when-let [form (event-form e)]
                                          (when (= "accepts" (.-name (.-target e)))
                                            (update-mount-id-prefix! form))
@@ -1507,13 +1511,13 @@
     ;; Capture before HTMX's bubbling listener serializes the form. Updating the
     ;; hidden field from a later submit listener leaves the current request with
     ;; its original `{}` value.
-    (.addEventListener body "submit" (fn [event]
+    (listen-event! body sys "submit" (fn [event]
                                        (remember-repeat-from-submit! sys event)
                                        (when-let [^js form (.-target event)]
                                          (when (.hasAttribute form "data-bulk-save")
                                            (prepare-bulk-save! sys form))))
-                       true)
-    (.addEventListener body "change" (fn [event]
+                   true)
+    (listen-event! body sys "change" (fn [event]
                                        (let [^js target (.-target event)]
                                          (when (.hasAttribute target "data-bulk-select")
                                            (swap! (:bulk-selection sys)
@@ -1522,10 +1526,8 @@
                                                       (conj selected (.-value target))
                                                       (disj selected (.-value target)))))
                                            (sync-bulk-selection! sys)))))
-    (.addEventListener body "click" (fn [e]
-                                      (switch-workspace! sys e)
+    (listen-event! body sys "click" (fn [e]
                                       (authoring-toggle! sys e)
-                                      (mount-colors-toggle! sys e)
                                       (let [^js target (.-target e)]
                                         (when-let [^js button (some-> target (.closest "[data-bulk-rotate]"))]
                                           (bulk-rotate! sys (keyword (.getAttribute button "data-axis"))
@@ -1551,43 +1553,81 @@
       (js/console.warn "shipyard: no WebGL context; the viewport is disabled" e)
       nil)))
 
+(defn- runtime! [canvas renderer mode environment]
+  (let [scene    (three/Scene.)
+        camera   (three/PerspectiveCamera. 45 1 0.1 1000)
+        orientation-scene (three/Scene.)
+        orientation-camera (three/OrthographicCamera. -2.0 2.0 2.0 -2.0 0.1 20.0)
+        controls (OrbitControls. camera canvas)
+        sys      {:workspace mode :active (atom (= mode :browse)) :activation (atom 0)
+                  :canvas canvas :renderer renderer :scene scene :camera camera
+                  :orientation-scene orientation-scene
+                  :orientation-camera orientation-camera
+                  :controls controls :parts (atom {}) :status (atom {:state :idle})
+                  :current (atom nil) :authoring (atom nil) :authoring-enabled (atom false)
+                  :preview (atom nil)
+                  :assembly (atom assembly-scene/empty-state) :browse-generation (atom 0)
+                  :interfaces (atom nil) :orientation-guide (atom nil)
+                  :mount-markers (atom {}) :mount-colors-enabled (atom true)
+                  :bulk (atom {}) :bulk-selection (atom #{}) :bulk-step (atom 90.0)
+                  :repeat (atom nil)
+                  :preview-revision (atom 0)
+                  :raycaster (three/Raycaster.) :pointer (three/Vector2.)}]
+    (set! (.-background scene) (three/Color. 0x14171c))
+    (.set (.-position orientation-camera) 3.0 2.6 4.0)
+    (.lookAt orientation-camera 0.0 0.0 0.0)
+    (set! (.-enableDamping controls) true)
+    (set! (.-enabled controls) (= mode :browse))
+    (if environment (set! (.-environment scene) environment) (environment! renderer scene))
+    (listen! sys)
+    sys))
+
+(defn- active-runtime [{:keys [runtimes active-workspace]}]
+  (get runtimes @active-workspace))
+
+(defn- activate-runtime! [{:keys [runtimes active-workspace] :as app} ^js detail]
+  (let [destination (keyword (.-mode detail))
+        previous (active-runtime app)
+        next (get runtimes destination)]
+    (when next
+      (when (not= previous next)
+        (reset! (:active previous) false)
+        (set! (.-enabled (:controls previous)) false))
+      (swap! (:browse-generation previous) inc)
+      (swap! (:assembly previous) assembly-scene/leave)
+      (swap! (:bulk previous) #(into {} (remove (comp :loading val)) %))
+      (reset! active-workspace destination)
+      (reset! (:active next) true)
+      (reset! (:activation next) (.-activation detail))
+      (set! (.-enabled (:controls next)) true)
+      (set-mount-colors! next (.-colors detail))
+      (sync-authoring-button! next)
+      (resize! next))))
+
 (defn start!
-  "Build the scene against `canvas`, or return nil in degraded mode."
-  [^js canvas]
+  "One renderer with independently owned workspace scenes and logical editing sessions."
+  [canvas]
   (when-let [renderer (renderer! canvas)]
-    (let [scene    (three/Scene.)
-          camera   (three/PerspectiveCamera. 45 1 0.1 1000)
-          orientation-scene (three/Scene.)
-          orientation-camera (three/OrthographicCamera. -2.0 2.0 2.0 -2.0 0.1 20.0)
-          controls (OrbitControls. camera canvas)
-          sys      {:canvas canvas :renderer renderer :scene scene :camera camera
-                    :orientation-scene orientation-scene
-                    :orientation-camera orientation-camera
-                    :controls controls :parts (atom {}) :status (atom {:state :idle})
-                    :current (atom nil) :authoring (atom nil) :authoring-enabled (atom false)
-                    :preview (atom nil)
-                    :assembly (atom assembly-scene/empty-state) :browse-generation (atom 0)
-                    :interfaces (atom nil) :orientation-guide (atom nil)
-                    :mount-markers (atom {}) :mount-colors-enabled (atom true)
-                    :bulk (atom {}) :bulk-selection (atom #{}) :bulk-step (atom 90.0)
-                    :repeat (atom nil)
-                    :preview-revision (atom 0)
-                    :raycaster (three/Raycaster.) :pointer (three/Vector2.)}]
+    (let [browse (runtime! canvas renderer :browse nil)
+          environment (.-environment (:scene browse))
+          runtimes (into {:browse browse} (map (fn [mode] [mode (runtime! canvas renderer mode environment)]))
+                         [:orient :assembly :ships])
+          app {:runtimes runtimes :active-workspace (atom :browse)}]
       (set! (.-outputColorSpace renderer) three/SRGBColorSpace)
       (.setPixelRatio renderer (min 2 (.-devicePixelRatio js/window)))
       (set! (.-autoClear renderer) false)
       (.setClearColor renderer 0x14171c)
-      (set! (.-background scene) (three/Color. 0x14171c))
-      (.set (.-position orientation-camera) 3.0 2.6 4.0)
-      (.lookAt orientation-camera 0.0 0.0 0.0)
-      (set! (.-enableDamping controls) true)
-      (environment! renderer scene)
-      (resize! sys)
-      (.observe (js/ResizeObserver. #(resize! sys)) canvas)
-      (.addEventListener canvas "click" #(pick-face! sys %))
-      (.setAnimationLoop renderer #(render-frame! sys))
-      (listen! sys)
-      sys)))
+      (when-let [navigation (.-shipyardWorkspace js/window)]
+        (activate-runtime! app (.current navigation)))
+      (resize! (active-runtime app))
+      (.observe (js/ResizeObserver. #(resize! (active-runtime app))) canvas)
+      (.addEventListener canvas "click" #(pick-face! (active-runtime app) %))
+      (.addEventListener (.-body js/document) "shipyard:workspace"
+                         #(activate-runtime! app (.-detail %)))
+      (.addEventListener (.-body js/document) "shipyard:display"
+                         (fn [^js event] (let [^js detail (.-detail event)] (set-mount-colors! (active-runtime app) (.-colors detail)))))
+      (.setAnimationLoop renderer #(render-frame! (active-runtime app)))
+      app)))
 
 (defn ^:export init []
   (when-let [canvas (.getElementById js/document "viewport")]
@@ -1601,4 +1641,4 @@
       (when TEST-HOOKS
         (when sys
           (set! (.-__shipyard js/window)
-                #js {:stats (fn [] (stats sys))}))))))
+                #js {:stats (fn [] (stats (active-runtime sys)))}))))))

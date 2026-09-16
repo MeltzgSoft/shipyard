@@ -155,7 +155,7 @@
 
 (deftest bulk-orientation-renders-rotates-and-saves-a-selection
   (open-app!)
-  (s/click! *driver* ".masthead__mode[href='/orient']")
+  (s/click! *driver* ".masthead__mode[data-workspace-mode='orient']")
   (s/wait-visible! *driver* "#bulk-orient-filters")
   (is (s/wait-until #(= 5 (s/count-els *driver* "[data-bulk-select]")))
       "the orientation table should finish its initial HTMX load")
@@ -222,7 +222,7 @@
 
 (deftest bulk-models-render-inside-their-cards
   (open-app!)
-  (s/click! *driver* ".masthead__mode[href='/orient']")
+  (s/click! *driver* ".masthead__mode[data-workspace-mode='orient']")
   (s/wait-visible! *driver* "[data-bulk-select]")
   (doseq [id [s/hull-id s/prow-id s/mount-plate-id s/ork-id]]
     (s/check! *driver* (str "[data-bulk-select][value='" id "']")))

@@ -9,7 +9,8 @@
             [shipyard.http.urls :as urls]
             [shipyard.http.views :as http-views]
             [shipyard.library.index :as index]
-            [shipyard.mesh.cache :as cache]))
+            [shipyard.mesh.cache :as cache]
+            [shipyard.workspace.db :as workspace]))
 
 (defn- blank->nil [x]
   (when-not (or (nil? x) (= "" x)) x))
@@ -31,7 +32,8 @@
 (defn orient! [{:keys [catalog]} _]
   (htmx/fragment (views/panel (facets! catalog))))
 
-(defn parts! [{:keys [catalog]} {:keys [params]}]
+(defn parts! [{:keys [catalog workspace]} {:keys [params]}]
+  (when workspace (workspace/remember! workspace :orient params))
   (htmx/fragment (views/results (orientation-parts catalog params))))
 
 (defn- grid-entry! [{:keys [library cache jobs]} part]
@@ -64,7 +66,10 @@
                          (remove http-views/unrenderable-reason)
                          (map #(grid-entry! deps %)))]
         (if (seq entries)
-          (htmx/fragment (views/grid (map #(merge (:part %) (dissoc % :part)) entries)))
+          (do
+            (when (:workspace deps)
+              (workspace/update-workspace! (:workspace deps) :orient assoc :selection (pr-str part-ids) :grid? true))
+            (htmx/fragment (views/grid (map #(merge (:part %) (dissoc % :part)) entries))))
           (htmx/fragment [:p.detail__error "None of those parts can be previewed."]
                          {:status 422}))))))
 

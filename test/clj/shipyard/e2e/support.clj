@@ -60,11 +60,12 @@
 (def required-assets
   "What the page needs on disk before a browser can be pointed at it.
 
-  Both are gitignored build output. The viewport bundle must be the **dev**
+  These are gitignored build output. The viewport bundle must be the **dev**
   build - only that one defines `window.__shipyard`, which every scene
   assertion reads - and htmx is copied out of node_modules rather than bundled,
   so a broken viewport build cannot take the whole UI down with it (§8)."
-  {"resources/public/js/viewport.js" "npx shadow-cljs compile viewport"
+  {"resources/public/js/workspace.js" "npx shadow-cljs compile viewport"
+   "resources/public/js/viewport.js" "npx shadow-cljs compile viewport"
    "resources/public/js/htmx.min.js" "cp node_modules/htmx.org/dist/htmx.min.js resources/public/js/"})
 
 (def ^:private viewport-sources
@@ -124,7 +125,16 @@
    :shipyard.catalog/db    {:library (ig/ref :shipyard.library/index)}
    :shipyard.http/jobs     {:library (ig/ref :shipyard.library/index)
                             :cache   (ig/ref :shipyard.mesh/cache)}
-   :shipyard.http/routes   {:library (ig/ref :shipyard.library/index)
+   :shipyard.assembly/db {}
+   :shipyard.loadout/db {:data-home (str cache-home)}
+   :shipyard.loadout.operations/preview {}
+   :shipyard.workspace/db {:assembly (ig/ref :shipyard.assembly/db)
+                           :preview (ig/ref :shipyard.loadout.operations/preview)}
+   :shipyard.http/routes   {:workspace (ig/ref :shipyard.workspace/db)
+                            :assembly (ig/ref :shipyard.assembly/db)
+                            :loadouts (ig/ref :shipyard.loadout/db)
+                            :preview (ig/ref :shipyard.loadout.operations/preview)
+                            :library (ig/ref :shipyard.library/index)
                             :catalog (ig/ref :shipyard.catalog/db)
                             :cache   (ig/ref :shipyard.mesh/cache)
                             :jobs    (ig/ref :shipyard.http/jobs)}

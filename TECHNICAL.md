@@ -2138,3 +2138,21 @@ the behavior by calling internal transition handlers directly from the test.
 
 Use fixtures with distinct workspace selections, at least two bundle/class combinations,
 and repeated and nested slot paths so state leakage and incorrect filtering are observable.
+
+### 14.5 Workspace implementation
+
+`shipyard.workspace.db` owns the active generation and per-workspace selection, filters
+and display settings; Assemble and Ship Browser reference separate assembly model cells.
+`/workspace/:mode` reconstructs the destination panels from its own state. Explicit
+Ship Browser Edit and Duplicate return the destination header and an assembly envelope
+for the next activation. Ordinary navigation never transfers models.
+
+The CLJS `shipyard.workspace` module coordinates navigation and HTMX ownership before
+WebGL starts. Requests carry workspace and activation headers; server admission and
+client response checks reject obsolete activations before mutation or HTML/event
+application. The viewport module depends on this navigation module, so navigation
+continues when WebGL is unavailable. One renderer and shared studio environment serve
+four retained scene runtimes with independent camera, model, editing and color state.
+Pending mesh loads carry activation and request tokens; leaving invalidates those loads
+while retaining installed objects and unsaved Orient poses. Superseded geometry is
+disposed when that workspace replaces it.

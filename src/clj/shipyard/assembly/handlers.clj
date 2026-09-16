@@ -4,7 +4,8 @@
             [shipyard.assembly.db :as db]
             [shipyard.assembly.views :as views]
             [shipyard.http.htmx :as htmx]
-            [shipyard.loadout.operations :as loadouts]))
+            [shipyard.loadout.operations :as loadouts]
+            [shipyard.workspace.db :as workspace]))
 
 (defn- response [result]
   (htmx/fragment
@@ -16,11 +17,13 @@
    {:status (:status result)}))
 
 (defn current! [deps {:keys [params]}]
-  (response (assoc (db/request! deps nil {:resume? (not= "1" (get params "poll"))
-                                          :retry (get params "retry")})
-                   :selected-hull (get params "part-id")
-                   :selected-bundle (not-empty (get params "bundle"))
-                   :selected-class (not-empty (get params "class")))))
+  (when (:workspace deps) (workspace/remember! (:workspace deps) :assembly params))
+  (let [params (merge (:filters (when (:workspace deps) (workspace/workspace! (:workspace deps) :assembly))) params)]
+    (response (assoc (db/request! deps nil {:resume? (not= "1" (get params "poll"))
+                                            :retry (get params "retry")})
+                     :selected-hull (get params "part-id")
+                     :selected-bundle (not-empty (get params "bundle"))
+                     :selected-class (not-empty (get params "class"))))))
 
 (defn mutate! [deps op {:keys [parameters]}]
   (let [{:keys [revision slot part-id bundle class]} (:form parameters)]

@@ -82,12 +82,6 @@
    [:p.detail__crumbs (str/join " › " (remove nil? [bundle class]))]
    [:p.detail__id id]])
 
-(def ^:private mode-activation
-  "Keep the shell's mode selector in sync for HTMX navigations. The shell is
-  not replaced when a mode loads into #detail, so this small click hook is the
-  right level for the visual state."
-  "this.closest('.masthead__modes').querySelectorAll('.masthead__mode').forEach(function (el) { el.classList.remove('masthead__mode--active'); }); this.classList.add('masthead__mode--active');")
-
 (def ^:private detail-tab-activation
   "Switch inspector tabs without replacing the detail fragment or viewport."
   "var root=this.closest('.detail'); var tab=this.dataset.detailTab; root.querySelectorAll('[data-detail-tab]').forEach(function (el) { var active=el.dataset.detailTab===tab; el.classList.toggle('detail__tab--active', active); el.setAttribute('aria-selected', active); }); root.querySelectorAll('[data-detail-panel]').forEach(function (el) { el.hidden=el.dataset.detailPanel!==tab; });")
@@ -248,7 +242,7 @@
          [:a {:href (str "/assembly?part-id=" (urls/encode-id (:part/id part)))
               :hx-get (str "/assembly?part-id=" (urls/encode-id (:part/id part)))
               :hx-target "#detail"
-              :hx-on:click mode-activation} "Assemble this hull"])
+              :data-workspace-mode "assembly" :data-hull (:part/id part)} "Assemble this hull"])
        (part-metadata part)
        (part-orientation part orientation-error)]
       [:div.detail__tab-panel {:data-detail-panel "mounts" :role "tabpanel" :hidden (not mount-active?)}
@@ -490,17 +484,6 @@
    [:label.filters__field "Name"
     [:input {:type "search" :name "q" :placeholder "Search names" :autocomplete "off"}]]])
 
-(def ^:private preserve-assembly-drawers
-  "Copy live disclosure state into the incoming rail before its OOB swap.
-  This runs independently of WebGL and does not retain obsolete form values."
-  (str "var previous=this.querySelector('.assembly__rail-slots');"
-       "var incoming=event.detail.fragment.querySelector('.assembly__rail-slots');"
-       "if(previous && incoming && previous.dataset.hullId===incoming.dataset.hullId){"
-       "var states=new Map();"
-       "previous.querySelectorAll('details[data-slot]').forEach(function(drawer){states.set(drawer.dataset.slot,{open:drawer.open,complete:drawer.dataset.complete});});"
-       "incoming.querySelectorAll('details[data-slot]').forEach(function(drawer){var state=states.get(drawer.dataset.slot);if(state){drawer.open=state.complete===drawer.dataset.complete?state.open:drawer.dataset.complete!=='true';}});"
-       "}"))
-
 (defn shell
   "`GET /`. The canvas is created once here and never again: it is an island
   holding a WebGL context and hundreds of megabytes of GPU buffers, so it is
@@ -517,23 +500,20 @@
     ;; htmx is a separate file from the viewport bundle so a broken viewport
     ;; build cannot take the whole UI down with it (TECHNICAL.md §8).
     [:script {:src "/js/htmx.min.js" :defer true}]
+    [:script {:src "/js/workspace.js" :defer true}]
     [:script {:src "/js/viewport.js" :defer true}]]
    [:body
     [:header.masthead
      [:h1 "Shipyard"]
      [:nav.masthead__modes {:aria-label "Workspace modes"}
-      [:a.masthead__mode {:href "/orient" :hx-get "/orient" :hx-target "#library"
-                          :hx-swap "outerHTML" :data-workspace-mode "orient"
-                          :hx-on:click mode-activation} "Orient"]
-      [:a.masthead__mode.masthead__mode--active {:href "/" :data-workspace-mode "browse"
-                                                 :hx-on:click mode-activation} "Browse"]
-      [:a.masthead__mode {:href "/assembly" :hx-get "/assembly" :hx-target "#detail"
-                          :data-workspace-mode "assembly" :hx-on:click mode-activation} "Assemble"]]
+      (for [[mode label] [["orient" "Orient"] ["browse" "Part Browser"] ["assembly" "Assemble"] ["ships" "Ship Browser"]]]
+        [:a.masthead__mode {:href (str "/workspace/" mode) :data-workspace-mode mode
+                            :class (when (= mode "browse") "masthead__mode--active")
+                            :aria-current (if (= mode "browse") "page" "false")} label])]
      [:div.masthead__spacer]
      [:p.masthead__stats "Library ready · select a part to begin"]]
     [:main.layout
      [:section#library.panel
-      {"hx-on::oob-before-swap" preserve-assembly-drawers}
       [:h2.panel__title "Library"]
       (settings-panel root)
       (filter-form facets)

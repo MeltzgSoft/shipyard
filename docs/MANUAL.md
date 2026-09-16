@@ -72,8 +72,12 @@ render without showing pits or print scaffolding.
 
 ## 3. Browsing your library
 
-Use **Browse**, **Assemble**, and **Orient** in the masthead to switch workspace modes.
-Browse lists every part Shipyard found; filter by bundle, hull class, or role, or search
+Use **Orient**, **Part Browser**, **Assemble**, and **Ship Browser** in the masthead
+to switch workspaces. Each keeps its own selection, filters, and mount-color setting
+while Shipyard is running. Returning restores that workspace’s model, including
+unsaved Orient poses and the editable assembly draft.
+
+Part Browser lists every part Shipyard found; filter by bundle, hull class, or role, or search
 by name. Selecting a part opens a floating inspector with separate **Part** and **Mounts**
 tabs, while the viewport remains in place.
 
@@ -221,8 +225,8 @@ changed elsewhere, review the refreshed panel before trying again. The choices r
 usable if the viewport bundle is unavailable. When the viewport is available, every
 assignment appears in the same scene at its authored socket; repeated capacity positions
 and nested turrets remain separate objects. Replacing or clearing a part removes that
-object and everything beneath it before the new scene is shown. Returning to browse mode
-clears the assembly scene; returning to Assembly restores the current in-memory draft.
+object and everything beneath it before the new scene is shown. Switching workspaces shows the destination’s own model or empty state; returning to
+Assemble restores the current in-memory draft.
 
 Choose a hull, enter a **Ship name**, and choose **Save ship** to keep a named
 assembly. Subsequent **Save changes** updates that ship, including when you rename it.
@@ -235,6 +239,19 @@ available to correct and retry. Unsaved changes are lost when Shipyard stops.
 Saved ships live in `$XDG_DATA_HOME/shipyard/loadouts.edn` (normally
 `~/.local/share/shipyard/loadouts.edn`). Back up this file to keep your configurations.
 Paint schemes and thumbnails are not yet available.
+
+## Saved ships
+
+Open **Ship Browser** to find saved assemblies. Filter by the root hull’s bundle /
+faction and class. **Preview** opens a read-only ship with a floating inspector that
+lists every nested and repeated part and its matching mount color. Previewing a ship
+preserves your Assemble draft. Missing parts remain visible as a recoverable error.
+
+**Edit** opens the saved ship in Assemble, preserving its name and identity.
+**Duplicate** opens an independent draft named `<original name> - Copy`; change that
+name as needed. Neither action writes the store. Save the duplicate to create a new
+ship while keeping the original unchanged. A failed transfer keeps the current preview
+and draft available.
 
 ## Troubleshooting
 

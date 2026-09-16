@@ -65,8 +65,9 @@
 (deftest workspace-modes-lead-with-orient
   (let [html (render (views/shell {:bundles [] :classes [] :roles []} nil))]
     (is (< (.indexOf html ">Orient<")
-           (.indexOf html ">Browse<")
-           (.indexOf html ">Assemble<")))))
+           (.indexOf html ">Part Browser<")
+           (.indexOf html ">Assemble<")
+           (.indexOf html ">Ship Browser<")))))
 
 (deftest cards-link-to-percent-encoded-ids
   (let [html (render (views/part-card hull))]
