@@ -164,7 +164,7 @@
       (s/wait-visible! driver "#library-results .part")
       (s/js driver "() => { window.lateCompleted=false; window.lateCaptured=false; document.body.addEventListener('htmx:beforeRequest', e => { if(!window.lateCaptured && e.detail.pathInfo.requestPath.includes('/bridge')) { window.lateCaptured=true; e.detail.xhr.addEventListener('loadend', () => window.lateCompleted=true); } }); }")
       (s/click! driver ".part__select:has(.part__name:text-is('bridge'))")
-      (is (s/wait-until #(some? @held)))
+      (is (s/wait-until #(do (s/stats driver) (some? @held))))
       (switch! driver "assembly")
       (s/wait-visible! driver ".assembly__hull")
       (switch! driver "browse")
