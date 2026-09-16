@@ -10,7 +10,8 @@
             [shipyard.http.urls :as urls]
             [shipyard.interface-colors :as interface-colors]
             [shipyard.mount.wizard :as wizard]
-            [shipyard.part.orientation :as orientation]))
+            [shipyard.part.orientation :as orientation]
+            [shipyard.workspace.views :as workspace-views]))
 
 ;; --- parts ------------------------------------------------------------------
 
@@ -239,10 +240,11 @@
        (detail-head part)
        [:p.detail__status "Loaded."]
        (when (#{:hull :hull-section} (:part/role-hint part))
-         [:a {:href (str "/assembly?part-id=" (urls/encode-id (:part/id part)))
-              :hx-get (str "/assembly?part-id=" (urls/encode-id (:part/id part)))
-              :hx-target "#detail"
-              :data-workspace-mode "assembly" :data-hull (:part/id part)} "Assemble this hull"])
+         [:button (merge workspace-views/transition-attrs {:type "button"
+                                                           :hx-get (str "/workspace/assembly?part-id=" (urls/encode-id (:part/id part)))
+                                                           :hx-target "#detail"
+                                                           :hx-include workspace-views/navigation-include :hx-swap "innerHTML settle:0ms"
+                                                           :data-workspace-mode "assembly" :data-hull (:part/id part)}) "Assemble this hull"])
        (part-metadata part)
        (part-orientation part orientation-error)]
       [:div.detail__tab-panel {:data-detail-panel "mounts" :role "tabpanel" :hidden (not mount-active?)}
@@ -488,51 +490,51 @@
   "`GET /`. The canvas is created once here and never again: it is an island
   holding a WebGL context and hundreds of megabytes of GPU buffers, so it is
   marked `hx-preserve` and is never the target of a swap (SPEC §6.1)."
-  [facets root]
-  [:html {:lang "en"}
-   [:head
-    [:meta {:charset "utf-8"}]
-    [:meta {:name "viewport" :content "width=device-width, initial-scale=1"}]
-    [:meta {:name "htmx-config"
-            :content "{\"responseHandling\":[{\"code\":\"204\",\"swap\":false},{\"code\":\"[23]..\",\"swap\":true},{\"code\":\"409|422\",\"swap\":true},{\"code\":\"[45]..\",\"swap\":false,\"error\":true}]}"}]
-    [:title "Shipyard"]
-    [:link {:rel "stylesheet" :href "/app.css"}]
+  ([facets root] (shell facets root {:workspace :browse :activation 0} true))
+  ([facets root context colors]
+   [:html {:lang "en"}
+    [:head
+     [:meta {:charset "utf-8"}]
+     [:meta {:name "viewport" :content "width=device-width, initial-scale=1"}]
+     [:meta {:name "htmx-config"
+             :content "{\"responseHandling\":[{\"code\":\"204\",\"swap\":false},{\"code\":\"[23]..\",\"swap\":true},{\"code\":\"409|422\",\"swap\":true},{\"code\":\"[45]..\",\"swap\":false,\"error\":true}]}"}]
+     [:title "Shipyard"]
+     [:link {:rel "stylesheet" :href "/app.css"}]
     ;; htmx is a separate file from the viewport bundle so a broken viewport
     ;; build cannot take the whole UI down with it (TECHNICAL.md §8).
-    [:script {:src "/js/htmx.min.js" :defer true}]
-    [:script {:src "/js/workspace.js" :defer true}]
-    [:script {:src "/js/viewport.js" :defer true}]]
-   [:body
-    [:header.masthead
-     [:h1 "Shipyard"]
-     [:nav.masthead__modes {:aria-label "Workspace modes"}
-      (for [[mode label] [["orient" "Orient"] ["browse" "Part Browser"] ["assembly" "Assemble"] ["ships" "Ship Browser"]]]
-        [:a.masthead__mode {:href (str "/workspace/" mode) :data-workspace-mode mode
-                            :class (when (= mode "browse") "masthead__mode--active")
-                            :aria-current (if (= mode "browse") "page" "false")} label])]
-     [:div.masthead__spacer]
-     [:p.masthead__stats "Library ready · select a part to begin"]]
-    [:main.layout
-     [:section#library.panel
-      [:h2.panel__title "Library"]
-      (settings-panel root)
-      (filter-form facets)
-      [:div#library-results.results
-       [:p.muted "Loading the library…"]]]
-     [:section.stage
-      [:canvas#viewport.stage__canvas {:hx-preserve "true"}]
-      [:button.stage__authoring-toggle
-       {:type "button" :data-authoring-toggle "true" :aria-pressed "false" :disabled true}
-       "Pick mount face"]
-      [:button.stage__mount-colors-toggle
-       {:type "button" :data-mount-colors-toggle "true" :aria-pressed "true"}
-       "Mount colors"]
-      [:div.stage__axis-legend {:aria-label "Canonical axes"}
-       [:span.stage__axis.stage__axis--x [:i {:aria-hidden "true"}] "+X / Pitch"]
-       [:span.stage__axis.stage__axis--y [:i {:aria-hidden "true"}] "+Y / Yaw"]
-       [:span.stage__axis.stage__axis--z [:i {:aria-hidden "true"}] "+Z / Roll"]]
-      [:section#bulk-orient.bulk-orient__stage]
-      [:aside#detail.panel.stage__detail (detail-empty)]]]]])
+     [:script {:src "/js/htmx.min.js" :defer true}]
+     [:script {:src "/js/viewport.js" :defer true}]]
+    [:body workspace-views/transport-attrs
+     (workspace-views/context context colors)
+     [:header.masthead
+      [:h1 "Shipyard"]
+      (workspace-views/navigation (:workspace context))
+      [:div.masthead__spacer]
+      [:p.masthead__stats "Library ready · select a part to begin"]]
+     [:main.layout
+      (if (pos? (:activation context))
+        [:section#library.panel]
+        [:section#library.panel
+         [:h2.panel__title "Library"]
+         (settings-panel root)
+         (filter-form facets)
+         [:div#library-results.results
+          [:p.muted "Loading the library…"]]])
+      [:section.stage
+       [:canvas#viewport.stage__canvas {:hx-preserve "true"}]
+       [:button.stage__authoring-toggle
+        {:type "button" :data-authoring-toggle "true" :aria-pressed "false" :disabled true}
+        "Pick mount face"]
+       (workspace-views/colors-toggle colors)
+       [:div.stage__axis-legend {:aria-label "Canonical axes"}
+        [:span.stage__axis.stage__axis--x [:i {:aria-hidden "true"}] "+X / Pitch"]
+        [:span.stage__axis.stage__axis--y [:i {:aria-hidden "true"}] "+Y / Yaw"]
+        [:span.stage__axis.stage__axis--z [:i {:aria-hidden "true"}] "+Z / Roll"]]
+       [:section#bulk-orient.bulk-orient__stage]
+       [:aside#detail.panel.stage__detail
+        (when (pos? (:activation context))
+          {:hx-get (str "/workspace/" (name (:workspace context)) "?resume=1") :hx-trigger "load" :hx-swap "innerHTML settle:0ms"})
+        (detail-empty)]]]]]))
 
 (defn library-needs-root
   "First run: no root has ever been set. Ask for one where the parts would have

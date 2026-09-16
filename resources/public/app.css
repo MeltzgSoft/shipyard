@@ -623,12 +623,16 @@ body {
   border-radius: var(--radius);
 }
 .masthead__mode {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
   padding: 5px 12px;
   border-radius: 4px;
   color: var(--ink-dim);
   font: 600 12px/1 system-ui, sans-serif;
   text-decoration: none;
 }
+.masthead__mode:disabled { cursor: wait; opacity: 0.6; }
 .masthead__mode:hover { color: var(--ink); background: var(--panel-2); }
 .masthead__mode--active { background: var(--line); color: var(--ink); }
 .masthead__spacer { flex: 1; }
@@ -897,4 +901,4 @@ body {
 .ship-tree li { display: flex; align-items: center; gap: 6px; margin: 7px 0; flex-wrap: wrap; }
 .ship-tree small { color: var(--ink-dim); font-size: 10px; }
 .ship-tree__color { width: 9px; height: 9px; border-radius: 2px; background: var(--slot-color); }
-body[data-mount-colors="false"] .ship-tree__color { background: #9aa4af; }
+body:has(#workspace-context[data-mount-colors="false"]) .ship-tree__color { background: #9aa4af; }

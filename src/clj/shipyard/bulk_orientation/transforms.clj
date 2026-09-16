@@ -1,6 +1,7 @@
 (ns shipyard.bulk-orientation.transforms
   "Pure selection and save-request decisions for bulk orientation."
   (:require [clojure.edn :as edn]
+            [clojure.set :as set]
             [shipyard.part.orientation :as orientation]))
 
 (defn saved? [part]
@@ -32,3 +33,10 @@
                                  values)]
           (when (= (count values) (count orientations)) orientations))))
     (catch Exception _ nil)))
+
+(defn selection-after-change
+  "Replace the visible selection while retaining selected parts hidden by filters."
+  [previous visible selected]
+  (let [visible (set visible)]
+    (vec (sort (set/union (set/difference (set previous) visible)
+                          (set/intersection visible (set selected)))))))

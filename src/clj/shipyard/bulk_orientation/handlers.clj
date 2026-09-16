@@ -34,7 +34,17 @@
 
 (defn parts! [{:keys [catalog workspace]} {:keys [params]}]
   (when workspace (workspace/remember! workspace :orient params))
-  (htmx/fragment (views/results (orientation-parts catalog params))))
+  (htmx/fragment (views/results (orientation-parts catalog params)
+                                (set (bulk/selected-ids (:selection (when workspace (workspace/workspace! workspace :orient))))))))
+
+(defn selection! [{:keys [workspace]} {:keys [params]}]
+  (let [previous (set (bulk/selected-ids (:selection (workspace/workspace! workspace :orient))))
+        visible (set (bulk/selected-ids (get params "visible")))
+        selected (get params "selected")
+        selection (pr-str (bulk/selection-after-change previous visible
+                                                       (if (string? selected) [selected] selected)))]
+    (workspace/update-workspace! workspace :orient assoc :selection selection)
+    (htmx/fragment (views/selection-form selection))))
 
 (defn- grid-entry! [{:keys [library cache jobs]} part]
   (let [part-id (:part/id part)

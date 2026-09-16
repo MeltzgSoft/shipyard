@@ -22,7 +22,11 @@
           (catch Exception _ false)))))
 
 (defn routes [deps]
-  [["/assembly/save" {:post {:handler (partial handlers/save! deps)
+  [["/assembly/drawer" {:post {:handler (partial handlers/drawer! deps)
+                               :parameters {:form [:map [:revision revision-schema] [:slot [:fn slot-string?]]
+                                                   [:open [:enum "true" "false"]]]}
+                               :responses contracts/html-responses}}]
+   ["/assembly/save" {:post {:handler (partial handlers/save! deps)
                              :parameters {:form [:map [:revision revision-schema] [:name string?]]}
                              :responses contracts/html-responses}}]
    ["/assembly" {:get {:handler (partial handlers/current! deps)

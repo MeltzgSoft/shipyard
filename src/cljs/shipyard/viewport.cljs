@@ -481,9 +481,7 @@
     (when-let [color (.. object -userData -mountColor)]
       (.setHex (.. object -material -color) (if enabled? color neutral-part-color))))
   (doseq [[_ ^js marker] @mount-markers]
-    (set! (.-visible marker) enabled?))
-  (when-let [button (.querySelector js/document "[data-mount-colors-toggle]")]
-    (.setAttribute button "aria-pressed" (str enabled?))))
+    (set! (.-visible marker) enabled?)))
 
 (defn- facet-geometry [^js obj facet-indices axis mirror]
   (let [source (.-geometry obj)
@@ -1169,20 +1167,6 @@
   (when-let [^js button (.querySelector js/document "[data-bulk-save-button]")]
     (set! (.-disabled button) (not-any? (comp :dirty val) @bulk))))
 
-(defn- sync-bulk-selection! [{:keys [bulk-selection]}]
-  (when-let [element (.querySelector js/document "[data-bulk-restored-selection]")]
-    (reset! bulk-selection (set (edn/read-string (.getAttribute element "data-bulk-restored-selection"))))
-    (.remove element))
-  (doseq [^js input (array-seq (.querySelectorAll js/document "[data-bulk-select]"))]
-    (set! (.-checked input) (contains? @bulk-selection (.-value input))))
-  (let [count (count @bulk-selection)]
-    (doseq [^js label (array-seq (.querySelectorAll js/document "[data-bulk-count]"))]
-      (set! (.-textContent label) (str count " selected")))
-    (doseq [^js button (array-seq (.querySelectorAll js/document "[data-bulk-render-button]"))]
-      (set! (.-disabled button) (zero? count)))
-    (doseq [^js input (array-seq (.querySelectorAll js/document "[data-bulk-ids]"))]
-      (set! (.-value input) (pr-str (vec (sort @bulk-selection)))))))
-
 (defn- bulk-rotate! [{:keys [bulk bulk-step] :as sys} axis direction]
   (let [degrees (* direction @bulk-step)]
     (doseq [[part-id {:keys [^js object orientation] :as entry}] @bulk
@@ -1232,12 +1216,6 @@
     (swap! bulk assoc part-id (assoc entry :orientation saved :dirty false)))
   (doseq [^js card (bulk-elements)] (.removeAttribute card "data-dirty"))
   (sync-bulk-save-button! sys))
-
-(defn- back-to-bulk-table! [sys]
-  (when-let [^js stage (.querySelector js/document "#bulk-orient")]
-    (set! (.-innerHTML stage) ""))
-  (clear! sys)
-  (sync-bulk-selection! sys))
 
 (defn- prepare-bulk-save! [{:keys [bulk]} ^js form]
   (when-let [input (.querySelector form "[data-bulk-orientations]")]
@@ -1481,7 +1459,6 @@
     (listen-event! body sys "shipyard:part-orientation" #(orient-part! sys (payload %)))
     (listen-event! body sys "htmx:afterSwap" (fn [_]
                                                (sync-assembly-from-dom! sys)
-                                               (sync-bulk-selection! sys)
                                                (sync-bulk-from-dom! sys)
                                                (sync-bulk-save-result! sys)
                                                (sync-bulk-save-button! sys)
@@ -1517,15 +1494,6 @@
                                          (when (.hasAttribute form "data-bulk-save")
                                            (prepare-bulk-save! sys form))))
                    true)
-    (listen-event! body sys "change" (fn [event]
-                                       (let [^js target (.-target event)]
-                                         (when (.hasAttribute target "data-bulk-select")
-                                           (swap! (:bulk-selection sys)
-                                                  (fn [selected]
-                                                    (if (.-checked target)
-                                                      (conj selected (.-value target))
-                                                      (disj selected (.-value target)))))
-                                           (sync-bulk-selection! sys)))))
     (listen-event! body sys "click" (fn [e]
                                       (authoring-toggle! sys e)
                                       (let [^js target (.-target e)]
@@ -1534,8 +1502,6 @@
                                                         (js/parseFloat (.getAttribute button "data-direction"))))
                                         (when-let [^js button (some-> target (.closest "[data-bulk-step]"))]
                                           (bulk-step! sys button))
-                                        (when (some-> target (.closest "[data-bulk-back]"))
-                                          (back-to-bulk-table! sys))
                                         (when (some-> target (.closest "[data-bulk-copy]")) (bulk-copy-first! sys))
                                         (when (some-> target (.closest "[data-bulk-reset]")) (bulk-reset! sys)))))))
 
@@ -1569,7 +1535,7 @@
                   :assembly (atom assembly-scene/empty-state) :browse-generation (atom 0)
                   :interfaces (atom nil) :orientation-guide (atom nil)
                   :mount-markers (atom {}) :mount-colors-enabled (atom true)
-                  :bulk (atom {}) :bulk-selection (atom #{}) :bulk-step (atom 90.0)
+                  :bulk (atom {}) :bulk-step (atom 90.0)
                   :repeat (atom nil)
                   :preview-revision (atom 0)
                   :raycaster (three/Raycaster.) :pointer (three/Vector2.)}]
@@ -1617,15 +1583,17 @@
       (.setPixelRatio renderer (min 2 (.-devicePixelRatio js/window)))
       (set! (.-autoClear renderer) false)
       (.setClearColor renderer 0x14171c)
-      (when-let [navigation (.-shipyardWorkspace js/window)]
-        (activate-runtime! app (.current navigation)))
+      (when-let [context (.getElementById js/document "workspace-context")]
+        (activate-runtime! app #js {:mode (.. context -dataset -workspace)
+                                    :activation (js/Number (.. context -dataset -activation))
+                                    :colors (= "true" (.. context -dataset -mountColors))}))
       (resize! (active-runtime app))
       (.observe (js/ResizeObserver. #(resize! (active-runtime app))) canvas)
       (.addEventListener canvas "click" #(pick-face! (active-runtime app) %))
       (.addEventListener (.-body js/document) "shipyard:workspace"
-                         #(activate-runtime! app (.-detail %)))
+                         #(activate-runtime! app (clj->js (edn/read-string (.. % -detail -value)))))
       (.addEventListener (.-body js/document) "shipyard:display"
-                         (fn [^js event] (let [^js detail (.-detail event)] (set-mount-colors! (active-runtime app) (.-colors detail)))))
+                         (fn [^js event] (let [detail (edn/read-string (.. event -detail -value))] (set-mount-colors! (active-runtime app) (:colors detail)))))
       (.setAnimationLoop renderer #(render-frame! (active-runtime app)))
       app)))
 

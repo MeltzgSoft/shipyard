@@ -3,7 +3,8 @@
             [shipyard.workspace.handlers :as handlers]))
 
 (defn routes [deps]
-  (into [["/workspace/:mode" {:get {:handler (partial handlers/transition! deps)
+  (into [["/workspace/display/colors" {:post {:handler (partial handlers/colors! deps) :responses contracts/html-responses}}]
+         ["/workspace/:mode" {:get {:handler (partial handlers/transition! deps)
                                     :parameters {:path [:map [:mode [:enum "browse" "orient" "assembly" "ships"]]]}
                                     :responses contracts/html-responses}}]
          ["/ships" {:get {:handler (partial handlers/ships! deps) :responses contracts/html-responses}}]]

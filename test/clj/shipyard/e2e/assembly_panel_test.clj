@@ -36,7 +36,7 @@
       (s/go! driver (s/base-url (:system started)))
       (s/wait-visible! driver "#library-results .part")
       (s/js driver "() => { window.assemblyCanvas = document.querySelector('#viewport'); }")
-      (s/click! driver ".masthead a:has-text('Assemble')")
+      (s/click! driver ".masthead__mode:has-text('Assemble')")
       (s/wait-visible! driver ".assembly__hull")
       (s/select-option! driver ".assembly__hull select[name=part-id]" "hull")
       (s/click! driver ".assembly__hull button")
@@ -73,7 +73,7 @@
     (try
       (s/go! driver (s/base-url (:system started)))
       (s/wait-visible! driver "#library-results .part")
-      (s/click! driver ".masthead a:has-text('Assemble')")
+      (s/click! driver ".masthead__mode:has-text('Assemble')")
       (s/wait-visible! driver ".assembly__hull")
       (s/select-option! driver ".assembly__hull select[name=part-id]" "hull")
       (s/click! driver ".assembly__hull button")

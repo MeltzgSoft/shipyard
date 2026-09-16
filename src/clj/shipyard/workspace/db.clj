@@ -1,7 +1,6 @@
 (ns shipyard.workspace.db
   "Workspace-owned server selection, filters and activation ordering."
-  (:require [clojure.data.json :as json]
-            [clojure.string :as str]
+  (:require [clojure.string :as str]
             [integrant.core :as ig]
             [shipyard.workspace.transforms :as transforms]))
 
@@ -31,22 +30,30 @@
         activation (some-> (get-in request [:headers "x-shipyard-activation"]) parse-long)]
     (when (and (modes mode) activation) {:workspace mode :activation activation})))
 
-(defn wrap [handler {:keys [state]}]
+(defn active-context! [{:keys [state]}]
+  (let [{:keys [active activation]} @state]
+    {:workspace active :activation activation}))
+
+(defn activate! [{:keys [state] :as workspace} mode]
+  (swap! state #(-> % (assoc :active mode) (update :activation inc)))
+  (active-context! workspace))
+
+(defn wrap [handler {:keys [state] :as db}]
   (fn [request]
-    (if-let [{:keys [workspace activation] :as context} (context request)]
+    ;; One server boundary orders transitions and mutations. The browser echoes
+    ;; a rendered generation; it can neither mint nor advance that generation.
+    (if (or (owner (:uri request)) (= "/" (:uri request))
+            (str/starts-with? (:uri request) "/workspace/"))
       (locking state
-        (if-not (transforms/current-request? (:activation @state) activation workspace (owner (:uri request)))
-          {:status 204 :headers {} :body ""}
-          (do
-            (swap! state assoc :active workspace :activation activation)
-            (when (and (owner (:uri request)) (get-in request [:headers "x-shipyard-colors"]))
-              (swap! state assoc-in [:workspaces workspace :colors]
-                     (= "true" (get-in request [:headers "x-shipyard-colors"]))))
-            (binding [*context* context]
-              (let [response (handler request)]
-                (update response :headers merge
-                        {"X-Shipyard-Workspace" (name workspace)
-                         "X-Shipyard-Activation" (str activation)}))))))
+        (let [incoming (context request)
+              current (active-context! db)]
+          (if (and incoming
+                   (or (not= incoming current)
+                       (not (transforms/current-request? (:activation current) (:activation incoming)
+                                                         (:workspace incoming) (owner (:uri request))))))
+            {:status 204 :headers {} :body ""}
+            (binding [*context* current]
+              (handler request)))))
       (handler request))))
 
 (defn remember! [workspace mode params]
@@ -54,12 +61,7 @@
                      (select-keys params ["bundle" "class" "role" "q" "orientation"])))
 
 (defn outgoing! [{:keys [workspace assembly]} params]
-  (let [mode (keyword (get params "from" "browse"))]
-    (when (modes mode)
-      (when-let [filters (get params "filters")]
-        (try (remember! workspace mode (json/read-str filters)) (catch Exception _ nil)))
-      (update-workspace! workspace mode assoc :colors (= "true" (get params "colors" "true")))
-      (when (= mode :orient)
-        (update-workspace! workspace mode assoc :selection (get params "selection" "[]") :grid? (= "true" (get params "grid"))))
-      (when (and (= mode :assembly) (contains? params "draft-name"))
-        (swap! (:state assembly) assoc-in [:draft :name] (get params "draft-name"))))))
+  (let [mode (:workspace (active-context! workspace))]
+    (remember! workspace mode params)
+    (when (and (= mode :assembly) (contains? params "name"))
+      (swap! (:state assembly) assoc-in [:draft :name] (get params "name")))))

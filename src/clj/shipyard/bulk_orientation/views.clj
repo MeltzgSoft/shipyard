@@ -4,15 +4,16 @@
             [clojure.string :as str]
             [shipyard.bulk-orientation.transforms :as bulk]
             [shipyard.http.views :as http-views]
-            [shipyard.part.orientation :as orientation]))
+            [shipyard.part.orientation :as orientation]
+            [shipyard.workspace.views :as workspace-views]))
 
-(defn- orientation-row [part]
+(defn- orientation-row [selected part]
   (let [[yaw pitch roll] (orientation/to-euler-degrees (:part/orientation part))
         renderable? (not (http-views/unrenderable-reason part))]
     [:label.bulk-orient__row
      {:class (when-not renderable? "bulk-orient__row--disabled")}
      [:input {:type "checkbox" :value (:part/id part) :disabled (not renderable?)
-              :data-bulk-select "true"}]
+              :data-bulk-select "true" :name "selected" :checked (contains? selected (:part/id part))}]
      [:span.bulk-orient__part (:part/name part)]
      [:span.bulk-orient__role (name (or (:part/role-hint part) :unknown))]
      [:span.bulk-orient__class (or (:part/class part) "—")]
@@ -25,44 +26,57 @@
         (bulk/saved? part) "Saved"
         :else "Unset")]]))
 
-(defn results [parts]
-  [:div#bulk-orient-results.bulk-orient__results
-   [:p.results__count (format "%d match%s" (count parts) (if (= 1 (count parts)) "" "es"))]
-   [:div.bulk-orient__table {:role "group" :aria-label "Parts available for bulk orientation"}
-    [:div.bulk-orient__columns {:aria-hidden "true"}
-     [:span] [:span "Part"] [:span "Role"] [:span "Class"] [:span "Yaw"] [:span "Pitch"]
-     [:span "Roll"] [:span "Orientation"]]
-    (if (seq parts)
-      (map orientation-row parts)
-      [:p.bulk-orient__empty "No parts match these filters."])]])
+(defn results
+  ([parts] (results parts #{}))
+  ([parts selected]
+   [:div#bulk-orient-results.bulk-orient__results
+    [:p.results__count (format "%d match%s" (count parts) (if (= 1 (count parts)) "" "es"))]
+    [:form.bulk-orient__table {:role "group" :aria-label "Parts available for bulk orientation"
+                               :hx-post "/orient/selection" :hx-trigger "change" :hx-target "#bulk-selection"
+                               :hx-swap "outerHTML" :hx-sync "this:replace"}
+     [:input {:type "hidden" :name "visible" :value (pr-str (mapv :part/id parts))}]
+     [:div.bulk-orient__columns {:aria-hidden "true"}
+      [:span] [:span "Part"] [:span "Role"] [:span "Class"] [:span "Yaw"] [:span "Pitch"]
+      [:span "Roll"] [:span "Orientation"]]
+     (if (seq parts)
+       (map (partial orientation-row selected) parts)
+       [:p.bulk-orient__empty "No parts match these filters."])]]))
 
-(defn panel [facets]
-  [:section#library.panel.bulk-orient
-   [:header.bulk-orient__head [:h2 "Bulk orientation"] [:p "Filter a set, then render it together."]]
-   [:form#bulk-orient-filters.filters
-    {:hx-get "/orient/parts" :hx-target "#bulk-orient-results" :hx-swap "outerHTML"
-     :hx-trigger "load, change, search, keyup changed delay:300ms"}
-    [:label.filters__field "Bundle" [:select {:name "bundle"} (http-views/options "All bundles" (:bundles facets))]]
-    [:label.filters__field "Class" [:select {:name "class"} (http-views/options "All classes" (:classes facets))]]
-    [:label.filters__field "Role" [:select {:name "role"} (http-views/options "All roles" (map name (:roles facets)))]]
-    [:label.filters__field "Orientation" [:select {:name "orientation"}
-                                          [:option {:value "all"} "Any orientation"]
-                                          [:option {:value "unset"} "Orientation unset"]
-                                          [:option {:value "saved"} "Orientation saved"]]]
-    [:label.filters__field "Name" [:input {:type "search" :name "q" :placeholder "Search names"}]]]
-   [:div#bulk-orient-results.bulk-orient__results [:p.muted "Loading parts…"]]
-   [:form.bulk-orient__selection
-    {:hx-post "/orient/render" :hx-target "#bulk-orient" :hx-swap "innerHTML" :data-bulk-render "true"}
-    [:input {:type "hidden" :name "part-ids" :value "[]" :data-bulk-ids "true"}]
-    [:p [:strong {:data-bulk-count "true"} "0 selected"]]
-    [:button {:type "submit" :disabled true :data-bulk-render-button "true"} "Render selection →"]]])
+(defn selection-form [selection]
+  (let [ids (bulk/selected-ids selection)]
+    [:form#bulk-selection.bulk-orient__selection
+     (merge workspace-views/transition-attrs {:hx-post "/orient/render" :hx-target "#detail" :hx-swap "innerHTML settle:0ms"
+                                              :data-bulk-render "true" :hx-include "#bulk-orient-filters"})
+     [:input {:type "hidden" :name "part-ids" :value (or selection "[]") :data-bulk-ids "true"}]
+     [:p [:strong {:data-bulk-count "true"} (str (count ids) " selected")]]
+     [:button {:type "submit" :disabled (empty? ids) :data-bulk-render-button "true" :data-workspace-transition "true"} "Render selection →"]]))
+
+(defn panel
+  ([facets] (panel facets nil))
+  ([facets selection]
+   [:section#library.panel.bulk-orient
+    [:header.bulk-orient__head [:h2 "Bulk orientation"] [:p "Filter a set, then render it together."]]
+    [:form#bulk-orient-filters.filters
+     {:hx-get "/orient/parts" :hx-target "#bulk-orient-results" :hx-swap "outerHTML"
+      :hx-trigger "load, change, search, keyup changed delay:300ms"}
+     [:label.filters__field "Bundle" [:select {:name "bundle"} (http-views/options "All bundles" (:bundles facets))]]
+     [:label.filters__field "Class" [:select {:name "class"} (http-views/options "All classes" (:classes facets))]]
+     [:label.filters__field "Role" [:select {:name "role"} (http-views/options "All roles" (map name (:roles facets)))]]
+     [:label.filters__field "Orientation" [:select {:name "orientation"}
+                                           [:option {:value "all"} "Any orientation"]
+                                           [:option {:value "unset"} "Orientation unset"]
+                                           [:option {:value "saved"} "Orientation saved"]]]
+     [:label.filters__field "Name" [:input {:type "search" :name "q" :placeholder "Search names"}]]]
+    [:div#bulk-orient-results.bulk-orient__results [:p.muted "Loading parts…"]]
+    (selection-form selection)]))
 
 (defn grid [entries]
   (let [ids (mapv :part/id entries)
         preparing? (some #(= :preparing (:state %)) entries)]
     [:section.bulk-grid {:data-bulk-grid "true"}
      [:header.bulk-grid__toolbar
-      [:button {:type "button" :data-bulk-back "true"} "← Back to table"]
+      [:button (merge workspace-views/transition-attrs {:type "button" :data-bulk-back "true" :data-workspace-transition "true"
+                                                        :hx-get "/workspace/orient?table=1" :hx-target "#detail" :hx-swap "innerHTML settle:0ms"}) "← Back to table"]
       [:strong [:span {:data-bulk-grid-count "true"} (str (count entries) " selected")]]
       [:span.bulk-grid__divider]
       (for [[axis label] [["x" "Pitch"] ["y" "Yaw"] ["z" "Roll"]]]
@@ -81,7 +95,7 @@
        [:span.bulk-grid__poll
         {:hx-post "/orient/render" :hx-trigger "load delay:400ms"
          :hx-target "#bulk-orient" :hx-swap "innerHTML"
-         :hx-vals (json/write-str {"part-ids" (pr-str ids)})}])
+         :hx-vals (json/write-str {"part-ids" (pr-str ids) "poll" "1"})}])
      [:div.bulk-grid__cards
       (for [{:part/keys [id name orientation] :keys [mesh-url mesh-key state message]} entries]
         [:article.bulk-grid__card

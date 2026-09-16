@@ -2141,20 +2141,33 @@ and repeated and nested slot paths so state leakage and incorrect filtering are 
 
 ### 14.5 Workspace implementation
 
-`shipyard.workspace.db` owns the active generation and per-workspace selection, filters
-and display settings; Assemble and Ship Browser reference separate assembly model cells.
-`/workspace/:mode` reconstructs the destination panels from its own state. Ship
-filter requests replace only `#ship-results`, keeping controls stable while requests
-are pending. Explicit
-Ship Browser Edit and Duplicate return the destination header and an assembly envelope
-for the next activation. Ordinary navigation never transfers models.
+`shipyard.workspace.db` owns the active workspace, monotonically increasing activation
+and per-workspace selection, filters, drawer disclosure and display settings. Assemble
+and Ship Browser reference separate assembly model cells. Only the server advances an
+activation; request headers echo previously rendered context and cannot select a
+workspace or mint a generation. The workspace middleware serializes admission,
+transitions and mutations and rejects stale or mismatched requests before effects.
 
-The CLJS `shipyard.workspace` module coordinates navigation and HTMX ownership before
-WebGL starts. Requests carry workspace and activation headers; server admission and
-client response checks reject obsolete activations before mutation or HTML/event
-application. The viewport module depends on this navigation module, so navigation
-continues when WebGL is unavailable. One renderer and shared studio environment serve
-four retained scene runtimes with independent camera, model, editing and color state.
-Pending mesh loads carry activation and request tokens; leaving invalidates those loads
-while retaining installed objects and unsaved Orient poses. Superseded geometry is
-disposed when that workspace replaces it.
+`GET /workspace/:mode` and validated Edit/Duplicate transfers use one transition
+handler. It renders the destination panels, selector, mount-color control and context
+in one HTMX response. HTMX disables transition controls until that response arrives;
+a later click cannot abort an accepted transition and strand the old context.
+Ordinary navigation never transfers models. Filters and unsaved
+draft names accompany navigation using `hx-include`; Orient checkbox changes and drawer
+disclosure use ordinary HTTP operations. Mount-color changes are server operations.
+Reloading the page reconstructs the active workspace from server state.
+
+There is no workspace JavaScript/CLJS module or browser application store. HTMX reads
+request headers from the server-rendered context. A small stateless `hx-on` transport
+guard compares each request's captured generation with that context before applying a
+response, including responses whose originating element has been detached. It neither
+changes workspace state nor renders controls. Server `shipyard:workspace` and
+`shipyard:display` events tell the viewport what to display. Navigation, filters,
+selection and settings remain functional with the viewport bundle unavailable.
+
+One renderer and shared studio environment serve four retained viewport runtimes.
+Their local state is confined to cameras, render resources, interactive unsaved poses
+and mesh request tokens. Pending mesh loads carry server activation and request tokens;
+leaving invalidates those loads while retaining installed objects and unsaved Orient
+poses. Superseded geometry is disposed when that workspace replaces it. Reloading loses
+unsaved viewport poses, while selections and settings remain in the running server.

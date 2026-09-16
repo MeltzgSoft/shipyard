@@ -1,6 +1,7 @@
 (ns shipyard.workspace.handlers
   "One workspace transition resolves the destination's own server state."
-  (:require [hiccup2.core :as html]
+  (:require [clojure.data.json :as json]
+            [hiccup2.core :as html]
             [shipyard.assembly.db :as assembly]
             [shipyard.assembly.handlers :as assembly-handlers]
             [shipyard.assembly.responses :as errors]
@@ -12,7 +13,8 @@
             [shipyard.loadout.operations :as loadouts]
             [shipyard.loadout.views :as ship-views]
             [shipyard.workspace.db :as workspace]
-            [shipyard.workspace.transforms :as transforms]))
+            [shipyard.workspace.transforms :as transforms]
+            [shipyard.workspace.views :as workspace-views]))
 
 (defn- append [response node]
   (update response :body str (:body (htmx/fragment node))))
@@ -42,39 +44,77 @@
                                          (:filters (workspace/workspace! workspace :ships)))))
     (ship-preview! deps request)))
 
-(defn transfer! [{:keys [workspace] :as deps} mode {:keys [parameters]}]
+(declare transition!)
+
+(defn- transition-response [db response]
+  (let [{:keys [workspace activation] :as context} (workspace/active-context! db)
+        colors (:colors (workspace/workspace! db workspace))]
+    (-> response
+        (assoc :status 200)
+        (append (workspace-views/context context colors))
+        (append (workspace-views/navigation workspace))
+        (append (workspace-views/colors-toggle colors))
+        (update :headers assoc "HX-Trigger"
+                (json/write-str
+                 (into (array-map "shipyard:workspace" (pr-str {:mode workspace :activation activation :colors colors}))
+                       (when-let [events (get-in response [:headers "HX-Trigger"])] (json/read-str events)))
+                 :escape-slash false)))))
+
+(defn colors! [{:keys [workspace]} _]
+  (let [{mode :workspace :as context} (workspace/active-context! workspace)]
+    (workspace/update-workspace! workspace mode update :colors not)
+    (let [colors (:colors (workspace/workspace! workspace mode))]
+      (htmx/fragment (list (update (workspace-views/colors-toggle colors) 1 dissoc :hx-swap-oob)
+                           (workspace-views/context context colors))
+                     {:events {:display {:colors colors}}}))))
+
+(defn transfer! [deps mode {:keys [parameters]}]
   (let [id (parse-uuid (get-in parameters [:form :id]))
         result (loadouts/transfer! deps id mode)]
     (if (:error result)
       (assoc (ships! deps {:params {"error" (get errors/messages (:error result) "This ship changed. Restore its parts and try again.")}}) :status 422)
       (if (= mode :preview)
         (ships! deps {:params {}})
-        (let [context (assoc workspace/*context* :workspace :assembly
-                             :activation (inc (or (:activation workspace/*context*) 0)))
-              response (binding [workspace/*context* context]
-                         (assembly-handlers/current! deps {:params (:filters (workspace/workspace! workspace :assembly))}))]
-          (update response :headers merge {"X-Shipyard-Destination" "assembly"
-                                           "X-Shipyard-Colors" (str (:colors (workspace/workspace! workspace :assembly)))}))))))
+        (transition! deps {:path-params {:mode "assembly"} :params {} :headers {"hx-request" "true"}})))))
 
-(defn transition! [{:keys [workspace library part-handler facets] :as deps} {:keys [path-params params]}]
+(defn transition! [{:keys [workspace library part-handler facets] :as deps} {:keys [path-params params headers]}]
   (workspace/outgoing! deps params)
   (let [mode (keyword (:mode path-params))
-        {:keys [filters selection colors grid?]} (workspace/workspace! workspace mode)
-        response
-        (case mode
-          :assembly (assembly-handlers/current! deps {:params (merge filters (select-keys params ["part-id"]))})
-          :ships (ships! deps {:params filters})
-          :browse (append (if selection (part-handler {:params {} :path-params {:id selection}})
-                              (htmx/fragment (views/detail-empty) {:events {:clear nil}}))
-                          [:section#library.panel {:hx-swap-oob "outerHTML"}
-                           [:h2.panel__title "Part Browser"] (views/settings-panel (index/root! library))
-                           (transforms/selected-filters (views/filter-form (facets)) filters)
-                           [:div#library-results]])
-          :orient (let [grid (when (and grid? (seq selection)) (orient/render! deps {:params {"part-ids" selection}}))
-                        panel (transforms/selected-filters (orient-views/panel (facets)) filters)]
-                    (-> (htmx/fragment (views/detail-empty))
-                        (append (into [(first panel) {:hx-swap-oob "outerHTML"}] (rest panel)))
-                        (append [:section#bulk-orient.bulk-orient__stage {:hx-swap-oob "innerHTML"}
-                                 [:input {:type "hidden" :data-bulk-restored-selection (or selection "[]")}]
-                                 (when grid (html/raw (:body grid)))]))))]
-    (update response :headers assoc "X-Shipyard-Colors" (str colors))))
+        context (if (and (= "1" (get params "resume"))
+                         (= mode (:workspace (workspace/active-context! workspace))))
+                  (workspace/active-context! workspace)
+                  (workspace/activate! workspace mode))]
+    (when (and (= mode :orient) (= "1" (get params "table")))
+      (workspace/update-workspace! workspace mode assoc :grid? false))
+    (binding [workspace/*context* context]
+      (let [{:keys [filters selection colors grid?]} (workspace/workspace! workspace mode)]
+        (if (not= "true" (get headers "hx-request"))
+          (htmx/page (views/shell (facets) (index/root! library) context colors))
+          (transition-response
+           workspace
+           (cond->
+            (case mode
+              :assembly (assembly-handlers/current! deps {:params (merge filters (select-keys params ["part-id"]))})
+              :ships (ships! deps {:params filters})
+              :browse (append (if selection (part-handler {:params {} :path-params {:id selection}})
+                                  (htmx/fragment (views/detail-empty) {:events {:clear nil}}))
+                              [:section#library.panel {:hx-swap-oob "outerHTML"}
+                               [:h2.panel__title "Part Browser"] (views/settings-panel (index/root! library))
+                               (transforms/selected-filters (views/filter-form (facets)) filters)
+                               [:div#library-results]])
+              :orient (let [grid (when (and grid? (seq selection)) (orient/render! deps {:params {"part-ids" selection}}))
+                            panel (transforms/selected-filters (orient-views/panel (facets) selection) filters)]
+                        (-> (htmx/fragment (views/detail-empty)
+                                           (when-not grid {:events {:clear nil}}))
+                            (append (into [(first panel) {:hx-swap-oob "outerHTML"}] (rest panel)))
+                            (append [:section#bulk-orient.bulk-orient__stage {:hx-swap-oob "innerHTML"}
+                                     (when grid (html/raw (:body grid)))]))))
+             (not= mode :orient) (append [:section#bulk-orient.bulk-orient__stage {:hx-swap-oob "innerHTML"}]))))))))
+
+(defn render-orient! [{:keys [workspace] :as deps} {:keys [params] :as request}]
+  (if (or (nil? workspace) (= "1" (get params "poll")))
+    (orient/render! deps request)
+    (let [response (orient/render! deps request)]
+      (if (= 200 (:status response))
+        (transition! deps {:path-params {:mode "orient"} :params params :headers {"hx-request" "true"}})
+        response))))

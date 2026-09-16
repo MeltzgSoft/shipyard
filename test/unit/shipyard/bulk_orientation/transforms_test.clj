@@ -32,3 +32,9 @@
     (is (nil? (bulk/orientations-request {"orientations" "{}"})))
     (is (nil? (bulk/orientations-request {"orientations" "{\"a\" [0 0 0 0]}"})))
     (is (nil? (bulk/orientations-request {"orientations" "broken"})))))
+
+(deftest selection-after-change-test
+  (is (= ["a" "hidden"] (bulk/selection-after-change ["b" "hidden"] ["a" "b"] ["a"])))
+  (is (= ["hidden"] (bulk/selection-after-change ["b" "hidden"] ["a" "b"] [])))
+  (is (= ["a"] (bulk/selection-after-change [] ["a"] ["a" "unknown" "a"])))
+  (is (= [] (bulk/selection-after-change nil nil nil))))

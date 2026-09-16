@@ -3,12 +3,14 @@
   (:require [clojure.string :as str]
             [shipyard.assembly.scene :as scene]
             [shipyard.catalog.db :as catalog]
-            [shipyard.http.urls :as urls]))
+            [shipyard.http.urls :as urls]
+            [shipyard.workspace.views :as workspace-views]))
 
 (defn- action [id action label]
-  [:form {:hx-post (str "/ships/" action) :hx-target "#detail" :hx-swap "innerHTML"}
+  [:form (merge (when (#{"edit" "duplicate"} action) workspace-views/transition-attrs)
+                {:hx-post (str "/ships/" action) :hx-target "#detail" :hx-swap "innerHTML settle:0ms"})
    [:input {:type "hidden" :name "id" :value (str id)}]
-   [:button {:type "submit"} label]])
+   [:button {:type "submit" :data-workspace-transition (when (#{"edit" "duplicate"} action) "true")} label]])
 
 (defn results [entries filters]
   [:div#ship-results.ship-cards

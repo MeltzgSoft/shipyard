@@ -19,7 +19,19 @@
           {"bundle" "b"}))))
 
 (deftest request-ordering-test
-  (is (transforms/current-request? 2 3 :ships :ships))
+  (is (not (transforms/current-request? 2 3 :ships :ships)))
   (is (transforms/current-request? 3 3 :ships :ships))
   (is (not (transforms/current-request? 3 2 :ships :ships)))
   (is (not (transforms/current-request? 3 3 :ships :assembly))))
+
+(deftest drawer-states-test
+  (let [parent [[:weapon 0]] child [[:weapon 0] [:turret 0]]
+        incomplete [{:id parent :assigned "weapon"} {:id child :assigned nil}]
+        complete (assoc-in incomplete [1 :assigned] "turret")]
+    (is (= {parent {:complete false :open true} child {:complete false :open true}}
+           (transforms/drawer-states {} incomplete)))
+    (is (false? (get-in (transforms/drawer-states {parent {:complete false :open false}} incomplete) [parent :open])))
+    (is (= {parent {:complete true :open false} child {:complete true :open false}}
+           (transforms/drawer-states {} complete)))
+    (is (true? (get-in (transforms/drawer-states {parent {:complete true :open false}} incomplete) [parent :open])))
+    (is (= {} (transforms/drawer-states {parent {:complete true :open false}} [])))))

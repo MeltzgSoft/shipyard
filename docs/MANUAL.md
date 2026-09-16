@@ -74,8 +74,11 @@ render without showing pits or print scaffolding.
 
 Use **Orient**, **Part Browser**, **Assemble**, and **Ship Browser** in the masthead
 to switch workspaces. Each keeps its own selection, filters, and mount-color setting
-while Shipyard is running. Returning restores that workspace’s model, including
-unsaved Orient poses and the editable assembly draft.
+while Shipyard is running. Reloading restores the active workspace, selection and
+mount-color setting; unsaved viewport pose edits still require Save before reloading.
+Switching away and returning restores the model, including unsaved Orient poses and
+the editable assembly draft. Workspace navigation, filters and selection remain
+available if the 3D view cannot load.
 
 Part Browser lists every part Shipyard found; filter by bundle, hull class, or role, or search
 by name. Selecting a part opens a floating inspector with separate **Part** and **Mounts**

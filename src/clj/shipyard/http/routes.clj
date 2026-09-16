@@ -54,8 +54,12 @@
      :classes (db/classes db)
      :roles   (db/roles db)}))
 
-(defn- root! [{:keys [catalog library]} _]
-  (htmx/page (views/shell (facets! catalog) (index/root! library))))
+(defn- root! [{:keys [catalog library workspace]} _]
+  (if workspace
+    (let [context (workspace/activate! workspace (:workspace (workspace/active-context! workspace)))
+          colors (:colors (workspace/workspace! workspace (:workspace context)))]
+      (htmx/page (views/shell (facets! catalog) (index/root! library) context colors)))
+    (htmx/page (views/shell (facets! catalog) (index/root! library)))))
 
 ;; --- library ----------------------------------------------------------------
 
@@ -557,19 +561,20 @@
                          :responses contracts/mesh-responses}}]])
 
 (defn router [deps]
-  (ring/router
-   (into (routes deps)
-         (concat (bulk-routes/routes deps)
-                 (when (:assembly deps) (assembly-routes/routes deps))
-                 (when (:workspace deps)
-                   (workspace-routes/routes (assoc deps :part-handler (partial part! deps)
-                                                   :facets #(facets! (:catalog deps))
-                                                   :database #(db/snapshot! (:catalog deps)))))))
-   {:data {:coercion malli-coercion/coercion
-           :middleware [params/wrap-params
-                        coercion/coerce-exceptions-middleware
-                        coercion/coerce-request-middleware
-                        coercion/coerce-response-middleware]}}))
+  (let [deps (assoc deps :part-handler (partial part! deps)
+                    :facets #(facets! (:catalog deps))
+                    :database #(db/snapshot! (:catalog deps)))]
+    (ring/router
+     (into (routes deps)
+           (concat (bulk-routes/routes deps)
+                   (when (:assembly deps) (assembly-routes/routes deps))
+                   (when (:workspace deps)
+                     (workspace-routes/routes deps))))
+     {:data {:coercion malli-coercion/coercion
+             :middleware [params/wrap-params
+                          coercion/coerce-exceptions-middleware
+                          coercion/coerce-request-middleware
+                          coercion/coerce-response-middleware]}})))
 
 (def ^:private static-handler
   (ring/create-resource-handler {:path "/"}))

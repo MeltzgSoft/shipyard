@@ -64,8 +64,7 @@
   build - only that one defines `window.__shipyard`, which every scene
   assertion reads - and htmx is copied out of node_modules rather than bundled,
   so a broken viewport build cannot take the whole UI down with it (§8)."
-  {"resources/public/js/workspace.js" "npx shadow-cljs compile viewport"
-   "resources/public/js/viewport.js" "npx shadow-cljs compile viewport"
+  {"resources/public/js/viewport.js" "npx shadow-cljs compile viewport"
    "resources/public/js/htmx.min.js" "cp node_modules/htmx.org/dist/htmx.min.js resources/public/js/"})
 
 (def ^:private viewport-sources

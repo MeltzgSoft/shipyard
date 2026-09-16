@@ -1,6 +1,7 @@
 (ns shipyard.assembly.views
   "Assembly rail and its hierarchical mount drawers."
-  (:require [clojure.string :as str]
+  (:require [clojure.data.json :as json]
+            [clojure.string :as str]
             [shipyard.assembly.model :as model]
             [shipyard.assembly.responses :as responses]
             [shipyard.assembly.scene :as scene]
@@ -23,7 +24,7 @@
             {:id child-id :part (catalog/part database assigned)}))
         descendant-slots))
 
-(defn- slot-view [database root revision available bundle class slots children
+(defn- slot-view [database root revision available bundle class drawers slots children
                   {:keys [id mount parent-role ancestors assigned]}]
   (let [candidates (filter #(available (:part/id %))
                            (model/candidates database root parent-role mount ancestors))
@@ -31,14 +32,17 @@
         nested-slots (descendant-slots slots id)
         complete? (and (some? assigned) (every? :assigned nested-slots))
         selected-children (selected-descendants database nested-slots)
+        open? (get-in drawers [id :open] (not complete?))
         details-attrs (cond-> {:data-slot (pr-str id)
                                :data-assigned (or assigned "")
                                :data-complete (str complete?)}
-                        (not complete?) (assoc :open true))]
+                        open? (assoc :open true))]
     [:div.assembly__slot-wrap
      {:style (str "--mount-color:" (:css (scene/color-for-slot id)))}
      [:details.assembly__slot details-attrs
       [:summary.assembly__mount-header
+       {:hx-post "/assembly/drawer" :hx-target "#detail" :hx-swap "innerHTML"
+        :hx-vals (json/write-str {"revision" (str revision) "slot" (pr-str id) "open" (str (not open?))})}
        [:span.assembly__mount-dot]
        [:span.assembly__mount-copy
         [:h3 (slot-label id)]
@@ -71,10 +75,10 @@
        (hidden "bundle" bundle) (hidden "class" class)
        [:button {:type "submit" :disabled (nil? assigned)} "Clear"]]]]))
 
-(defn- slot-tree [database root revision available bundle class slots]
+(defn- slot-tree [database root revision available bundle class drawers slots]
   (let [children-by-parent (group-by :parent slots)]
     (letfn [(render-slot [slot]
-              (slot-view database root revision available bundle class slots
+              (slot-view database root revision available bundle class drawers slots
                          (map render-slot (get children-by-parent (:id slot)))
                          slot))]
       (map render-slot (get children-by-parent [])))))
@@ -88,7 +92,7 @@
                     [:option {:value ""} "All classes"]
                     (for [value (catalog/classes database)] [:option {:value value :selected (= value selected-class)} value])]]])
 
-(defn- assembly-rail [{:keys [database hulls selected-bundle selected-class revision hull selected-hull root slots available draft error saved?]}]
+(defn- assembly-rail [{:keys [database hulls selected-bundle selected-class revision hull selected-hull root slots available draft error saved? drawers]}]
   [:div#assembly-rail {:hx-swap-oob "innerHTML:#library"}
    (assembly-filters database selected-bundle selected-class)
    [:form.assembly__hull {:method "post" :action "/assembly/hull" :hx-post "/assembly/hull"
@@ -108,9 +112,9 @@
    [:p.assembly__rail-count (str (count hulls) " compatible hulls")]
    (when root
      [:div.assembly__rail-slots {:data-hull-id hull}
-      (slot-tree database root revision available selected-bundle selected-class slots)])])
+      (slot-tree database root revision available selected-bundle selected-class drawers slots)])])
 
-(defn panel [{:keys [database draft available prepared error saved? selected-hull selected-bundle selected-class]}]
+(defn panel [{:keys [database draft available prepared error saved? selected-hull selected-bundle selected-class drawers]}]
   (let [{:keys [revision hull assignments]} draft
         root (when hull (catalog/part database hull))
         derived (when hull (model/slots database hull assignments))
@@ -145,4 +149,4 @@
       (when pending? [:div {:hx-get "/assembly?poll=1" :hx-trigger "load delay:400ms" :hx-target "#detail" :hx-swap "innerHTML" :hx-sync "#detail:abort"}])]
      (assembly-rail {:database database :hulls hulls :selected-bundle selected-bundle :selected-class selected-class
                      :revision revision :hull hull :selected-hull selected-hull :root root :slots slots :available available
-                     :draft draft :error error :saved? saved?})]))
+                     :draft draft :error error :saved? saved? :drawers drawers})]))
