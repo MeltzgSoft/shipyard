@@ -112,11 +112,12 @@
       [:span#bulk-orient-status "Preview changes are not saved."]
       [:form {:hx-post "/orient/save" :hx-target "#bulk-orient-status" :hx-swap "innerHTML"
               :data-bulk-save "true"}
+       [:input {:type "hidden" :name "request" :value "0"}]
        [:input {:type "hidden" :name "orientations" :value "{}" :data-bulk-orientations "true"}]
        [:button {:type "submit" :disabled true :data-bulk-save-button "true"} "Save orientations"]]]]))
 
-(defn save-result [{:keys [saved failed]}]
-  [:span {:data-bulk-save-result (pr-str {:saved saved})}
+(defn save-result [{:keys [saved failed request activation]}]
+  [:span {:data-bulk-save-result (pr-str {:saved saved :request request :activation activation})}
    (if (seq failed)
      (str "Saved " (count saved) ". Failed: " (str/join ", " failed))
      (str "Saved " (count saved) " orientation" (when (not= 1 (count saved)) "s") "."))])

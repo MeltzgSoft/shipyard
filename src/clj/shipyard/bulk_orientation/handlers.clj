@@ -2,6 +2,7 @@
   "Ring orchestration for filtering, preparing, and saving orientation sets."
   (:require [babashka.fs :as fs]
             [shipyard.bulk-orientation.transforms :as bulk]
+            [shipyard.bulk-orientation.save-state :as saves]
             [shipyard.bulk-orientation.views :as views]
             [shipyard.catalog.db :as db]
             [shipyard.http.htmx :as htmx]
@@ -83,19 +84,30 @@
           (htmx/fragment [:p.detail__error "None of those parts can be previewed."]
                          {:status 422}))))))
 
-(defn save! [{:keys [catalog]} {:keys [params]}]
+(defn- persist! [{:keys [catalog]} orientations request activation]
+  (let [known (db/snapshot! catalog)
+        result (reduce (fn [{:keys [saved failed] :as result} [part-id part-orientation]]
+                         (if-not (:part/id (db/part known part-id))
+                           (assoc result :failed (conj failed part-id))
+                           (try
+                             (db/save-part-orientation! catalog part-id part-orientation)
+                             (assoc result :saved (conj saved part-id))
+                             (catch Exception _
+                               (assoc result :failed (conj failed part-id))))))
+                       {:saved [] :failed []}
+                       orientations)]
+    (htmx/fragment (views/save-result (assoc result :request request :activation activation))
+                   {:status (if (seq (:failed result)) 422 200)})))
+
+(defn save! [{:keys [workspace] :as deps} {:keys [params parameters]}]
   (if-let [orientations (bulk/orientations-request params)]
-    (let [known (db/snapshot! catalog)
-          result (reduce (fn [{:keys [saved failed] :as result} [part-id part-orientation]]
-                           (if-not (:part/id (db/part known part-id))
-                             (assoc result :failed (conj failed part-id))
-                             (try
-                               (db/save-part-orientation! catalog part-id part-orientation)
-                               (assoc result :saved (conj saved part-id))
-                               (catch Exception _
-                                 (assoc result :failed (conj failed part-id))))))
-                         {:saved [] :failed []}
-                         orientations)]
-      (htmx/fragment (views/save-result result)
-                     {:status (if (seq (:failed result)) 422 200)}))
+    (let [request (get-in parameters [:form :request])
+          activation (:activation workspace/*context*)
+          previous (:save-order (when workspace (workspace/workspace! workspace :orient)))
+          order (when (and request activation) [activation request])]
+      (if (not (saves/newer-request? previous order))
+        {:status 204 :headers {} :body ""}
+        (do
+          (when order (workspace/update-workspace! workspace :orient assoc :save-order order))
+          (persist! deps orientations request activation))))
     (htmx/fragment [:p.detail__error "The bulk orientation data was invalid."] {:status 422})))

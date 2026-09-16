@@ -45,7 +45,8 @@
 
 (def bulk-save-form
   [:map {:closed false}
-   [:orientations string?]])
+   [:orientations string?]
+   [:request {:optional true} [:and int? [:>= 0]]]])
 
 (def settings-form
   [:map {:closed false}

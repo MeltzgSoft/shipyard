@@ -17,6 +17,7 @@
             ["three/examples/jsm/environments/RoomEnvironment.js" :refer [RoomEnvironment]]
             [cljs.reader :as edn]
             [shipyard.assembly.scene :as assembly-scene]
+            [shipyard.bulk-orientation.save-state :as bulk-saves]
             [shipyard.interface-colors :as interface-colors]
             [shipyard.math :as math]
             [shipyard.mount.split :as split]
@@ -1104,6 +1105,12 @@
 (defn- bulk-elements []
   (array-seq (.querySelectorAll js/document "[data-bulk-part]")))
 
+(defn- sync-bulk-dirty! [entries]
+  (doseq [card (bulk-elements)]
+    (if (:dirty (get entries (.getAttribute card "data-bulk-part")))
+      (.setAttribute card "data-dirty" "true")
+      (.removeAttribute card "data-dirty"))))
+
 (defn- load-bulk-mesh! [{:keys [bulk parts ^js scene active activation]} ^js element]
   (let [part-id (.getAttribute element "data-bulk-part")
         url (.getAttribute element "data-mesh-url")
@@ -1136,7 +1143,7 @@
                     (when (and @active (= generation @activation) (= token (:token (get @bulk part-id))))
                       (swap! bulk dissoc part-id))))))))
 
-(defn- sync-bulk-from-dom! [{:keys [bulk parts] :as sys}]
+(defn- sync-bulk-from-dom! [{:keys [bulk parts bulk-refresh?] :as sys}]
   (let [elements (vec (bulk-elements))
         wanted (set (map #(.getAttribute % "data-bulk-part") elements))]
     (cond
@@ -1147,21 +1154,26 @@
                   (not (every? wanted (keys @bulk))))
           (clear! sys))
         (doseq [element elements]
+          (when @bulk-refresh?
+            (let [id (.getAttribute element "data-bulk-part")]
+              (when-let [entry (get @bulk id)]
+                (when-let [object (:object entry)]
+                  (let [restored (bulk-saves/restore-baseline entry (edn/read-string (.getAttribute element "data-orientation")))]
+                    (orient-object! object (:orientation restored))
+                    (swap! bulk assoc id restored))))))
           (load-bulk-mesh! sys element)
           (when (:dirty (get @bulk (.getAttribute element "data-bulk-part")))
-            (.setAttribute element "data-dirty" "true")))))))
+            (.setAttribute element "data-dirty" "true")))
+        (reset! bulk-refresh? false)))))
 
-(defn- sync-bulk-save-result! [{:keys [bulk]}]
+(defn- sync-bulk-save-result! [{:keys [bulk bulk-saves activation]}]
   (when-let [element (.querySelector js/document "[data-bulk-save-result]")]
-    (let [{:keys [saved]} (edn/read-string (.getAttribute element "data-bulk-save-result"))]
-      (doseq [part-id saved]
-        (when-let [{:keys [orientation] :as entry} (get @bulk part-id)]
-          (swap! bulk assoc part-id (assoc entry :saved orientation :dirty false)))
-        (when-let [card (.querySelector js/document
-                                        (str "[data-bulk-part='" (js/CSS.escape part-id) "']"))]
-          (.removeAttribute card "data-dirty"))))
-    (when-let [^js button (.querySelector js/document "[data-bulk-save-button]")]
-      (set! (.-disabled button) (not-any? (comp :dirty val) @bulk)))))
+    (let [response (edn/read-string (.getAttribute element "data-bulk-save-result"))
+          submitted (get-in @bulk-saves [:pending (:request response)])]
+      (.removeAttribute element "data-bulk-save-result")
+      (swap! bulk bulk-saves/acknowledge submitted response @activation)
+      (swap! bulk-saves update :pending dissoc (:request response))
+      (sync-bulk-dirty! @bulk))))
 
 (defn- sync-bulk-save-button! [{:keys [bulk]}]
   (when-let [^js button (.querySelector js/document "[data-bulk-save-button]")]
@@ -1174,8 +1186,7 @@
       (let [next-orientation (orientation/rotate-around-world-axis orientation axis degrees)]
         (orient-object! object next-orientation)
         (swap! bulk assoc part-id (assoc entry :orientation next-orientation :dirty true))))
-    (doseq [^js card (bulk-elements)]
-      (.setAttribute card "data-dirty" "true"))
+    (sync-bulk-dirty! @bulk)
     (sync-bulk-save-button! sys)))
 
 (def ^:private bulk-euler-index
@@ -1191,8 +1202,7 @@
               next-orientation (apply orientation/from-euler-degrees angles)]
           (orient-object! object next-orientation)
           (swap! bulk assoc part-id (assoc entry :orientation next-orientation :dirty true))))
-      (doseq [^js card (bulk-elements)]
-        (.setAttribute card "data-dirty" "true"))
+      (sync-bulk-dirty! @bulk)
       (sync-bulk-save-button! sys))))
 
 (defn- bulk-step! [{:keys [bulk-step]} ^js button]
@@ -1206,7 +1216,7 @@
             :when object]
       (orient-object! object orientation)
       (swap! bulk assoc part-id (assoc entry :orientation orientation :dirty true)))
-    (doseq [^js card (bulk-elements)] (.setAttribute card "data-dirty" "true"))
+    (sync-bulk-dirty! @bulk)
     (sync-bulk-save-button! sys)))
 
 (defn- bulk-reset! [{:keys [bulk] :as sys}]
@@ -1214,14 +1224,17 @@
           :when object]
     (orient-object! object saved)
     (swap! bulk assoc part-id (assoc entry :orientation saved :dirty false)))
-  (doseq [^js card (bulk-elements)] (.removeAttribute card "data-dirty"))
+  (sync-bulk-dirty! @bulk)
+  (doseq [^js input (array-seq (.querySelectorAll js/document "[data-bulk-angle]"))]
+    (set! (.-value input) ""))
   (sync-bulk-save-button! sys))
 
-(defn- prepare-bulk-save! [{:keys [bulk]} ^js form]
-  (when-let [input (.querySelector form "[data-bulk-orientations]")]
-    (set! (.-value input)
-          (pr-str (into {} (keep (fn [[part-id {:keys [orientation dirty]}]]
-                                   (when dirty [part-id orientation])) @bulk))))))
+(defn- prepare-bulk-save! [{:keys [bulk bulk-saves activation]} ^js form]
+  (let [request (:sequence (swap! bulk-saves update :sequence inc))
+        submitted (bulk-saves/submission request @activation @bulk)]
+    (swap! bulk-saves assoc-in [:pending request] submitted)
+    (set! (.-value (.querySelector form "[data-bulk-orientations]")) (pr-str (:poses submitted)))
+    (set! (.-value (.querySelector form "[name=request]")) (str request))))
 
 ;; --- test hook --------------------------------------------------------------
 
@@ -1535,7 +1548,7 @@
                   :assembly (atom assembly-scene/empty-state) :browse-generation (atom 0)
                   :interfaces (atom nil) :orientation-guide (atom nil)
                   :mount-markers (atom {}) :mount-colors-enabled (atom true)
-                  :bulk (atom {}) :bulk-step (atom 90.0)
+                  :bulk (atom {}) :bulk-refresh? (atom false) :bulk-saves (atom {:sequence 0 :pending {}}) :bulk-step (atom 90.0)
                   :repeat (atom nil)
                   :preview-revision (atom 0)
                   :raycaster (three/Raycaster.) :pointer (three/Vector2.)}]
@@ -1559,10 +1572,12 @@
       (when (not= previous next)
         (reset! (:active previous) false)
         (set! (.-enabled (:controls previous)) false))
+      (swap! (:bulk-saves previous) assoc :pending {})
       (swap! (:browse-generation previous) inc)
       (swap! (:assembly previous) assembly-scene/leave)
       (swap! (:bulk previous) #(into {} (remove (comp :loading val)) %))
       (reset! active-workspace destination)
+      (reset! (:bulk-refresh? next) true)
       (reset! (:active next) true)
       (reset! (:activation next) (.-activation detail))
       (set! (.-enabled (:controls next)) true)

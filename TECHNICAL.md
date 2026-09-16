@@ -1758,7 +1758,7 @@ The **Orient** workspace implements SPEC §9.4. Its server boundary is
 owns selection and filters; interactive pose editing and card rendering live in
 `src/cljs/shipyard/viewport.cljs`. Shared quaternion math
 lives in `src/cljc/shipyard/part/orientation.cljc` and runs on both runtimes. This section
-documents the existing workflow and explicitly identifies the remaining M4 requirement.
+describes the Orient workflow and its workspace contract.
 
 **Authority and selection.** The server owns catalog queries, preview eligibility, mesh
 preparation and durable writes. Table filters reuse catalog bundle/class/role/name
@@ -1838,10 +1838,14 @@ For a valid map, save known parts individually through `catalog.db/save-part-ori
 Each write atomically updates `:part/orientation` in that part's sidecar before updating
 Datascript, preserving mounts and unrelated metadata (§1.2). This is atomic per part,
 not one transaction across the selection. Unknown ids and write failures are reported
-as failed; successful writes are retained. The result carries saved ids in the HTML
-`data-bulk-save-result` attribute and names failures in the visible status text. Only
-acknowledged entries advance their saved baseline and clear dirty flags; failed entries
-remain available for retry. No orientation map or accumulated session state is carried
+as failed; successful writes are retained. The result carries saved ids, request sequence and activation in the HTML
+`data-bulk-save-result` attribute and names failures in the visible status text. CLJS
+captures submitted poses before serialization; the shared pure `save-state/acknowledge`
+transition advances only those baselines, preserving newer previews and dirty flags.
+Each result is consumed once. Failed parts remain dirty and retryable. Duplicate or
+older request sequences are rejected before writes; Back and Render advance activation
+to reject responses from finished grids. On workspace restoration, current catalog
+baselines are reconciled while dirty working poses remain intact. No orientation map or accumulated session state is carried
 in response headers.
 
 **Workspace restoration.** Preserve Orient's filters, selected
