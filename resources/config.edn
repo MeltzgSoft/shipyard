@@ -39,6 +39,8 @@
 
  :shipyard.assembly/db {}
 
+ :shipyard.loadout/db {}
+
  :shipyard.http/routes
  {:library #ig/ref :shipyard.library/index
   :catalog #ig/ref :shipyard.catalog/db

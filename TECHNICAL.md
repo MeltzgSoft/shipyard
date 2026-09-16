@@ -2012,6 +2012,25 @@ on preprocessing, and do not emit a mesh set until its source is ready. No authe
 is introduced for the existing local application. Names, saved loadouts, duplication,
 paint schemes and thumbnails remain outside M3.
 
+### 13.5 Named-loadout storage
+
+An Integrant-owned `:shipyard.loadout/db` stores a versioned EDN envelope at
+`$XDG_DATA_HOME/shipyard/loadouts.edn` (default `~/.local/share/shipyard/loadouts.edn`).
+Its `:data-home` option overrides the base directory, including for isolated tests.
+The envelope is `{:version 1 :loadouts {uuid loadout-record}}`. Records use SPEC §8.3's
+UUID, name, hull, full path-keyed slots and optional scheme UUID; transient workspace
+state and unsaved drafts never enter the store. Names are not unique identities.
+
+The boundary validates the complete envelope and every record on startup, rejecting
+unsupported versions, extra EDN forms and malformed records with an actionable error
+without modifying the source. Creates require an unused UUID; updates require an
+existing explicit UUID and change only that record. Mutations serialize within the
+component, write a sibling temporary file, then atomically replace the store before
+publishing the new in-memory value. Filesystems without atomic replacement fail the
+save visibly rather than weakening that guarantee. Failed writes leave the prior
+in-memory value intact and temporary files are removed. One application process owns
+the store; simultaneous processes writing the same store are unsupported.
+
 ## 14. Workspace ownership and M4 named-loadout workflows
 
 This is the required contract for M4 and subsequent workspace changes. It extends the

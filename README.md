@@ -136,6 +136,13 @@ a server bug; the suite checks for both up front and tells you which command to 
 suite is hermetic: its library, mesh cache and scan index all live in a temp directory, so
 it never touches your real one.
 
+Named-loadout storage uses `$XDG_DATA_HOME/shipyard/loadouts.edn`, defaulting to
+`~/.local/share/shipyard/loadouts.edn`. Configure `:shipyard.loadout/db {:data-home
+"/path/to/data"}` in your user `config.edn` to override the base directory. The
+filesystem must support atomic file replacement. Run only one Shipyard process per
+store. An invalid store stops startup with its path and a recovery message; restore
+a valid backup instead of deleting data you want to keep.
+
 ### Git hooks
 
 Install once per clone - git does not do this for you:
