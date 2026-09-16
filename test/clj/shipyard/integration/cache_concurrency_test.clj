@@ -93,7 +93,7 @@
             (cache/evict! (assoc c :cap-bytes 0)))
           (is (zero? (cache/cache-size! c))))
         (testing "unrelated filesystem failures still propagate"
-          (cache/ensure! c (source! root "source.stl" 1.0))
+          (cache/ensure! c (fs/file root "source.stl"))
           (with-redefs [fs/size (fn [_] (throw (java.nio.file.AccessDeniedException. "denied")))]
             (is (thrown? java.nio.file.AccessDeniedException (cache/evict! c)))))))))
 
