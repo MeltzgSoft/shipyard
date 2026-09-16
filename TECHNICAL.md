@@ -1754,8 +1754,9 @@ first (§1.2). Positions, normals and index buffers never otherwise enter Datasc
 #### 12.6.1 Bulk orientation
 
 The **Orient** workspace implements SPEC §9.4. Its server boundary is
-`shipyard.bulk-orientation.{routes,handlers,transforms,views}`; client selection, editing
-and card rendering live in `src/cljs/shipyard/viewport.cljs`. Shared quaternion math
+`shipyard.bulk-orientation.{routes,handlers,transforms,views}`. The workspace registry
+owns selection and filters; interactive pose editing and card rendering live in
+`src/cljs/shipyard/viewport.cljs`. Shared quaternion math
 lives in `src/cljc/shipyard/part/orientation.cljc` and runs on both runtimes. This section
 documents the existing workflow and explicitly identifies the remaining M4 requirement.
 
@@ -1765,27 +1766,31 @@ queries and add `orientation=all|unset|saved`; absent orientation filter means a
 Saved means a valid saved quaternion exists, including identity. Missing/invalid
 metadata is treated as unset and previews at identity at this boundary (§12.6).
 
-The client holds an in-page set of selected part ids, independently of which filtered
-rows are currently visible. HTMX table swaps reapply the checkboxes and total count.
+The server holds the selected part ids independently of which filtered rows are
+currently visible. Checkbox changes submit the visible ids and checked values; the
+server replaces that visible subset and retains selected parts hidden by filters.
+Server-rendered table rows, selection counts and Render controls reflect this state.
 Render submissions sort the selection by id for stable card order. The server parses
 an EDN vector of string ids, removes duplicates while preserving order, resolves ids
 against the current catalog, and excludes unknown or unpreviewable parts. Empty/invalid
 selections, or selections with no remaining previewable entries, return 422.
 
-**HTTP and mesh preparation.** Routes use the Malli transport schemas in
-`shipyard.http.contracts`; malformed form/query transport is rejected before handlers.
+**HTTP and mesh preparation.** Routes declare Malli transport schemas, sharing common
+contracts through `shipyard.http.contracts`; malformed transport is rejected before handlers.
 The nested EDN values have separate shape and domain validation.
 
 | Route | Inputs | HTML result |
 |---|---|---|
-| GET /orient | none | Filter form, result container and selection controls in `#library` |
+| GET /workspace/orient | optional filters, `table=1` to end the grid session | Workspace context, selector, filters and retained grid or table |
+| POST /orient/selection | `visible`: EDN vector; optional checked `selected` ids | Updated server selection, count and Render controls |
 | GET /orient/parts | optional bundle, class, role, q, orientation | Filtered rows in `#bulk-orient-results` |
 | POST /orient/render | `part-ids`: EDN vector of string ids | Preview grid inside `#bulk-orient`, or 422 selection error |
 | POST /orient/save | `orientations`: nonempty EDN map of string ids to quaternion vectors | Result inside `#bulk-orient-status`; 200 all saved, 422 invalid payload or any failed part |
 
 Render uses cached tier-0 meshes or queues source preprocessing through the existing
 background jobs. Cards carry `data-bulk-part`, `data-orientation` and, when ready,
-`data-mesh-key`/`data-mesh-url`. A 400 ms HTMX poll posts the selected ids again while
+`data-mesh-key`/`data-mesh-url`. Render starts a server activation; a 400 ms HTMX poll posts the selected ids with
+`poll=1` to retain that activation while
 any entry is preparing; polling stops once every entry is ready or failed. Rotation,
 angle, copy and reset controls are disabled while server preparation remains pending.
 Missing sources and preprocessing failures are reported per card. Each client mesh
