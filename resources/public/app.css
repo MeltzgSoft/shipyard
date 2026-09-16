@@ -880,3 +880,8 @@ body {
 .bulk-grid__card p { width: 100%; margin: 0; padding: 6px 8px; border-top: 1px solid var(--line); background: rgba(28,33,40,.92); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bulk-grid__card-state { position: absolute; top: 6px; left: 7px; color: var(--ink-dim); font-size: 10px; }
 .bulk-grid__card[data-dirty="true"] { border-color: var(--warn); }
+
+.assembly__save { display: grid; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.assembly__save label { display: grid; gap: 4px; color: var(--ink-dim); font-size: 12px; }
+.assembly__save input { width: 100%; box-sizing: border-box; padding: 7px; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 4px; }
+.assembly__save button { justify-self: start; }

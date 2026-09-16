@@ -1,0 +1,77 @@
+(ns shipyard.integration.loadout-operations-test
+  (:require [babashka.fs :as fs]
+            [clojure.test :refer [deftest is testing]]
+            [ring.mock.request :as mock]
+            [shipyard.assembly-fixture :as fixture]
+            [shipyard.catalog.db :as catalog]
+            [shipyard.loadout-fixture :as lf]
+            [shipyard.loadout.db :as store]
+            [shipyard.loadout.operations :as ops]))
+
+(deftest explicit-save-preview-edit-and-duplicate
+  (let [started (fixture/start!) deps (lf/deps started)
+        state (get-in deps [:assembly :state]) preview (get-in deps [:preview :state])
+        scheme (random-uuid)]
+    (try
+      (swap! state assoc :draft (assoc lf/draft :scheme scheme))
+      (let [original (:loadout (ops/save! deps 1 "Cruiser")) id (:loadout/id original)
+            file (:file (:loadouts deps)) bytes (slurp (str file))]
+        (is (uuid? id))
+        (is (= 1 (count (ops/list! deps {}))))
+        (is (= 1 (count (ops/list! deps {:bundle "Synthetic Navy" :class "Cruiser"}))))
+        (is (empty? (ops/list! deps {:bundle "Other"})))
+        (testing "preview cannot change Assemble; full path identities survive"
+          (let [before @state]
+            (is (nil? (:error (ops/transfer! deps id :preview))))
+            (is (= before @state))
+            (is (= lf/assignments (get-in @preview [:draft :assignments])))))
+        (testing "Duplicate has no durable effect and retains configuration"
+          (is (nil? (:error (ops/transfer! deps id :duplicate))))
+          (is (= "Cruiser - Copy" (get-in @state [:draft :name])))
+          (is (= scheme (get-in @state [:draft :scheme])))
+          (is (nil? (get-in @state [:draft :loadout-id])))
+          (is (= bytes (slurp (str file))))
+          (is (= 1 (count (ops/list! deps {}))))
+          (let [copy (:loadout (ops/save! deps (get-in @state [:draft :revision]) "Cruiser - Copy"))
+                records (:loadouts (store/snapshot! (store/open! file)))]
+            (is (not= id (:loadout/id copy)))
+            (is (= original (get records id)))
+            (is (= copy (get records (:loadout/id copy))))
+            (is (= 2 (count records)))))
+        (testing "Edit itself does not write; Save updates only the explicit id"
+          (let [before (slurp (str file))]
+            (ops/transfer! deps id :edit)
+            (is (= before (slurp (str file))))
+            (is (= id (get-in @state [:draft :loadout-id])))
+            (is (= id (:loadout/id (:loadout (ops/save! deps (get-in @state [:draft :revision]) "Renamed")))))
+            (is (= 2 (count (ops/list! deps {})))))))
+      (finally (fixture/stop! started)))))
+
+(deftest failures-preserve-workspace-and-durable-state
+  (let [started (fixture/start!) deps (lf/deps started) state (get-in deps [:assembly :state])]
+    (try
+      (swap! state assoc :draft lf/draft)
+      (let [saved (:loadout (ops/save! deps 1 "A")) id (:loadout/id saved)
+            before @state bytes (slurp (str (:file (:loadouts deps))))]
+        (is (= :invalid-name (:error (ops/save! deps 2 " "))))
+        (is (= :stale-revision (:error (ops/save! deps 0 "A"))))
+        (is (= :missing-loadout (:error (ops/transfer! deps (random-uuid) :edit))))
+        (is (= before @state))
+        (catalog/save-part-role! (:catalog deps) (:prow fixture/ids) :weapon)
+        (is (= :incompatible-role (:error (ops/transfer! deps id :duplicate))))
+        (is (= before @state))
+        (fs/delete (fs/path (:root started) (:hull fixture/ids) "unsupported.stl"))
+        (is (= :unavailable-mesh (:error (ops/save! deps 2 "A"))))
+        (is (= before @state))
+        (is (= bytes (slurp (str (:file (:loadouts deps)))))))
+      (finally (fixture/stop! started)))))
+
+(deftest save-through-real-ring-boundary
+  (let [started (fixture/start!) deps (lf/deps started) handler (:handler started)]
+    (try
+      (is (= 400 (:status (handler (mock/request :post "/assembly/save" {:revision "bad" :name "Ship"})))))
+      (is (= 422 (:status (handler (mock/request :post "/assembly/save" {:revision "0" :name "Ship"})))))
+      (swap! (get-in deps [:assembly :state]) assoc :draft lf/draft)
+      (is (= 200 (:status (handler (mock/request :post "/assembly/save" {:revision "1" :name "Ship"})))))
+      (is (= "Ship" (get-in (first (ops/list! deps {})) [:loadout :loadout/name])))
+      (finally (fixture/stop! started)))))

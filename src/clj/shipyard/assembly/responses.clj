@@ -2,7 +2,11 @@
   "Pure, recoverable draft errors for HTML and integration clients.")
 
 (def messages
-  {:stale-revision "The draft changed. Review the current choices and try again."
+  {:invalid-name "Enter a ship name between 1 and 200 characters."
+   :incomplete-loadout "Fill every mount before saving this ship."
+   :missing-loadout "This saved ship is unavailable. Refresh Ship Browser and choose another."
+   :store-write-failed "The ship could not be saved. Check the data folder permissions and retry."
+   :stale-revision "The draft changed. Review the current choices and try again."
    :stale-slot "That slot no longer exists. Review the current assembly."
    :stale-draft "An assigned part or mount changed. Clear the affected slot or start again."
    :library-changed "The library changed. Choose a hull again or reset the draft."

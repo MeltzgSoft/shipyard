@@ -2,7 +2,8 @@
   (:require [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [shipyard.assembly-fixture :as fixture]
-            [shipyard.e2e.support :as s])
+            [shipyard.e2e.support :as s]
+            [shipyard.loadout.db :as loadouts])
   (:import [com.microsoft.playwright Page Route]
            [java.util.function Consumer]))
 
@@ -76,6 +77,13 @@
       (s/select-option! driver ".assembly__hull select[name=part-id]" "hull")
       (s/click! driver ".assembly__hull button")
       (s/wait-visible! driver (slot-selector [[:weapon 0]]))
+      (testing "an incomplete save reports the problem without writing or losing the hull"
+        (is (s/wait-until #(= 1 (count (get-in (s/stats driver) [:assembly :slots])))))
+        (s/fill-and-blur! driver ".assembly__save input[name=name]" "Incomplete")
+        (s/click! driver ".assembly__save button")
+        (is (s/wait-until #(str/includes? (s/text driver "#library") "Fill every mount")))
+        (is (= 1 (count (get-in (s/stats driver) [:assembly :slots]))))
+        (is (empty? (:loadouts (loadouts/snapshot! (:shipyard.loadout/db (:system started)))))))
       (doseq [[path label] [[[[:prow 0]] "prow"] [[[:bridge 0]] "bridge"]
                             [[[:antenna 0]] "antenna"] [[[:antenna 1]] "antenna"]
                             [[[:weapon 0]] "weapon"] [[[:weapon 1]] "weapon"]
@@ -92,6 +100,18 @@
           (is (= 4 (count weapons)))
           (is (= 4 (count turrets)))
           (is (= 4 (count (set (map :matrix weapons)))))))
+      (testing "saving a complete assembly persists its exact tree; repeated Save updates the same identity"
+        (s/fill-and-blur! driver ".assembly__save input[name=name]" "Browser Cruiser")
+        (s/click! driver ".assembly__save button")
+        (is (s/wait-until #(str/includes? (s/text driver "#library") "Ship saved.")))
+        (let [store (:shipyard.loadout/db (:system started))
+              saved (first (vals (:loadouts (loadouts/snapshot! (loadouts/open! (:file store))))))]
+          (is (= "Browser Cruiser" (:loadout/name saved)))
+          (is (= 12 (count (:loadout/slots saved))))
+          (s/fill-and-blur! driver ".assembly__save input[name=name]" "Renamed Cruiser")
+          (s/click! driver ".assembly__save button")
+          (is (s/wait-until #(= "Renamed Cruiser" (get-in (loadouts/snapshot! store) [:loadouts (:loadout/id saved) :loadout/name]))))
+          (is (= 1 (count (:loadouts (loadouts/snapshot! (loadouts/open! (:file store)))))))))
       (testing "alternative prow replacement removes its old object"
         (let [old (first (filter #(= (:prow fixture/ids) (:part-id %))
                                  (get-in (s/stats driver) [:assembly :slots])))]

@@ -5,7 +5,8 @@
             [integrant.core :as ig]
             [shipyard.catalog.sidecar :as sidecar]
             [shipyard.fixtures :as fixtures]
-            [shipyard.system :as system]))
+            [shipyard.system :as system])
+  (:import [java.util.concurrent ExecutorService TimeUnit]))
 
 (def frame {:mount/pos [0.0 0.0 0.0] :mount/axis [0.0 0.0 1.0] :mount/roll [1.0 0.0 0.0]})
 (def plug (assoc frame :mount/id :plug :mount/kind :plug :mount/origin :picked
@@ -68,4 +69,6 @@
 
 (defn stop! [{:keys [temp system]}]
   (ig/halt! system)
+  (when-let [^ExecutorService pool (get-in system [:shipyard.http/jobs :pool])]
+    (.awaitTermination pool 30 TimeUnit/SECONDS))
   (fs/delete-tree temp))

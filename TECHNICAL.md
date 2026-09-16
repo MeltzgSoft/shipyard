@@ -2031,6 +2031,15 @@ save visibly rather than weakening that guarantee. Failed writes leave the prior
 in-memory value intact and temporary files are removed. One application process owns
 the store; simultaneous processes writing the same store are unsupported.
 
+The `shipyard.loadout.operations` boundary revalidates a complete assembly against
+current authored catalog facts and fresh source files for every Save, Preview, Edit
+and Duplicate. Assemble retains `:loadout-id`, `:name` and optional `:scheme` in its
+ephemeral draft. Save creates only when identity is absent, otherwise updates that
+explicit id. Edit and Duplicate validate before replacing the draft, with no durable
+write. Preview uses its own assembly state cell and the shared placement protocol.
+`POST /assembly/save` accepts a revision and name through Malli middleware and returns
+an ordinary assembly fragment with recoverable validation or persistence errors.
+
 ## 14. Workspace ownership and M4 named-loadout workflows
 
 This is the required contract for M4 and subsequent workspace changes. It extends the

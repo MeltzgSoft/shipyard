@@ -3,7 +3,8 @@
   (:require [clojure.edn :as edn]
             [shipyard.assembly.db :as db]
             [shipyard.assembly.views :as views]
-            [shipyard.http.htmx :as htmx]))
+            [shipyard.http.htmx :as htmx]
+            [shipyard.loadout.operations :as loadouts]))
 
 (defn- response [result]
   (htmx/fragment
@@ -27,3 +28,11 @@
                                          slot (assoc :slot (edn/read-string slot))) {})
                      :selected-bundle (not-empty bundle)
                      :selected-class (not-empty class)))))
+
+(defn save! [deps {:keys [parameters]}]
+  (let [{:keys [revision name]} (:form parameters)
+        result (loadouts/save! deps (parse-long revision) name)]
+    (response (merge (db/request! deps nil {})
+                     (if (:error result)
+                       {:error (:error result) :status 422}
+                       {:saved? true})))))

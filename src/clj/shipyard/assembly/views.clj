@@ -88,7 +88,7 @@
                     [:option {:value ""} "All classes"]
                     (for [value (catalog/classes database)] [:option {:value value :selected (= value selected-class)} value])]]])
 
-(defn- assembly-rail [{:keys [database hulls selected-bundle selected-class revision hull selected-hull root slots available]}]
+(defn- assembly-rail [{:keys [database hulls selected-bundle selected-class revision hull selected-hull root slots available draft error saved?]}]
   [:div#assembly-rail {:hx-swap-oob "innerHTML:#library"}
    (assembly-filters database selected-bundle selected-class)
    [:form.assembly__hull {:method "post" :action "/assembly/hull" :hx-post "/assembly/hull"
@@ -98,12 +98,19 @@
                     [:option {:value ""} "Choose a hull…"]
                     (for [part hulls] [:option {:value (:part/id part) :selected (= (or hull selected-hull) (:part/id part))} (:part/name part)])]]
     [:button {:type "submit" :disabled (empty? hulls)} "Start assembly"]]
+   (when hull
+     [:form.assembly__save (form-attrs "/assembly/save")
+      (hidden "revision" revision)
+      [:label "Ship name" [:input {:name "name" :value (or (:name draft) "") :required true :maxlength 200}]]
+      [:button {:type "submit"} (if (:loadout-id draft) "Save changes" "Save ship")]])
+   (when saved? [:p {:role "status"} "Ship saved."])
+   (when error [:p.detail__error {:role "alert"} (get responses/messages error (name error))])
    [:p.assembly__rail-count (str (count hulls) " compatible hulls")]
    (when root
      [:div.assembly__rail-slots {:data-hull-id hull}
       (slot-tree database root revision available selected-bundle selected-class slots)])])
 
-(defn panel [{:keys [database draft available prepared error selected-hull selected-bundle selected-class]}]
+(defn panel [{:keys [database draft available prepared error saved? selected-hull selected-bundle selected-class]}]
   (let [{:keys [revision hull assignments]} draft
         root (when hull (catalog/part database hull))
         derived (when hull (model/slots database hull assignments))
@@ -137,4 +144,5 @@
            [:p {:role "status"} "Preparing " id "…"])])
       (when pending? [:div {:hx-get "/assembly?poll=1" :hx-trigger "load delay:400ms" :hx-target "#detail" :hx-swap "innerHTML" :hx-sync "#detail:abort"}])]
      (assembly-rail {:database database :hulls hulls :selected-bundle selected-bundle :selected-class selected-class
-                     :revision revision :hull hull :selected-hull selected-hull :root root :slots slots :available available})]))
+                     :revision revision :hull hull :selected-hull selected-hull :root root :slots slots :available available
+                     :draft draft :error error :saved? saved?})]))

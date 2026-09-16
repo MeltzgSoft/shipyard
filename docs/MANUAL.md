@@ -221,8 +221,15 @@ and nested turrets remain separate objects. Replacing or clearing a part removes
 object and everything beneath it before the new scene is shown. Returning to browse mode
 clears the assembly scene; returning to Assembly restores the current in-memory draft.
 
-The draft is in memory only. Resetting or stopping Shipyard loses it; named loadouts,
-save/load, paint schemes and thumbnails are not available in M3.
+Fill every mount, enter a **Ship name**, and choose **Save ship** to keep a named
+assembly. Subsequent **Save changes** updates that ship, including when you rename it.
+Starting a new hull clears the saved identity so its next save creates a separate ship.
+Incomplete assemblies and unavailable or changed parts cannot be saved; the draft stays
+available to correct and retry. Unsaved changes are lost when Shipyard stops.
+
+Saved ships live in `$XDG_DATA_HOME/shipyard/loadouts.edn` (normally
+`~/.local/share/shipyard/loadouts.edn`). Back up this file to keep your configurations.
+Paint schemes and thumbnails are not yet available.
 
 ## Troubleshooting
 
