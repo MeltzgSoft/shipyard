@@ -46,8 +46,10 @@
       (activate! state destination (inc activation) nil)
       (doseq [selector ["#detail" "#library" "#bulk-orient"]]
         (.replaceChildren (query selector)))
+      ;; Initialize incoming controls in the insertion turn: the default settle
+      ;; delay leaves visible filters briefly unable to handle their first change.
       (.ajax js/htmx "GET" (str "/workspace/" destination "?" params)
-             #js {:target "#detail" :swap "innerHTML"}))))
+             #js {:target "#detail" :swap "innerHTML settle:0ms"}))))
 
 (defn- display! [state ^js event]
   (when (some-> (.-target event) (.closest "[data-mount-colors-toggle]"))
