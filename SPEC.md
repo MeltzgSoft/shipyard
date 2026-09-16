@@ -450,9 +450,11 @@ repeating a part on its own ancestor chain is a cycle and is rejected. Replacing
 clearing a component removes its descendants. Sockets on components expose further
 slots, including turrets on weapons.
 
-Candidates need an authored manual role accepted by the socket, exactly one valid
-plug, and an available unsupported mesh source. Role inference is browsing information
-only. Candidates must share the root's bundle and class. Single-ship bundles are
+Candidates need a role accepted by the socket, exactly one valid plug, and an
+available unsupported mesh source. Roles may come from a manual override, a folder,
+or filename inference; manual overrides take precedence. Save, preview, edit and
+duplicate use the same role and compatibility rules as Assemble. Candidates must
+share the root's bundle and class. Single-ship bundles are
 self-contained: absent class matches absent class within that same bundle, never
 another bundle. Multi-section ships use one manually selected root hull and authored
 plugs/sockets joining its sections; filenames never imply those attachments.

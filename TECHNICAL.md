@@ -1885,13 +1885,15 @@ individual parts that own them.
 ### 13.1 Authored compatibility and draft identity
 
 The current catalog stores a durable sidecar `:part/role` as `:part/role-hint` with
-`:part/role-source :manual`. Assembly must require BOTH attributes; `:inferred` and
-`:class` sources cannot authorize a candidate. Query Datascript for manual accepted
-roles, then validate exactly one plug, finite orthonormal frames, renderability and
+`:part/role-source :manual`. The effective `:part/role-hint` authorizes compatibility
+regardless of whether its source is `:manual`, `:inferred` or `:class`; a manual role
+overrides scan inference. Query Datascript for accepted roles, then validate exactly
+one plug, finite orthonormal frames, renderability and
 source availability. Bundle AND class must match the root. Missing class is a value
 for this comparison only: two classless parts match only in the same bundle.
 Single-ship bundles are self-contained, including their manually joined hull sections.
-Selecting a root requires a renderable, manually authored `:hull` or `:hull-section`.
+Selecting a root requires a renderable `:hull` or `:hull-section`. Save, preview, edit
+and duplicate reuse these assembly rules without imposing a manual-role requirement.
 
 The Integrant-managed draft is immutable data held in one atom, with no durable writes:
 

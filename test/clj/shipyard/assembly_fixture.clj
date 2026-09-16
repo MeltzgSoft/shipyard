@@ -53,9 +53,10 @@
 
 (defn start!
   ([] (start! false))
-  ([server?]
+  ([server?] (start! server? library!))
+  ([server? build-library!]
    (let [temp (fs/create-temp-dir {:prefix "shipyard-assembly-"})
-         root (library! (fs/path temp "library"))
+         root (build-library! (fs/path temp "library"))
          cfg (-> (system/load-config! {:profile :test :config-dir (str (fs/path temp "config")) :env {}})
                  (assoc-in [:shipyard.library/index :root] (str root))
                  (assoc-in [:shipyard.library/index :cache-home] (str (fs/path temp "cache")))

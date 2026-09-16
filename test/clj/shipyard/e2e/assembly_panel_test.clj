@@ -3,7 +3,8 @@
             [clojure.test :refer [deftest is testing]]
             [shipyard.assembly-fixture :as fixture]
             [shipyard.e2e.support :as s]
-            [shipyard.loadout.db :as loadouts])
+            [shipyard.loadout.db :as loadouts]
+            [shipyard.loadout-fixture :as lf])
   (:import [com.microsoft.playwright Page Route]
            [java.util.function Consumer]))
 
@@ -68,7 +69,7 @@
   (workflow! true))
 
 (deftest complete-synthetic-cruiser
-  (let [started (fixture/start! true) driver (s/make-driver)]
+  (let [started (fixture/start! true lf/scanned-library!) driver (s/make-driver)]
     (try
       (s/go! driver (s/base-url (:system started)))
       (s/wait-visible! driver "#library-results .part")
@@ -95,19 +96,19 @@
       (is (s/wait-until #(= 13 (count (get-in (s/stats driver) [:assembly :slots])))))
       (testing "the complete hierarchy renders with distinct capacity and mirrored positions"
         (let [slots (get-in (s/stats driver) [:assembly :slots])
-              weapons (filter #(= (:weapon fixture/ids) (:part-id %)) slots)
-              turrets (filter #(= (:turret fixture/ids) (:part-id %)) slots)]
+              weapons (filter #(= (:weapon lf/scanned-ids) (:part-id %)) slots)
+              turrets (filter #(= (:turret lf/scanned-ids) (:part-id %)) slots)]
           (is (= 4 (count weapons)))
           (is (= 4 (count turrets)))
           (is (= 4 (count (set (map :matrix weapons)))))))
-      (testing "saving a complete assembly persists its exact tree; repeated Save updates the same identity"
+      (testing "saving with inferred and folder-derived roles persists the exact tree; repeated Save updates the same identity"
         (s/fill-and-blur! driver ".assembly__save input[name=name]" "Browser Cruiser")
         (s/click! driver ".assembly__save button")
         (is (s/wait-until #(str/includes? (s/text driver "#library") "Ship saved.")))
         (let [store (:shipyard.loadout/db (:system started))
               saved (first (vals (:loadouts (loadouts/snapshot! (loadouts/open! (:file store))))))]
           (is (= "Browser Cruiser" (:loadout/name saved)))
-          (is (= 12 (count (:loadout/slots saved))))
+          (is (= lf/scanned-assignments (:loadout/slots saved)))
           (s/fill-and-blur! driver ".assembly__save input[name=name]" "Renamed Cruiser")
           (s/click! driver ".assembly__save button")
           (is (s/wait-until #(= "Renamed Cruiser" (get-in (loadouts/snapshot! store) [:loadouts (:loadout/id saved) :loadout/name]))))

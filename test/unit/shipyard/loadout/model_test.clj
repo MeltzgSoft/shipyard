@@ -1,5 +1,6 @@
 (ns shipyard.loadout.model-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [clojure.test :refer [deftest is testing]]
+            [datascript.core :as d]
             [shipyard.loadout.model :as m]
             [shipyard.assembly.model-test :as assembly]
             [shipyard.loadout.transforms-test :refer [record]]))
@@ -22,6 +23,17 @@
                                           [[:weapon 0] [:turret 0]] "turret" [[:weapon 1] [:turret 0]] "turret"}}
         available #{"hull" "weapon" "turret"}]
     (is (= 5 (count (:scene (m/validate assembly/database draft available)))))
+    (testing "Save accepts the same role sources as Assemble"
+      (doseq [source [:manual :inferred :class]]
+        (let [database (d/db-with assembly/database
+                                  (mapv #(hash-map :part/id % :part/role-source source) available))]
+          (is (= 5 (count (:scene (m/validate database draft available)))))
+          (is (= :incompatible-role
+                 (:error (m/validate (d/db-with database [{:part/id "weapon" :part/role-hint :bridge}])
+                                     draft available))))
+          (is (= :unauthored-hull
+                 (:error (m/validate (d/db-with database [{:part/id "hull" :part/role-hint :weapon}])
+                                     draft available)))))))
     (is (= :no-draft (:error (m/validate assembly/database {} available))))
     (is (= :incomplete-loadout (:error (m/validate assembly/database (assoc draft :assignments {}) available))))
     (is (= :unavailable-mesh (:error (m/validate assembly/database draft #{"hull"}))))

@@ -14,8 +14,7 @@
                           (let [part (catalog/part database id)]
                             (cond
                               (nil? part) :missing-part
-                              (not (available id)) :unavailable-mesh
-                              (not= :manual (:part/role-source part)) :unauthored-role))) parts)
+                              (not (available id)) :unavailable-mesh))) parts)
                   (some-> derived :errors first :code)
                   (when (some #(nil? (:assigned %)) (:slots derived)) :incomplete-loadout))]
     (if error

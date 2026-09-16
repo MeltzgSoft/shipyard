@@ -75,3 +75,32 @@
       (is (= 200 (:status (handler (mock/request :post "/assembly/save" {:revision "1" :name "Ship"})))))
       (is (= "Ship" (get-in (first (ops/list! deps {})) [:loadout :loadout/name])))
       (finally (fixture/stop! started)))))
+
+(deftest scanned-roles-save-and-transfer-without-reauthoring
+  (let [started (fixture/start! false lf/scanned-library!) deps (lf/deps started)
+        state (get-in deps [:assembly :state])
+        draft (assoc lf/draft :assignments lf/scanned-assignments)]
+    (try
+      (let [database (catalog/snapshot! (:catalog deps))]
+        (is (= :inferred (:part/role-source (catalog/part database (:hull lf/scanned-ids)))))
+        (is (= :class (:part/role-source (catalog/part database (:weapon lf/scanned-ids)))))
+        (is (= :class (:part/role-source (catalog/part database (:turret lf/scanned-ids))))))
+      (swap! state assoc :draft draft)
+      (let [saved (:loadout (ops/save! deps 1 "Scanned Cruiser")) id (:loadout/id saved)
+            file (:file (:loadouts deps))]
+        (is (uuid? id))
+        (is (= lf/scanned-assignments (:loadout/slots saved)))
+        (is (= saved (get-in (store/snapshot! (store/open! file)) [:loadouts id])))
+        (doseq [mode [:preview :edit :duplicate]]
+          (let [result (ops/transfer! deps id mode)]
+            (is (nil? (:error result)))
+            (is (= lf/scanned-assignments (get-in result [:draft :assignments])))
+            (is (= 13 (count (:scene result))))))
+        (let [before @state bytes (slurp (str file))]
+          (catalog/save-part-role! (:catalog deps) (:weapon lf/scanned-ids) :bridge)
+          (is (= :incompatible-role
+                 (:error (ops/save! deps (get-in @state [:draft :revision]) "Invalid"))))
+          (is (= :incompatible-role (:error (ops/transfer! deps id :preview))))
+          (is (= before @state))
+          (is (= bytes (slurp (str file))))))
+      (finally (fixture/stop! started)))))

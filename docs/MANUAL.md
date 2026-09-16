@@ -210,8 +210,11 @@ their mount's color. Split-capacity positions have distinct colors. Use **Mount 
 to toggle these cues. Completed mount subtrees collapse by default and summarize their
 selected descendants; incomplete subtrees stay open so their remaining choices are visible.
 
-Only authored roles, accepted socket roles, a single valid plug, available unsupported
-geometry, and matching bundle/class authorize a choice. Inferred roles cannot do so.
+A compatible role, a single valid plug, available unsupported geometry, and matching
+bundle/class authorize a choice. Roles inferred from names or folders work in Assemble
+and when saving, previewing, editing or duplicating a ship. You do not need to save each
+role manually; use **Part metadata → Save role** when a role needs correcting. Mounts
+still need to be authored.
 Single-ship bundles are self-contained. Missing capacity splits require reauthoring.
 Cold parts prepare in the background; failed preparation offers **Retry**. If the draft
 changed elsewhere, review the refreshed panel before trying again. The choices remain
