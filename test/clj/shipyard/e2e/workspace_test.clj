@@ -237,4 +237,16 @@
       (switch! driver "orient")
       (s/wait-visible! driver "[data-bulk-select]")
       (is (= "Orient" (s/text driver ".masthead__mode--active")))
+      (reset! held nil)
+      (.route page "**/orient/selection"
+              (reify Consumer
+                (accept [_ route]
+                  (let [^Route route route] (reset! held [route (.fetch route)])))))
+      (s/check! driver (str "[data-bulk-select][value='" (:prow fixture/ids) "']"))
+      (is (s/wait-until #(do (s/stats driver) (some? @held))))
+      (is (true? (s/js driver "() => document.querySelector('[data-bulk-render-button]').disabled")))
+      (let [[^Route route ^APIResponse response] @held]
+        (.fulfill route (doto (Route$FulfillOptions.) (.setResponse response))))
+      (is (s/wait-until #(= "1 selected" (s/text driver "[data-bulk-count]"))))
+      (is (false? (s/js driver "() => document.querySelector('[data-bulk-render-button]').disabled")))
       (finally (s/quit! driver) (fixture/stop! started)))))

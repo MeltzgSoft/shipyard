@@ -33,7 +33,8 @@
     [:p.results__count (format "%d match%s" (count parts) (if (= 1 (count parts)) "" "es"))]
     [:form.bulk-orient__table {:role "group" :aria-label "Parts available for bulk orientation"
                                :hx-post "/orient/selection" :hx-trigger "change" :hx-target "#bulk-selection"
-                               :hx-swap "outerHTML" :hx-sync "this:replace"}
+                               :hx-swap "outerHTML" :hx-sync "this:replace"
+                               :hx-disabled-elt "[data-workspace-mode], [data-workspace-transition]"}
      [:input {:type "hidden" :name "visible" :value (pr-str (mapv :part/id parts))}]
      [:div.bulk-orient__columns {:aria-hidden "true"}
       [:span] [:span "Part"] [:span "Role"] [:span "Class"] [:span "Yaw"] [:span "Pitch"]
