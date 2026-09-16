@@ -15,7 +15,18 @@
   (testing "rejects malformed and zero-length values"
     (is (nil? (orientation/normalize-quaternion nil)))
     (is (nil? (orientation/normalize-quaternion [0 0 0])))
-    (is (nil? (orientation/normalize-quaternion [0 0 0 0])))))
+    (is (nil? (orientation/normalize-quaternion [0 0 0 0])))
+    (doseq [q [[1 0 "bad" 1] [nil 0 0 1]
+               [#?(:clj Double/NaN :cljs js/NaN) 0 0 1]
+               [#?(:clj Double/POSITIVE_INFINITY :cljs js/Infinity) 0 0 1]]]
+      (is (nil? (orientation/normalize-quaternion q)))))
+  (testing "large finite rotations cannot overflow to a successful zero quaternion"
+    (doseq [q [[1.0e308 0.0 0.0 1.0e308] [1.0e200 1.0e200 1.0e200 1.0e200]
+               [9223372036854775807.0 0.0 0.0 9223372036854775807.0]]]
+      (let [normalized (orientation/normalize-quaternion q)]
+        (is (= 4 (count normalized)))
+        (is (every? #(#?(:clj Double/isFinite :cljs js/Number.isFinite) (double %)) normalized))
+        (is (close? 1.0 (reduce + (map #(* % %) normalized))))))))
 
 (deftest orientation-of-test
   (testing "defaults missing and invalid metadata to identity"

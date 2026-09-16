@@ -181,6 +181,8 @@ Changes preview immediately; **Save orientation** stores the pose in the part's 
 while **Reset** returns it to the source STL orientation. Configure this before picking
 mounts so each new mount derives its up direction consistently.
 An empty angle field means `0` degrees; invalid or non-finite values are rejected.
+Invalid orientation data in a bulk save is rejected before any part is written;
+previous saved poses remain unchanged.
 
 For a set of parts, switch to **Orient** in the workspace header. Filter by bundle,
 class, role, name, or whether an orientation has already been saved, then select the

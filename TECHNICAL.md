@@ -1839,7 +1839,10 @@ in place so polling cannot remove or move it during a click.
 only dirty entries into the hidden `orientations` field before HTMX reads the form.
 The server parses and validates the entire map before writing: it must be nonempty,
 have string keys and have four-component, finite, nonzero quaternions that can be
-normalized. An invalid member rejects the whole payload without writing any member.
+normalized. Shared `math/normalize` scales by the largest component before squaring,
+so large finite quaternions cannot overflow into zero. New save requests use this strict
+normalization; only missing/invalid legacy metadata retains the preview identity
+fallback. An invalid member rejects the whole payload without writing any member.
 
 For a valid map, save known parts individually through `catalog.db/save-part-orientation!`.
 Each write atomically updates `:part/orientation` in that part's sidecar before updating

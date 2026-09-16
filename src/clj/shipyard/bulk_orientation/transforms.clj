@@ -27,9 +27,9 @@
       (when (and (map? values) (seq values))
         (let [orientations (into {}
                                  (keep (fn [[part-id value]]
-                                         (when (and (string? part-id)
-                                                    (orientation/normalize-quaternion value))
-                                           [part-id (orientation/orientation-of value)])))
+                                         (when (string? part-id)
+                                           (when-let [normalized (orientation/normalize-quaternion value)]
+                                             [part-id normalized]))))
                                  values)]
           (when (= (count values) (count orientations)) orientations))))
     (catch Exception _ nil)))

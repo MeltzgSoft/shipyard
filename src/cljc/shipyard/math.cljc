@@ -38,13 +38,18 @@
   (#?(:clj Math/sqrt :cljs js/Math.sqrt) (dot values values)))
 
 (defn normalize
-  "Return a unit vector when `values` is finite and longer than `epsilon`."
+  "Return a finite unit vector longer than epsilon, scaling before squaring."
   ([values] (normalize values 0.0))
   ([values epsilon]
-   (when (and (vector? values) (every? finite-number? values))
-     (let [magnitude (length values)]
-       (when (> magnitude epsilon)
-         (scale (/ 1.0 magnitude) values))))))
+   (when (and (vector? values) (every? finite-number? values)
+              (finite-number? epsilon) (not (neg? epsilon)))
+     (let [largest (reduce max 0.0 (map #(abs (double %)) values))]
+       (when (pos? largest)
+         (let [scaled (mapv #(/ (double %) largest) values)
+               magnitude (length scaled)]
+           ;; Compare without constructing the possibly overflowing true length.
+           (when (> largest (/ epsilon magnitude))
+             (mapv #(/ % magnitude) scaled))))))))
 
 (defn project-onto-plane [axis vector]
   (subtract vector (scale (dot axis vector) axis)))

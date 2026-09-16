@@ -214,7 +214,8 @@
   "Persist a part's source-to-canonical orientation without changing mounts."
   [{:keys [state]} part-id part-orientation]
   (let [{:keys [conn root]} @state
-        part-orientation (orientation/orientation-of part-orientation)]
+        part-orientation (or (orientation/normalize-quaternion part-orientation)
+                             (throw (ex-info "Invalid part orientation" {:type :invalid-orientation :part-id part-id})))]
     (sidecar/update-sidecar! root part-id assoc :part/orientation part-orientation)
     (d/transact! conn [{:part/id part-id :part/orientation part-orientation}])
     part-orientation))
