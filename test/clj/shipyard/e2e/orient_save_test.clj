@@ -17,7 +17,10 @@
   (s/wait-visible! driver "[data-bulk-select]")
   (doseq [id ids] (s/check! driver (str "[data-bulk-select][value='" id "']")))
   (s/click! driver "[data-bulk-render-button]")
-  (is (s/wait-until #(= (count ids) (get-in (s/stats driver) [:bulk :count])))))
+  (when-not (s/wait-until #(= (count ids) (get-in (s/stats driver) [:bulk :count])))
+    (throw (ex-info "Selected Orient previews did not finish loading; save assertions cannot run"
+                    {:selected ids :bulk (:bulk (s/stats driver))
+                     :grid (s/text driver "[data-bulk-grid]")}))))
 
 (defn set-yaw! [driver degrees]
   (s/fill-and-blur! driver "[data-bulk-angle][data-axis=y]" (str degrees)))
