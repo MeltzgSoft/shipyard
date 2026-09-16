@@ -106,7 +106,8 @@
            mesh-url (assoc :data-mesh-url mesh-url :data-mesh-key mesh-key)
            (= state :preparing) (assoc :data-preparing "true"))
          [:div.bulk-grid__preview {:data-bulk-preview "true"}
-          [:span.bulk-grid__card-state (when-not mesh-url (or message "Preparing…"))]]
+          [:span.bulk-grid__card-state {:role "status"} (if mesh-url "Loading preview…" (or message "Preparing…"))]
+          (when mesh-url [:button {:type "button" :hidden true :data-bulk-retry "true"} "Retry preview"])]
          [:p name]])]
      [:footer.bulk-grid__footer
       [:span#bulk-orient-status "Preview changes are not saved."]

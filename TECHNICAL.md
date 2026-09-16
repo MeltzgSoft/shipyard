@@ -1795,7 +1795,11 @@ any entry is preparing; polling stops once every entry is ready or failed. Rotat
 angle, copy and reset controls are disabled while server preparation remains pending.
 Missing sources and preprocessing failures are reported per card. Each client mesh
 fetch has a token; a completion may install a mesh only if its entry still owns that
-token. Scene cleanup must invalidate pending completions.
+token and activation. Each client entry has loading, ready or failed state. Network,
+HTTP and decode failures render on the named card; Retry clears only that failed entry
+and starts a fresh token, retaining healthy cards and dirty poses. DOM replacement
+reprojects each entry’s status onto the current card. Scene cleanup invalidates pending
+completions, including failures and retries from previous grids.
 
 **Editing semantics.** Each loaded entry has a normalized source-to-canonical
 quaternion `[x y z w]`, a saved baseline and a dirty flag. Selection, working quaternions,

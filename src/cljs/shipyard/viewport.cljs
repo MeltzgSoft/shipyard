@@ -1111,6 +1111,15 @@
       (.setAttribute card "data-dirty" "true")
       (.removeAttribute card "data-dirty"))))
 
+(defn- sync-bulk-card! [entry ^js card]
+  (when-let [state (:state entry)]
+    (.setAttribute card "data-mesh-state" (name state))
+    (when-let [status (.querySelector card ".bulk-grid__card-state")]
+      (set! (.-textContent status)
+            (case state :loading "Loading preview…" :failed "Could not load this preview. Retry to try again." :ready "Ready")))
+    (when-let [button (.querySelector card "[data-bulk-retry]")]
+      (set! (.-hidden button) (not= :failed state)))))
+
 (defn- load-bulk-mesh! [{:keys [bulk parts ^js scene active activation]} ^js element]
   (let [part-id (.getAttribute element "data-bulk-part")
         url (.getAttribute element "data-mesh-url")
@@ -1118,7 +1127,8 @@
         token (random-uuid)
         generation @activation]
     (when (and url (not (contains? @bulk part-id)))
-      (swap! bulk assoc part-id {:loading true :token token})
+      (swap! bulk assoc part-id {:loading true :state :loading :token token})
+      (sync-bulk-card! (get @bulk part-id) element)
       (-> (js/fetch url)
           (.then (fn [^js response]
                    (if (.-ok response) (.arrayBuffer response)
@@ -1137,11 +1147,22 @@
                        (.add tile-scene object)
                        (swap! parts assoc part-id object)
                        (swap! bulk assoc part-id {:object object :saved saved :orientation saved
-                                                  :scene tile-scene :camera tile-camera :token token})))))
+                                                  :scene tile-scene :camera tile-camera :token token :state :ready})
+                       (when-let [card (.querySelector js/document (str "[data-bulk-part=\"" (js/CSS.escape part-id) "\"]"))]
+                         (sync-bulk-card! (get @bulk part-id) card))))))
           (.catch (fn [error]
                     (js/console.error "shipyard: could not load bulk mesh" part-id error)
                     (when (and @active (= generation @activation) (= token (:token (get @bulk part-id))))
-                      (swap! bulk dissoc part-id))))))))
+                      (swap! bulk assoc part-id {:state :failed :token token})
+                      (when-let [card (.querySelector js/document (str "[data-bulk-part=\"" (js/CSS.escape part-id) "\"]"))]
+                        (sync-bulk-card! (get @bulk part-id) card)))))))))
+
+(defn- retry-bulk-mesh! [{:keys [bulk] :as sys} ^js button]
+  (when-let [card (.closest button "[data-bulk-part]")]
+    (let [id (.getAttribute card "data-bulk-part")]
+      (when (= :failed (:state (get @bulk id)))
+        (swap! bulk dissoc id)
+        (load-bulk-mesh! sys card)))))
 
 (defn- sync-bulk-from-dom! [{:keys [bulk parts bulk-refresh?] :as sys}]
   (let [elements (vec (bulk-elements))
@@ -1162,6 +1183,7 @@
                     (orient-object! object (:orientation restored))
                     (swap! bulk assoc id restored))))))
           (load-bulk-mesh! sys element)
+          (sync-bulk-card! (get @bulk (.getAttribute element "data-bulk-part")) element)
           (when (:dirty (get @bulk (.getAttribute element "data-bulk-part")))
             (.setAttribute element "data-dirty" "true")))
         (reset! bulk-refresh? false)))))
@@ -1515,6 +1537,8 @@
                                                         (js/parseFloat (.getAttribute button "data-direction"))))
                                         (when-let [^js button (some-> target (.closest "[data-bulk-step]"))]
                                           (bulk-step! sys button))
+                                        (when-let [button (some-> target (.closest "[data-bulk-retry]"))]
+                                          (retry-bulk-mesh! sys button))
                                         (when (some-> target (.closest "[data-bulk-copy]")) (bulk-copy-first! sys))
                                         (when (some-> target (.closest "[data-bulk-reset]")) (bulk-reset! sys)))))))
 
