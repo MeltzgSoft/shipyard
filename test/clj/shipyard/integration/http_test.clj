@@ -61,7 +61,7 @@
                  :lod-tiers [1.0 0.25 0.05]
                  :facet-angle-deg 1.0
                  :facet-plane-epsilon-mm 0.01
-                 :cap-bytes 64000000 :inflight (atom {})}
+                 :cap-bytes 64000000 :inflight (atom {}) :files-lock (Object.)}
         catalog (ig/init-key :shipyard.catalog/db {:library library})
         jobs    (ig/init-key :shipyard.http/jobs {:library library :cache cache})]
     {:library library :catalog catalog :cache cache :jobs jobs

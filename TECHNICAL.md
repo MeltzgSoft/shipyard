@@ -782,28 +782,23 @@ minor - but it is one header, and it is free.
 
 ### 6.5 Cache and concurrency
 
-`$XDG_CACHE_HOME/shipyard/mesh/<sha256>.symesh`, written atomically (temp file + rename)
-so a concurrent reader never sees a partial file. Requests for a part already being
-preprocessed await the in-flight job rather than starting a second - a `ConcurrentHashMap`
-of `path → CompletableFuture`.
+`$XDG_CACHE_HOME/shipyard/mesh/<sha256>.<tier>.symesh` contains complete,
+content-addressed tiers. `ensure!` hashes the source before admitting work to an
+atom of mesh-key → delay. Distinct paths with identical bytes share one inline
+preprocessing job. Cleanup removes only that job's own claim, including after
+failure, so an older waiter cannot erase a newer retry.
 
-**No thread pool.** Preprocessing runs on the calling thread, and single-flight comes from
-a `delay` held in an atom: the first deref runs the body, every other blocks on the same
-result. `swap!` may retry and build a delay it discards, which costs nothing precisely
-because a delay's body does not run until deref - the reason `future` is wrong here, since
-a discarded future has already started working.
+Distinct meshes parse and encode concurrently into private staging directories.
+A component-owned filesystem lock serializes publication, cache metadata reads,
+and eviction. Completed tiers move atomically on the same filesystem, with tier
+zero published last as the readiness marker. A filesystem without atomic moves
+fails explicitly; incomplete tier bytes are never published. Staging files are
+cleaned after success or failure. Eviction tolerates a disappeared file from an
+external cache clear, while other I/O errors remain visible.
 
-The cache stays synchronous because the single-user UI views one part at a time, while
-the canary supplies bounded parallelism at its own call site. Running inline also lets a
-parser exception propagate without an `ExecutionException` wrapper.
-
-**When a pool would earn its place:** a UI that prefetches many distinct parts at once,
-since preprocessing allocates tens of megabytes per part against a 2 GB peak budget
-(§11). Not before that exists.
-
-The two-thread pool belongs in `shipyard.http.jobs`, and only the HTTP layer uses it
-(§7). `ensure!` keeps its inline contract, so the canary retains back-pressure and
-unwrapped exceptions.
+Preprocessing runs on the calling thread: the HTTP layer supplies its bounded
+two-thread pool (`shipyard.http.jobs`, §7), while the canary supplies its own
+bounded parallelism. Parsing and encoding do not hold the filesystem lock.
 
 **Cache budget and eviction.** With self-contained per-tier files, the Cruiser Hull's
 tier 0 is 4.95 MB against a 6.64 MB source
@@ -814,7 +809,7 @@ independently loadable. Browsing the entire library would therefore accumulate r
 **10 GB**, not 8.
 
 So the cache is capped - **default 4 GB**, configurable, with LRU eviction by access time
-on a background sweep. Recency is the file's mtime, touched on every read, because
+after publication. Recency is the file's mtime, touched on every read, because
 `lastAccessTime` is unreliable wherever a filesystem mounts `noatime`.
 
 Every entry is regenerable from the source STL, so eviction is always safe and never

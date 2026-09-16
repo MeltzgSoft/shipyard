@@ -21,7 +21,7 @@
     (try
       (spit tier "tier")
       (spit temporary "in progress")
-      (cache/evict! {:dir dir :cap-bytes 0})
+      (cache/evict! {:dir dir :cap-bytes 0 :files-lock (Object.)})
       (is (not (fs/exists? tier)))
       (is (fs/exists? temporary)
           "eviction must not observe or delete a preprocessor's temporary file")

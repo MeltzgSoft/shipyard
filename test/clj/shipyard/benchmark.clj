@@ -181,7 +181,7 @@
      :crease-deg 35
      :lod-tiers [1.0 0.25 0.05]
      :cap-bytes 4294967296
-     :inflight (atom {})}))
+     :inflight (atom {}) :files-lock (Object.)}))
 
 (defn- measure-preprocess!
   ([work label target runs]

@@ -13,7 +13,8 @@
             [shipyard.mesh.lod :as lod]
             [shipyard.mesh.stl :as stl]
             [shipyard.system :as system]
-            [shipyard.wire :as wire]))
+            [shipyard.wire :as wire])
+  (:import [java.nio.file CopyOption Files NoSuchFileException StandardCopyOption]))
 
 (defn sha256!
   "Content hash of a source STL, streamed. Computed only at first preprocess
@@ -34,8 +35,16 @@
 (defn- cache-tier-files [dir]
   (filter (every-pred fs/regular-file? cache-tier-file?) (fs/list-dir dir)))
 
-(defn cache-size! ^long [{:keys [dir]}]
-  (reduce + 0 (map fs/size (cache-tier-files dir))))
+(defn- tier-info! [file]
+  (try
+    {:file file :size (fs/size file)
+     :mtime (fs/file-time->millis (fs/last-modified-time file))}
+    ;; Another process may clear derived files even while our own lock is held.
+    (catch NoSuchFileException _ nil)))
+
+(defn cache-size! ^long [{:keys [dir files-lock]}]
+  (locking files-lock
+    (reduce + 0 (keep (comp :size tier-info!) (cache-tier-files dir)))))
 
 (defn eviction-plan
   "Choose oldest cache entries until their remaining size fits the cap."
@@ -54,81 +63,72 @@
 
   Recency is the file's mtime, touched on every read: `lastAccessTime` is
   unreliable because most filesystems mount `noatime`."
-  [{:keys [dir ^long cap-bytes]}]
-  (let [files (->> (cache-tier-files dir)
-                   (mapv (fn [f]
-                           {:file f
-                            :size (fs/size f)
-                            :mtime (fs/file-time->millis (fs/last-modified-time f))})))
-        {:keys [files before after]} (eviction-plan files cap-bytes)]
-    (when (seq files)
-      (doseq [f files] (fs/delete f))
-      (log/infof "cache eviction: dropped %d tiers, %,d -> %,d bytes (cap %,d)"
-                 (count files) before after cap-bytes))))
+  [{:keys [dir files-lock ^long cap-bytes]}]
+  (locking files-lock
+    (let [entries (keep tier-info! (cache-tier-files dir))
+          {:keys [files before after]} (eviction-plan entries cap-bytes)]
+      (when (seq files)
+        (doseq [f files] (Files/deleteIfExists (fs/path f)))
+        (log/infof "cache eviction: dropped %d tiers, %,d -> %,d bytes (cap %,d)"
+                   (count files) before after cap-bytes)))))
 
 (defn- touch! [f] (fs/set-last-modified-time f (System/currentTimeMillis)))
 
 ;; --- preprocessing ----------------------------------------------------------
 
 (defn- preprocess!
-  "Parse, weld, generate tiers, encode, write. Runs once per source file ever."
-  [{:keys [crease-deg lod-tiers] :as cache} source mesh-key]
+  "Prepare in isolation, then publish complete tiers and evict under one lock."
+  [{:keys [dir files-lock crease-deg lod-tiers] :as cache} source mesh-key]
   (let [parsed (stl/parse-file! source)
-        tiers  (lod/generate parsed {:crease-deg crease-deg :tiers lod-tiers})]
-    (doseq [[i tier] (map-indexed vector tiers)]
-      (let [target (tier-file cache mesh-key i)
-            bytes  (wire/encode (assoc tier
-                                       :bbox-min (:bbox-min parsed)
-                                       :bbox-max (:bbox-max parsed)))]
-        (fs/create-dirs (fs/parent target))
-        ;; temp file then rename, so a reader never sees a partial tier
-        (let [tmp (fs/create-temp-file {:dir (fs/parent target)
-                                        :prefix "symesh-" :suffix ".tmp"})]
-          (io/copy bytes (fs/file tmp))
-          (fs/move tmp target {:replace-existing true}))))
-    {:mesh-key mesh-key
-     :tiers    (count tiers)
-     :tris     (:triangle-count parsed)}))
+        tiers (lod/generate parsed {:crease-deg crease-deg :tiers lod-tiers})
+        staging (fs/create-temp-dir {:dir dir :prefix "symesh-"})]
+    (try
+      (let [prepared
+            (mapv (fn [[i tier]]
+                    (let [tmp (fs/path staging (str i ".tmp"))]
+                      (io/copy (wire/encode (assoc tier
+                                                   :bbox-min (:bbox-min parsed)
+                                                   :bbox-max (:bbox-max parsed)))
+                               (fs/file tmp))
+                      [tmp (fs/path (tier-file cache mesh-key i))]))
+                  (map-indexed vector tiers))]
+        (locking files-lock
+          ;; Tier zero is the readiness marker, so publish it last. Unsupported
+          ;; atomic moves fail explicitly; never expose a partially copied tier.
+          (doseq [[tmp target] (reverse prepared)]
+            (Files/move tmp target (into-array CopyOption [StandardCopyOption/ATOMIC_MOVE])))
+          (evict! cache)))
+      {:mesh-key mesh-key :tiers (count tiers) :tris (:triangle-count parsed)}
+      (finally (fs/delete-tree staging)))))
 
 (defn- run-job!
   "The work itself: take the cache hit, or preprocess and then evict."
-  [cache source]
-  (let [mesh-key (sha256! source)
-        t0       (tier-file cache mesh-key 0)]
-    (if (fs/regular-file? t0)
-      (do (touch! t0) {:mesh-key mesh-key :cached true})
-      (let [r (preprocess! cache source mesh-key)]
-        (evict! cache)
-        r))))
+  [{:keys [files-lock] :as cache} source mesh-key]
+  (let [t0 (tier-file cache mesh-key 0)
+        cached? (locking files-lock
+                  (try
+                    (when (fs/regular-file? t0) (touch! t0) true)
+                    (catch NoSuchFileException _ false)))]
+    (if cached?
+      {:mesh-key mesh-key :cached true}
+      (preprocess! cache source mesh-key))))
 
 (defn ensure!
-  "Return cache metadata for `source`, preprocessing it if needed.
+  "Return cache metadata, sharing inline work by content hash across source paths.
 
-  Two concurrent callers for the same file produce one job, not two. `delay`
-  expresses that natively: the first deref runs the body and every other blocks
-  on the same result. `swap!` may retry and build a delay it discards, which
-  costs nothing precisely because a delay's body does not run until someone
-  derefs it - the reason `future` would be wrong here, since a discarded future
-  has already started working.
-
-  The work runs on the calling thread, deliberately. There is no executor
-  because nothing here needs one: this is a single-user local application that
-  views one part at a time, and the batch case - the canary walking the whole
-  library - gets bounded parallelism from `pmap` at its own call site, already
-  capped at `availableProcessors + 2`.
-
-  Running inline also means an exception propagates as itself. Submitting to a
-  pool wrapped every parser error in an `ExecutionException`, so a parser's
-  `not a usable STL` ex-info arrived with no readable message.
-
-  If a future UI ever prefetches many distinct parts at once, that is when a
-  bounded pool earns its place - preprocessing allocates tens of megabytes per
-  part, and the §11 budget is 2 GB peak."
+  Hashing precedes admission. Every caller for the same mesh awaits one delay;
+  distinct meshes can still parse and encode concurrently. Only publication,
+  cache metadata reads and eviction share the component's filesystem lock."
   [{:keys [inflight] :as cache} source]
-  (let [k (str (fs/absolutize source))
-        d (-> (swap! inflight update k #(or % (delay (run-job! cache source))))
-              (get k))]
-    (try @d (finally (swap! inflight dissoc k)))))
+  (let [mesh-key (sha256! source)
+        candidate (delay (run-job! cache source mesh-key))
+        job (get (swap! inflight update mesh-key #(or % candidate)) mesh-key)]
+    (try
+      @job
+      (finally
+        ;; A waiter for a completed job must not remove a newer retry's claim.
+        (swap! inflight #(if (identical? job (get % mesh-key))
+                           (dissoc % mesh-key) %))))))
 
 ;; --- component --------------------------------------------------------------
 
@@ -143,4 +143,4 @@
     {:dir dir :crease-deg crease-deg :lod-tiers lod-tiers
      :facet-angle-deg facet-angle-deg
      :facet-plane-epsilon-mm facet-plane-epsilon-mm
-     :cap-bytes cap-bytes :inflight (atom {})}))
+     :cap-bytes cap-bytes :inflight (atom {}) :files-lock (Object.)}))

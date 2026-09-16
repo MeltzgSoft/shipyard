@@ -99,6 +99,9 @@ model appears when it is done - you can keep browsing in the meantime. After tha
 cached and opens instantly. The cache holds derived data only - deleting it costs nothing
 but a little recomputation.
 
+Meshes with identical source contents share cached preprocessing, even when they
+belong to different parts. Their previews and saved orientations remain independent.
+
 If a part cannot be prepared - a truncated download, a file that is not really an STL -
 the panel says so and offers **Try again** rather than retrying silently. The rest of the
 library keeps working; one bad file never takes the browser down with it.
