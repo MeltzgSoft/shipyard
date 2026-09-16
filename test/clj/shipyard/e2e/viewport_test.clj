@@ -9,7 +9,8 @@
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing use-fixtures]]
             [shipyard.e2e.support :as s])
-  (:import [javax.imageio ImageIO]))
+  (:import [javax.imageio ImageIO]
+           [java.util.concurrent CountDownLatch ExecutorService TimeUnit]))
 
 (def ^:dynamic *driver* nil)
 (def ^:dynamic *system* nil)
@@ -154,46 +155,59 @@
       (s/resize! *driver* 1280 900))))
 
 (deftest bulk-orientation-renders-rotates-and-saves-a-selection
-  (open-app!)
-  (s/click! *driver* ".masthead__mode[data-workspace-mode='orient']")
-  (s/wait-visible! *driver* "#bulk-orient-filters")
-  (is (s/wait-until #(= 5 (s/count-els *driver* "[data-bulk-select]")))
-      "the orientation table should finish its initial HTMX load")
-  (is (> (s/width *driver* "#library.bulk-orient") 1000)
-      "the selection table should own the workspace rather than stay in the browse rail")
-  (s/check! *driver* (str "[data-bulk-select][value='" s/hull-id "']"))
-  (s/check! *driver* (str "[data-bulk-select][value='" s/prow-id "']"))
-  (is (= "2 selected" (s/text *driver* "[data-bulk-count]")))
-  (s/click! *driver* "[data-bulk-render-button]")
-  (s/wait-visible! *driver* "[data-bulk-grid]")
-  (is (> (s/width *driver* "[data-bulk-grid]") 1000)
-      "the rendered grid should replace the table at workspace width")
-  (let [loaded (s/wait-until #(let [bulk (:bulk (s/stats *driver*))]
-                                (when (= 2 (:count bulk)) bulk)))]
-    (is (some? loaded) "both selected meshes should reach the grid"))
-  (s/click! *driver* "[data-bulk-step='15']")
-  (s/click! *driver* "[data-bulk-rotate][data-axis='y'][data-direction='1']")
-  (is (s/wait-until #(= 2 (get-in (s/stats *driver*) [:bulk :dirty])))
-      "one toolbar action should update every selected mesh")
-  (s/fill-and-blur! *driver* "[data-bulk-angle][data-axis='y']" "90")
-  (is (s/wait-until #(every? (fn [q] (vec-close? q [0.0 0.7071 0.0 0.7071]))
-                             (vals (get-in (s/stats *driver*) [:bulk :orientations]))))
-      "a manual yaw value should set every selected mesh to that absolute angle")
-  (s/click! *driver* "[data-bulk-save] button[type='submit']")
-  (is (s/wait-until #(str/includes? (s/text *driver* "#bulk-orient-status")
-                                    "Saved 2 orientations")))
-  (is (zero? (get-in (s/stats *driver*) [:bulk :dirty]))
-      "a successful response should establish a new saved baseline")
+  (let [entered (CountDownLatch. 2) release (CountDownLatch. 1)
+        ^ExecutorService pool (get-in *system* [:shipyard.http/jobs :pool])]
+    (try
+      ;; Hold the real workers so the browser must survive multiple preparing
+      ;; grid replacements before any mesh can finish. No handlers are replaced.
+      (dotimes [_ 2]
+        (.submit pool ^Runnable (fn [] (.countDown entered) (.await release 30 TimeUnit/SECONDS))))
+      (is (.await entered 10 TimeUnit/SECONDS))
+      (open-app!)
+      (s/click! *driver* ".masthead__mode[data-workspace-mode='orient']")
+      (s/wait-visible! *driver* "#bulk-orient-filters")
+      (is (s/wait-until #(= 5 (s/count-els *driver* "[data-bulk-select]")))
+          "the orientation table should finish its initial HTMX load")
+      (is (> (s/width *driver* "#library.bulk-orient") 1000)
+          "the selection table should own the workspace rather than stay in the browse rail")
+      (s/check! *driver* (str "[data-bulk-select][value='" s/hull-id "']"))
+      (s/check! *driver* (str "[data-bulk-select][value='" s/prow-id "']"))
+      (is (= "2 selected" (s/text *driver* "[data-bulk-count]")))
+      (s/js *driver* "() => { window.gridSwaps=0; document.body.addEventListener('htmx:afterSwap', e => { if(e.detail.target.id === 'bulk-orient') window.gridSwaps++; }); }")
+      (s/click! *driver* "[data-bulk-render-button]")
+      (s/wait-visible! *driver* "[data-bulk-grid]")
+      (is (s/wait-until #(>= (s/js *driver* "() => window.gridSwaps") 3))
+          "cold preparation should exercise repeated real HTMX grid replacement")
+      (.countDown release)
+      (let [loaded (s/wait-until #(let [bulk (:bulk (s/stats *driver*))]
+                                    (when (= 2 (:count bulk)) bulk)))]
+        (when-not loaded (throw (ex-info "Both selected meshes must load before editing" {}))))
+      (is (s/wait-until
+           #(s/js *driver* "() => { const grid=document.querySelector('[data-bulk-grid]'); return !!grid && !grid.querySelector('.bulk-grid__poll') && grid.getBoundingClientRect().width > 1000; }")))
+      (s/click! *driver* "[data-bulk-step='15']")
+      (s/click! *driver* "[data-bulk-rotate][data-axis='y'][data-direction='1']")
+      (is (s/wait-until #(= 2 (get-in (s/stats *driver*) [:bulk :dirty])))
+          "one toolbar action should update every selected mesh")
+      (s/fill-and-blur! *driver* "[data-bulk-angle][data-axis='y']" "90")
+      (is (s/wait-until #(every? (fn [q] (vec-close? q [0.0 0.7071 0.0 0.7071]))
+                                 (vals (get-in (s/stats *driver*) [:bulk :orientations]))))
+          "a manual yaw value should set every selected mesh to that absolute angle")
+      (s/click! *driver* "[data-bulk-save] button[type='submit']")
+      (is (s/wait-until #(str/includes? (s/text *driver* "#bulk-orient-status")
+                                        "Saved 2 orientations")))
+      (is (zero? (get-in (s/stats *driver*) [:bulk :dirty]))
+          "a successful response should establish a new saved baseline")
   ;; A second explicit save can restore the identity pose.
-  (s/fill-and-blur! *driver* "[data-bulk-angle][data-axis='y']" "0")
-  (s/click! *driver* "[data-bulk-save] button[type='submit']")
-  (is (s/wait-until #(zero? (get-in (s/stats *driver*) [:bulk :dirty]))))
-  (s/click! *driver* "[data-bulk-back]")
-  (is (zero? (s/count-els *driver* "[data-bulk-grid]")))
-  (is (= "2 selected" (s/text *driver* "[data-bulk-count]"))
-      "returning to the table should preserve the working selection")
-  (is (zero? (get-in (s/stats *driver*) [:bulk :count]))
-      "returning to the table should release its mesh grid"))
+      (s/fill-and-blur! *driver* "[data-bulk-angle][data-axis='y']" "0")
+      (s/click! *driver* "[data-bulk-save] button[type='submit']")
+      (is (s/wait-until #(zero? (get-in (s/stats *driver*) [:bulk :dirty]))))
+      (s/click! *driver* "[data-bulk-back]")
+      (is (zero? (s/count-els *driver* "[data-bulk-grid]")))
+      (is (= "2 selected" (s/text *driver* "[data-bulk-count]"))
+          "returning to the table should preserve the working selection")
+      (is (zero? (get-in (s/stats *driver*) [:bulk :count]))
+          "returning to the table should release its mesh grid")
+      (finally (.countDown release)))))
 
 (defn- assert-bulk-preview-pixels! [part-id]
   (let [selector (str "[data-bulk-part='" part-id "'] [data-bulk-preview]")
