@@ -1609,7 +1609,7 @@
   [canvas]
   (when-let [renderer (renderer! canvas)]
     (let [browse (runtime! canvas renderer :browse nil)
-          environment (.-environment (:scene browse))
+          environment (.-environment ^js (:scene browse))
           runtimes (into {:browse browse} (map (fn [mode] [mode (runtime! canvas renderer mode environment)]))
                          [:orient :assembly :ships])
           app {:runtimes runtimes :active-workspace (atom :browse)}]
