@@ -8,14 +8,13 @@
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing use-fixtures]]
-            [integrant.core :as ig]
             [shipyard.e2e.support :as s])
   (:import [javax.imageio ImageIO]))
 
 (def ^:dynamic *driver* nil)
 (def ^:dynamic *system* nil)
 
-(use-fixtures :once
+(use-fixtures :each
   (fn [run]
     (s/assert-bundle!)
     (let [system (s/start-system!)
@@ -25,7 +24,7 @@
           (run))
         (finally
           (s/quit! driver)
-          (ig/halt! system))))))
+          (s/stop-system! system))))))
 
 (defn- open-app! []
   (s/go! *driver* (s/base-url *system*))
@@ -191,8 +190,7 @@
                                     "Saved 2 orientations")))
   (is (zero? (get-in (s/stats *driver*) [:bulk :dirty]))
       "a successful response should establish a new saved baseline")
-  ;; Restore the fixture sidecars so the once-scoped server remains independent
-  ;; of randomized test order.
+  ;; A second explicit save can restore the identity pose.
   (s/fill-and-blur! *driver* "[data-bulk-angle][data-axis='y']" "0")
   (s/click! *driver* "[data-bulk-save] button[type='submit']")
   (is (s/wait-until #(zero? (get-in (s/stats *driver*) [:bulk :dirty]))))
@@ -796,4 +794,4 @@
         (finally
           (s/quit! driver)
           (.stop ^org.eclipse.jetty.server.Server server)
-          (ig/halt! system))))))
+          (s/stop-system! system))))))

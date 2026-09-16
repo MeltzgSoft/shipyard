@@ -16,6 +16,7 @@
             Playwright]
            [com.microsoft.playwright.options BoundingBox SelectOption]
            [java.io File]
+           [java.util.concurrent ExecutorService TimeUnit]
            [org.eclipse.jetty.server Server ServerConnector]))
 
 ;; --- the fixture library ----------------------------------------------------
@@ -133,9 +134,16 @@
                             :handler (ig/ref :shipyard.http/routes)}})
 
 (defn start-system! []
-  (let [cfg (config (library-tree) (temp-dir "shipyard-e2e-cache"))]
+  (let [root (library-tree) cache-home (temp-dir "shipyard-e2e-cache")
+        cfg (config root cache-home)]
     (ig/load-namespaces cfg)
-    (ig/init cfg)))
+    (vary-meta (ig/init cfg) assoc ::temporary-roots [root cache-home])))
+
+(defn stop-system! [system]
+  (ig/halt! system)
+  (when-let [^ExecutorService pool (get-in system [:shipyard.http/jobs :pool])]
+    (.awaitTermination pool 30 TimeUnit/SECONDS))
+  (doseq [root (::temporary-roots (meta system))] (fs/delete-tree root)))
 
 (defn- block-bundle
   "404 the viewport bundle, and nothing else."
