@@ -22,11 +22,14 @@
    (let [matches (filter #(and (or (not (seq (get filters "bundle"))) (= (get filters "bundle") (:bundle %)))
                                (or (not (seq (get filters "class"))) (= (get filters "class") (:class %)))) entries)]
      (if (seq matches)
-       (for [{:keys [loadout bundle class missing?]} matches
+       (for [{:keys [loadout bundle class missing? empty-mounts]} matches
              :let [{:loadout/keys [id name]} loadout]]
          [:article.ship-card {:data-loadout-id (str id)}
           (action id "preview" name) [:p (str/join " · " (remove nil? [bundle class]))]
           (when missing? [:p.detail__error "Root hull missing from the library."])
+          (when (pos? (or empty-mounts 0))
+            [:p [:span.ship-card__empty-mounts
+                 (str empty-mounts (if (= 1 empty-mounts) " empty mount" " empty mounts"))]])
           (action id "edit" "Edit") (action id "duplicate" "Duplicate")])
        [:p "No saved ships match."]))])
 

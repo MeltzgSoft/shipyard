@@ -251,6 +251,11 @@ load the ship without changing your Assemble draft. There is no separate Preview
 button. The floating inspector lists the hull first, then each component followed by
 its nested parts. Repeated parts remain separate entries.
 
+Incomplete ships can be loaded, edited and duplicated. A card tag such as **3 empty
+mounts** counts unfilled mounts on the hull and attached parts, including nested mounts.
+Mounts on parts you have not attached do not count. The tag disappears when you fill
+all reachable mounts and save. A hull-only ship is valid too.
+
 **Mount colors** starts off in Ship Browser. Turn it on to color the ship and its
 part-tree legend by mount. This setting belongs to Ship Browser and is restored when
 you return; changing it does not affect Assemble. Missing parts remain visible as a

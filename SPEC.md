@@ -567,12 +567,17 @@ actions with defined destinations.
 Ship Browser lists saved loadouts as selectable cards, with browsing and filtering
 similar to Part Browser. Filters are by bundle/faction and class, derived from the
 saved assembly's root hull. Clicking a card or activating it with the keyboard
-displays that complete assembly in Ship Browser, including repeated parts and nested
+displays that saved assembly in Ship Browser, including repeated parts and nested
 slots, and preserves the Assemble
 workspace's draft. A floating inspector shows the selected assembly's part tree and
 color legend, with the hull first and each parent followed by its descendants. The
 Ship Browser has its own mount-color toggle, off by default; its setting and rendered
 colors are restored when returning to this workspace.
+
+Incomplete saved ships load normally. Their cards show a tag with the number of empty
+mounts reachable on the hull and attached parts, including nested and capacity-expanded
+mounts. Do not count hypothetical mounts on unassigned parts. Complete ships have no
+empty-mount tag; a malformed tree has no reliable count.
 
 Each card provides two separate actions:
 

@@ -2100,6 +2100,9 @@ Assemble draft. Preserve the canvas and dispose superseded scene resources as in
 - List saved ships as cards and filter them by the root hull's catalog bundle/faction
   and class. Use existing catalog identities and classification; filters belong to
   Ship Browser. Do not discard missing or stale loadouts silently during listing.
+  Show an `N empty mount(s)` tag when the backend-derived empty-mount count is positive;
+  omit it for complete ships or invalid trees whose count cannot be determined. Partial
+  configurations use the same preview, Edit and Duplicate paths as complete ships.
 - A native submit button covers the card; pointer and keyboard activation validate
   and load a read-only assembly snapshot into Ship Browser. Edit and Duplicate remain
   separate sibling controls; there is no separate Preview button.

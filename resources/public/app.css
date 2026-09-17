@@ -896,6 +896,7 @@ body {
 .ship-card { position: relative; border: 1px solid var(--line); border-radius: 6px; padding: 12px; background: var(--panel-2); }
 .ship-card h3 { margin: 0 0 6px; }
 .ship-card p { color: var(--ink-dim); font-size: 12px; }
+.ship-card__empty-mounts { display: inline-block; padding: 2px 6px; border: 1px solid var(--warn); border-radius: 4px; color: var(--warn); }
 .ship-card__select { margin: 0; }
 .ship-card__load { border: 0; padding: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .ship-card__load::after { content: ""; position: absolute; inset: 0; border-radius: 6px; }
