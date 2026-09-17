@@ -81,6 +81,7 @@
         (is (= "true" (s/js driver "() => document.querySelector('[data-mount-colors-toggle]').getAttribute('aria-pressed')")))
         (let [bytes (slurp (str file))]
           (s/click! driver (str card " button:text-is('Duplicate')"))
+          (s/click! driver ".assembly-discard button:text-is('Discard and duplicate')")
           (s/wait-visible! driver ".assembly__save")
           (await-ship! driver)
           (is (= "Assemble" (s/text driver ".masthead__mode--active")))

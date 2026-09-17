@@ -128,7 +128,8 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
   cursor: pointer;
 }
 .stage:has(#assembly) .stage__mount-colors-toggle,
-.stage:has(.ship-inspector) .stage__mount-colors-toggle { display: block; }
+.stage:has(.ship-inspector) .stage__mount-colors-toggle,
+.stage:has(.assembly-discard) .stage__mount-colors-toggle { display: block; }
 .stage__mount-colors-toggle:hover { border-color: var(--accent); }
 .stage__mount-colors-toggle[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
 body:has(.stage__mount-colors-toggle[aria-pressed="false"]) .assembly__slot-wrap { border-left-color: var(--line); }
@@ -915,3 +916,6 @@ body:has(#workspace-context[data-mount-colors="false"]) .ship-tree__color { back
 .bulk-grid__card [data-bulk-retry] { position: absolute; top: 44px; left: 7px; }
 .bulk-grid__card[data-mesh-state="failed"] .bulk-grid__card-state { color: var(--warn); right: 7px; }
 .bulk-grid__card[data-mesh-state="ready"] .bulk-grid__card-state { opacity: .6; }
+
+.assembly-discard { padding: 12px; }
+.assembly-discard form { display: inline-block; margin-right: 8px; }

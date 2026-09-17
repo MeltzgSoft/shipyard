@@ -33,6 +33,8 @@
                        :responses contracts/html-responses}}]
    ["/assembly/hull" {:post {:handler (partial handlers/mutate! deps :hull)
                              :parameters {:form [:map [:revision revision-schema] [:part-id id-schema]
+                                                 [:name {:optional true} string?]
+                                                 [:discard-revision {:optional true} revision-schema]
                                                  [:bundle {:optional true} string?] [:class {:optional true} string?]]}
                              :responses contracts/html-responses}}]
    ["/assembly/assign" {:post {:handler (partial handlers/mutate! deps :assign)

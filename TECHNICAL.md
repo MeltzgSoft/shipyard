@@ -2046,10 +2046,11 @@ state and unsaved drafts never enter the store. Names are not unique identities.
 The boundary validates the complete envelope and every record on startup, rejecting
 unsupported versions, extra EDN forms and malformed records with an actionable error
 without modifying the source. Creates require an unused UUID; updates require an
-existing explicit UUID and change only that record. Mutations serialize within the
+existing explicit UUID and change only that record. Deletion also requires an existing
+explicit UUID and removes only that record. Mutations serialize within the
 component, write a sibling temporary file, then atomically replace the store before
 publishing the new in-memory value. Filesystems without atomic replacement fail the
-save visibly rather than weakening that guarantee. Failed writes leave the prior
+mutation visibly rather than weakening that guarantee. Failed writes leave the prior
 in-memory value intact and temporary files are removed. One application process owns
 the store; simultaneous processes writing the same store are unsupported.
 
@@ -2120,7 +2121,7 @@ Assemble draft. Preserve the canvas and dispose superseded scene resources as in
   configurations use the same preview, Edit and Duplicate paths as complete ships.
 - A native submit button covers the card; pointer and keyboard activation validate
   and load a read-only assembly snapshot into Ship Browser. Edit and Duplicate remain
-  separate sibling controls; there is no separate Preview button.
+  separate sibling controls alongside Delete; there is no separate Preview button.
   It does not navigate to Assemble or replace its draft or editing identity.
 - A floating inspector renders that snapshot's part tree and color legend. Identify
   instances by full slot path so repeated and nested occurrences remain distinct;
@@ -2137,6 +2138,19 @@ Assemble draft. Preserve the canvas and dispose superseded scene resources as in
   allocates a new UUID and cannot update the source record. Duplicate alone does not
   persist a new record. New drafts use create semantics; edited drafts use update
   semantics, decided by explicit identity rather than name matching.
+- Delete confirms the saved ship name through HTMX and uses the same atomic EDN
+  mutation boundary as Save. It does not validate library availability or delete
+  catalog parts. After the durable commit, clear a matching Ship Browser draft and
+  emit scene removals; detach a matching Assemble draft from its deleted identity,
+  preserving content and advancing its revision. Keep other selections and filters.
+  On failure, preserve both workspace models and report a recoverable error.
+- Before Edit, Duplicate or Start assembly replaces Assemble, compare the backend
+  draft's hull, assignments, name and scheme with its durable record. A nonempty new
+  draft or changed content produces a server-rendered discard/cancel form without
+  changing the scene or active workspace. Carry the current draft revision in the
+  confirmation and check it again under the assembly lock; a newer draft requires
+  confirmation again. Start assembly includes the current name field so an unsaved
+  rename is protected before navigation. Cancel refreshes the current workspace.
 - Revalidate authoritative catalog facts for preview, edit, duplicate and save. A
   failed operation preserves the previous usable draft/preview and reports a
   structured, actionable error. Apply an Edit/Duplicate transfer only after validation

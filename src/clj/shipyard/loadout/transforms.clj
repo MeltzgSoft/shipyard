@@ -40,3 +40,9 @@
     (and (= :create mode) (contains? (:loadouts store) (:loadout/id record))) {:error :id-exists}
     (and (= :update mode) (not (contains? (:loadouts store) (:loadout/id record)))) {:error :missing-loadout}
     :else {:store (assoc-in store [:loadouts (:loadout/id record)] record) :loadout record}))
+
+(defn delete-record [store id]
+  (cond
+    (not (uuid? id)) {:error :invalid-loadout-id}
+    (not (contains? (:loadouts store) id)) {:error :missing-loadout}
+    :else {:store (update store :loadouts dissoc id) :deleted id}))

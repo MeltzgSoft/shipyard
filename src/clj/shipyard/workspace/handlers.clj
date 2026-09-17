@@ -5,6 +5,7 @@
             [shipyard.assembly.db :as assembly]
             [shipyard.assembly.handlers :as assembly-handlers]
             [shipyard.assembly.responses :as errors]
+            [shipyard.assembly.views :as assembly-views]
             [shipyard.bulk-orientation.handlers :as orient]
             [shipyard.bulk-orientation.views :as orient-views]
             [shipyard.http.htmx :as htmx]
@@ -25,7 +26,7 @@
         draft (:draft @(:state preview))
         ;; Revalidate the durable selection before refreshing a preview. A failed
         ;; refresh keeps the last usable scene and inspector, without emitting reset.
-        checked (when (:loadout-id draft) (loadouts/transfer! deps (:loadout-id draft) :preview))
+        checked (when (and (:loadout-id draft) (not (get params "error"))) (loadouts/transfer! deps (:loadout-id draft) :preview))
         result (when-not (or (:error checked) (get params "error"))
                  (assembly/request! (assoc deps :assembly preview) nil
                                     {:resume? (not= "1" (get params "poll")) :retry (get params "retry")}))
@@ -43,6 +44,14 @@
       (htmx/fragment (ship-views/results (loadouts/list! deps {})
                                          (:filters (workspace/workspace! workspace :ships)))))
     (ship-preview! deps request)))
+
+(defn delete-ship! [deps {:keys [parameters]}]
+  (let [id (parse-uuid (get-in parameters [:form :id]))
+        result (loadouts/delete! deps id)]
+    (if (:error result)
+      (assoc (ships! deps {:params {"error" (or (:message result) (get errors/messages (:error result)))}})
+             :status 422)
+      (ships! deps {:params {"poll" "1"}}))))
 
 (declare transition!)
 
@@ -68,14 +77,21 @@
                            (workspace-views/context context colors))
                      {:events {:display {:colors colors}}}))))
 
-(defn transfer! [deps mode {:keys [parameters]}]
-  (let [id (parse-uuid (get-in parameters [:form :id]))
-        result (loadouts/transfer! deps id mode)]
-    (if (:error result)
-      (assoc (ships! deps {:params {"error" (get errors/messages (:error result) "This ship changed. Restore its parts and try again.")}}) :status 422)
-      (if (= mode :preview)
-        (ships! deps {:params {}})
-        (transition! deps {:path-params {:mode "assembly"} :params {} :headers {"hx-request" "true"}})))))
+(defn transfer! [{{state :state} :assembly :as deps} mode {:keys [parameters]}]
+  (locking state
+    (let [{:keys [id discard-revision] :as form} (:form parameters)
+          revision (get-in @state [:draft :revision])]
+      (if (and (not= mode :preview) (loadouts/unsaved? deps)
+               (not= discard-revision (str revision)))
+        (htmx/fragment
+         (assembly-views/discard-confirmation
+          (str "/ships/" (name mode)) (str "Discard and " (name mode)) "/ships?poll=1" form revision true))
+        (let [result (loadouts/transfer! deps (parse-uuid id) mode)]
+          (if (:error result)
+            (assoc (ships! deps {:params {"error" (get errors/messages (:error result) "This ship changed. Restore its parts and try again.")}}) :status 422)
+            (if (= mode :preview)
+              (ships! deps {:params {}})
+              (transition! deps {:path-params {:mode "assembly"} :params {} :headers {"hx-request" "true"}}))))))))
 
 (defn transition! [{:keys [workspace library part-handler facets] :as deps} {:keys [path-params params headers]}]
   (workspace/outgoing! deps params)

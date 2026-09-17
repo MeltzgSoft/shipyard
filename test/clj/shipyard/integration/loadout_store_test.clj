@@ -43,3 +43,23 @@
           (dorun (map deref (mapv #(future (db/put! store % :create)) records)))
           (is (= 9 (count (:loadouts (db/snapshot! (db/open! file))))))))
       (finally (fs/delete-tree dir)))))
+
+(deftest durable-deletion-and-write-failure
+  (let [dir (fs/create-temp-dir) file (fs/path dir "loadouts.edn") store (db/open! file)
+        id (:loadout/id record) other (assoc record :loadout/id (random-uuid))]
+    (try
+      (doseq [value [record other]] (db/put! store value :create))
+      (let [before (db/snapshot! store) bytes (slurp (fs/file file)) blocked (fs/path dir "blocked")]
+        (spit (fs/file blocked) "not a directory")
+        (is (= :store-write-failed (:error (db/delete! (assoc store :file (fs/path blocked "file")) id))))
+        (is (= before (db/snapshot! store)))
+        (is (= bytes (slurp (fs/file file))))
+        (is (= before (db/snapshot! (db/open! file)))))
+      (is (= {:deleted id} (db/delete! store id)))
+      (is (= {(:loadout/id other) other} (:loadouts (db/snapshot! (db/open! file)))))
+      (let [bytes (slurp (fs/file file))]
+        (is (= :missing-loadout (:error (db/delete! store id))))
+        (is (= bytes (slurp (fs/file file)))))
+      (db/delete! store (:loadout/id other))
+      (is (empty? (:loadouts (db/snapshot! (db/open! file)))))
+      (finally (fs/delete-tree dir)))))

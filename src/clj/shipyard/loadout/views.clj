@@ -8,14 +8,15 @@
             [shipyard.workspace.views :as workspace-views]))
 
 (defn- action [id action label]
-  (let [select? (= "preview" action)]
-    [:form (merge (if select? {:hx-sync "#detail:replace"} workspace-views/transition-attrs)
+  (let [select? (= "preview" action) transition? (#{"edit" "duplicate"} action)]
+    [:form (merge (if transition? workspace-views/transition-attrs
+                      {:hx-sync "#detail:replace" :hx-disabled-elt "find button"})
                   {:class (if select? "ship-card__select" "ship-card__action")
                    :hx-post (str "/ships/" action) :hx-target "#detail" :hx-swap "innerHTML settle:0ms"})
      [:input {:type "hidden" :name "id" :value (str id)}]
      (if select?
        [:h3 [:button.ship-card__load {:type "submit" :aria-label (str "Load " label)} label]]
-       [:button {:type "submit" :data-workspace-transition "true"} label])]))
+       [:button {:type "submit" :data-workspace-transition (when transition? "true")} label])]))
 
 (defn results [entries filters]
   [:div#ship-results.ship-cards
@@ -30,7 +31,9 @@
           (when (pos? (or empty-mounts 0))
             [:p [:span.ship-card__empty-mounts
                  (str empty-mounts (if (= 1 empty-mounts) " empty mount" " empty mounts"))]])
-          (action id "edit" "Edit") (action id "duplicate" "Duplicate")])
+          (action id "edit" "Edit") (action id "duplicate" "Duplicate")
+          (assoc-in (action id "delete" "Delete") [1 :hx-confirm]
+                    (str "Delete saved ship “" name "”? Library parts and your Assemble draft will be kept."))])
        [:p "No saved ships match."]))])
 
 (defn cards [entries filters]

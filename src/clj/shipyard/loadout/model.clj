@@ -68,3 +68,21 @@
   (if hull
     (vec (sort-by key compare-slot-paths (assoc assignments [] hull)))
     []))
+
+(defn after-delete
+  "Clear the deleted preview; retain editing work as a new, unsaved draft."
+  [value id target]
+  (if (= id (:loadout-id value))
+    (case target
+      :preview (assoc draft/empty-draft :revision (inc (:revision value)))
+      :assembly (-> value (dissoc :loadout-id) (update :revision inc)))
+    value))
+
+(defn unsaved?
+  "Compare draft content with its durable record; revisions and render state are irrelevant."
+  [value records]
+  (boolean
+   (and (:hull value)
+        (let [id (:loadout-id value) record (get records id)]
+          (or (nil? record)
+              (not= record (to-record value id (:name value))))))))

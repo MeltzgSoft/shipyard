@@ -6,7 +6,8 @@
             [shipyard.assembly.responses :as responses]
             [shipyard.assembly.scene :as scene]
             [shipyard.catalog.db :as catalog]
-            [shipyard.http.urls :as urls]))
+            [shipyard.http.urls :as urls]
+            [shipyard.workspace.views :as workspace-views]))
 
 (defn- form-attrs [action]
   {:method "post" :action action :hx-post action :hx-target "#detail"
@@ -95,8 +96,10 @@
 (defn- assembly-rail [{:keys [database hulls selected-bundle selected-class revision hull selected-hull root slots available draft error saved? drawers]}]
   [:div#assembly-rail {:hx-swap-oob "innerHTML:#library"}
    (assembly-filters database selected-bundle selected-class)
-   [:form.assembly__hull {:method "post" :action "/assembly/hull" :hx-post "/assembly/hull"
-                          :hx-target "#detail" :hx-swap "innerHTML"}
+   ;; The included draft name can be blank; the hull is validated by the server.
+   [:form.assembly__hull {:novalidate true :method "post" :action "/assembly/hull" :hx-post "/assembly/hull"
+                          :hx-target "#detail" :hx-swap "innerHTML"
+                          :hx-include ".assembly__save input[name=name]"}
     (hidden "revision" revision) (hidden "bundle" selected-bundle) (hidden "class" selected-class)
     [:label "Hull" [:select {:name "part-id" :required true :disabled (empty? hulls)}
                     [:option {:value ""} "Choose a hull…"]
@@ -150,3 +153,14 @@
      (assembly-rail {:database database :hulls hulls :selected-bundle selected-bundle :selected-class selected-class
                      :revision revision :hull hull :selected-hull selected-hull :root root :slots slots :available available
                      :draft draft :error error :saved? saved? :drawers drawers})]))
+
+(defn discard-confirmation [action label cancel-url params revision transition?]
+  [:section.assembly-discard {:aria-labelledby "discard-heading"}
+   [:h2#discard-heading "Discard unsaved assembly?"]
+   [:p "Assemble contains an unsaved ship or changes. Continuing will discard them."]
+   [:form (merge (form-attrs action) (when transition? workspace-views/transition-attrs))
+    (for [[field value] (dissoc params :discard-revision)] (hidden (name field) value))
+    (hidden "discard-revision" revision)
+    [:button {:type "submit" :data-workspace-transition (when transition? "true")} label]]
+   [:button {:type "button" :hx-get cancel-url :hx-target "#detail" :hx-swap "innerHTML"
+             :hx-sync "#detail:replace"} "Cancel"]])

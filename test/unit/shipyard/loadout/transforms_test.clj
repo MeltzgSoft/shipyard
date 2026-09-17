@@ -31,3 +31,11 @@
         (is (= 2 (count (:loadouts both))))
         (is (= copy (get-in (:store (t/put-record both (assoc record :loadout/name "Renamed") :update))
                             [:loadouts (:loadout/id copy)])))))))
+
+(deftest delete-by-identity
+  (let [id (:loadout/id record) other (assoc record :loadout/id (random-uuid))
+        store {:version 1 :loadouts {id record (:loadout/id other) other}}]
+    (is (= {:store {:version 1 :loadouts {(:loadout/id other) other}} :deleted id}
+           (t/delete-record store id)))
+    (is (= {:error :missing-loadout} (t/delete-record store (random-uuid))))
+    (is (= {:error :invalid-loadout-id} (t/delete-record store (str id))))))

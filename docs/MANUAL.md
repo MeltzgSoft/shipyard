@@ -249,6 +249,9 @@ Assemble restores the current in-memory draft.
 Choose a hull, enter a **Ship name**, and choose **Save ship** to keep a named
 assembly. Subsequent **Save changes** updates that ship, including when you rename it.
 Starting a new hull clears the saved identity so its next save creates a separate ship.
+If Assemble contains an unsaved ship or changes, **Start assembly** first asks whether
+to discard them. Choose **Cancel** to keep working, or **Discard and start assembly**
+to replace the draft with the chosen hull.
 You can save a hull alone or a partially filled assembly and finish it later. Empty
 mounts also work when previewing, editing or duplicating a saved ship. Unavailable or
 incompatible assigned parts still need correcting before saving; the draft stays
@@ -281,6 +284,18 @@ recoverable error.
 name as needed. Neither action writes the store. Save the duplicate to create a new
 ship while keeping the original unchanged. A failed transfer keeps the current preview
 and draft available.
+
+If Assemble already contains an unsaved ship or changes (including a changed name),
+**Edit** and **Duplicate** first ask for confirmation. Choose **Cancel** to keep your
+assembly, or **Discard and edit** / **Discard and duplicate** to replace it. An
+unchanged saved assembly can be replaced without a prompt.
+
+**Delete** on a card asks you to confirm the ship’s name, then permanently removes
+that saved ship. Library parts and other saved ships are kept. Deleting the displayed
+ship clears its preview. If you were editing it in Assemble, the draft stays available
+as an unsaved copy; **Save ship** gives it a new identity. Deletion also works for ships
+whose library parts are missing. A failed write keeps the saved ship and your work
+available so you can correct the problem and retry.
 
 ## Troubleshooting
 

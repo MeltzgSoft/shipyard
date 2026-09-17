@@ -32,15 +32,26 @@
                           :selected-bundle (not-empty (get params "bundle"))
                           :selected-class (not-empty (get params "class"))))))
 
-(defn mutate! [deps op {:keys [parameters]}]
-  (let [{:keys [revision slot part-id bundle class]} (:form parameters)]
-    (when (and (:workspace deps) (#{:hull :reset} op)
-               (= (parse-long revision) (get-in @(:state (:assembly deps)) [:draft :revision])))
-      (workspace/update-workspace! (:workspace deps) :assembly dissoc :drawers))
-    (response deps (assoc (db/request! deps (cond-> {:op op :revision (parse-long revision) :part-id part-id}
-                                              slot (assoc :slot (edn/read-string slot))) {})
-                          :selected-bundle (not-empty bundle)
-                          :selected-class (not-empty class)))))
+(defn mutate! [{{state :state} :assembly :as deps} op {:keys [parameters]}]
+  (locking state
+    (let [{:keys [revision slot part-id bundle class discard-revision] :as form} (:form parameters)
+          current-revision (get-in @state [:draft :revision])
+          current? (= (parse-long revision) current-revision)]
+      ;; A hull request includes the current name field, including an unsaved rename.
+      (when (and current? (= op :hull) (contains? form :name)
+                 (not= (:name form) (or (get-in @state [:draft :name]) "")))
+        (swap! state assoc-in [:draft :name] (:name form)))
+      (if (and current? (= op :hull) (loadouts/unsaved? deps)
+               (not= discard-revision (str current-revision)))
+        (htmx/fragment (views/discard-confirmation "/assembly/hull" "Discard and start assembly"
+                                                   "/assembly?poll=1" form current-revision false))
+        (do
+          (when (and (:workspace deps) (#{:hull :reset} op) current?)
+            (workspace/update-workspace! (:workspace deps) :assembly dissoc :drawers))
+          (response deps (assoc (db/request! deps (cond-> {:op op :revision (parse-long revision) :part-id part-id}
+                                                    slot (assoc :slot (edn/read-string slot))) {})
+                                :selected-bundle (not-empty bundle)
+                                :selected-class (not-empty class))))))))
 
 (defn save! [deps {:keys [parameters]}]
   (let [{:keys [revision name]} (:form parameters)

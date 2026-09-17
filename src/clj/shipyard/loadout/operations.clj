@@ -48,3 +48,17 @@
 
 (defn list! [{:keys [catalog loadouts]} filters]
   (model/listing (catalog/snapshot! catalog) (:loadouts (store/snapshot! loadouts)) filters))
+
+(defn delete!
+  "Commit deletion before changing either workspace. Match Save's assembly/store lock order."
+  [{:keys [loadouts] {assembly-state :state} :assembly {preview-state :state} :preview} id]
+  (locking assembly-state
+    (locking preview-state
+      (let [result (store/delete! loadouts id)]
+        (when-not (:error result)
+          (swap! assembly-state update :draft model/after-delete id :assembly)
+          (swap! preview-state update :draft model/after-delete id :preview))
+        result))))
+
+(defn unsaved? [{:keys [loadouts assembly]}]
+  (model/unsaved? (:draft @(:state assembly)) (:loadouts (store/snapshot! loadouts))))

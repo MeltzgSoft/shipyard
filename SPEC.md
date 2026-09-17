@@ -579,7 +579,7 @@ mounts reachable on the hull and attached parts, including nested and capacity-e
 mounts. Do not count hypothetical mounts on unassigned parts. Complete ships have no
 empty-mount tag; a malformed tree has no reliable count.
 
-Each card provides two separate actions:
+Each card provides three separate actions:
 
 - **Edit** opens Assemble, updates the workspace selector, and loads the selected
   saved ship for editing. Its saved identity is retained so saving edits updates that
@@ -589,6 +589,17 @@ Each card provides two separate actions:
   The name is pre-populated with exactly `<original name> - Copy` and remains editable.
   Duplicate only pre-populates Assemble; it creates no saved entity. Saving creates
   a new loadout identity and cannot overwrite the source ship.
+- **Delete** asks for confirmation naming the saved ship, then removes only that saved
+  identity. Library parts and other saved ships remain unchanged. Deleting the displayed
+  ship clears its preview and inspector. If Assemble edits that ship, retain its work
+  as an unsaved draft whose next Save creates a new identity. Missing library parts do
+  not prevent deletion; a failed write preserves the record and both workspaces.
+
+Edit, Duplicate and Start assembly ask to discard an existing unsaved assembly or
+cancel before replacing it. Unsaved means a new or duplicate draft with a hull, or
+content (including name and scheme) differing from its saved record. An unchanged
+saved assembly and an empty workspace need no prompt. Cancel preserves the draft,
+workspace and viewport; confirmation applies to the current draft revision.
 
 Invalid or unavailable saved data produces an actionable error without destroying
 the existing draft or preview. Merely returning to Assemble resumes its own draft;

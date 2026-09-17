@@ -71,3 +71,23 @@
             [[[:weapon 2] [:turret 0]] "turret"]
             [[[:weapon 10]] "weapon"]]
            (m/part-tree {:hull "hull" :assignments assignments})))))
+
+(deftest deleting-selected-and-edited-ships
+  (let [id (:loadout/id record) draft (m/from-record record 4 :edit)]
+    (is (= {:revision 5 :hull nil :assignments {}} (m/after-delete draft id :preview)))
+    (is (= (-> draft (dissoc :loadout-id) (assoc :revision 5)) (m/after-delete draft id :assembly)))
+    (doseq [target [:preview :assembly]]
+      (is (= draft (m/after-delete draft (random-uuid) target))))))
+
+(deftest unsaved-content
+  (let [id (:loadout/id record) records {id record} draft (m/from-record record 4 :edit)]
+    (is (false? (m/unsaved? {:hull nil :assignments {}} records)))
+    (is (false? (m/unsaved? draft records)))
+    (is (false? (m/unsaved? (assoc draft :revision 99) records)))
+    (doseq [changed [(dissoc draft :loadout-id) (assoc draft :hull "other")
+                     (assoc draft :assignments {}) (assoc draft :name "Rename")
+                     (assoc draft :name "") (dissoc draft :scheme)
+                     (assoc draft :scheme (random-uuid))]]
+      (is (true? (m/unsaved? changed records))))
+    (is (true? (m/unsaved? draft {})))
+    (is (false? (m/unsaved? (assoc draft :assignments (:loadout/slots record)) records)))))

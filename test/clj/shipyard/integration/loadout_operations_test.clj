@@ -130,3 +130,36 @@
             (is (= assignments (:loadout/slots copy)))
             (is (= saved (get records id))))))
       (finally (fixture/stop! started)))))
+
+(deftest deletion-preserves-work-until-commit
+  (let [started (fixture/start!) deps (lf/deps started)
+        state (get-in deps [:assembly :state]) preview (get-in deps [:preview :state])]
+    (try
+      (swap! state assoc :draft (assoc lf/draft :scheme (random-uuid)))
+      (let [record (:loadout (ops/save! deps 1 "Cruiser")) id (:loadout/id record)
+            file (:file (:loadouts deps)) blocked (fs/path (:temp started) "blocked")]
+        (ops/transfer! deps id :preview)
+        (let [draft (:draft @state) before @state preview-before @preview
+              bytes (slurp (str file))]
+          (spit (fs/file blocked) "not a directory")
+          (is (= :store-write-failed
+                 (:error (ops/delete! (assoc-in deps [:loadouts :file] (fs/path blocked "file")) id))))
+          (is (= before @state))
+          (is (= preview-before @preview))
+          (is (= bytes (slurp (str file))))
+          (is (= :missing-loadout (:error (ops/delete! deps (random-uuid)))))
+          (is (= before @state))
+          (is (= preview-before @preview))
+          (is (= {:deleted id} (ops/delete! deps id)))
+          (is (= (-> draft (dissoc :loadout-id) (update :revision inc)) (:draft @state)))
+          (is (nil? (get-in @preview [:draft :hull])))
+          (is (empty? (:loadouts (store/snapshot! (store/open! file)))))
+          (let [copy (:loadout (ops/save! deps (get-in @state [:draft :revision]) "Recovered"))]
+            (is (uuid? (:loadout/id copy)))
+            (is (not= id (:loadout/id copy)))
+            (is (= (:loadout/slots record) (:loadout/slots copy))))))
+      (testing "missing parts do not block deleting a record"
+        (let [record {:loadout/id (random-uuid) :loadout/name "Missing" :loadout/hull "gone" :loadout/slots {}}]
+          (store/put! (:loadouts deps) record :create)
+          (is (= {:deleted (:loadout/id record)} (ops/delete! deps (:loadout/id record))))))
+      (finally (fixture/stop! started)))))
