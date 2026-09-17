@@ -533,7 +533,9 @@
        [:section#bulk-orient.bulk-orient__stage]
        [:aside#detail.panel.stage__detail
         (when (pos? (:activation context))
-          {:hx-get (str "/workspace/" (name (:workspace context)) "?resume=1") :hx-trigger "load" :hx-swap "innerHTML settle:0ms"})
+          (merge workspace-views/transition-attrs
+                 {:hx-get (str "/workspace/" (name (:workspace context)) "?resume=1")
+                  :hx-trigger "load" :hx-swap "innerHTML settle:0ms"}))
         (detail-empty)]]]]]))
 
 (defn library-needs-root

@@ -2168,7 +2168,9 @@ a later click cannot abort an accepted transition and strand the old context.
 Ordinary navigation never transfers models. Filters and unsaved
 draft names accompany navigation using `hx-include`; Orient checkbox changes and drawer
 disclosure use ordinary HTTP operations. Mount-color changes are server operations.
-Reloading the page reconstructs the active workspace from server state.
+Reloading the page reconstructs the active workspace from server state. The initial
+restore request uses the same navigation synchronization and disabled controls as
+manual transitions, so replacing the restored controls cannot race the first click.
 
 There is no workspace JavaScript/CLJS module or browser application store. HTMX reads
 request headers from the server-rendered context. A small stateless `hx-on` transport

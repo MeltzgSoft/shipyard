@@ -236,6 +236,35 @@
       (is (= "false" (s/js driver "() => document.querySelector('[data-mount-colors-toggle]').getAttribute('aria-pressed')")))
       (finally (s/quit! driver) (fixture/stop! started)))))
 
+(deftest initial-restoration-keeps-navigation-locked-until-ready
+  (let [started (fixture/start! true) driver (s/make-driver) ^Page page (:page driver)
+        held (atom nil)
+        state (:state (:shipyard.workspace/db (:system started)))]
+    (try
+      (.route page "**/workspace/*?resume=1"
+              (reify Consumer
+                (accept [_ value]
+                  (let [^Route route value]
+                    (reset! held [route (.fetch route)])))))
+      ;; First open, then reload the workspace reached by the previous click.
+      ;; Hold the real restore response so this cannot pass by winning a race.
+      (doseq [[destination panel] [["assembly" ".assembly__hull"]
+                                   ["orient" "[data-bulk-select]"]]]
+        (reset! held nil)
+        (s/go! driver (s/base-url (:system started)))
+        (is (s/wait-until #(do (s/stats driver) (some? @held))))
+        (is (true? (s/js driver "() => [...document.querySelectorAll('.masthead__mode')].every(e => e.disabled)"))
+            "restoration must finish before another workspace transition can start")
+        (let [[^Route route ^APIResponse response] @held]
+          (.fulfill route (doto (Route$FulfillOptions.) (.setResponse response))))
+        (switch! driver destination)
+        (s/wait-visible! driver panel)
+        (is (= destination (name (:active @state))))
+        (is (= destination (:workspace (s/stats driver))))
+        (is (= (str (:activation @state))
+               (s/js driver "() => document.getElementById('workspace-context').dataset.activation"))))
+      (finally (s/quit! driver) (fixture/stop! started)))))
+
 (deftest pending-navigation-keeps-server-and-visible-context-together
   (let [started (fixture/start! true) driver (s/make-driver) ^Page page (:page driver)
         held (atom nil)]
