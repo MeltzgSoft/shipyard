@@ -863,6 +863,7 @@ body {
 .bulk-orient__stage:empty { display: none; }
 .bulk-grid { display: flex; flex-direction: column; height: 100%; pointer-events: none; }
 .bulk-grid__toolbar, .bulk-grid__footer { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; padding: 10px 14px; background: rgba(28, 33, 40, .94); border-bottom: 1px solid var(--line); pointer-events: auto; }
+.bulk-grid__controls { display: contents; }
 .bulk-grid__footer { border-top: 1px solid var(--line); border-bottom: 0; }
 .bulk-grid__footer > span { flex: 1; color: var(--ink-dim); font-size: 12px; }
 .bulk-grid__footer form { margin: 0; }

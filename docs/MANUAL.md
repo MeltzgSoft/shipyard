@@ -189,7 +189,8 @@ a grid. Choose a 1°, 15°, or 90° step; the toolbar's Pitch, Yaw, and Roll but
 every model by that amount around the same fixed canonical axes. **Copy first** applies the first model's current pose to
 the whole selection, and **Reset** restores every model to its last saved pose. Previewed
 changes remain transient until **Save orientations** succeeds; a partial save identifies
-the parts that failed without claiming they were saved.
+the parts that failed without claiming they were saved. **Back to table** remains
+available while previews are preparing and retains your selected parts.
 
 **Save mount** creates a new id. If that id already exists, Shipyard reports it instead
 of overwriting silently; use **Replace** only when you mean to update that mount. A part

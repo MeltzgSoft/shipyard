@@ -4,10 +4,12 @@
             [clojure.test :refer [deftest is testing]]
             [shipyard.assembly-fixture :as fixture]
             [shipyard.e2e.support :as s]
+            [shipyard.http.jobs :as jobs]
             [shipyard.loadout-fixture :as lf]
             [shipyard.loadout.db :as store]
             [shipyard.loadout.operations :as operations])
   (:import [com.microsoft.playwright APIResponse Page Route Route$FulfillOptions]
+           [java.util.concurrent CountDownLatch ExecutorService TimeUnit]
            [java.util.function Consumer]))
 
 (defn switch! [driver mode]
@@ -235,6 +237,48 @@
       (s/wait-visible! driver ".assembly__hull")
       (is (= "false" (s/js driver "() => document.querySelector('[data-mount-colors-toggle]').getAttribute('aria-pressed')")))
       (finally (s/quit! driver) (fixture/stop! started)))))
+
+(deftest back-to-table-survives-a-poll-during-the-click
+  (let [started (fixture/start! true) driver (s/make-driver) ^Page page (:page driver)
+        held (atom nil) entered (CountDownLatch. jobs/threads) release (CountDownLatch. 1)
+        ^ExecutorService pool (get-in started [:system :shipyard.http/jobs :pool])
+        state (:state (:shipyard.workspace/db (:system started)))]
+    (try
+      ;; Keep real preprocessing pending; navigation must still work without
+      ;; the viewport bundle and while a real polling response replaces the grid.
+      (dotimes [_ jobs/threads]
+        (.submit pool ^Runnable (fn [] (.countDown entered) (.await release 120 TimeUnit/SECONDS))))
+      (is (.await entered 10 TimeUnit/SECONDS))
+      (.route page "**/js/viewport.js" (reify Consumer (accept [_ route] (.abort ^Route route))))
+      (.route page "**/orient/render"
+              (reify Consumer
+                (accept [_ value]
+                  (let [^Route route value]
+                    (if (and (nil? @held) (str/includes? (.postData (.request route)) "poll=1"))
+                      (reset! held [route (.fetch route)])
+                      (.resume route))))))
+      (s/go! driver (s/base-url (:system started)))
+      (switch! driver "orient")
+      (s/check! driver (str "[data-bulk-select][value='" (:prow fixture/ids) "']"))
+      (s/click! driver "[data-bulk-render-button]")
+      (s/wait-visible! driver "[data-bulk-grid]")
+      (is (s/wait-until #(do (s/js driver "() => true") (some? @held))))
+      (s/js driver "() => { window.pollSwaps=0; document.body.addEventListener('htmx:afterSwap', e => { if(e.detail.target.matches('.bulk-grid__cards')) window.pollSwaps++; }); }")
+      (let [{:keys [x y width height]} (s/bounds driver "[data-bulk-back]")
+            mouse (.mouse page)]
+        (.move mouse (+ x (/ width 2)) (+ y (/ height 2)))
+        (.down mouse)
+        ;; Deliver the response between pointer down and up, deterministically
+        ;; reproducing the lost Back click seen on a busy CI runner.
+        (let [[^Route route ^APIResponse response] @held]
+          (.fulfill route (doto (Route$FulfillOptions.) (.setResponse response))))
+        (is (s/wait-until #(pos? (s/js driver "() => window.pollSwaps"))))
+        (.up mouse))
+      (s/wait-visible! driver "[data-bulk-select]")
+      (is (zero? (s/count-els driver "[data-bulk-grid]")))
+      (is (= "1 selected" (s/text driver "[data-bulk-count]")))
+      (is (false? (get-in @state [:workspaces :orient :grid?])))
+      (finally (.countDown release) (s/quit! driver) (fixture/stop! started)))))
 
 (deftest initial-restoration-keeps-navigation-locked-until-ready
   (let [started (fixture/start! true) driver (s/make-driver) ^Page page (:page driver)

@@ -1825,7 +1825,8 @@ one shared world-space scene does not implement independent card previews.
 Back to table ends the preview session: dispose its meshes/materials, invalidate
 pending mesh fetches and retain the selected-id set. A subsequent Render selection
 starts from the catalog's saved poses. This explicit action is distinct from changing
-workspaces, which must preserve Orient's logical session under §14.
+workspaces, which must preserve Orient's logical session under §14. Preparation polls replace only the cards and editing controls; the Back button stays
+in place so polling cannot remove or move it during a click.
 
 **Persistence and partial failure.** In the capture phase of form submission, serialize
 only dirty entries into the hidden `orientations` field before HTMX reads the form.

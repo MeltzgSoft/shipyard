@@ -78,26 +78,28 @@
      [:header.bulk-grid__toolbar
       [:button (merge workspace-views/transition-attrs {:type "button" :data-bulk-back "true" :data-workspace-transition "true"
                                                         :hx-get "/workspace/orient?table=1" :hx-target "#detail" :hx-swap "innerHTML settle:0ms"}) "← Back to table"]
-      [:strong [:span {:data-bulk-grid-count "true"} (str (count entries) " selected")]]
-      [:span.bulk-grid__divider]
-      (for [[axis label] [["x" "Pitch"] ["y" "Yaw"] ["z" "Roll"]]]
-        [:span.bulk-grid__control [:span {:class (str "bulk-grid__axis bulk-grid__axis--" axis)} label]
-         [:button {:type "button" :disabled preparing? :data-bulk-rotate "true" :data-axis axis :data-direction "-1"} "−"]
-         [:input {:type "number" :disabled preparing? :step "1" :inputmode "decimal"
-                  :placeholder "degrees" :aria-label (str "Set " label " degrees for selection")
-                  :data-bulk-angle "true" :data-axis axis}]
-         [:button {:type "button" :disabled preparing? :data-bulk-rotate "true" :data-axis axis :data-direction "1"} "+"]])
-      [:span.bulk-grid__steps {:aria-label "Rotation step"}
-       (for [step [1 15 90]]
-         [:button {:type "button" :data-bulk-step step :aria-pressed (= 90 step)} (str step "°")])]
-      [:button {:type "button" :disabled preparing? :data-bulk-copy "true"} "Copy first"]
-      [:button {:type "button" :disabled preparing? :data-bulk-reset "true"} "Reset"]]
-     (when preparing?
-       [:span.bulk-grid__poll
-        {:hx-post "/orient/render" :hx-trigger "load delay:400ms"
-         :hx-target "#bulk-orient" :hx-swap "innerHTML"
-         :hx-vals (json/write-str {"part-ids" (pr-str ids) "poll" "1"})}])
+      [:span#bulk-grid-controls.bulk-grid__controls
+       [:strong [:span {:data-bulk-grid-count "true"} (str (count entries) " selected")]]
+       [:span.bulk-grid__divider]
+       (for [[axis label] [["x" "Pitch"] ["y" "Yaw"] ["z" "Roll"]]]
+         [:span.bulk-grid__control [:span {:class (str "bulk-grid__axis bulk-grid__axis--" axis)} label]
+          [:button {:type "button" :disabled preparing? :data-bulk-rotate "true" :data-axis axis :data-direction "-1"} "−"]
+          [:input {:type "number" :disabled preparing? :step "1" :inputmode "decimal"
+                   :placeholder "degrees" :aria-label (str "Set " label " degrees for selection")
+                   :data-bulk-angle "true" :data-axis axis}]
+          [:button {:type "button" :disabled preparing? :data-bulk-rotate "true" :data-axis axis :data-direction "1"} "+"]])
+       [:span.bulk-grid__steps {:aria-label "Rotation step"}
+        (for [step [1 15 90]]
+          [:button {:type "button" :data-bulk-step step :aria-pressed (= 90 step)} (str step "°")])]
+       [:button {:type "button" :disabled preparing? :data-bulk-copy "true"} "Copy first"]
+       [:button {:type "button" :disabled preparing? :data-bulk-reset "true"} "Reset"]]]
      [:div.bulk-grid__cards
+      (when preparing?
+        [:span.bulk-grid__poll
+         {:hidden true :hx-post "/orient/render" :hx-trigger "load delay:400ms"
+          :hx-target ".bulk-grid__cards" :hx-swap "outerHTML"
+          :hx-select ".bulk-grid__cards" :hx-select-oob "#bulk-grid-controls"
+          :hx-vals (json/write-str {"part-ids" (pr-str ids) "poll" "1"})}])
       (for [{:part/keys [id name orientation] :keys [mesh-url mesh-key state message]} entries]
         [:article.bulk-grid__card
          (cond-> {:data-bulk-part id :data-orientation (pr-str orientation)}

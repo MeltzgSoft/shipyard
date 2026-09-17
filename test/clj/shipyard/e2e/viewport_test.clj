@@ -165,7 +165,7 @@
       (s/check! *driver* (str "[data-bulk-select][value='" s/hull-id "']"))
       (s/check! *driver* (str "[data-bulk-select][value='" s/prow-id "']"))
       (is (s/wait-until #(= "2 selected" (s/text *driver* "[data-bulk-count]"))))
-      (s/js *driver* "() => { window.gridSwaps=0; document.body.addEventListener('htmx:afterSwap', e => { if(e.detail.target.id === 'bulk-orient') window.gridSwaps++; }); }")
+      (s/js *driver* "() => { window.gridSwaps=0; document.body.addEventListener('htmx:afterSwap', e => { if(e.detail.target.matches('.bulk-grid__cards')) window.gridSwaps++; }); }")
       (s/click! *driver* "[data-bulk-render-button]")
       (s/wait-visible! *driver* "[data-bulk-grid]")
       (is (s/wait-until #(>= (s/js *driver* "() => window.gridSwaps") 3))
