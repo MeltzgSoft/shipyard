@@ -3,7 +3,6 @@
 
 (def messages
   {:invalid-name "Enter a ship name between 1 and 200 characters."
-   :incomplete-loadout "Fill every mount before saving this ship."
    :missing-loadout "This saved ship is unavailable. Refresh Ship Browser and choose another."
    :store-write-failed "The ship could not be saved. Check the data folder permissions and retry."
    :stale-revision "The draft changed. Review the current choices and try again."

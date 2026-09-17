@@ -15,8 +15,7 @@
                             (cond
                               (nil? part) :missing-part
                               (not (available id)) :unavailable-mesh))) parts)
-                  (some-> derived :errors first :code)
-                  (when (some #(nil? (:assigned %)) (:slots derived)) :incomplete-loadout))]
+                  (some-> derived :errors first :code))]
     (if error
       {:error error :diagnostics (:errors derived)}
       (try
@@ -35,12 +34,19 @@
              :loadout/slots (:assignments draft)}
       (:scheme draft) (assoc :loadout/scheme (:scheme draft)))))
 
+(defn empty-mount-count
+  "Count reachable, unassigned mounts; invalid trees have no reliable count."
+  [database {:loadout/keys [hull slots]}]
+  (let [derived (assembly/slots database hull slots)]
+    (when-not (seq (:errors derived))
+      (count (remove :assigned (:slots derived))))))
+
 (defn listing [database records {:keys [bundle class]}]
   (->> (vals records)
        (map (fn [record]
               (let [hull (catalog/part database (:loadout/hull record))]
                 {:loadout record :bundle (:part/bundle hull) :class (:part/class hull)
-                 :missing? (nil? hull)})))
+                 :missing? (nil? hull) :empty-mounts (empty-mount-count database record)})))
        (filter #(and (or (not (seq bundle)) (= bundle (:bundle %)))
                      (or (not (seq class)) (= class (:class %)))))
        (sort-by (juxt #(get-in % [:loadout :loadout/name]) #(str (get-in % [:loadout :loadout/id]))))

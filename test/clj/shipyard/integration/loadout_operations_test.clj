@@ -104,3 +104,29 @@
           (is (= before @state))
           (is (= bytes (slurp (str file))))))
       (finally (fixture/stop! started)))))
+
+(deftest incomplete-loadouts-round-trip
+  (let [started (fixture/start!) deps (lf/deps started) state (get-in deps [:assembly :state])]
+    (try
+      (doseq [assignments [{} {[[:weapon 0]] (:weapon fixture/ids)}
+                           {[[:weapon 0]] (:weapon fixture/ids)
+                            [[:weapon 0] [:turret 0]] (:turret fixture/ids)}]]
+        (swap! state assoc :draft (assoc lf/draft :assignments assignments :scheme (random-uuid)))
+        (let [saved (:loadout (ops/save! deps 1 "Work in progress")) id (:loadout/id saved)
+              file (:file (:loadouts deps)) bytes (slurp (str file))
+              reloaded (assoc deps :loadouts (store/open! file))]
+          (is (uuid? id))
+          (is (= assignments (:loadout/slots saved)))
+          (doseq [mode [:preview :edit :duplicate]]
+            (let [result (ops/transfer! reloaded id mode)]
+              (is (nil? (:error result)))
+              (is (= assignments (get-in result [:draft :assignments])))
+              (is (= (:loadout/scheme saved) (get-in result [:draft :scheme])))
+              (is (= (inc (count assignments)) (count (:scene result))))))
+          (is (= bytes (slurp (str file))))
+          (let [copy (:loadout (ops/save! deps (get-in @state [:draft :revision]) "Partial copy"))
+                records (:loadouts (store/snapshot! (store/open! file)))]
+            (is (not= id (:loadout/id copy)))
+            (is (= assignments (:loadout/slots copy)))
+            (is (= saved (get records id))))))
+      (finally (fixture/stop! started)))))

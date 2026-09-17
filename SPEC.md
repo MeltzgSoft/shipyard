@@ -476,6 +476,11 @@ A named ship. Slot assignments plus an optional scheme override.
  :loadout/thumb   "thumbs/….png"}
 ```
 
+Saved loadouts may be incomplete: a hull alone or any valid subset of its reachable
+assignments can be saved, previewed, edited and duplicated. Unassigned mounts are
+allowed. Assigned parts must still exist, be available and be compatible with their
+mounts; stale assignment paths and malformed catalog data remain errors.
+
 ### 8.4 Fleet
 
 An ordered list of loadouts with a default scheme. **Rendered as a list, one ship

@@ -224,10 +224,12 @@ and nested turrets remain separate objects. Replacing or clearing a part removes
 object and everything beneath it before the new scene is shown. Returning to browse mode
 clears the assembly scene; returning to Assembly restores the current in-memory draft.
 
-Fill every mount, enter a **Ship name**, and choose **Save ship** to keep a named
+Choose a hull, enter a **Ship name**, and choose **Save ship** to keep a named
 assembly. Subsequent **Save changes** updates that ship, including when you rename it.
 Starting a new hull clears the saved identity so its next save creates a separate ship.
-Incomplete assemblies and unavailable or changed parts cannot be saved; the draft stays
+You can save a hull alone or a partially filled assembly and finish it later. Empty
+mounts also work when previewing, editing or duplicating a saved ship. Unavailable or
+incompatible assigned parts still need correcting before saving; the draft stays
 available to correct and retry. Unsaved changes are lost when Shipyard stops.
 
 Saved ships live in `$XDG_DATA_HOME/shipyard/loadouts.edn` (normally

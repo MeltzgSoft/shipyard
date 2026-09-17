@@ -78,13 +78,19 @@
       (s/select-option! driver ".assembly__hull select[name=part-id]" "hull")
       (s/click! driver ".assembly__hull button")
       (s/wait-visible! driver (slot-selector [[:weapon 0]]))
-      (testing "an incomplete save reports the problem without writing or losing the hull"
+      (testing "a hull-only ship saves without losing the hull and can be completed later"
         (is (s/wait-until #(= 1 (count (get-in (s/stats driver) [:assembly :slots])))))
         (s/fill-and-blur! driver ".assembly__save input[name=name]" "Incomplete")
         (s/click! driver ".assembly__save button")
-        (is (s/wait-until #(str/includes? (s/text driver "#library") "Fill every mount")))
+        (is (s/wait-until #(str/includes? (s/text driver "#library") "Ship saved.")))
         (is (= 1 (count (get-in (s/stats driver) [:assembly :slots]))))
-        (is (empty? (:loadouts (loadouts/snapshot! (:shipyard.loadout/db (:system started)))))))
+        (let [store (:shipyard.loadout/db (:system started))
+              records (:loadouts (loadouts/snapshot! (loadouts/open! (:file store))))
+              saved (first (vals records))]
+          (is (= 1 (count records)))
+          (is (= "Incomplete" (:loadout/name saved)))
+          (is (= (:hull fixture/ids) (:loadout/hull saved)))
+          (is (= {} (:loadout/slots saved)))))
       (doseq [[path label] [[[[:prow 0]] "prow"] [[[:bridge 0]] "bridge"]
                             [[[:antenna 0]] "antenna"] [[[:antenna 1]] "antenna"]
                             [[[:weapon 0]] "weapon"] [[[:weapon 1]] "weapon"]

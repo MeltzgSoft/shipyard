@@ -35,6 +35,25 @@
                  (:error (m/validate (d/db-with database [{:part/id "hull" :part/role-hint :weapon}])
                                      draft available)))))))
     (is (= :no-draft (:error (m/validate assembly/database {} available))))
-    (is (= :incomplete-loadout (:error (m/validate assembly/database (assoc draft :assignments {}) available))))
+    (testing "empty mounts are valid, including hull-only and unfinished nested assemblies"
+      (doseq [assignments [{} {[[:weapon 0]] "weapon"}
+                           {[[:weapon 0]] "weapon" [[:weapon 0] [:turret 0]] "turret"}]]
+        (let [partial-draft (assoc draft :assignments assignments)
+              result (m/validate assembly/database partial-draft available)]
+          (is (nil? (:error result)))
+          (is (= partial-draft (:draft result)))
+          (is (= (inc (count assignments)) (count (:scene result)))))))
     (is (= :unavailable-mesh (:error (m/validate assembly/database draft #{"hull"}))))
     (is (= :stale-slot (:error (m/validate assembly/database (assoc-in draft [:assignments [[:gone 0]]] "turret") available))))))
+
+(deftest empty-mount-count-test
+  (let [record {:loadout/hull "hull" :loadout/slots {}}
+        count-empty #(m/empty-mount-count assembly/database (assoc record :loadout/slots %))]
+    (is (= 2 (count-empty {})))
+    (is (= 2 (count-empty {[[:weapon 0]] "weapon"})))
+    (is (= 1 (count-empty {[[:weapon 0]] "weapon" [[:weapon 0] [:turret 0]] "turret"})))
+    (is (= 2 (count-empty {[[:weapon 0]] "weapon" [[:weapon 1]] "weapon"})))
+    (is (zero? (count-empty {[[:weapon 0]] "weapon" [[:weapon 1]] "weapon"
+                             [[:weapon 0] [:turret 0]] "turret" [[:weapon 1] [:turret 0]] "turret"})))
+    (is (nil? (count-empty {[[:gone 0]] "weapon"})))
+    (is (nil? (m/empty-mount-count assembly/database (assoc record :loadout/hull "gone"))))))

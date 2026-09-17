@@ -2033,12 +2033,17 @@ save visibly rather than weakening that guarantee. Failed writes leave the prior
 in-memory value intact and temporary files are removed. One application process owns
 the store; simultaneous processes writing the same store are unsupported.
 
-The `shipyard.loadout.operations` boundary revalidates a complete assembly against
+The `shipyard.loadout.operations` boundary revalidates the hull and assigned parts against
 current authored catalog facts and fresh source files for every Save, Preview, Edit
 and Duplicate. Assemble retains `:loadout-id`, `:name` and optional `:scheme` in its
 ephemeral draft. Save creates only when identity is absent, otherwise updates that
 explicit id. Edit and Duplicate validate before replacing the draft, with no durable
-write. Preview uses its own assembly state cell and the shared placement protocol.
+write. Empty mounts are valid, including a hull-only ship. Preserve sparse assignments
+exactly; validate only assigned parts for availability and compatibility while retaining
+catalog/slot-shape validation. Listing derives the count of reachable unassigned mounts
+from the current catalog; it does not persist completeness or invent descendants of
+unassigned parts. Invalid trees have no reliable empty-mount count.
+Preview uses its own assembly state cell and the shared placement protocol.
 `POST /assembly/save` accepts a revision and name through Malli middleware and returns
 an ordinary assembly fragment with recoverable validation or persistence errors.
 
