@@ -437,12 +437,12 @@
     (is (= 7 (:geometries first-preview))
         "highlight and all three frame arrows should be observable")
     (testing "a new pick replaces the previous preview instead of growing GPU geometry"
-      (let [baseline (:geometries (s/stats *driver*))
+      (let [baseline (await-stable-geometries)
             revision (:revision first-preview)
             center (viewport-center)]
         (s/click-point! *driver* (:x center) (:y center))
         (is (some? (await-preview revision)))
-        (is (<= (:geometries (s/stats *driver*)) baseline)
+        (is (<= (await-stable-geometries) baseline)
             "repeated picks should not leak Three.js geometries"))))
   (testing "part changes clear previews but retain global face picking"
     (select-part! "Cruiser Hull")
