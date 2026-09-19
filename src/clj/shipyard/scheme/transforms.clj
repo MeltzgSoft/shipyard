@@ -1,6 +1,7 @@
 (ns shipyard.scheme.transforms
   "Pure scheme representation and explicit identity-based updates."
-  (:require [shipyard.loadout.transforms :as loadout]))
+  (:require [shipyard.loadout.transforms :as loadout]
+            [shipyard.paint.faces :as faces]))
 
 (def empty-store {:version 1 :schemes {}})
 
@@ -42,14 +43,21 @@
 
 (defn scheme? [value]
   (and (map? value)
-       (every? #{:scheme/id :scheme/name :scheme/roles :scheme/instances :scheme/groups} (keys value))
+       (every? #{:scheme/id :scheme/name :scheme/roles :scheme/instances :scheme/groups :scheme/details} (keys value))
        (or (not (contains? value :scheme/groups)) (groups? (:scheme/groups value)))
        (uuid? (:scheme/id value)) (loadout/name? (:scheme/name value))
        (map? (:scheme/roles value)) (<= (count (:scheme/roles value)) 256)
        (every? (fn [[role material]] (and (keyword? role) (material? material))) (:scheme/roles value))
        (or (not (contains? value :scheme/instances))
            (and (map? (:scheme/instances value)) (<= (count (:scheme/instances value)) 4097)
-                (every? instance-entry? (:scheme/instances value))))))
+                (every? instance-entry? (:scheme/instances value))))
+       (or (not (contains? value :scheme/details))
+           (and (map? (:scheme/details value))
+                (<= (count (:scheme/details value)) 4097)
+                (every? (fn [[path layer]]
+                          (and (or (= [] path) (loadout/slot-path? path)) (faces/layer? layer)))
+                        (:scheme/details value))
+                (<= (reduce + 0 (map #(count (:faces %)) (vals (:scheme/details value)))) faces/max-painted-faces)))))
 
 (defn store? [value]
   (and (map? value) (= #{:version :schemes} (set (keys value)))

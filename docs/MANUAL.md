@@ -338,7 +338,31 @@ choose **Paint scheme override**, then **Save ship** or **Save changes**. Select
 **No override** clears the assignment when saved. Edit keeps the selected scheme;
 Duplicate copies its reference without changing the source ship or writing before Save.
 A missing scheme displays neutral paint and a warning while retaining its reference.
-Surface detail brushes and fleet-default assignment are not yet available.
+Fleet-default assignment is not yet available.
+
+### Painting details
+
+Select an individual instance (not a role default), turn off **Mount colors**, then
+check **Enable brush**. Choose a **Detail colour** and radius in screen pixels.
+Left-drag on the model to colour whole visible triangles under the circle; release
+to save the stroke. Hidden faces and other parts are not painted. Precision follows
+the mesh triangulation: even a small brush fills a whole triangle. Alt+drag or disable
+the brush to orbit. Detail colour overlays the instance base; its finish stays unchanged.
+
+**Erase to base** removes details under the same visible-only brush. **Undo detail
+stroke** / **Redo detail stroke** keep the last 20 strokes for this target selection.
+Changing target or scheme resets that history. **Clear instance details** removes
+the whole selected layer after confirmation. Shared schemes also share these details.
+
+Check **Details saved.** after release. A failed write keeps the preview for **Retry
+last stroke**; leaving Paint discards unsaved previews. Each stroke is limited to
+1,024 faces and a scheme to 100,000 painted faces. If a stroke is too large, use a
+smaller brush or shorter stroke; it is not partially saved. Large meshes take longer
+to prepare their first detail layer. Replaced parts/source files suppress incompatible
+details and show a warning in Paint; the old mask stays saved until you explicitly
+clear that instance's details. After replacing a source file, reselect your library
+in Settings to rescan it before reopening Paint. Restoring the original source
+restores its mask after the same rescan.
 
 ## Troubleshooting
 

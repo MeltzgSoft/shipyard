@@ -515,7 +515,8 @@ An optional `:scheme/instances` map holds entries such as
 Instance material wins over group material, then role material and neutral studio material. Unmapped
 roles are valid. All RGB channels, metalness and roughness are finite numbers in
 `[0,1]`; stored RGB uses sRGB, as do the editor's colour swatches. Paint names are
-optional free text. Per-region painting remains outside v1.
+optional free text. A detail brush adds per-face base-colour overlays; UV/texture
+painting and per-face metalness/roughness are outside v1.
 
 Groups are named, ordered sets of instance identities within a scheme. Instances may
 belong to multiple groups; the first group in rail order with a material wins. Group
@@ -555,6 +556,24 @@ scrubbing. Pending responses cannot change another selection or activation. Moun
 colors temporarily override base colour only; turning them off restores paint,
 including the material's metalness and roughness.
 
+The **Detail brush** targets one individual instance. Its adjustable circular
+screen-space footprint selects triangles with at least one visible pixel centre
+inside the circle. It fills entire triangles, not partial faces, including at the
+footprint boundary. Occluded and back-facing triangles are excluded; there is no
+paint-through volume. Drag samples overlap along the pointer path. Left-drag paints
+when enabled; Alt+drag or disabling the brush permits ordinary orbiting. A stroke
+commits on release. Detail colour overrides base colour only; **Erase to base**
+removes the selected face overrides. Mount colors hides details without erasing them.
+
+Detail masks are shared scheme data, scoped to full slot path, part id and source
+mesh identity. Changed parts or source meshes never receive an old mask silently;
+retain the old data and warn in Paint. **Clear instance details** explicitly removes
+it so that the new source can be painted. Undo/redo retains up to 20 detail strokes
+in the current server-owned selection, including clear; selection changes reset
+history. Failed writes leave durable masks/history untouched and allow retry.
+The limits are 1,024 faces per stroke and 100,000 painted faces per scheme; reject
+oversized strokes visibly rather than painting an arbitrary subset.
+
 ---
 
 ## 9. UI surfaces
@@ -571,7 +590,7 @@ All server-rendered hiccup driven by htmx, except the viewport.
 - **Mount wizard** (§5.4) - pick a face in the viewport, review the computed frame,
   adjust roll, name it, save. Offers symmetry mirroring on hulls. Surfaces
   `:mount/origin` so mirrored and seeded mounts can be confirmed.
-- **Paint editor** - per-role swatches against the live model.
+- **Paint editor** - role defaults, individual part materials and visible-face detail brushing against the live model.
 - **Fleet roster** - list of loadouts, select to load into the viewport.
 - **Ship Browser** - a separate workspace immediately after Assemble in the workspace
   selector, for viewing saved assembled ships. See §9.3.

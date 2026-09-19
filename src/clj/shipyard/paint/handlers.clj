@@ -6,6 +6,7 @@
             [shipyard.loadout.transforms :as loadout]
             [shipyard.paint.db :as db]
             [shipyard.paint.groups :as groups]
+            [shipyard.paint.strokes :as strokes]
             [shipyard.paint.transforms :as transforms]
             [shipyard.paint.views :as views]
             [shipyard.scheme.db :as schemes]
@@ -91,3 +92,21 @@
       (if (:error saved) {:error (or (:message saved) (:error saved))}
           (when (= action :create)
             (workspace/update-workspace! workspace :paint assoc :target (str "group/" id)))))))
+
+(defn stroke! [{:keys [paint] :as deps} {:keys [params]}]
+  (let [result (strokes/stroke! deps params)]
+    (htmx/fragment
+     (if (:error result)
+       [:span.detail__error {:role "alert"}
+        (or (:message result)
+            (case (:error result)
+              :changed-source "Source mesh changed. Clear instance details before repainting. Nothing saved."
+              :invalid-faces "Invalid or oversized stroke. Use a smaller brush or shorter stroke (maximum 1,024 faces). Nothing saved."
+              :paint-limit "Scheme detail limit reached (100,000 faces). Erase or clear some details first."
+              :stale-stroke "Paint selection changed. Reopen it before retrying."
+              :no-undo "No detail stroke to undo for this selection."
+              :no-redo "No detail stroke to redo for this selection."
+              "Stroke was not saved. Retry, or reopen Paint to restore saved details."))]
+       (let [scene (assembly/request! (assoc deps :assembly paint) nil {})]
+         (list [:span "Details saved."]
+               [:input {:type "hidden" :data-assembly-event (pr-str (:event scene))}]))))))
