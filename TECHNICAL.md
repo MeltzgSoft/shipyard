@@ -2274,3 +2274,34 @@ instances, hull-only and sparse ships, role fallback after replacement, mount-co
 round trips, shared-scheme updates, live input without disk writes, commit/reload,
 failed persistence and delayed work across selections and activations. Each behavior
 PR includes real-browser coverage and updates the supported user manual (§10.3).
+
+### 15.1 Visible detail brush
+
+Optional `:scheme/details` maps each full instance path to
+`{:part-id string :mesh-key source-sha256 :faces {face-key [sRGB r g b]}}`.
+A face key is the concatenation of the nine lower-case, eight-digit Float32 hex
+coordinates of the lexicographically smallest cyclic rotation of its three
+source-space vertices, with negative zero normalized. It survives triangle/index
+reordering while keeping opposite-facing coincident triangles distinct. Identical
+same-winding triangles intentionally share a geometric face identity. Masks use
+tier 0 only, never facet indices or decimated LOD indices. Rendering filters by both
+part id and current source hash. A mismatch retains data and warns in Paint.
+
+The browser creates one temporary depth-tested RGB triangle-ID render at CSS canvas
+resolution per stroke. All assembly instances occlude; only IDs from the selected
+instance are admitted. The pass uses front faces, no MSAA, blending, lighting or
+colour conversion. Readback is sampled at pixel centres inside the circular brush;
+pointer segments are sampled at intervals of at most half the radius. Camera updates
+pause during a stroke. Temporary ID geometries, material and render target are
+disposed immediately after readback. A painted instance uses a nonindexed tier-0
+geometry and one vertex-colour buffer with linear RGB, not materials/draws per face.
+This preserves face normals and placement; clearing overlays restores base material.
+
+`POST /paint/stroke` uses workspace/activation admission, a separate monotonic brush
+sequence and selected scheme/target guards. It validates bounded face keys against
+the current tier-0 source geometry, caching one membership set in the Paint component.
+It commits through the same atomic scheme boundary; no partial strokes. Undo/redo
+history is bounded to 20 snapshots in server workspace state, with before/after guards;
+only successful commits change history. Navigation restores committed masks. Strokes
+and material saves disable competing controls until acknowledgement. Success emits
+material/detail commands without replacing geometry or changing mesh fetch tokens.

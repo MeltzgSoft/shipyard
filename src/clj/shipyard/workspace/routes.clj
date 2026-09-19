@@ -17,7 +17,8 @@
                                   :responses contracts/html-responses}}]]
         (concat
          [["/paint" {:get {:handler (partial paint/current! deps) :responses contracts/html-responses}}]
-          ["/paint/material" {:post {:handler (partial paint/material! deps) :responses contracts/html-responses}}]]
+          ["/paint/material" {:post {:handler (partial paint/material! deps) :responses contracts/html-responses}}]
+          ["/paint/stroke" {:post {:handler (partial paint/stroke! deps) :responses contracts/html-responses}}]]
          (for [action [:select :target :create :rename :default]]
            [(str "/paint/" (name action)) {:post {:handler (partial handlers/paint-selection! deps action)
                                                   :responses contracts/html-responses}}])

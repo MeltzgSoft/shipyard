@@ -10,7 +10,34 @@
                                  :hx-include ".assembly__save input[name=name]"})
    [:button {:type "submit" :data-workspace-transition "true"} label]])
 
-(defn panel [records draft targets target record value paths sequence error prepared]
+(defn brush-panel [record target prepared brush-sequence]
+  (when (and record (contains? target :path) (= :ready (get-in prepared [(:part-id target) :state])))
+    [:form#paint-brush
+     {:hx-post "/paint/stroke" :hx-target "#brush-status" :hx-swap "innerHTML" :hx-sync "this:drop"
+      :hx-disabled-elt "#paint-brush input:not([type=hidden]), #paint-brush select, #paint-brush button, #paint-material input, #paint-material button, #workspace-navigation button, #paint-select select, #paint-target select, #paint-create button, #paint-rename button, #paint-default button, #mount-colors-toggle"
+      :hx-on--config-request "var field=this.elements.sequence;field.value=Number(field.value)+1;event.detail.parameters.sequence=field.value;"
+      :hx-on--before-request "document.getElementById('brush-status').textContent='Saving stroke…';"
+      :hx-on--after-request "if(document.contains(this)&&!event.detail.successful){document.getElementById('brush-status').textContent='Save not confirmed. Retry last stroke, or reopen Paint to restore saved details.';}"}
+     [:h3 "Detail brush"]
+     [:p "Paints whole visible triangles on this instance only. Detail colour overlays its base; metalness and roughness remain instance-wide. Turn off Mount colors to paint. Alt+drag to orbit."]
+     [:input {:type "hidden" :name "id" :value (str (:scheme/id record))}]
+     [:input {:type "hidden" :name "target" :value (:key target)}]
+     [:input {:type "hidden" :name "mesh-key" :value (get-in prepared [(:part-id target) :mesh-key])}]
+     [:input {:type "hidden" :name "sequence" :value brush-sequence}]
+     [:input {:type "hidden" :name "faces" :value "[]"}]
+     [:input {:type "hidden" :name "color" :value "#ff0000"}]
+     [:input {:type "hidden" :name "operation" :value "paint"}]
+     [:label [:input {:type "checkbox" :name "enabled"}] "Enable brush"]
+     [:label "Detail colour" [:input {:type "color" :name "brush-color" :value "#ff0000"}]]
+     [:label "Radius (screen pixels)" [:input {:type "range" :name "radius" :min 2 :max 100 :value 20}]]
+     [:label "Mode" [:select {:name "mode"} [:option {:value "paint"} "Paint"] [:option {:value "erase"} "Erase to base"]]]
+     [:button {:type "submit"} "Retry last stroke"]
+     [:button {:type "submit" :name "history" :value "undo"} "Undo detail stroke"]
+     [:button {:type "submit" :name "history" :value "redo"} "Redo detail stroke"]
+     [:button {:type "submit" :name "history" :value "clear" :onclick "return window.confirm('Clear all details on this instance?')"} "Clear instance details"]
+     [:p#brush-status {:role "status"} "Release to save. Up to 1,024 faces per stroke; undo keeps the last 20 strokes for this selection."]]))
+
+(defn panel [records draft targets target record value paths sequence error prepared brush-sequence]
   (list
    [:section#library.panel {:hx-swap-oob "outerHTML"}
     [:h2.panel__title "Paint"]
@@ -45,7 +72,7 @@
       [:form#paint-material
        {:hx-post "/paint/material" :hx-target "#paint-status" :hx-swap "innerHTML"
         :hx-trigger "change, submit" :hx-sync "this:queue last"
-        :hx-disabled-elt "#workspace-navigation button, #paint-select select, #paint-target select, #paint-create button, #paint-rename button, #paint-default button, #mount-colors-toggle"
+        :hx-disabled-elt "#paint-brush input:not([type=hidden]), #paint-brush select, #paint-brush button, #workspace-navigation button, #paint-select select, #paint-target select, #paint-create button, #paint-rename button, #paint-default button, #mount-colors-toggle"
         :data-paint-slots (pr-str paths)
         :hx-on:input "this.elements.sequence.value=Number(this.elements.sequence.value)+1;document.getElementById('paint-status').textContent='Preview not saved';"
         :hx-on--config-request "var field=this.elements.sequence;field.value=Number(field.value)+1;event.detail.parameters.sequence=field.value;"
@@ -62,4 +89,5 @@
        [:p#paint-status {:role "status"} "Saved values"]])
     (when (and record target (contains? target :path))
       [:form#paint-default (merge selection-attrs {:hx-post "/paint/default"})
-       [:button {:type "submit"} "Use role default"]])]))
+       [:button {:type "submit"} "Use role default"]])
+    (brush-panel record target prepared brush-sequence)]))

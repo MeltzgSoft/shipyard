@@ -68,6 +68,7 @@
                     (into {} (map (fn [[path placement]]
                                     (let [id (:part-id placement) role (:part/role-hint (catalog/part database id))]
                                       [path (assoc placement :role role
+                                                   :details (get-in selected [:scheme :scheme/details path])
                                                    :material (material/resolve-material (:scheme selected) path id role))])))
                           (:scene placement-result)))
           sources (fresh-sources library (map :part-id (vals after)))
@@ -80,5 +81,10 @@
       (reset! state {:draft effective-draft :sequence (inc sequence)
                      :root (if blocked-root? root current-root) :scene after})
       (merge result {:database database :prepared prepared :event envelope :scheme-warning (:missing? selected)
+                     :detail-warning (boolean (some (fn [[_ {:keys [part-id details]}]]
+                                                      (and details (or (not= part-id (:part-id details))
+                                                                       (not (contains? sources part-id))
+                                                                       (and (get mesh-keys part-id)
+                                                                            (not= (:mesh-key details) (get mesh-keys part-id)))))) after))
                      :available available}
              (when (:error placement-result) {:error (:error placement-result) :status 422})))))

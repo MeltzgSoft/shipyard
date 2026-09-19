@@ -146,7 +146,7 @@
                  :rename (paint/rename! deps params)
                  :default (paint/default! deps params)
                  (paint/select! deps params))]
-    (workspace/update-workspace! workspace :paint assoc :edit-sequence 0)
+    (workspace/update-workspace! workspace :paint assoc :edit-sequence 0 :brush-sequence 0 :brush-history nil)
     (transition! deps {:path-params {:mode "paint"} :params (when (:error result) {"error" (:error result)})
                        :headers {"hx-request" "true"}})))
 
@@ -159,5 +159,5 @@
                 (ships! deps {:params {"poll" "1"}}))
               [:p.detail__error {:role "alert"} "Select a valid assembled ship before painting. Restore missing parts and retry."])
       (do
-        (workspace/update-workspace! workspace :paint dissoc :target :edit-sequence)
+        (workspace/update-workspace! workspace :paint dissoc :target :edit-sequence :brush-sequence :brush-history)
         (transition! deps {:path-params {:mode "paint"} :params {} :headers {"hx-request" "true"}})))))
