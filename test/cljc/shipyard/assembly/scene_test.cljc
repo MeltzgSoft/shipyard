@@ -52,3 +52,12 @@
     (is (scene/current? updated (:slot set-a) token))
     (is (= material (get-in updated [:slots (:slot set-a) :payload :material])))
     (is (= updated (scene/accept-event updated (event 1 [set-a]))))))
+
+(deftest details-update-the-latest-payload-without-invalidating-mesh-tokens
+  (let [state (scene/accept-event scene/empty-state (event 1 [{:op :reset} set-a]))
+        token (get-in state [:slots (:slot set-a) :token])
+        details {:part-id "example" :mesh-key "hash" :faces {"face" [1 0 0]}}
+        updated (scene/accept-event state (event 2 [(assoc set-a :details details)]))]
+    (is (scene/current? updated (:slot set-a) token))
+    (is (= details (get-in updated [:slots (:slot set-a) :payload :details])))
+    (is (not (scene/current? (scene/leave updated) (:slot set-a) token)))))

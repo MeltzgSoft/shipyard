@@ -16,7 +16,8 @@
                                   :parameters {:form ship-id-form}
                                   :responses contracts/html-responses}}]]
         (concat
-         [["/paint" {:get {:handler (partial paint/current! deps) :responses contracts/html-responses}}]
+         [["/paint/stroke" {:post {:handler (partial paint/stroke! deps) :responses contracts/html-responses}}]
+          ["/paint" {:get {:handler (partial paint/current! deps) :responses contracts/html-responses}}]
           ["/paint/material" {:post {:handler (partial paint/material! deps) :responses contracts/html-responses}}]]
          (for [action [:create :rename :delete :members :order]]
            [(str "/paint/group/" (name action))

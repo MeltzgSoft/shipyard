@@ -10,7 +10,8 @@
             [shipyard.workspace.db :as workspace]))
 
 (defmethod ig/init-key :shipyard.paint/db [_ _]
-  {:state (atom {:draft assembly/empty-draft :sequence 0 :root nil :scene {}})})
+  {:state (atom {:draft assembly/empty-draft :sequence 0 :root nil :scene {}})
+   :face-cache (atom nil)})
 
 (defn transfer! [{:keys [paint library catalog]} source]
   (let [draft (:draft @(:state source))

@@ -22,6 +22,8 @@
             [shipyard.math :as math]
             [shipyard.mount.split :as split]
             [shipyard.part.orientation :as orientation]
+            [shipyard.paint.render :as paint-render]
+            [shipyard.paint.brush :as brush]
             [shipyard.scheme.material :as paint-material]
             [shipyard.wire :as wire]))
 
@@ -488,7 +490,8 @@
       (.setHex (.-color surface) (.. object -userData -mountColor))
       (.setRGB (.-color surface) r g b))
     (set! (.-metalness surface) metalness)
-    (set! (.-roughness surface) roughness)))
+    (set! (.-roughness surface) roughness)
+    (paint-render/apply-colors! object base colors?)))
 
 (defn- set-mount-colors! [{:keys [parts mount-markers mount-colors-enabled interfaces]} enabled?]
   (reset! mount-colors-enabled enabled?)
@@ -1061,12 +1064,13 @@
                        object (three/Mesh. geometry surface)]
                    (try
                      (when-let [color (:color payload)]
-                       (set! (.. object -userData -mountColor) color)
-                       (apply-material! object (:material payload) @mount-colors-enabled))
+                       (set! (.. object -userData -mountColor) color))
                      (set! (.-matrixAutoUpdate object) false)
                      (.fromArray (.-matrix object) (clj->js (:matrix payload)))
                      (set! (.. object -userData -partId) (:part-id payload))
                      (set! (.. object -userData -meshKey) (:mesh-key payload))
+                     (paint-render/set-details! object (:details payload))
+                     (apply-material! object (:material payload) @mount-colors-enabled)
                      (.updateMatrixWorld object true)
                      (put-part! sys slot object)
                      (frame-assembly! sys)
@@ -1099,6 +1103,7 @@
         (swap! (:mount-markers sys) dissoc slot))
       (reset! assembly after)
       (doseq [[slot ^js object] @parts]
+        (paint-render/set-details! object (get-in after [:slots slot :payload :details]))
         (apply-material! object (get-in after [:slots slot :payload :material]) @(:mount-colors-enabled sys)))
       (sync-mount-markers! sys (:mount-markers event))
       (doseq [{:keys [op slot] :as command} (:commands event)
@@ -1355,7 +1360,7 @@
          :activation @(:activation sys)
          :parts     (clj->js (vec (keys @parts)))
          :vertices  (reduce + 0 (map (fn [^js o] (.. o -geometry -attributes -position -count)) objs))
-         :triangles (reduce + 0 (map (fn [^js o] (/ (.. o -geometry -index -count) 3)) objs))
+         :triangles (reduce + 0 (map (fn [^js o] (paint-render/triangle-count (.-geometry o))) objs))
          :draws     (.. renderer -info -render -calls)
          :render-frame (.. renderer -info -render -frame)
          :target    (let [t (.-target controls)] #js [(.-x t) (.-y t) (.-z t)])
@@ -1380,6 +1385,9 @@
                                        :color (.getHexString (.. object -material -color))
                                        :metalness (.. object -material -metalness)
                                        :roughness (.. object -material -roughness)
+                                       :details (:faces (.. object -userData -paintDetails))
+                                       :vertex-colors (.. object -material -vertexColors)
+                                       :face-centers (paint-render/projected-faces object camera (:canvas sys))
                                        :uuid (.-uuid object) :matrix (vec (.. object -matrix -elements))})
                                     @parts))})
          :bulk (clj->js (bulk-stats sys))
@@ -1460,7 +1468,7 @@
            ^js orientation-scene ^js orientation-camera orientation-guide bulk] :as sys}]
   (let [w (max 1 (.-clientWidth canvas))
         h (max 1 (.-clientHeight canvas))]
-    (.update controls)
+    (when (.-enabled controls) (.update controls))
     (.setScissorTest renderer false)
     (.setViewport renderer 0 0 w h)
     (.clear renderer true true true)
@@ -1618,10 +1626,12 @@
     (set! (.-background scene) (three/Color. 0x14171c))
     (.set (.-position orientation-camera) 3.0 2.6 4.0)
     (.lookAt orientation-camera 0.0 0.0 0.0)
-    (set! (.-enableDamping controls) true)
+    ;; Paint must stop orbiting exactly where the next brush stroke begins.
+    (set! (.-enableDamping controls) (not= mode :paint))
     (set! (.-enabled controls) (= mode :browse))
     (if environment (set! (.-environment scene) environment) (environment! renderer scene))
     (listen! sys)
+    (when (= mode :paint) (brush/listen! sys apply-material!))
     sys))
 
 (defn- active-runtime [{:keys [runtimes active-workspace]}]
