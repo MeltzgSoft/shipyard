@@ -126,12 +126,16 @@
                             :cache   (ig/ref :shipyard.mesh/cache)}
    :shipyard.assembly/db {}
    :shipyard.loadout/db {:data-home (str cache-home)}
+   :shipyard.scheme/db {:data-home (str cache-home)}
+   :shipyard.paint/db {}
    :shipyard.loadout.operations/preview {}
    :shipyard.workspace/db {:assembly (ig/ref :shipyard.assembly/db)
                            :preview (ig/ref :shipyard.loadout.operations/preview)}
    :shipyard.http/routes   {:workspace (ig/ref :shipyard.workspace/db)
                             :assembly (ig/ref :shipyard.assembly/db)
                             :loadouts (ig/ref :shipyard.loadout/db)
+                            :schemes (ig/ref :shipyard.scheme/db)
+                            :paint (ig/ref :shipyard.paint/db)
                             :preview (ig/ref :shipyard.loadout.operations/preview)
                             :library (ig/ref :shipyard.library/index)
                             :catalog (ig/ref :shipyard.catalog/db)

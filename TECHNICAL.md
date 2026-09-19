@@ -2209,7 +2209,7 @@ changes workspace state nor renders controls. Server `shipyard:workspace` and
 `shipyard:display` events tell the viewport what to display. Navigation, filters,
 selection and settings remain functional with the viewport bundle unavailable.
 
-One renderer and shared studio environment serve four retained viewport runtimes.
+One renderer and shared studio environment serve independently retained viewport runtimes.
 Their local state is confined to cameras, render resources, interactive unsaved poses
 and mesh request tokens. Pending mesh loads carry server activation and request tokens;
 leaving invalidates those loads while retaining installed objects and unsaved Orient
@@ -2252,6 +2252,15 @@ navigation invalidate old responses through the server activation. During an act
 commit, disable navigation/selection until its response settles. Failed commits do
 not advance durable state and expose retry; navigation restores committed values.
 Scheme edits are shared durable facts, resolved again when a consumer resumes.
+
+The Paint implementation uses `:shipyard.paint/db` for its independent assembly
+cell. Workspace state holds the selected target and last admitted edit sequence.
+An HTMX form queues the latest change while a commit is active; its request sequence
+advances at serialization, including retries. Responses update status only, leaving
+newer input and viewport previews intact. Selection changes advance the shared
+workspace activation. Live material previews update the current slot payload as well
+as installed objects, so pending meshes receive the newest value. No client store
+owns model selection, scheme identity or navigation.
 
 Tests cover two identical weapons at different paths with different paint, nested
 instances, hull-only and sparse ships, role fallback after replacement, mount-color

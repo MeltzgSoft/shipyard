@@ -129,6 +129,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
 }
 .stage:has(#assembly) .stage__mount-colors-toggle,
 .stage:has(.ship-inspector) .stage__mount-colors-toggle,
+.stage:has(.paint-editor) .stage__mount-colors-toggle,
 .stage:has(.assembly-discard) .stage__mount-colors-toggle { display: block; }
 .stage__mount-colors-toggle:hover { border-color: var(--accent); }
 .stage__mount-colors-toggle[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
@@ -919,3 +920,7 @@ body:has(#workspace-context[data-mount-colors="false"]) .ship-tree__color { back
 
 .assembly-discard { padding: 12px; }
 .assembly-discard form { display: inline-block; margin-right: 8px; }
+.paint-editor { padding: 14px; }
+.paint-editor form, #paint-select, #paint-target, #paint-create, #paint-rename { display: grid; gap: 10px; padding: 10px 12px; }
+.paint-editor label, #paint-select label, #paint-target label, #paint-create label, #paint-rename label { display: grid; gap: 5px; }
+.paint-editor input, #paint-select select, #paint-target select, #paint-create input, #paint-rename input { min-width: 0; max-width: 100%; }
