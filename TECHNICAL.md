@@ -2215,3 +2215,43 @@ and mesh request tokens. Pending mesh loads carry server activation and request 
 leaving invalidates those loads while retaining installed objects and unsaved Orient
 poses. Superseded geometry is disposed when that workspace replaces it. Reloading loses
 unsaved viewport poses, while selections and settings remain in the running server.
+
+## 15. Paint schemes and individual instances
+
+The scheme store follows §13.5's serialized, exact-path atomic EDN boundary. Its
+envelope is `{:version 1 :schemes {uuid record}}`; records contain `:scheme/id`,
+`:scheme/name`, `:scheme/roles` and optional `:scheme/instances`. Instance keys are
+full path vectors, including `[]` for the hull; values contain `:part-id` and
+`:material`. Validate the whole envelope before publishing memory. Persist no
+workspace selection or uncommitted preview values. A missing store starts empty;
+malformed stores stop startup with a recovery message and remain untouched.
+
+Material resolution is pure: matching path and part identity, then authoritative
+catalog role, then neutral. A loadout override selects the scheme before any fleet
+default; a dangling override warns and uses neutral, without silently selecting a
+different scheme or removing its UUID. Fleet assignment is an M6 integration.
+RGB values are stored in sRGB; convert explicitly at the three.js boundary. Reuse
+MeshStandardMaterial and the shared PMREM environment. Mount colors replace base
+colour only and never overwrite the saved effective material.
+
+Paint owns a separate assembly model, selected scheme and mount-color setting in
+the server workspace component. Explicit transfers validate a source draft before
+copying its hull/assignments. No transfer writes loadouts or schemes. The common
+transition contract restores Paint and synchronizes selector, panels and viewport.
+Snapshots carry resolved materials per full slot path, including the hull. Mesh
+completion reads the current material, so a late load cannot restore older paint.
+
+Paint controls are Hiccup/HTMX. Local input updates only viewport material resources;
+change submits the complete selected material through the workspace admission
+boundary. Serialize accepted commits and use request correlation for responses.
+An acknowledgement must not overwrite a later local input; selection changes and
+navigation invalidate old responses through the server activation. During an active
+commit, disable navigation/selection until its response settles. Failed commits do
+not advance durable state and expose retry; navigation restores committed values.
+Scheme edits are shared durable facts, resolved again when a consumer resumes.
+
+Tests cover two identical weapons at different paths with different paint, nested
+instances, hull-only and sparse ships, role fallback after replacement, mount-color
+round trips, shared-scheme updates, live input without disk writes, commit/reload,
+failed persistence and delayed work across selections and activations. Each behavior
+PR includes real-browser coverage and updates the supported user manual (§10.3).

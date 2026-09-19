@@ -489,9 +489,12 @@ scene. Thumbnails per entry are desirable but lower priority (M6).
 
 ### 8.5 Paint scheme
 
-**v1 is per-part colour** - hull one colour, prow another, weapons a third. Nearly free,
-since the parts are already separate meshes with separate materials. A scheme maps part
-role to a material:
+**v1 supports individual part instances**, with role defaults for convenient reuse.
+Two copies of the same weapon may have different materials. Instance identity is the
+full assembly slot path (the root hull uses `[]`), paired with the assigned part id.
+An instance override applies only while that same part occupies that path; replacing
+the part uses its role default. Unmatched overrides remain in the scheme for reuse.
+A scheme maps roles and optional individual instances to materials:
 
 ```clojure
 {:scheme/id    #uuid "…"
@@ -506,13 +509,39 @@ role to a material:
 `:paint` is an optional free-text range name so a scheme can double as a shopping list.
 Mapping to actual manufacturer ranges is not attempted in v1.
 
-**Assumption, flagged:** per-part granularity is assumed sufficient for v1. Per-region
-painting - spine, engine block, panel lines separately - is a plausible later refinement
-but requires either region definitions or true surface painting, and STL carries no UVs.
-Confirm before building on this.
+An optional `:scheme/instances` map holds entries such as
+`{[[:port-1 0]] {:part-id "human-navy/cruiser/lance-battery"
+                 :material {:base [0.8 0.1 0.1] :metalness 0.2 :roughness 0.6}}}`.
+Instance material wins over role material, then neutral studio material. Unmapped
+roles are valid. All RGB channels, metalness and roughness are finite numbers in
+`[0,1]`; stored RGB uses sRGB, as do the editor's colour swatches. Paint names are
+optional free text. Per-region painting remains outside v1.
 
 A fleet carries a default scheme; individual loadouts may override it for squadron
-markings.
+markings. Named schemes and loadout overrides belong to M5; fleet-default assignment
+and the fleet workflow belong to M6. A loadout override takes precedence over a fleet
+default; without either the ship uses neutral materials. An unavailable referenced
+scheme displays a recoverable warning and neutral materials, preserving its UUID.
+
+The **Paint** workspace follows §9.2. **Paint assembly** explicitly copies Assemble's
+current hull and assignments into an independent preview; **Paint ship** does the
+same for a selected saved ship. Complete, partial and hull-only assemblies are valid.
+Ordinary workspace navigation restores the last paint selection without copying a
+different workspace's model. Paint appears after Ship Browser in the selector.
+
+Choose an existing scheme or enter a name and choose **Create scheme** to allocate
+its UUID and persist an empty scheme. Creation does not assign it to a loadout.
+The editor offers role defaults and individual populated instances, identified by
+their full paths. **Use role default** removes an instance override. Changes to a
+shared scheme affect every ship referencing it; explain this beside the controls.
+Explicitly choose a scheme in Assemble and Save ship to persist that ship's override.
+
+Material controls preview locally on input, and commit on change/release. A failed
+commit reports an error and retains the last durable value; controls remain available
+for retry. Leaving Paint restores committed values on return, discarding uncommitted
+scrubbing. Pending responses cannot change another selection or activation. Mount
+colors temporarily override base colour only; turning them off restores paint,
+including the material's metalness and roughness.
 
 ---
 
