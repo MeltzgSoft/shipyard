@@ -2225,6 +2225,9 @@ full path vectors, including `[]` for the hull; values contain `:part-id` and
 `:material`. Validate the whole envelope before publishing memory. Persist no
 workspace selection or uncommitted preview values. A missing store starts empty;
 malformed stores stop startup with a recovery message and remain untouched.
+The Integrant key is `:shipyard.scheme/db`, with an optional `:data-home` base-directory
+override. The default file is `$XDG_DATA_HOME/shipyard/schemes.edn`. The scheme writer
+uses exact `Files.move` semantics and rejects directory destinations before staging.
 
 Material resolution is pure: matching instance path and part identity, then the first
 matching group with a material in rail order, then authoritative catalog role and neutral. A loadout override selects the scheme before any fleet

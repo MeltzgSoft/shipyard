@@ -143,6 +143,11 @@ filesystem must support atomic file replacement. Run only one Shipyard process p
 store. An invalid store stops startup with its path and a recovery message; restore
 a valid backup instead of deleting data you want to keep.
 
+Paint-scheme storage follows the same rules at `$XDG_DATA_HOME/shipyard/schemes.edn`.
+Configure `:shipyard.scheme/db {:data-home "/path/to/data"}` to override its base
+directory. Scheme records retain role defaults and individual instance overrides;
+the store does not contain workspace selections or uncommitted material previews.
+
 ### Git hooks
 
 Install once per clone - git does not do this for you:
