@@ -515,8 +515,8 @@ An optional `:scheme/instances` map holds entries such as
 Instance material wins over group material, then role material and neutral studio material. Unmapped
 roles are valid. All RGB channels, metalness and roughness are finite numbers in
 `[0,1]`; stored RGB uses sRGB, as do the editor's colour swatches. Paint names are
-optional free text. A detail brush adds per-face base-colour overlays; UV/texture
-painting and per-face metalness/roughness are outside v1.
+optional free text. A detail brush adds per-face colour, metalness and roughness
+overrides. UV/texture painting is outside v1.
 
 Groups are named, ordered sets of instance identities within a scheme. Instances may
 belong to multiple groups; the first group in rail order with a material wins. Group
@@ -564,9 +564,14 @@ screen-space footprint selects triangles with at least one visible pixel centre
 inside the circle. It fills entire triangles, not partial faces, including at the
 footprint boundary. Occluded and back-facing triangles are excluded; there is no
 paint-through volume. Drag samples overlap along the pointer path. Left-drag paints
-when enabled; Alt+drag or disabling the brush permits ordinary orbiting. Face deltas flush periodically during a drag; a stroke commits atomically on release
-and remains one undo step across all touched instances. Detail colour overrides base colour only; **Erase to base**
-removes the selected face overrides. Mount colors hides details without erasing them.
+in Brush mode; Alt+drag or Select permits ordinary orbiting. Face deltas flush
+periodically during a drag; release commits atomically as one undo step across all
+touched instances. **Detail colour**, **Detail metalness** and **Detail roughness**
+are captured together for each stroke. Finish controls initially use the selected
+target's effective material; changing controls alone does not repaint details.
+**Erase to base** removes all three face overrides. Mount colors replaces displayed
+colour but preserves face finish without changing saved details. Older colour-only
+strokes remain compatible and inherit their instance's current finish.
 
 Detail masks are shared scheme data, scoped to full slot path, part id and source
 mesh identity. Changed parts or source meshes never receive an old mask silently;

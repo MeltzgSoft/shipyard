@@ -77,7 +77,7 @@
       (handler (mock/request :post "/paint/create" {:name "Streamed"}))
       (let [id (get-in @(:state paint) [:draft :scheme]) stroke-id (str (random-uuid))
             params {:id (str id) :target "[]" :stroke-id stroke-id :part "0" :final "false"
-                    :sequence "1" :color "#ff0000" :operation "paint"
+                    :sequence "1" :color "#ff0000" :metalness "0.8" :roughness "0.2" :operation "paint"
                     :entries (pr-str [(entry [[:weapon 0]] (first face-keys)) (entry [[:weapon 1]] (first face-keys))])}
             masks #(get-in (schemes/snapshot! store) [:schemes id :scheme/details])
             history #(get-in (workspace/workspace! (:shipyard.workspace/db sys) :paint) [:brush-history :undo])
@@ -91,6 +91,8 @@
           (is (str/includes? (:body (post final)) "Details saved"))
           (is (= #{[[:weapon 0]] [[:weapon 1]]} (set (keys (masks)))))
           (is (= 2 (count (get-in (masks) [[[:weapon 1]] :faces]))))
+          (is (= #{{:base [1.0 0.0 0.0] :metalness 0.8 :roughness 0.2}}
+                 (set (mapcat #(vals (:faces %)) (vals (masks))))))
           (is (= 1 (count (history))))
           (let [saved (schemes/snapshot! store)]
             (is (str/includes? (:body (post (assoc final :sequence "4"))) "Details saved"))
@@ -113,4 +115,32 @@
           (is (nil? (:brush-pending (workspace/workspace! (:shipyard.workspace/db sys) :paint))))
           (is (str/includes? (:body (post (assoc cancel :sequence "11" :history "undo"))) "Details saved"))
           (is (empty? (masks)))))
+      (finally (fixture/stop! started)))))
+
+(deftest per-face-finish-persistence-and-invalid-input
+  (let [started (fixture/start!) sys (:system started) handler (:handler started)
+        store (:shipyard.scheme/db sys) library (:shipyard.library/index sys) cache (:shipyard.mesh/cache sys)
+        id (:hull fixture/ids) mesh-key (:mesh-key (cache/ensure! cache (index/fresh-source-file! library id)))
+        [a b] (vec (strokes/mesh-faces (wire/decode (Files/readAllBytes (fs/path (cache/tier-file cache mesh-key 0))))))
+        post #(handler (mock/request :post %1 %2))]
+    (try
+      (index/record-mesh-key! library id mesh-key 12)
+      (swap! (:state (:shipyard.assembly/db sys)) assoc :draft {:revision 1 :hull id :assignments {}} :root (str (:root started)))
+      (post "/assembly/paint" {}) (post "/paint/create" {:name "Metallic"})
+      (let [scheme (get-in @(:state (:shipyard.paint/db sys)) [:draft :scheme])
+            params {:id (str scheme) :target "[]" :mesh-key mesh-key :sequence "1"
+                    :color "#ffcc00" :operation "paint" :faces (pr-str [a])}]
+        (post "/paint/stroke" params)
+        (is (vector? (get-in (schemes/snapshot! store) [:schemes scheme :scheme/details [] :faces a])))
+        (is (str/includes? (:body (post "/paint/stroke" (assoc params :sequence "2" :faces (pr-str [b]) :metalness "1" :roughness "0.15"))) "Details saved"))
+        (is (= {:base [1.0 0.8 0.0] :metalness 1.0 :roughness 0.15}
+               (get-in (schemes/snapshot! (schemes/open! (:file store))) [:schemes scheme :scheme/details [] :faces b])))
+        (is (vector? (get-in (schemes/snapshot! (schemes/open! (:file store))) [:schemes scheme :scheme/details [] :faces a])))
+        (let [before (schemes/snapshot! store) bytes (slurp (fs/file (:file store)))]
+          (doseq [[n invalid] (map-indexed vector [{:metalness "NaN" :roughness "0.5"}
+                                                   {:metalness "1" :roughness "Infinity"}
+                                                   {:metalness "1"} {:metalness "-0.1" :roughness "0.5"}])]
+            (is (str/includes? (:body (post "/paint/stroke" (merge params invalid {:sequence (str (+ n 3))}))) "Invalid detail material")))
+          (is (= before (schemes/snapshot! store)))
+          (is (= bytes (slurp (fs/file (:file store)))))))
       (finally (fixture/stop! started)))))

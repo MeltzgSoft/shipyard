@@ -172,7 +172,8 @@
               {"id" (:scheme current) "target" (:target-key current)
                "stroke-id" (str (:id current)) "part" (str part) "final" (str final?)
                "entries" (pr-str (entries current pending))
-               "color" (:hex current) "operation" (if (:erase? current) "erase" "paint")})
+               "color" (:hex current) "metalness" (str (get-in current [:color :metalness]))
+               "roughness" (str (get-in current [:color :roughness])) "operation" (if (:erase? current) "erase" "paint")})
             (send-part! [current params]
               (let [form (:form current) n (inc (js/Number (value form "sequence")))
                     body (js/URLSearchParams.) headers (js/Object.assign #js {"Content-Type" "application/x-www-form-urlencoded"} (:headers current))]
@@ -267,7 +268,9 @@
                                                      :scheme (value form "id") :headers (js/JSON.parse (.. (.getElementById js/document "workspace-context") -dataset -headers))
                                                      :labels (edn/read-string (.getAttribute form "data-instance-labels"))
                                                      :stale (set (edn/read-string (.getAttribute form "data-stale-targets")))
-                                                     :color (rgb (value form "brush-color")) :hex (value form "brush-color")
+                                                     :color {:base (rgb (value form "brush-color"))
+                                                             :metalness (js/parseFloat (value form "brush-metalness"))
+                                                             :roughness (js/parseFloat (value form "brush-roughness"))} :hex (value form "brush-color")
                                                      :erase? (= "erase" (value form "mode")) :radius (js/parseFloat (value form "radius"))})
                                      (lock!)
                                      (swap! stroke assoc :timer (js/setInterval #(flush! false) (js/Number (.getAttribute form "data-flush-interval"))))

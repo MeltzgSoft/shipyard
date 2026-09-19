@@ -2295,7 +2295,12 @@ inputs and existing application tokens provide the controls and styling.
 ### 15.2 Visible detail brush
 
 Optional `:scheme/details` maps each full instance path to
-`{:part-id string :mesh-key source-sha256 :faces {face-key [sRGB r g b]}}`.
+`{:part-id string :mesh-key source-sha256 :faces {face-key detail}}`.
+New details are `{:base [sRGB r g b] :metalness number :roughness number}`, with
+finite channels in `[0,1]`. Legacy RGB vectors remain valid, inheriting current
+instance metalness/roughness; no eager migration or startup write occurs. The HTTP
+endpoint accepts legacy requests with neither finish field, but rejects incomplete
+or invalid supplied finishes. Retry reuses the material captured at stroke start.
 A face key is the concatenation of the nine lower-case, eight-digit Float32 hex
 coordinates of the lexicographically smallest cyclic rotation of its three
 source-space vertices, with negative zero normalized. It survives triangle/index
@@ -2312,8 +2317,17 @@ colour conversion. Readback is sampled at pixel centres inside the circular brus
 pointer segments are sampled at intervals of at most half the radius. Camera updates
 pause during a stroke. Temporary ID geometries, material and render target are
 disposed immediately after readback. A painted instance uses a nonindexed tier-0
-geometry and one vertex-colour buffer with linear RGB, not materials/draws per face.
-This preserves face normals and placement; clearing overlays restores base material.
+geometry with linear vertex colours and a two-channel `shipyardFinish` attribute,
+not materials/draws per face. A narrowly scoped MeshStandardMaterial `onBeforeCompile`
+extension substitutes face metalness/roughness at the pinned Three.js shader's PBR
+input chunks. An explicit program cache key and per-material enable uniform prevent
+program collisions and restore base finish when all details are removed. All three
+vertices of each triangle receive the same finish; unpainted and legacy-colour faces
+use inherited finish. Mount colours disable vertex colour only, leaving finish intact.
+Base material changes refresh inherited buffer values while explicit detail materials
+stay fixed. This preserves normals, studio lighting and placement; erase restores
+the complete underlying material. Tests check the pinned shader insertion points,
+actual browser compilation and rendered finish buffers.
 
 `POST /paint/stroke` uses workspace/activation admission, a separate monotonic brush
 sequence and selected scheme/target guards. It validates face keys against the

@@ -343,15 +343,22 @@ Fleet-default assignment is not yet available.
 ### Painting details
 
 Turn off **Mount colors**, then choose **Brush** over the viewport. Pick a detail
-colour and radius (2–100 screen pixels). **Cross instances** is on by default: one
+colour, metalness, roughness and radius (2–100 screen pixels). **Cross instances** is on by default: one
 drag can touch several parts. Turn it off to paint only the instance selected in
 **Select** mode. The left rail lists touched parts and face counts for the live drag;
 parts identified behind the brush are skipped.
 
 Left-drag to fill whole visible triangles under the circle. Hidden and back-facing
 faces are never painted. Even a small brush fills a whole triangle. Alt+drag or the
-**Select** tool permits orbiting. The chosen colour is captured at the start of the
-drag. **Erase to base** restores the underlying instance/group/role material.
+**Select** tool permits orbiting. Colour and finish are captured together at the start
+of each drag, so metallic details can sit beside matte faces. Finish controls initially
+match the selected target's effective material. Changing them affects the next stroke,
+not existing details. Older colour-only details inherit the instance's current finish.
+
+For gold trim, choose a gold colour, metalness `1` and roughness around `0.2`.
+Lower roughness gives sharper reflections. **Erase to base** restores the underlying
+instance/group/role colour and finish. **Mount colors** temporarily replaces displayed
+colours while keeping face finishes.
 
 New faces are sent periodically while dragging, but nothing is durably saved until
 you release. The whole drag is one undo step, including when it crosses parts.

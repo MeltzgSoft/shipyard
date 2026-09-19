@@ -1,7 +1,8 @@
 (ns shipyard.paint.render
-  "Sparse durable face colors projected onto one vertex-color buffer per instance."
+  "Sparse durable face materials projected onto vertex buffers, without extra draws."
   (:require ["three" :as three]
             [shipyard.paint.faces :as faces]
+            [shipyard.paint.shader :as shader]
             [shipyard.scheme.material :as material]))
 
 (defn triangle-count [^js geometry]
@@ -49,14 +50,32 @@
         (set! (.. object -userData -faceIndex) index)
         index)))
 
-(defn apply-colors! [^js object base colors?]
-  (let [mask (:faces (.. object -userData -paintDetails))
+(defn- install-finish! [^js surface]
+  (or (.. surface -userData -finishEnabled)
+      (let [enabled #js {:value false}]
+        (set! (.. surface -userData -finishEnabled) enabled)
+        (set! (.-onBeforeCompile surface)
+              (fn [^js program _renderer]
+                (let [{:keys [vertex fragment]} (shader/with-finish (.-vertexShader program) (.-fragmentShader program))]
+                  (set! (.. program -uniforms -shipyardFinishEnabled) enabled)
+                  (set! (.-vertexShader program) vertex)
+                  (set! (.-fragmentShader program) fragment)
+                  (set! (.. surface -userData -finishCompiled) true))))
+        (set! (.-customProgramCacheKey surface) (fn [] "shipyard-face-finish-v1"))
+        (set! (.-needsUpdate surface) true)
+        enabled)))
+
+(defn apply-details! [^js object inherited colors?]
+  (let [inherited (select-keys inherited [:base :metalness :roughness])
+        mask (:faces (.. object -userData -paintDetails))
         ^js surface (.-material object)
         enabled? (and (not colors?) (seq mask))]
     (when (not= (boolean enabled?) (.-vertexColors surface))
       (set! (.-vertexColors surface) (boolean enabled?))
       (set! (.-needsUpdate surface) true))
-    (when enabled?
+    (when-let [uniform (.. surface -userData -finishEnabled)]
+      (set! (.-value uniform) (boolean (seq mask))))
+    (when (seq mask)
       (when (.. object -geometry -index)
         (let [old (.-geometry object)]
           (set! (.-geometry object) (.toNonIndexed old))
@@ -66,21 +85,34 @@
             attribute (or (.getAttribute geometry "color")
                           (let [value (three/BufferAttribute. (js/Float32Array. (* 9 (triangle-count geometry))) 3)]
                             (.setAttribute geometry "color" value) value))
-            signature [base mask]
-            [old-base old-mask] (.. object -userData -colorSignature)]
+            finish (or (.getAttribute geometry "shipyardFinish")
+                       (let [value (three/BufferAttribute. (js/Float32Array. (* 6 (triangle-count geometry))) 2)]
+                         (.setAttribute geometry "shipyardFinish" value) value))
+            uniform (install-finish! surface)
+            signature [inherited mask]
+            [old-inherited old-mask] (.. object -userData -detailSignature)]
+        (set! (.-value uniform) true)
         ;; Pointer moves with the same mask need no allocation or buffer upload.
-        (when (or (.. object -userData -paintDirtyFaces) (not= signature (.. object -userData -colorSignature)))
-          (when (not= base old-base)
-            (let [[r g b] (mapv material/srgb->linear base)]
-              (dotimes [vertex (.-count attribute)] (.setXYZ attribute vertex r g b))))
-          (doseq [key (if (and (= base old-base) (.. object -userData -paintDirtyFaces))
+        (when (or (.. object -userData -paintDirtyFaces) (not= signature (.. object -userData -detailSignature)))
+          (when (not= inherited old-inherited)
+            (let [[r g b] (mapv material/srgb->linear (:base inherited))]
+              (dotimes [vertex (.-count attribute)]
+                (.setXYZ attribute vertex r g b)
+                (.setXY finish vertex (:metalness inherited) (:roughness inherited)))))
+          (doseq [key (if (and (= inherited old-inherited) (.. object -userData -paintDirtyFaces))
                         (.. object -userData -paintDirtyFaces)
-                        (keys (if (= base old-base) (merge old-mask mask) mask)))
-                  :when (or (not= base old-base) (not= (get old-mask key) (get mask key)))]
-            (let [entry (.get index key) [r g b] (mapv material/srgb->linear (get mask key base))]
+                        (keys (if (= inherited old-inherited) (merge old-mask mask) mask)))
+                  :when (or (not= inherited old-inherited) (not= (get old-mask key) (get mask key)))]
+            (let [entry (.get index key)
+                  {:keys [base metalness roughness]} (faces/resolve-material inherited (get mask key))
+                  [r g b] (mapv material/srgb->linear base)]
               (doseq [triangle (if (number? entry) [entry] (array-seq entry))]
-                (dotimes [corner 3] (.setXYZ attribute (+ (* triangle 3) corner) r g b)))))
+                (dotimes [corner 3]
+                  (let [vertex (+ (* triangle 3) corner)]
+                    (.setXYZ attribute vertex r g b)
+                    (.setXY finish vertex metalness roughness))))))
           (set! (.-needsUpdate attribute) true)
-          (set! (.. object -userData -colorSignature) signature))
-        (.setRGB (.-color surface) 1 1 1)))
+          (set! (.-needsUpdate finish) true)
+          (set! (.. object -userData -detailSignature) signature))
+        (when enabled? (.setRGB (.-color surface) 1 1 1))))
     (set! (.. object -userData -paintDirtyFaces) nil)))
