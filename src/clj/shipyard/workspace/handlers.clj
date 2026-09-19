@@ -13,6 +13,8 @@
             [shipyard.library.index :as index]
             [shipyard.loadout.operations :as loadouts]
             [shipyard.loadout.views :as ship-views]
+            [shipyard.paint.db :as paint-db]
+            [shipyard.paint.handlers :as paint]
             [shipyard.workspace.db :as workspace]
             [shipyard.workspace.transforms :as transforms]
             [shipyard.workspace.views :as workspace-views]))
@@ -112,6 +114,7 @@
             (case mode
               :assembly (assembly-handlers/current! deps {:params (merge filters (select-keys params ["part-id"]))})
               :ships (ships! deps {:params filters})
+              :paint (paint/current! deps {:params (merge filters (select-keys params ["error"]))})
               :browse (append (if selection (part-handler {:params {} :path-params {:id selection}})
                                   (htmx/fragment (views/detail-empty) {:events {:clear nil}}))
                               [:section#library.panel {:hx-swap-oob "outerHTML"}
@@ -134,3 +137,25 @@
       (if (= 200 (:status response))
         (transition! deps {:path-params {:mode "orient"} :params params :headers {"hx-request" "true"}})
         response))))
+
+(defn paint-selection! [{:keys [workspace] :as deps} action {:keys [params]}]
+  (let [result (case action
+                 :create (paint/create! deps params)
+                 :rename (paint/rename! deps params)
+                 :default (paint/default! deps params)
+                 (paint/select! deps params))]
+    (workspace/update-workspace! workspace :paint assoc :edit-sequence 0)
+    (transition! deps {:path-params {:mode "paint"} :params (when (:error result) {"error" (:error result)})
+                       :headers {"hx-request" "true"}})))
+
+(defn paint-transfer! [{:keys [assembly preview workspace] :as deps} source {:keys [params]}]
+  (workspace/outgoing! deps params)
+  (let [result (paint-db/transfer! deps (if (= source :assembly) assembly preview))]
+    (if (:error result)
+      (append (if (= source :assembly)
+                (assembly-handlers/current! deps {:params {"poll" "1"}})
+                (ships! deps {:params {"poll" "1"}}))
+              [:p.detail__error {:role "alert"} "Select a valid assembled ship before painting. Restore missing parts and retry."])
+      (do
+        (workspace/update-workspace! workspace :paint dissoc :target :edit-sequence)
+        (transition! deps {:path-params {:mode "paint"} :params {} :headers {"hx-request" "true"}})))))

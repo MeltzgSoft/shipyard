@@ -1495,6 +1495,20 @@
                      (fn [e] (when @(:active sys) (handler e)))
                      (boolean capture?)))
 
+(defn- preview-paint! [sys ^js event]
+  (when (and (= :paint (:workspace sys)) (some-> (.-target event) (.hasAttribute "data-paint-input")))
+    (when-let [^js form (.closest (.-target event) "#paint-material")]
+      (let [value (fn [name] (.-value (.namedItem (.-elements form) name)))
+            hex (value "base")
+            material {:base (mapv #(/ (js/parseInt (subs hex % (+ % 2)) 16) 255) [1 3 5])
+                      :metalness (js/parseFloat (value "metalness"))
+                      :roughness (js/parseFloat (value "roughness"))}
+            paths (edn/read-string (.getAttribute form "data-paint-slots"))]
+        (doseq [path paths]
+          (swap! (:assembly sys) assoc-in [:slots path :payload :material] material)
+          (when-let [object (get @(:parts sys) path)]
+            (apply-material! object material @(:mount-colors-enabled sys))))))))
+
 (defn- listen! [sys]
   (let [body (.-body js/document)
         payload (fn [^js e] (edn/read-string (.. e -detail -value)))]
@@ -1521,6 +1535,7 @@
                                                (sync-interfaces-from-dom! sys)
                                                (refresh-preview-after-swap! sys)))
     (listen-event! body sys "input" (fn [e]
+                                      (preview-paint! sys e)
                                       (when-let [form (event-form e)]
                                         (when (= "mount-id" (.-name (.-target e)))
                                           (sync-mirror-id-from-mount-id! form)))
@@ -1633,7 +1648,7 @@
     (let [browse (runtime! canvas renderer :browse nil)
           environment (.-environment ^js (:scene browse))
           runtimes (into {:browse browse} (map (fn [mode] [mode (runtime! canvas renderer mode environment)]))
-                         [:orient :assembly :ships])
+                         [:orient :assembly :ships :paint])
           app {:runtimes runtimes :active-workspace (atom :browse)}]
       (set! (.-outputColorSpace renderer) three/SRGBColorSpace)
       (.setPixelRatio renderer (min 2 (.-devicePixelRatio js/window)))

@@ -7,6 +7,7 @@
             [shipyard.assembly.scene :as scene]
             [shipyard.catalog.db :as catalog]
             [shipyard.http.urls :as urls]
+            [shipyard.paint.views :as paint]
             [shipyard.workspace.views :as workspace-views]))
 
 (defn- form-attrs [action]
@@ -111,6 +112,7 @@
       [:label "Ship name" [:input {:name "name" :value (or (:name draft) "") :required true :maxlength 200}]]
       [:button {:type "submit"} (if (:loadout-id draft) "Save changes" "Save ship")]])
    (when saved? [:p {:role "status"} "Ship saved."])
+   (when hull (paint/transfer-button "assembly" "Paint assembly"))
    (when error [:p.detail__error {:role "alert"} (get responses/messages error (name error))])
    [:p.assembly__rail-count (str (count hulls) " compatible hulls")]
    (when root

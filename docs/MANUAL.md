@@ -260,8 +260,8 @@ available to correct and retry. Unsaved changes are lost when Shipyard stops.
 Saved ships live in `$XDG_DATA_HOME/shipyard/loadouts.edn` (normally
 `~/.local/share/shipyard/loadouts.edn`). Back up this file to keep your configurations.
 The viewport honors paint schemes referenced by saved ships, including individual
-instance overrides. Creating and editing schemes through the UI is not yet available.
-Thumbnails are not yet available.
+instance overrides. See Paint below for creating and editing schemes. Thumbnails
+are not yet available.
 
 ## Saved ships
 
@@ -299,13 +299,29 @@ as an unsaved copy; **Save ship** gives it a new identity. Deletion also works f
 whose library parts are missing. A failed write keeps the saved ship and your work
 available so you can correct the problem and retry.
 
-## Troubleshooting
+## Paint
 
-Saved-ship paint uses role defaults and individual slot-instance overrides. Repeated
-copies of one part may have different colors. **Mount colors** temporarily replaces
-the painted base colors; turning it off restores the paint and retains the material
-finish. A replacement part uses its role default unless its own identity matches an
-instance override.
+Choose **Paint assembly** in Assemble or **Paint ship** in the selected ship's inspector
+to copy its configuration into the independent Paint workspace. Partial ships and a
+hull alone are supported. Returning through the **Paint** selector restores that preview;
+painting does not change Assemble's model or save a ship.
+
+Choose a scheme, or enter a name and select **Create scheme**. Select a **Paint target**:
+an individual part instance (identified by its full slot path) or a role default.
+Repeated copies of the same weapon can have different colors. Use **Base colour**,
+**Metalness**, **Roughness** and optional **Paint name** to edit it. Color and finish
+preview while dragging and save when released. **Save material / Retry** retries a
+failed write; check the status before leaving. Returning to Paint restores committed
+values rather than uncommitted scrubbing.
+
+**Use role default** removes the selected instance override. Replacing a part also
+uses the role default unless the new part matches that instance override's identity.
+**Mount colors** temporarily replaces base colors; turning it off restores paint.
+Schemes are shared: editing one changes every ship using it when that ship is next
+loaded. Scheme creation does not automatically assign it to a saved ship. Surface
+detail brushes and fleet-default assignment are not yet available.
+
+## Troubleshooting
 
 **"Shipyard will not start, with an error about an unrecognised JVM option."** You are
 on an older JDK. Install Java 25.
