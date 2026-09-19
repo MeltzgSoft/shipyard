@@ -6,6 +6,7 @@
             [shipyard.http.urls :as urls]
             [shipyard.loadout.model :as model]
             [shipyard.paint.views :as paint]
+            [shipyard.paint.transforms :as paint-transforms]
             [shipyard.workspace.views :as workspace-views]))
 
 (defn- action [id action label]
@@ -50,28 +51,32 @@
           [:option {:value value :selected (= value (get filters field))} value])]])]
    (results entries filters)])
 
-(defn inspector [database draft prepared error]
-  [:section.ship-inspector
-   (when error [:p.detail__error {:role "alert"} error])
-   (if (:hull draft)
-     [:div
-      [:h2 (:name draft)]
-      [:p "Saved assembly · preview"]
-      (paint/transfer-button "ships" "Paint ship")
-      [:ul.ship-tree
-       (for [[path id] (model/part-tree draft)
-             :let [part (catalog/part database id) color (:css (scene/color-for-slot path))]]
-         [:li {:data-ship-slot (pr-str path) :data-part-id id
-               :style (str "--slot-color:" color ";padding-left:" (* 10 (count path)) "px")}
-          [:span.ship-tree__color {:aria-label (str "Mount color " color)}]
-          [:span (or (:part/name part) id)]
-          [:small (if (empty? path) "Hull" (str/join " / " (map (fn [[mount ordinal]] (str (name mount) " " (inc ordinal))) path)))]])]
-      (for [[id status] prepared :when (not= :ready (:state status))]
-        [:p {:role "status"} (if (= :failed (:state status))
-                               (str "Could not prepare " id ". " (:message status))
-                               (str "Preparing " id "…"))
-         (when (= :failed (:state status))
-           [:a {:hx-get (str "/ships?retry=" (urls/encode-id id)) :hx-target "#detail" :href "/ships"} "Retry"])])
-      (when (some #(= :running (:state %)) (vals prepared))
-        [:span {:hx-get "/ships?poll=1" :hx-trigger "load delay:400ms" :hx-target "#detail" :hx-sync "#detail:abort"}])]
-     [:p "Select a saved ship to preview it."])])
+(defn inspector
+  ([database draft prepared error] (inspector database draft prepared error {}))
+  ([database draft prepared error materials]
+   [:section.ship-inspector
+    (when error [:p.detail__error {:role "alert"} error])
+    (if (:hull draft)
+      [:div
+       [:h2 (:name draft)]
+       [:p "Saved assembly · preview"]
+       (paint/transfer-button "ships" "Paint ship")
+       [:ul.ship-tree
+        (for [[path id] (model/part-tree draft)
+              :let [part (catalog/part database id) color (:css (scene/color-for-slot path))]]
+          [:li {:data-ship-slot (pr-str path) :data-part-id id
+                :style (str "--slot-color:" color ";--paint-color:"
+                            (or (some-> (get-in materials [path :material :base]) (paint-transforms/color-hex)) "#9aa4af")
+                            ";padding-left:" (* 10 (count path)) "px")}
+           [:span.ship-tree__color {:aria-label "Part color"}]
+           [:span (or (:part/name part) id)]
+           [:small (if (empty? path) "Hull" (str/join " / " (map (fn [[mount ordinal]] (str (name mount) " " (inc ordinal))) path)))]])]
+       (for [[id status] prepared :when (not= :ready (:state status))]
+         [:p {:role "status"} (if (= :failed (:state status))
+                                (str "Could not prepare " id ". " (:message status))
+                                (str "Preparing " id "…"))
+          (when (= :failed (:state status))
+            [:a {:hx-get (str "/ships?retry=" (urls/encode-id id)) :hx-target "#detail" :href "/ships"} "Retry"])])
+       (when (some #(= :running (:state %)) (vals prepared))
+         [:span {:hx-get "/ships?poll=1" :hx-trigger "load delay:400ms" :hx-target "#detail" :hx-sync "#detail:abort"}])]
+      [:p "Select a saved ship to preview it."])]))

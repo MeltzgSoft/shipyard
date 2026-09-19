@@ -36,7 +36,9 @@
         error (or (get params "error") (when (:error checked) (get errors/messages (:error checked) "This ship changed. Restore its parts and try again.")))]
     (htmx/fragment
      (list (ship-views/cards (loadouts/list! deps {}) filters)
-           (ship-views/inspector (or (:database result) ((:database deps))) current (:prepared result) error)
+           (ship-views/inspector (or (:database result) ((:database deps))) current (:prepared result)
+                                 (or error (when (:scheme-warning result) "Scheme unavailable. Showing neutral materials; its saved reference is preserved."))
+                                 (:scene @(:state preview)))
            (when result [:input {:type "hidden" :data-assembly-event (pr-str (:event result))}])))))
 
 (defn ships! [{:keys [workspace] :as deps} {:keys [headers params] :as request}]
