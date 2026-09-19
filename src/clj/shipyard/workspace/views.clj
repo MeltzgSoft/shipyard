@@ -31,7 +31,7 @@
 
 (defn navigation [active]
   [:nav#workspace-navigation.masthead__modes {:aria-label "Workspace modes" :hx-swap-oob "outerHTML"}
-   (for [[mode label] [[:orient "Orient"] [:browse "Part Browser"] [:assembly "Assemble"] [:ships "Ship Browser"]]]
+   (for [[mode label] [[:orient "Orient"] [:browse "Part Browser"] [:assembly "Assemble"] [:ships "Ship Browser"] [:paint "Paint"]]]
      [:button.masthead__mode (merge transition-attrs {:type "button" :hx-get (str "/workspace/" (name mode))
                                                       :hx-target "#detail" :hx-swap "innerHTML settle:0ms"
                                                       :hx-include navigation-include

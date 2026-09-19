@@ -33,7 +33,7 @@
         (swap! state assoc :draft (assoc lf/draft :assignments (assoc lf/assignments [[:prow 0]] (:prow-alt fixture/ids))))
         (s/go! driver (s/base-url (:system started)))
         (s/wait-visible! driver "#library-results .part")
-        (is (= ["Orient" "Part Browser" "Assemble" "Ship Browser"]
+        (is (= ["Orient" "Part Browser" "Assemble" "Ship Browser" "Paint"]
                (s/js driver "() => [...document.querySelectorAll('.masthead__mode')].map(e=>e.textContent)")))
         (s/click! driver ".part__select:has(.part__name:text-is('bridge'))")
         (s/await-part driver (:bridge fixture/ids))

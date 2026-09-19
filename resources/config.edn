@@ -41,6 +41,7 @@
 
  :shipyard.loadout/db {}
  :shipyard.scheme/db {}
+ :shipyard.paint/db {}
  :shipyard.loadout.operations/preview {}
  :shipyard.workspace/db {:assembly #ig/ref :shipyard.assembly/db
                          :preview #ig/ref :shipyard.loadout.operations/preview}
@@ -53,6 +54,7 @@
   :assembly #ig/ref :shipyard.assembly/db
   :loadouts #ig/ref :shipyard.loadout/db
   :schemes #ig/ref :shipyard.scheme/db
+  :paint #ig/ref :shipyard.paint/db
   :preview #ig/ref :shipyard.loadout.operations/preview
   :workspace #ig/ref :shipyard.workspace/db}
 

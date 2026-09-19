@@ -4,7 +4,7 @@
             [integrant.core :as ig]
             [shipyard.workspace.transforms :as transforms]))
 
-(def modes #{:browse :orient :assembly :ships})
+(def modes #{:browse :orient :assembly :ships :paint})
 (def ^:dynamic *context* nil)
 
 (defmethod ig/init-key :shipyard.workspace/db [_ {:keys [assembly preview]}]
@@ -12,7 +12,8 @@
                  :workspaces (-> (zipmap modes (repeat {:filters {} :colors true}))
                                  (assoc-in [:assembly :model] assembly)
                                  (assoc-in [:ships :model] preview)
-                                 (assoc-in [:ships :colors] false))})})
+                                 (assoc-in [:ships :colors] false)
+                                 (assoc-in [:paint :colors] false))})})
 
 (defn workspace! [{:keys [state]} mode] (get-in @state [:workspaces mode]))
 (defn update-workspace! [{:keys [state]} mode f & args]
@@ -23,6 +24,7 @@
     (str/starts-with? uri "/orient") :orient
     (str/starts-with? uri "/assembly") :assembly
     (str/starts-with? uri "/ships") :ships
+    (str/starts-with? uri "/paint") :paint
     (or (= uri "/library") (str/starts-with? uri "/part/")
         (str/starts-with? uri "/parts/") (str/starts-with? uri "/mounts") (= uri "/facet")) :browse))
 

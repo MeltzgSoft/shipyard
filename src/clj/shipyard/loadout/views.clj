@@ -5,6 +5,7 @@
             [shipyard.catalog.db :as catalog]
             [shipyard.http.urls :as urls]
             [shipyard.loadout.model :as model]
+            [shipyard.paint.views :as paint]
             [shipyard.workspace.views :as workspace-views]))
 
 (defn- action [id action label]
@@ -56,6 +57,7 @@
      [:div
       [:h2 (:name draft)]
       [:p "Saved assembly · preview"]
+      (paint/transfer-button "ships" "Paint ship")
       [:ul.ship-tree
        (for [[path id] (model/part-tree draft)
              :let [part (catalog/part database id) color (:css (scene/color-for-slot path))]]
