@@ -22,12 +22,12 @@
             [shipyard.math :as math]
             [shipyard.mount.split :as split]
             [shipyard.part.orientation :as orientation]
+            [shipyard.scheme.material :as paint-material]
             [shipyard.wire :as wire]))
 
 (goog-define ^boolean TEST-HOOKS false)
 
 (defonce ^:private state (atom nil))
-(def ^:private neutral-part-color 0x9aa4af)
 
 ;; --- geometry ---------------------------------------------------------------
 
@@ -475,12 +475,23 @@
                                       :part-id part-id
                                       :mesh-key mesh-key})))))
 
+(defn- apply-material! [^js object value colors?]
+  (let [{:keys [base metalness roughness]} (or value paint-material/neutral)
+        ^js surface (.-material object)
+        [r g b] (mapv paint-material/srgb->linear base)]
+    (set! (.. object -userData -paintMaterial) (or value paint-material/neutral))
+    (if (and colors? (some? (.. object -userData -mountColor)))
+      (.setHex (.-color surface) (.. object -userData -mountColor))
+      (.setRGB (.-color surface) r g b))
+    (set! (.-metalness surface) metalness)
+    (set! (.-roughness surface) roughness)))
+
 (defn- set-mount-colors! [{:keys [parts mount-markers mount-colors-enabled interfaces]} enabled?]
   (reset! mount-colors-enabled enabled?)
   (when-let [object (:object @interfaces)] (set! (.-visible object) enabled?))
   (doseq [[_ ^js object] @parts]
-    (when-let [color (.. object -userData -mountColor)]
-      (.setHex (.. object -material -color) (if enabled? color neutral-part-color))))
+    (when (some? (.. object -userData -mountColor))
+      (apply-material! object (.. object -userData -paintMaterial) enabled?)))
   (doseq [[_ ^js marker] @mount-markers]
     (set! (.-visible marker) enabled?)))
 
@@ -1040,13 +1051,14 @@
                    (throw (js/Error. (str "Assembly mesh request failed: " (.-status response)))))))
       (.then (fn [buffer]
                (when (assembly-scene/current? @assembly slot token)
-                 (let [geometry (decode->geometry (wire/decode buffer))
+                 (let [payload (get-in @assembly [:slots slot :payload])
+                       geometry (decode->geometry (wire/decode buffer))
                        surface (material)
                        object (three/Mesh. geometry surface)]
                    (try
                      (when-let [color (:color payload)]
                        (set! (.. object -userData -mountColor) color)
-                       (.setHex (.-color surface) (if @mount-colors-enabled color neutral-part-color)))
+                       (apply-material! object (:material payload) @mount-colors-enabled))
                      (set! (.-matrixAutoUpdate object) false)
                      (.fromArray (.-matrix object) (clj->js (:matrix payload)))
                      (set! (.. object -userData -partId) (:part-id payload))
@@ -1082,6 +1094,8 @@
         (dispose-object! marker)
         (swap! (:mount-markers sys) dissoc slot))
       (reset! assembly after)
+      (doseq [[slot ^js object] @parts]
+        (apply-material! object (get-in after [:slots slot :payload :material]) @(:mount-colors-enabled sys)))
       (sync-mount-markers! sys (:mount-markers event))
       (doseq [{:keys [op slot] :as command} (:commands event)
               :when (= :set op)]
@@ -1359,6 +1373,9 @@
                      :slots (when (= :assembly (:mode @(:assembly sys)))
                               (mapv (fn [[slot ^js object]]
                                       {:slot slot :part-id (.. object -userData -partId)
+                                       :color (.getHexString (.. object -material -color))
+                                       :metalness (.. object -material -metalness)
+                                       :roughness (.. object -material -roughness)
                                        :uuid (.-uuid object) :matrix (vec (.. object -matrix -elements))})
                                     @parts))})
          :bulk (clj->js (bulk-stats sys))

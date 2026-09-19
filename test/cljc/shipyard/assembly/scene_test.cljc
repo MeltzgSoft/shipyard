@@ -43,3 +43,12 @@
                        {:op :remove :slot (:slot set-a)} {:op :reset}]]
         (is (not (scene/current? (scene/accept-event state (event 2 [command])) (:slot set-a) token))))
       (is (not (scene/current? state (:slot set-a) nil))))))
+
+(deftest material-updates-retain-pending-geometry
+  (let [state (scene/accept-event scene/empty-state (event 1 [{:op :reset} set-a]))
+        token (get-in state [:slots (:slot set-a) :token])
+        material {:base [1 0 0] :metalness 0.5 :roughness 0.2}
+        updated (scene/accept-event state (event 2 [(assoc set-a :material material)]))]
+    (is (scene/current? updated (:slot set-a) token))
+    (is (= material (get-in updated [:slots (:slot set-a) :payload :material])))
+    (is (= updated (scene/accept-event updated (event 1 [set-a]))))))
