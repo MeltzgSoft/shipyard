@@ -333,8 +333,12 @@ group or show **role default**.
 
 **Mount colors** temporarily replaces base colors; turning it off restores paint.
 Schemes are shared: editing one changes every ship using it when that ship is next
-loaded. Scheme creation does not automatically assign it to a saved ship. Surface
-detail brushes and fleet-default assignment are not yet available.
+loaded. Scheme creation does not automatically assign it to a saved ship. In Assemble,
+choose **Paint scheme override**, then **Save ship** or **Save changes**. Selecting
+**No override** clears the assignment when saved. Edit keeps the selected scheme;
+Duplicate copies its reference without changing the source ship or writing before Save.
+A missing scheme displays neutral paint and a warning while retaining its reference.
+Surface detail brushes and fleet-default assignment are not yet available.
 
 ## Troubleshooting
 

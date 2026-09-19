@@ -2262,6 +2262,13 @@ workspace activation. Live material previews update the current slot payload as 
 as installed objects, so pending meshes receive the newest value. No client store
 owns model selection, scheme identity or navigation.
 
+`POST /assembly/scheme` validates the current draft revision and explicit scheme UUID,
+then changes only the ephemeral draft and increments its revision. Clearing removes
+the override. The existing loadout Save commits it; Edit and Duplicate preserve the
+reference and the existing discard comparison includes it. Ship Browser resolves
+materials again on resume and projects the same base colors into its inspector legend.
+Dangling references produce a warning and neutral materials without altering the store.
+
 Tests cover two identical weapons at different paths with different paint, nested
 instances, hull-only and sparse ships, role fallback after replacement, mount-color
 round trips, shared-scheme updates, live input without disk writes, commit/reload,

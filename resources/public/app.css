@@ -912,7 +912,7 @@ body {
 .ship-tree li { display: flex; align-items: center; gap: 6px; margin: 7px 0; flex-wrap: wrap; }
 .ship-tree small { color: var(--ink-dim); font-size: 10px; }
 .ship-tree__color { width: 9px; height: 9px; border-radius: 2px; background: var(--slot-color); }
-body:has(#workspace-context[data-mount-colors="false"]) .ship-tree__color { background: #9aa4af; }
+body:has(#workspace-context[data-mount-colors="false"]) .ship-tree__color { background: var(--paint-color, #9aa4af); }
 
 .bulk-grid__card [data-bulk-retry] { position: absolute; top: 44px; left: 7px; }
 .bulk-grid__card[data-mesh-state="failed"] .bulk-grid__card-state { color: var(--warn); right: 7px; }
@@ -984,3 +984,5 @@ body:has(.paint-editor) .masthead__stats { display: none; }
 #paint-header-status { border: 1px solid var(--line); border-radius: 4px; padding: 4px 8px; white-space: nowrap; }
 #paint-target h3 { display: flex; justify-content: space-between; align-items: center; }
 #paint-target .paint-group-link { padding: 0; border: 0; background: none; color: var(--accent); font-size: 11px; font-weight: normal; text-transform: none; letter-spacing: normal; }
+.assembly__scheme { display: grid; gap: 6px; padding: 10px 12px; }
+.assembly__scheme label { display: grid; gap: 4px; }
