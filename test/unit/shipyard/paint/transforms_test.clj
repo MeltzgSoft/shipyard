@@ -64,3 +64,12 @@
     (let [changed (:scheme (t/edit-record record group m/neutral false))]
       (is (= [] (t/affected-paths changed targets {:role :weapon})))
       (is (= m/neutral (t/target-material changed group))))))
+
+(deftest parse-detail-test
+  (testing "legacy clients inherit finish; new clients submit a complete bounded finish"
+    (is (= [1.0 0.0 0.0] (t/parse-detail {"color" "#ff0000"})))
+    (let [params {"color" "#ff0000" "metalness" "1" "roughness" "0.15"}]
+      (is (= {:base [1.0 0.0 0.0] :metalness 1.0 :roughness 0.15} (t/parse-detail params)))
+      (is (nil? (t/parse-detail (dissoc params "roughness"))))
+      (doseq [bad ["NaN" "Infinity" "-0.1" "1.1" "" nil]]
+        (is (nil? (t/parse-detail (assoc params "roughness" bad))))))))

@@ -148,7 +148,7 @@
       [:button {:type "submit" :form "paint-default"} "Use inherited material"])
     [:p#paint-status {:role "status"} "Saved values"]]])
 
-(defn brush-panel [record target targets prepared state flush-interval]
+(defn brush-panel [record target targets prepared state flush-interval material]
   (let [brush? (= "brush" (:tool state))
         stale (for [instance targets :when (contains? instance :path)
                     :let [layer (get-in record [:scheme/details (:path instance)])]
@@ -164,6 +164,7 @@
       :hx-on--after-request "if(document.contains(this)&&!event.detail.successful){document.getElementById('paint-header-status').textContent='Save not confirmed';}"}
      (for [[name value] {"id" (str (:scheme/id record)) "target" (:key target) "sequence" (or (:brush-sequence state) 0)
                          "mesh-key" (get-in prepared [(:part-id target) :mesh-key]) "faces" "[]" "color" "#ff0000"
+                         "metalness" (:metalness material) "roughness" (:roughness material)
                          "entries" "[]" "stroke-id" "" "part" "0" "final" "true" "enabled" (str brush?) "operation" "paint"}]
        [:input {:type "hidden" :name name :value value}])
      [:div.paint-form-body
@@ -175,6 +176,8 @@
                 :oninput "this.parentElement.querySelector('output').value=this.value+' px'"}]]
       [:label.paint-checkbox [:input {:type "checkbox" :name "cross-instances" :checked true}] "Cross instances"]
       (material-control "Detail colour" "brush-color" "color" "#ff0000")
+      (material-control "Detail metalness" "brush-metalness" "range" (:metalness material))
+      (material-control "Detail roughness" "brush-roughness" "range" (:roughness material))
       [:p.muted "Turn off Mount colors to paint. Alt+drag to orbit."]]
      [:footer.paint-actions
       [:button {:type "submit" :name "history" :value "undo" :aria-label "Undo detail stroke"} "Undo"]
@@ -221,7 +224,7 @@
                 (list (write-targets record targets target anchor-key)
                       (group-controls record target)
                       (material-form record target value paths sequence)))
-              (brush-panel record target targets prepared state flush-interval)))
+              (brush-panel record target targets prepared state flush-interval value)))
       (when (and record target (contains? target :path))
         [:form#paint-default (merge selection-attrs {:hx-post "/paint/default"})])]
      (when record [:div.paint-tools

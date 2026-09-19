@@ -106,7 +106,7 @@
             (await-saved! driver)
             (editor/input! driver "#paint-brush input[name=brush-color]" "#00ff00" "input")
             (apply stroke! driver (face-point driver [] 3))
-            (is (s/wait-until #(= #{[1.0 0.0 0.0] [0.0 1.0 0.0]} (set (vals (get-in (masks) [[] :faces])))))))
+            (is (s/wait-until #(= #{[1.0 0.0 0.0] [0.0 1.0 0.0]} (set (map :base (vals (get-in (masks) [[] :faces]))))))))
           (testing "Repeated and nested copies have independent masks"
             (doseq [[label path slot] [["weapon · [[:weapon 0]]" "[[:weapon 0]]" [["weapon" 0]]]
                                        ["turret · [[:weapon 0] [:turret 0]]" "[[:weapon 0] [:turret 0]]" [["weapon" 0] ["turret" 0]]]]]
@@ -209,11 +209,11 @@
           (.up mouse)
           (is (= saved (schemes/snapshot! store)))
           (is (= (into {} (map (fn [[k v]] [(keyword k) v]) (get-in (masks) [[[:weapon 0]] :faces])))
-                 (update-vals (:details (materials/slot driver [["weapon" 0]])) #(mapv double %))))
+                 (update-vals (:details (materials/slot driver [["weapon" 0]])) #(-> % (update :base (partial mapv double)) (update :metalness double) (update :roughness double)))))
           (.unroute page "**/paint/stroke")
           (s/click! driver "button:text-is('Retry last stroke')")
           (await-saved! driver))
-        (is (some #{[0.0 0.0 1.0]} (vals (get-in (masks) [[[:weapon 0]] :faces]))))
+        (is (some #{[0.0 0.0 1.0]} (map :base (vals (get-in (masks) [[[:weapon 0]] :faces])))))
         (is (= 2 (count (get-in (state) [:brush-history :undo]))))
         (is (false? (s/js driver "() => document.querySelector('[data-workspace-mode=assembly]').disabled"))))
       (finally (s/quit! driver) (fixture/stop! started)))))

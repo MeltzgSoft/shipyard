@@ -491,7 +491,7 @@
       (.setRGB (.-color surface) r g b))
     (set! (.-metalness surface) metalness)
     (set! (.-roughness surface) roughness)
-    (paint-render/apply-colors! object base colors?)))
+    (paint-render/apply-details! object (or value paint-material/neutral) colors?)))
 
 (defn- set-mount-colors! [{:keys [parts mount-markers mount-colors-enabled interfaces]} enabled?]
   (reset! mount-colors-enabled enabled?)
@@ -1387,6 +1387,15 @@
                                        :roughness (.. object -material -roughness)
                                        :details (:faces (.. object -userData -paintDetails))
                                        :vertex-colors (.. object -material -vertexColors)
+                                       :finish-compiled (true? (.. object -material -userData -finishCompiled))
+                                       :finish-enabled (boolean (when-let [^js uniform (.. object -material -userData -finishEnabled)] (.-value uniform)))
+                                       :face-finishes (when-let [finish (.getAttribute (.-geometry object) "shipyardFinish")]
+                                                        (when (<= (paint-render/triangle-count (.-geometry object)) 64)
+                                                          (mapv (fn [triangle]
+                                                                  {:key (paint-render/face-key (.-geometry object) triangle)
+                                                                   :metalness (.getX finish (* 3 triangle))
+                                                                   :roughness (.getY finish (* 3 triangle))})
+                                                                (range (paint-render/triangle-count (.-geometry object))))))
                                        :face-centers (paint-render/projected-faces object camera (:canvas sys))
                                        :uuid (.-uuid object) :matrix (vec (.. object -matrix -elements))})
                                     @parts))})

@@ -120,7 +120,7 @@
                 (let [sid (if stroke-id (parse-uuid stroke-id) (random-uuid))
                       part (if stroke-id (some-> part (parse-long)) 0)
                       final? (or (nil? stroke-id) (= final "true"))
-                      paint-value (:base (transforms/parse-material {"base" (get params "color") "metalness" "0" "roughness" "1"}))
+                      paint-value (transforms/parse-detail params)
                       pending (:brush-pending state)
                       raw (if (contains? params "entries") (parse-vector (get params "entries"))
                               [{:target target :mesh-key mesh-key :faces (parse-faces (get params "faces"))}])

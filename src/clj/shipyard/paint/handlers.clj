@@ -105,6 +105,7 @@
             (case (:error result)
               :changed-source "Source mesh changed. Clear instance details before repainting. Nothing saved."
               :invalid-faces "Invalid stroke faces. Nothing saved."
+              :invalid-material "Invalid detail material. Choose a colour and metalness/roughness between 0 and 1. Nothing saved."
               :stale-stroke "Paint selection changed, or the stroke is out of order. Reopen it before retrying."
               :stroke-in-progress "Finish the current stroke before changing detail history."
               :no-undo "No detail stroke to undo for this selection."
