@@ -1,6 +1,5 @@
 (ns shipyard.integration.detail-brush-test
   (:require [babashka.fs :as fs]
-            [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure.test :refer [deftest is]]
             [ring.mock.request :as mock]
@@ -11,7 +10,8 @@
             [shipyard.paint.strokes :as strokes]
             [shipyard.scheme.db :as schemes]
             [shipyard.wire :as wire])
-  (:import [java.nio.file Files]))
+  (:import [java.nio.file Files OpenOption StandardOpenOption]
+           [java.nio.file.attribute FileTime]))
 
 (deftest source-identity-membership-and-admission
   (let [started (fixture/start!) sys (:system started) handler (:handler started)
@@ -36,11 +36,21 @@
                                            (mock/header "X-Shipyard-Workspace" "paint")
                                            (mock/header "X-Shipyard-Activation" "0"))))))
           (is (= before (schemes/snapshot! store)))
-          (with-open [out (io/output-stream source)] (.write out ^bytes (fixtures/->binary-stl (fixtures/cube 5.0))))
+          ;; Preprocessing memory-maps the source. Windows permits an in-place
+          ;; write, but not the truncation performed by io/output-stream.
+          (let [path (fs/path source)
+                bytes (fixtures/->binary-stl (fixtures/cube 5.0))
+                mtime (.toMillis (Files/getLastModifiedTime path (make-array java.nio.file.LinkOption 0)))]
+            (is (= (Files/size path) (alength ^bytes bytes)) "Replacement fits the existing mapping")
+            (Files/write path ^bytes bytes (into-array OpenOption [StandardOpenOption/WRITE]))
+            (is (java.util.Arrays/equals ^bytes bytes (Files/readAllBytes path)))
+            ;; Same-size edits must change the scan stamp even on coarse clocks.
+            (Files/setLastModifiedTime path (FileTime/fromMillis (+ mtime 2000))))
           (is (str/includes? (:body (post "/paint/stroke" (assoc params :sequence "4"))) "Source mesh changed"))
           (is (= before (schemes/snapshot! store)))
           (index/set-root! library (:root started))
           (let [new-key (:mesh-key (cache/ensure! cache source))]
+            (is (not= mesh-key new-key) "The source content, not just its timestamp, changed")
             (index/record-mesh-key! library id new-key 12)
             (is (str/includes? (:body (handler (mock/request :get "/paint"))) "changed part or source mesh"))
             (is (str/includes? (:body (post "/paint/stroke" (assoc params :sequence "5" :mesh-key new-key :history "clear"))) "Details saved"))
