@@ -7,6 +7,8 @@
             [shipyard.http.jobs :as jobs]
             [shipyard.library.index :as index]
             [shipyard.mesh.cache :as cache]
+            [shipyard.scheme.db :as schemes]
+            [shipyard.scheme.material :as material]
             [shipyard.workspace.db :as workspace]))
 
 (defmethod ig/init-key :shipyard.assembly/db [_ _]
@@ -37,7 +39,7 @@
 
 (defn request!
   "Serialize draft changes and responses. Polling advances event sequence, never draft revision."
-  [{:keys [catalog library] {state :state} :assembly :as deps} operation {:keys [resume? retry]}]
+  [{:keys [catalog library] scheme-store :schemes {state :state} :assembly :as deps} operation {:keys [resume? retry]}]
   (locking state
     (let [{:keys [draft sequence root scene]} @state
           draft-before draft
@@ -59,8 +61,15 @@
           placement-result (try {:scene (if blocked-root? {} (transforms/placements database draft))}
                                 (catch clojure.lang.ExceptionInfo e
                                   {:scene {} :error (:code (ex-data e))}))
-          after (if (:error placement-result) scene (:scene placement-result))
           effective-draft (if (:error placement-result) draft-before draft)
+          selected (material/select-scheme (when scheme-store (:schemes (schemes/snapshot! scheme-store)))
+                                           (:scheme effective-draft) nil)
+          after (if (:error placement-result) scene
+                    (into {} (map (fn [[path placement]]
+                                    (let [id (:part-id placement) role (:part/role-hint (catalog/part database id))]
+                                      [path (assoc placement :role role
+                                                   :material (material/resolve-material (:scheme selected) path id role))])))
+                          (:scene placement-result)))
           sources (fresh-sources library (map :part-id (vals after)))
           prepared (prepare! deps sources (map :part-id (vals after)) retry)
           mesh-keys (into {} (keep (fn [[id status]] (when (= :ready (:state status)) [id (:mesh-key status)]))) prepared)
@@ -70,6 +79,6 @@
                                                :mount-markers (transforms/mount-markers database effective-draft)})]
       (reset! state {:draft effective-draft :sequence (inc sequence)
                      :root (if blocked-root? root current-root) :scene after})
-      (merge result {:database database :prepared prepared :event envelope
+      (merge result {:database database :prepared prepared :event envelope :scheme-warning (:missing? selected)
                      :available available}
              (when (:error placement-result) {:error (:error placement-result) :status 422})))))

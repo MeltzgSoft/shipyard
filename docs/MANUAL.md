@@ -259,7 +259,9 @@ available to correct and retry. Unsaved changes are lost when Shipyard stops.
 
 Saved ships live in `$XDG_DATA_HOME/shipyard/loadouts.edn` (normally
 `~/.local/share/shipyard/loadouts.edn`). Back up this file to keep your configurations.
-Paint schemes and thumbnails are not yet available.
+The viewport honors paint schemes referenced by saved ships, including individual
+instance overrides. Creating and editing schemes through the UI is not yet available.
+Thumbnails are not yet available.
 
 ## Saved ships
 
@@ -298,6 +300,12 @@ whose library parts are missing. A failed write keeps the saved ship and your wo
 available so you can correct the problem and retry.
 
 ## Troubleshooting
+
+Saved-ship paint uses role defaults and individual slot-instance overrides. Repeated
+copies of one part may have different colors. **Mount colors** temporarily replaces
+the painted base colors; turning it off restores the paint and retains the material
+finish. A replacement part uses its role default unless its own identity matches an
+instance override.
 
 **"Shipyard will not start, with an error about an unrecognised JVM option."** You are
 on an older JDK. Install Java 25.
