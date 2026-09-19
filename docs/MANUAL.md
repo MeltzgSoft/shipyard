@@ -328,14 +328,21 @@ Fleet-default assignment is not yet available.
 ### Painting details
 
 Select an individual instance (not a role default), turn off **Mount colors**, then
-check **Enable brush**. Choose a **Detail colour** and radius in screen pixels.
+check **Enable brush**. Choose a **Detail colour**, **Detail metalness**, **Detail
+roughness** and radius in screen pixels. Metalness `1` gives a metallic finish;
+lower roughness gives sharper reflections. For gold details, for example, choose a
+gold colour, metalness `1`, and roughness around `0.2`.
 Left-drag on the model to colour whole visible triangles under the circle; release
 to save the stroke. Hidden faces and other parts are not painted. Precision follows
 the mesh triangulation: even a small brush fills a whole triangle. Alt+drag or disable
-the brush to orbit. Detail colour overlays the instance base; its finish stays unchanged.
+the brush to orbit. Each stroke captures colour and finish together, so a metallic
+detail can sit beside a matte face on the same part. The finish controls initially
+match the selected instance. Changing them affects your next stroke, not existing
+details. Older colour-only details still inherit the current instance finish.
 
-**Erase to base** removes details under the same visible-only brush. **Undo detail
-stroke** / **Redo detail stroke** keep the last 20 strokes for this target selection.
+**Erase to base** restores both colour and finish under the same visible-only brush.
+**Mount colors** changes the displayed colours temporarily but keeps face finishes.
+**Undo detail stroke** / **Redo detail stroke** keep the last 20 strokes for this target selection.
 Changing target or scheme resets that history. **Clear instance details** removes
 the whole selected layer after confirmation. Shared schemes also share these details.
 

@@ -59,14 +59,14 @@
               :else (assoc result :history {:undo (vec (take-last 20 (conj undo {:before layer :after (:layer result)}))) :redo []}))))))
 
 (defn stroke! [{:keys [paint workspace schemes library catalog] {scheme-state :state} :schemes :as deps}
-               {:strs [id target sequence mesh-key color operation history] :as params}]
+               {:strs [id target sequence mesh-key operation history] :as params}]
   (try
     (let [draft (:draft @(:state paint)) state (workspace/workspace! workspace :paint)
           selected (first (filter #(= target (:key %)) (transforms/targets (catalog/snapshot! catalog) draft)))
           n (when (string? sequence) (parse-long sequence))
           fresh (when (:part-id selected) (index/fresh-source-file! library (:part-id selected)))
           keys (parse-faces (get params "faces"))
-          rgb (:base (transforms/parse-material {"base" color "metalness" "0" "roughness" "1"}))
+          paint-value (transforms/parse-detail params)
           operation (or history operation)]
       (cond
         (or (nil? n) (<= n (or (:brush-sequence state) 0))
@@ -79,7 +79,7 @@
         (locking scheme-state
           (if-let [record (get-in (schemes/snapshot! schemes) [:schemes (:scheme draft)])]
             (let [path (:path selected) layer (get-in record [:scheme/details path])
-                  result (change-layer layer (:brush-history state) operation (:part-id selected) mesh-key keys rgb)
+                  result (change-layer layer (:brush-history state) operation (:part-id selected) mesh-key keys paint-value)
                   value (if (:layer result)
                           (assoc-in record [:scheme/details path] (:layer result))
                           (update record :scheme/details #(dissoc (or % {}) path)))

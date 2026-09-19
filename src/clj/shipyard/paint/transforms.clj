@@ -47,3 +47,11 @@
     (contains? target :path) {:scheme (assoc-in record [:scheme/instances (:path target)]
                                                 {:part-id (:part-id target) :material value})}
     :else {:scheme (assoc-in record [:scheme/roles (:role target)] value)}))
+
+(defn parse-detail
+  "Accept old colour-only clients; a supplied finish must be complete and valid."
+  [{:strs [color metalness roughness] :as params}]
+  (if (or (contains? params "metalness") (contains? params "roughness"))
+    (some-> (parse-material {"base" color "metalness" metalness "roughness" roughness})
+            (select-keys [:base :metalness :roughness]))
+    (:base (parse-material {"base" color "metalness" "0" "roughness" "1"}))))

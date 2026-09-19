@@ -48,3 +48,31 @@
             (is (str/includes? (:body (post "/paint/stroke" (assoc params :sequence "6" :mesh-key new-key :history "undo"))) "Details saved"))
             (is (= before (schemes/snapshot! store)) "Undo clear recovers the retained incompatible layer"))))
       (finally (fixture/stop! started)))))
+
+(deftest per-face-finish-persistence-and-invalid-input
+  (let [started (fixture/start!) sys (:system started) handler (:handler started)
+        store (:shipyard.scheme/db sys) library (:shipyard.library/index sys) cache (:shipyard.mesh/cache sys)
+        id (:hull fixture/ids) mesh-key (:mesh-key (cache/ensure! cache (index/fresh-source-file! library id)))
+        [a b] (vec (strokes/mesh-faces (wire/decode (Files/readAllBytes (fs/path (cache/tier-file cache mesh-key 0))))))
+        post #(handler (mock/request :post %1 %2))]
+    (try
+      (index/record-mesh-key! library id mesh-key 12)
+      (swap! (:state (:shipyard.assembly/db sys)) assoc :draft {:revision 1 :hull id :assignments {}} :root (str (:root started)))
+      (post "/assembly/paint" {}) (post "/paint/create" {:name "Metallic"})
+      (let [scheme (get-in @(:state (:shipyard.paint/db sys)) [:draft :scheme])
+            params {:id (str scheme) :target "[]" :mesh-key mesh-key :sequence "1"
+                    :color "#ffcc00" :operation "paint" :faces (pr-str [a])}]
+        (post "/paint/stroke" params)
+        (is (vector? (get-in (schemes/snapshot! store) [:schemes scheme :scheme/details [] :faces a])))
+        (is (str/includes? (:body (post "/paint/stroke" (assoc params :sequence "2" :faces (pr-str [b]) :metalness "1" :roughness "0.15"))) "Details saved"))
+        (is (= {:base [1.0 0.8 0.0] :metalness 1.0 :roughness 0.15}
+               (get-in (schemes/snapshot! (schemes/open! (:file store))) [:schemes scheme :scheme/details [] :faces b])))
+        (is (vector? (get-in (schemes/snapshot! (schemes/open! (:file store))) [:schemes scheme :scheme/details [] :faces a])))
+        (let [before (schemes/snapshot! store) bytes (slurp (fs/file (:file store)))]
+          (doseq [[n invalid] (map-indexed vector [{:metalness "NaN" :roughness "0.5"}
+                                                   {:metalness "1" :roughness "Infinity"}
+                                                   {:metalness "1"} {:metalness "-0.1" :roughness "0.5"}])]
+            (is (str/includes? (:body (post "/paint/stroke" (merge params invalid {:sequence (str (+ n 3))}))) "Invalid detail material")))
+          (is (= before (schemes/snapshot! store)))
+          (is (= bytes (slurp (fs/file (:file store)))))))
+      (finally (fixture/stop! started)))))

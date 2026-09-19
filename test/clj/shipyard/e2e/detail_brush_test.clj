@@ -92,7 +92,7 @@
             (is (s/wait-until #(= "Details saved." (s/text driver "#brush-status"))))
             (editor/input! driver "#paint-brush input[name=brush-color]" "#00ff00" "input")
             (apply stroke! driver (face-point driver [] 3))
-            (is (s/wait-until #(= #{[1.0 0.0 0.0] [0.0 1.0 0.0]} (set (vals (get-in (masks) [[] :faces])))))))
+            (is (s/wait-until #(= #{[1.0 0.0 0.0] [0.0 1.0 0.0]} (set (map :base (vals (get-in (masks) [[] :faces]))))))))
           (testing "Repeated and nested copies have independent masks"
             (doseq [[label path slot] [["weapon · [[:weapon 0]]" "[[:weapon 0]]" [["weapon" 0]]]
                                        ["turret · [[:weapon 0] [:turret 0]]" "[[:weapon 0] [:turret 0]]" [["weapon" 0] ["turret" 0]]]]]

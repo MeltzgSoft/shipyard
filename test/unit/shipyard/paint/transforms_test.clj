@@ -49,3 +49,12 @@
       (is (empty? (:scheme/instances (:scheme (t/edit-record changed target nil true)))))
       (is (= :invalid-material (:error (t/edit-record record target {} false))))
       (is (= :missing-target (:error (t/edit-record record nil m/neutral false)))))))
+
+(deftest parse-detail-test
+  (testing "legacy clients inherit finish; new clients submit a complete bounded finish"
+    (is (= [1.0 0.0 0.0] (t/parse-detail {"color" "#ff0000"})))
+    (let [params {"color" "#ff0000" "metalness" "1" "roughness" "0.15"}]
+      (is (= {:base [1.0 0.0 0.0] :metalness 1.0 :roughness 0.15} (t/parse-detail params)))
+      (is (nil? (t/parse-detail (dissoc params "roughness"))))
+      (doseq [bad ["NaN" "Infinity" "-0.1" "1.1" "" nil]]
+        (is (nil? (t/parse-detail (assoc params "roughness" bad))))))))

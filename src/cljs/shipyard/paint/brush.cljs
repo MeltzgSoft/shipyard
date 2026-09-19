@@ -108,7 +108,7 @@
                             (render/set-details! object (:layer result))
                             (apply-material! object (.. object -userData -paintMaterial) false)))))))
         finish! (fn [^js e]
-                  (when-let [{:keys [keys form ^js object erase? hex]} @stroke]
+                  (when-let [{:keys [keys form ^js object erase? hex color]} @stroke]
                     (.preventDefault e) (.stopImmediatePropagation e)
                     (set! (.-enabled controls) @active)
                     (reset! stroke nil)
@@ -116,6 +116,8 @@
                       (do (set! (.-value (field form "faces")) (pr-str (vec keys)))
                           (set! (.-value (field form "mesh-key")) (.. object -userData -meshKey))
                           (set! (.-value (field form "color")) hex)
+                          (set! (.-value (field form "metalness")) (:metalness color))
+                          (set! (.-value (field form "roughness")) (:roughness color))
                           (set! (.-value (field form "operation")) (if erase? "erase" "paint"))
                           (.requestSubmit form))
                       (status! "No visible faces of the selected instance under the brush."))))]
@@ -134,7 +136,10 @@
                                  (do (set! (.-enabled controls) false)
                                      (.setPointerCapture canvas (.-pointerId e))
                                      (reset! stroke {:buffer buffer :object object :before before :form form :keys #{}
-                                                     :color (rgb (value form "brush-color")) :hex (value form "brush-color")
+                                                     :color {:base (rgb (value form "brush-color"))
+                                                             :metalness (js/parseFloat (value form "brush-metalness"))
+                                                             :roughness (js/parseFloat (value form "brush-roughness"))}
+                                                     :hex (value form "brush-color")
                                                      :erase? (= "erase" (value form "mode"))
                                                      :radius (js/parseFloat (value form "radius"))})
                                      (sample! e))))

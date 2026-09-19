@@ -83,6 +83,7 @@
             (case (:error result)
               :changed-source "Source mesh changed. Clear instance details before repainting. Nothing saved."
               :invalid-faces "Invalid or oversized stroke. Use a smaller brush or shorter stroke (maximum 1,024 faces). Nothing saved."
+              :invalid-material "Invalid detail material. Choose a colour and metalness/roughness between 0 and 1. Nothing saved."
               :paint-limit "Scheme detail limit reached (100,000 faces). Erase or clear some details first."
               :stale-stroke "Paint selection changed. Reopen it before retrying."
               :no-undo "No detail stroke to undo for this selection."

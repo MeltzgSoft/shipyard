@@ -10,7 +10,7 @@
                                  :hx-include ".assembly__save input[name=name]"})
    [:button {:type "submit" :data-workspace-transition "true"} label]])
 
-(defn brush-panel [record target prepared brush-sequence]
+(defn brush-panel [record target prepared brush-sequence material]
   (when (and record (contains? target :path) (= :ready (get-in prepared [(:part-id target) :state])))
     [:form#paint-brush
      {:hx-post "/paint/stroke" :hx-target "#brush-status" :hx-swap "innerHTML" :hx-sync "this:drop"
@@ -19,16 +19,20 @@
       :hx-on--before-request "document.getElementById('brush-status').textContent='Saving stroke…';"
       :hx-on--after-request "if(document.contains(this)&&!event.detail.successful){document.getElementById('brush-status').textContent='Save not confirmed. Retry last stroke, or reopen Paint to restore saved details.';}"}
      [:h3 "Detail brush"]
-     [:p "Paints whole visible triangles on this instance only. Detail colour overlays its base; metalness and roughness remain instance-wide. Turn off Mount colors to paint. Alt+drag to orbit."]
+     [:p "Paints colour, metalness and roughness on whole visible triangles of this instance. Turn off Mount colors to paint. Alt+drag to orbit."]
      [:input {:type "hidden" :name "id" :value (str (:scheme/id record))}]
      [:input {:type "hidden" :name "target" :value (:key target)}]
      [:input {:type "hidden" :name "mesh-key" :value (get-in prepared [(:part-id target) :mesh-key])}]
      [:input {:type "hidden" :name "sequence" :value brush-sequence}]
      [:input {:type "hidden" :name "faces" :value "[]"}]
      [:input {:type "hidden" :name "color" :value "#ff0000"}]
+     [:input {:type "hidden" :name "metalness" :value (:metalness material)}]
+     [:input {:type "hidden" :name "roughness" :value (:roughness material)}]
      [:input {:type "hidden" :name "operation" :value "paint"}]
      [:label [:input {:type "checkbox" :name "enabled"}] "Enable brush"]
      [:label "Detail colour" [:input {:type "color" :name "brush-color" :value "#ff0000"}]]
+     [:label "Detail metalness" [:input {:type "range" :name "brush-metalness" :min 0 :max 1 :step 0.01 :value (:metalness material)}]]
+     [:label "Detail roughness" [:input {:type "range" :name "brush-roughness" :min 0 :max 1 :step 0.01 :value (:roughness material)}]]
      [:label "Radius (screen pixels)" [:input {:type "range" :name "radius" :min 2 :max 100 :value 20}]]
      [:label "Mode" [:select {:name "mode"} [:option {:value "paint"} "Paint"] [:option {:value "erase"} "Erase to base"]]]
      [:button {:type "submit"} "Retry last stroke"]
@@ -90,4 +94,4 @@
     (when (and record target (contains? target :path))
       [:form#paint-default (merge selection-attrs {:hx-post "/paint/default"})
        [:button {:type "submit"} "Use role default"]])
-    (brush-panel record target prepared brush-sequence)]))
+    (brush-panel record target prepared brush-sequence value)]))

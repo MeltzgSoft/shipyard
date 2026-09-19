@@ -26,20 +26,33 @@
   (and (vector? value) (= 3 (count value))
        (every? #(and (number? %) (<= 0 % 1)) value)))
 
+(defn paint? [value]
+  (or (rgb? value)
+      (and (map? value) (= #{:base :metalness :roughness} (set (keys value)))
+           (rgb? (:base value))
+           (every? #(and (number? %) (<= 0 % 1)) [(:metalness value) (:roughness value)]))))
+
+(defn resolve-material
+  "Legacy RGB details inherit finish; new material entries override all channels."
+  [inherited detail]
+  (cond (rgb? detail) (assoc inherited :base detail)
+        (map? detail) (merge inherited detail)
+        :else inherited))
+
 (defn layer? [value]
   (and (map? value) (= #{:part-id :mesh-key :faces} (set (keys value)))
        (string? (:part-id value)) (<= 1 (count (:part-id value)) 2048)
        (string? (:mesh-key value)) (boolean (re-matches #"[0-9a-f]{64}" (:mesh-key value)))
        (map? (:faces value)) (<= (count (:faces value)) max-painted-faces)
-       (every? (fn [[key rgb]] (and (key? key) (rgb? rgb))) (:faces value))))
+       (every? (fn [[key paint]] (and (key? key) (paint? paint))) (:faces value))))
 
-(defn stroke [layer part-id mesh-key keys rgb erase?]
+(defn stroke [layer part-id mesh-key keys paint erase?]
   (cond
     (not (and (vector? keys) (<= 1 (count keys) max-stroke-faces) (every? key? keys))) {:error :invalid-faces}
-    (not (rgb? rgb)) {:error :invalid-color}
+    (not (paint? paint)) {:error :invalid-material}
     (and layer (or (not= part-id (:part-id layer)) (not= mesh-key (:mesh-key layer)))) {:error :changed-source}
     :else (let [result {:part-id part-id :mesh-key mesh-key
                         :faces (if erase? (apply dissoc (:faces layer) keys)
-                                   (reduce #(assoc %1 %2 rgb) (or (:faces layer) {}) keys))}
+                                   (reduce #(assoc %1 %2 paint) (or (:faces layer) {}) keys))}
                 result (update result :faces #(or % {}))]
             (if (layer? result) {:layer result} {:error :paint-limit}))))

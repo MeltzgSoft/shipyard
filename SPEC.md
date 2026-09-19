@@ -515,8 +515,8 @@ An optional `:scheme/instances` map holds entries such as
 Instance material wins over role material, then neutral studio material. Unmapped
 roles are valid. All RGB channels, metalness and roughness are finite numbers in
 `[0,1]`; stored RGB uses sRGB, as do the editor's colour swatches. Paint names are
-optional free text. A detail brush adds per-face base-colour overlays; UV/texture
-painting and per-face metalness/roughness are outside v1.
+optional free text. A detail brush adds per-face colour, metalness and roughness
+overrides. UV/texture painting is outside v1.
 
 A fleet carries a default scheme; individual loadouts may override it for squadron
 markings. Named schemes and loadout overrides belong to M5; fleet-default assignment
@@ -550,8 +550,12 @@ inside the circle. It fills entire triangles, not partial faces, including at th
 footprint boundary. Occluded and back-facing triangles are excluded; there is no
 paint-through volume. Drag samples overlap along the pointer path. Left-drag paints
 when enabled; Alt+drag or disabling the brush permits ordinary orbiting. A stroke
-commits on release. Detail colour overrides base colour only; **Erase to base**
-removes the selected face overrides. Mount colors hides details without erasing them.
+commits on release. **Detail colour**, **Detail metalness** and **Detail roughness**
+are captured together for each new stroke. Finish controls initially use the selected
+instance's values, and changing controls alone does not repaint existing details.
+**Erase to base** removes all three selected face overrides. Mount colors replaces
+the displayed colour but preserves the face finish, without changing saved details.
+Older colour-only strokes remain compatible and inherit their instance's current finish.
 
 Detail masks are shared scheme data, scoped to full slot path, part id and source
 mesh identity. Changed parts or source meshes never receive an old mask silently;
