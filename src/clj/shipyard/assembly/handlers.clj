@@ -7,9 +7,11 @@
             [shipyard.workspace.transforms :as workspace-transforms]
             [shipyard.http.htmx :as htmx]
             [shipyard.loadout.operations :as loadouts]
+            [shipyard.loadout.model :as loadout-model]
+            [shipyard.scheme.db :as schemes]
             [shipyard.workspace.db :as workspace]))
 
-(defn- response [{:keys [workspace]} result]
+(defn- response [{:keys [workspace] scheme-store :schemes} result]
   (let [draft (:draft result)
         slots (:slots (when (:hull draft) (model/slots (:database result) (:hull draft) (:assignments draft))))
         previous (:drawers (when workspace (workspace/workspace! workspace :assembly)))
@@ -19,7 +21,7 @@
    ;; Matrices and mount data grow with the assembly and exceed Jetty's
    ;; response-header limit. Hiccup escapes the EDN in this inert body field;
    ;; the viewport consumes it once after HTMX swaps the response into #detail.
-     (list (views/panel (assoc result :drawers drawers))
+     (list (views/panel (assoc result :drawers drawers :schemes (when scheme-store (:schemes (schemes/snapshot! scheme-store)))))
            [:input {:type "hidden" :data-assembly-event (pr-str (:event result))}])
      {:status (:status result)})))
 
@@ -67,3 +69,14 @@
       (workspace/update-workspace! workspace :assembly assoc-in [:drawers (edn/read-string slot) :open] (= open "true")))
     ;; Disclosure changes HTML only; an incremental envelope retains the scene.
     (current! deps {:params {"poll" "1"}})))
+
+(defn scheme! [{:keys [schemes] {state :state} :assembly :as deps} {:keys [parameters]}]
+  (locking state
+    (let [{:keys [revision id name]} (:form parameters)
+          result (loadout-model/choose-scheme (:draft @state) (parse-long revision)
+                                              (when (seq id) (parse-uuid id))
+                                              (:schemes (schemes/snapshot! schemes)))]
+      (when-not (:error result)
+        (swap! state assoc :draft (cond-> (:draft result) (some? name) (assoc :name name))))
+      (response deps (merge (db/request! deps nil {})
+                            (when (:error result) {:error (:error result) :status 422}))))))

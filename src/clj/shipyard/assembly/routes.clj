@@ -26,6 +26,11 @@
                                :parameters {:form [:map [:revision revision-schema] [:slot [:fn slot-string?]]
                                                    [:open [:enum "true" "false"]]]}
                                :responses contracts/html-responses}}]
+   ["/assembly/scheme" {:post {:handler (partial handlers/scheme! deps)
+                               :parameters {:form [:map [:revision revision-schema]
+                                                   [:id [:and string? [:fn #(or (= "" %) (some? (parse-uuid %)))]]]
+                                                   [:name {:optional true} string?]]}
+                               :responses contracts/html-responses}}]
    ["/assembly/save" {:post {:handler (partial handlers/save! deps)
                              :parameters {:form [:map [:revision revision-schema] [:name string?]]}
                              :responses contracts/html-responses}}]

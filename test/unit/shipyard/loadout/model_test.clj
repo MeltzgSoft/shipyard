@@ -5,6 +5,16 @@
             [shipyard.assembly.model-test :as assembly]
             [shipyard.loadout.transforms-test :refer [record]]))
 
+(deftest choose-scheme-test
+  (testing "scheme changes are revisioned draft changes, preserving identity and other content"
+    (let [id #uuid "eee5e0bc-a9aa-4b17-bd5f-32fdbd48211c"
+          draft {:revision 2 :hull "hull" :assignments {} :name "Named"}
+          changed (:draft (m/choose-scheme draft 2 id {id {}}))]
+      (is (= (assoc draft :revision 3 :scheme id) changed))
+      (is (nil? (:scheme (:draft (m/choose-scheme changed 3 nil {})))))
+      (is (= :stale-revision (:error (m/choose-scheme draft 1 id {id {}}))))
+      (is (= :missing-scheme (:error (m/choose-scheme draft 2 id {})))))))
+
 (deftest from-record-test
   (let [edit (m/from-record record 4 :edit) copy (m/from-record record 5 :duplicate)]
     (is (= (:loadout/id record) (:loadout-id edit)))

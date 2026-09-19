@@ -86,3 +86,11 @@
         (let [id (:loadout-id value) record (get records id)]
           (or (nil? record)
               (not= record (to-record value id (:name value))))))))
+
+(defn choose-scheme [draft revision id records]
+  (cond
+    (not= revision (:revision draft)) {:error :stale-revision}
+    (nil? (:hull draft)) {:error :no-draft}
+    (and id (not (contains? records id))) {:error :missing-scheme}
+    :else {:draft (-> (if id (assoc draft :scheme id) (dissoc draft :scheme))
+                      (update :revision inc))}))

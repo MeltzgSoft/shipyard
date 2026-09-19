@@ -94,7 +94,7 @@
                     [:option {:value ""} "All classes"]
                     (for [value (catalog/classes database)] [:option {:value value :selected (= value selected-class)} value])]]])
 
-(defn- assembly-rail [{:keys [database hulls selected-bundle selected-class revision hull selected-hull root slots available draft error saved? drawers]}]
+(defn- assembly-rail [{:keys [database hulls selected-bundle selected-class revision hull selected-hull root slots available draft error saved? drawers schemes scheme-warning]}]
   [:div#assembly-rail {:hx-swap-oob "innerHTML:#library"}
    (assembly-filters database selected-bundle selected-class)
    ;; The included draft name can be blank; the hull is validated by the server.
@@ -112,6 +112,19 @@
       [:label "Ship name" [:input {:name "name" :value (or (:name draft) "") :required true :maxlength 200}]]
       [:button {:type "submit"} (if (:loadout-id draft) "Save changes" "Save ship")]])
    (when saved? [:p {:role "status"} "Ship saved."])
+   (when hull
+     [:form.assembly__scheme (merge (form-attrs "/assembly/scheme")
+                                    {:novalidate true :hx-trigger "change"
+                                     :hx-include ".assembly__save input[name=name]"})
+      (hidden "revision" revision)
+      [:label "Paint scheme override"
+       [:select {:name "id"}
+        [:option {:value "" :selected (nil? (:scheme draft))} "No override"]
+        (when scheme-warning [:option {:value (str (:scheme draft)) :selected true} "Unavailable scheme (reference retained)"])
+        (for [record (sort-by :scheme/name (vals schemes))]
+          [:option {:value (str (:scheme/id record)) :selected (= (:scheme draft) (:scheme/id record))} (:scheme/name record)])]]
+      [:p "Save ship to keep this selection."]])
+   (when scheme-warning [:p.detail__error {:role "alert"} "Scheme unavailable. Showing neutral materials; choose another scheme or clear the override. The saved reference is preserved."])
    (when hull (paint/transfer-button "assembly" "Paint assembly"))
    (when error [:p.detail__error {:role "alert"} (get responses/messages error (name error))])
    [:p.assembly__rail-count (str (count hulls) " compatible hulls")]
@@ -119,7 +132,7 @@
      [:div.assembly__rail-slots {:data-hull-id hull}
       (slot-tree database root revision available selected-bundle selected-class drawers slots)])])
 
-(defn panel [{:keys [database draft available prepared error saved? selected-hull selected-bundle selected-class drawers]}]
+(defn panel [{:keys [database draft available prepared error saved? selected-hull selected-bundle selected-class drawers schemes scheme-warning]}]
   (let [{:keys [revision hull assignments]} draft
         root (when hull (catalog/part database hull))
         derived (when hull (model/slots database hull assignments))
@@ -154,7 +167,7 @@
       (when pending? [:div {:hx-get "/assembly?poll=1" :hx-trigger "load delay:400ms" :hx-target "#detail" :hx-swap "innerHTML" :hx-sync "#detail:abort"}])]
      (assembly-rail {:database database :hulls hulls :selected-bundle selected-bundle :selected-class selected-class
                      :revision revision :hull hull :selected-hull selected-hull :root root :slots slots :available available
-                     :draft draft :error error :saved? saved? :drawers drawers})]))
+                     :draft draft :error error :saved? saved? :drawers drawers :schemes schemes :scheme-warning scheme-warning})]))
 
 (defn discard-confirmation [action label cancel-url params revision transition?]
   [:section.assembly-discard {:aria-labelledby "discard-heading"}
