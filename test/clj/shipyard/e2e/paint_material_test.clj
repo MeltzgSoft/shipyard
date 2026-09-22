@@ -17,7 +17,11 @@
   (s/assert-bundle!)
   (let [started (fixture/start! true) driver (s/make-driver) sys (:system started)
         id (random-uuid) ship-id (random-uuid)
-        scheme {:scheme/id id :scheme/name "Paint proof" :scheme/roles {:weapon red}
+        scheme {:scheme/id id :scheme/name "Paint proof" :scheme/roles {:weapon blue}
+                :scheme/groups [{:group/id (random-uuid) :group/name "Battery" :group/order 0
+                                 :group/members [{:path [[:weapon 0]] :part-id (:weapon fixture/ids)}
+                                                 {:path [[:weapon 1]] :part-id (:weapon fixture/ids)}]
+                                 :group/material red}]
                 :scheme/instances {[[:weapon 1]] {:part-id (:weapon fixture/ids) :material blue}
                                    [[:weapon 0] [:turret 0]] {:part-id (:turret fixture/ids) :material blue}}}
         ship {:loadout/id ship-id :loadout/name "Painted ship" :loadout/hull (:hull fixture/ids)

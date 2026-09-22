@@ -259,7 +259,7 @@ available to correct and retry. Unsaved changes are lost when Shipyard stops.
 
 Saved ships live in `$XDG_DATA_HOME/shipyard/loadouts.edn` (normally
 `~/.local/share/shipyard/loadouts.edn`). Back up this file to keep your configurations.
-The viewport honors paint schemes referenced by saved ships, including individual
+The viewport honors paint schemes referenced by saved ships, including ordered material groups and individual
 instance overrides. Creating and editing schemes through the UI is not yet available.
 Thumbnails are not yet available.
 
