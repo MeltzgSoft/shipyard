@@ -32,6 +32,7 @@
   (s/click! driver ".paint-tools button:text-is('Select')")
   (s/click! driver (str "#paint-target button[data-paint-target='" path "']"))
   (s/click! driver ".paint-tools button:text-is('Brush')")
+  (s/wait-visible! driver "#paint-brush")
   (is (s/wait-until #(= path (s/js driver "() => document.querySelector('#paint-brush')?.elements.target.value")))))
 
 (deftest visible-strokes-save-undo-erase-and-retry

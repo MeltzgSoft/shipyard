@@ -226,8 +226,8 @@
         [:form#paint-default (merge selection-attrs {:hx-post "/paint/default"})])]
      (when record [:div.paint-tools
                    [:form.paint-segmented (merge selection-attrs {:hx-post "/paint/tool"})
-                    [:button {:type "submit" :name "tool" :value "select" :aria-pressed (str (not brush?))} "Select"]
-                    [:button {:type "submit" :name "tool" :value "brush" :aria-pressed (str brush?) :disabled (not ready?)} "Brush"]]
+                    [:button {:type "submit" :name "tool" :data-workspace-transition "true" :value "select" :aria-pressed (str (not brush?))} "Select"]
+                    [:button {:type "submit" :name "tool" :data-workspace-transition "true" :value "brush" :aria-pressed (str brush?) :disabled (not ready?)} "Brush"]]
                    (when brush? [:span "Orbit Alt+drag"])])
      (when record [:div.paint-legend
                    (if brush? (list [:span "Brush radius (screen px)"] [:span "Painted this stroke"] [:span "Occluded — skipped"])
