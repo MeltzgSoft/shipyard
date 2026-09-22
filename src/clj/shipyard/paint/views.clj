@@ -54,7 +54,9 @@
        [:form#paint-rename (merge selection-attrs {:hx-post "/paint/rename"})
         [:label "Scheme name" [:input {:name "name" :value (:scheme/name record) :required true :maxlength 200}]]
         [:button {:type "submit"} "Rename scheme"]]])]
-   [:p "Edits affect every saved ship using this scheme."]])
+   (if record
+     [:p "Edits affect every saved ship using this scheme."]
+     [:p.paint-empty "Choose a scheme, or open New and name a scheme to start painting."])])
 
 (defn target-tree [record targets target]
   (let [instances (filter #(contains? % :path) targets)
@@ -77,7 +79,7 @@
 
 (defn group-controls [record target]
   (when-let [group (group-record record target)]
-    [:details.paint-group-controls [:summary "Manage group"]
+    [:details.paint-group-controls {:open true} [:summary "Manage group"]
      [:form (merge selection-attrs {:hx-post "/paint/group/rename"})
       [:input {:type "hidden" :name "group" :value (str (:group/id group))}]
       [:label "Group name" [:input {:name "name" :value (:group/name group) :required true :maxlength 200}]]
@@ -153,13 +155,14 @@
     [:span#paint-header-status {:role "status"} "Saved values"]]
    [:section#library.panel.paint-rail {:hx-swap-oob "outerHTML"}
     (scheme-controls records draft record)
-    (target-tree record targets target)]
+    (when record (target-tree record targets target))]
    [:section.paint-editor
     [:header.paint-inspector-header
-     [:div [:h2 (or (:name target) (:label target) "Paint preview")]
-      [:p (when target (str (if (contains? target :path) (pr-str (:path target)) (:key target))
-                            (when (:role target) (str " · role " (name (:role target))))))]]
-     (when value (swatch value))]
+     [:div [:h2 (if record (or (:name target) (:label target) "Paint preview") "Choose a scheme")]
+      [:p (when (and record target) (str (if (contains? target :path) (pr-str (:path target)) (:key target))
+                                         (when (:role target) (str " · role " (name (:role target))))))]]
+     (when (and record value) (swatch value))]
+    (when-not record [:p "Choose a scheme from the left rail, or open New and enter a name. Material and group controls appear after you create it."])
     (when error [:p.detail__error {:role "alert"} error])
     (when-not (:hull draft) [:p "No paint model selected. Use Paint assembly or Paint ship to copy a model here."])
     (when (some #(= :running (:state %)) (vals prepared))
@@ -172,5 +175,5 @@
             (material-form record target value paths sequence)))
     (when (and record target (contains? target :path))
       [:form#paint-default (merge selection-attrs {:hx-post "/paint/default"})])]
-   [:div.paint-tools [:span.paint-tool-active "Select"]]
-   [:div.paint-legend [:span "Selected target"] [:span "Role default"] [:span "Group material"] [:span "Instance material"]]))
+   (when record [:div.paint-tools [:span.paint-tool-active "Select"]])
+   (when record [:div.paint-legend [:span "Selected target"] [:span "Role default"] [:span "Group material"] [:span "Instance material"]])))

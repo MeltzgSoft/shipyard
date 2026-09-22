@@ -307,6 +307,9 @@ hull alone are supported. Returning through the **Paint** selector restores that
 painting does not change Assemble's model or save a ship.
 
 Choose a scheme, or open **New**, enter a name and select **Create scheme**.
+Until a scheme exists, material and group controls are hidden. Selecting a group
+opens **Manage group**, where you can rename it, change its checked members,
+reorder it, or delete it.
 Select a role, group or individual instance in the left rail. The floating inspector
 shows its full slot path and material. **Write to** switches between the instance,
 its shared role material and a group; a group picker appears for overlapping groups.
