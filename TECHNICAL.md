@@ -2226,8 +2226,8 @@ full path vectors, including `[]` for the hull; values contain `:part-id` and
 workspace selection or uncommitted preview values. A missing store starts empty;
 malformed stores stop startup with a recovery message and remain untouched.
 
-Material resolution is pure: matching path and part identity, then authoritative
-catalog role, then neutral. A loadout override selects the scheme before any fleet
+Material resolution is pure: matching instance path and part identity, then the first
+matching group with a material in rail order, then authoritative catalog role and neutral. A loadout override selects the scheme before any fleet
 default; a dangling override warns and uses neutral, without silently selecting a
 different scheme or removing its UUID. Fleet assignment is an M6 integration.
 RGB values are stored in sRGB; convert explicitly at the three.js boundary. Reuse
@@ -2255,3 +2255,20 @@ instances, hull-only and sparse ships, role fallback after replacement, mount-co
 round trips, shared-scheme updates, live input without disk writes, commit/reload,
 failed persistence and delayed work across selections and activations. Each behavior
 PR includes real-browser coverage and updates the supported user manual (§10.3).
+
+### 15.1 Material groups and Paint layout
+
+Optional `:scheme/groups` is a vector of records with `:group/id` UUID, `:group/name`,
+`:group/order` nonnegative integer, `:group/members` vector of `{:path path :part-id id}`,
+and optional `:group/material`. IDs and order values are unique within a scheme;
+normalized rail order is contiguous after reordering or deletion. Group membership
+is identity-bound like instance overrides. Older schemes remain valid without groups.
+
+The Paint rail contains scheme forms, role/group/instance target buttons, and native
+checkboxes for group membership. Selection remains a server workspace operation;
+material input previews only paths whose effective material depends on that target.
+Group writes and ordering use the existing atomic scheme store. The inspector floats
+over the viewport, with independently scrolling controls and fixed actions. Tool
+controls and legends wrap within the viewport area outside the inspector. Preserve
+all workspace modes and the synchronized transition contract. Native colour/range
+inputs and existing application tokens provide the controls and styling.

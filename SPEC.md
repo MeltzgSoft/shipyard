@@ -512,10 +512,19 @@ Mapping to actual manufacturer ranges is not attempted in v1.
 An optional `:scheme/instances` map holds entries such as
 `{[[:port-1 0]] {:part-id "human-navy/cruiser/lance-battery"
                  :material {:base [0.8 0.1 0.1] :metalness 0.2 :roughness 0.6}}}`.
-Instance material wins over role material, then neutral studio material. Unmapped
+Instance material wins over group material, then role material and neutral studio material. Unmapped
 roles are valid. All RGB channels, metalness and roughness are finite numbers in
 `[0,1]`; stored RGB uses sRGB, as do the editor's colour swatches. Paint names are
 optional free text. Per-region painting remains outside v1.
+
+Groups are named, ordered sets of instance identities within a scheme. Instances may
+belong to multiple groups; the first group in rail order with a material wins. Group
+membership matches both full slot path and part id, so replacing a part does not
+silently reuse the old membership. Retain unmatched members for reuse. Users create
+groups from checked instance rows, rename/delete groups, edit membership and move
+groups up/down. Instance rows identify their effective group or role inheritance.
+Group creation does not copy a material; a group without a material leaves inheritance
+unchanged. Deleting a group preserves instance materials and face details.
 
 A fleet carries a default scheme; individual loadouts may override it for squadron
 markings. Named schemes and loadout overrides belong to M5; fleet-default assignment
@@ -531,8 +540,11 @@ different workspace's model. Paint appears after Ship Browser in the selector.
 
 Choose an existing scheme or enter a name and choose **Create scheme** to allocate
 its UUID and persist an empty scheme. Creation does not assign it to a loadout.
-The editor offers role defaults and individual populated instances, identified by
-their full paths. **Use role default** removes an instance override. Changes to a
+The left rail offers role defaults, ordered groups and individual populated instances,
+identified by their full paths. Selecting a row edits one target in a floating material
+inspector over the full-height viewport. **Write to** selects Instance, Role or Group;
+Role edits the shared role material and Group offers the selected instance's groups.
+**Use inherited material** removes an instance override, revealing its group or role default. Changes to a
 shared scheme affect every ship referencing it; explain this beside the controls.
 Explicitly choose a scheme in Assemble and Save ship to persist that ship's override.
 
