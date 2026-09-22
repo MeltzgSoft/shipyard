@@ -143,6 +143,11 @@
                  :create (paint/create! deps params)
                  :rename (paint/rename! deps params)
                  :default (paint/default! deps params)
+                 :group-create (paint/group! deps :create params)
+                 :group-rename (paint/group! deps :rename params)
+                 :group-delete (paint/group! deps :delete params)
+                 :group-members (paint/group! deps :members params)
+                 :group-order (paint/group! deps :order params)
                  (paint/select! deps params))]
     (workspace/update-workspace! workspace :paint assoc :edit-sequence 0)
     (transition! deps {:path-params {:mode "paint"} :params (when (:error result) {"error" (:error result)})

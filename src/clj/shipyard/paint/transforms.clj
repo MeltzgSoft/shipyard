@@ -5,26 +5,36 @@
             [shipyard.scheme.material :as material]
             [shipyard.scheme.transforms :as scheme]))
 
-(defn targets [database draft]
-  (let [instances (mapv (fn [[path id]]
-                          (let [part (catalog/part database id)]
-                            {:key (pr-str path) :path path :part-id id :role (:part/role-hint part)
-                             :label (str (or (:part/name part) id) " · " (if (empty? path) "Hull" (pr-str path)))}))
-                        (loadout/part-tree draft))]
-    (into instances
-          (for [role (sort (set (keep :role instances)))]
-            {:key (str "role/" (name role)) :role role :label (str "Role default · " (name role))}))))
+(defn targets
+  ([database draft] (targets database draft nil))
+  ([database draft record]
+   (let [instances (mapv (fn [[path id]]
+                           (let [part (catalog/part database id)]
+                             {:key (pr-str path) :path path :part-id id :role (:part/role-hint part)
+                              :name (or (:part/name part) id)
+                              :label (str (or (:part/name part) id) " · " (if (empty? path) "Hull" (pr-str path)))}))
+                         (loadout/part-tree draft))]
+     (into (into instances (map (fn [g] {:key (str "group/" (:group/id g)) :group-id (:group/id g) :label (:group/name g)})
+                                (sort-by :group/order (:scheme/groups record))))
+           (for [role (sort (set (keep :role instances)))]
+             {:key (str "role/" (name role)) :role role :label (str "Role default · " (name role))})))))
 
 (defn target-material [record target]
-  (if (contains? target :path)
-    (material/resolve-material record (:path target) (:part-id target) (:role target))
-    (or (get-in record [:scheme/roles (:role target)]) material/neutral)))
+  (cond
+    (:group-id target) (or (:group/material (first (filter #(= (:group-id target) (:group/id %)) (:scheme/groups record)))) material/neutral)
+    (contains? target :path) (material/resolve-material record (:path target) (:part-id target) (:role target))
+    :else (or (get-in record [:scheme/roles (:role target)]) material/neutral)))
 
 (defn affected-paths [record targets target]
-  (if (contains? target :path)
-    [(:path target)]
-    (mapv :path (filter #(and (contains? % :path) (= (:role %) (:role target))
-                              (not= (:part-id %) (get-in record [:scheme/instances (:path %) :part-id]))) targets))))
+  (let [source (cond (contains? target :path) [:instance (:path target)]
+                     (:group-id target) [:group (:group-id target)]
+                     :else [:role (:role target)])
+        preview (if (:group-id target)
+                  (update record :scheme/groups (fn [groups] (mapv #(if (= (:group-id target) (:group/id %))
+                                                                      (assoc % :group/material material/neutral) %) groups))) record)]
+    (if (contains? target :path) [(:path target)]
+        (mapv :path (filter #(and (contains? % :path)
+                                  (= source (material/material-source preview (:path %) (:part-id %) (:role %)))) targets)))))
 
 (defn color-hex [base]
   (apply str "#" (map #(format "%02x" (Math/round (* 255.0 %))) base)))
@@ -43,6 +53,8 @@
     (nil? target) {:error :missing-target}
     (and clear? (not (contains? target :path))) {:error :invalid-target}
     (and (not clear?) (not (scheme/material? value))) {:error :invalid-material}
+    (:group-id target) {:scheme (update record :scheme/groups
+                                        (fn [groups] (mapv #(if (= (:group-id target) (:group/id %)) (assoc % :group/material value) %) groups)))}
     clear? {:scheme (update record :scheme/instances #(dissoc (or % {}) (:path target)))}
     (contains? target :path) {:scheme (assoc-in record [:scheme/instances (:path target)]
                                                 {:part-id (:part-id target) :material value})}

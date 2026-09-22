@@ -92,8 +92,12 @@
      :position [(+ (c 0) (* dist 0.7)) (+ (c 1) (* dist 0.5)) (+ (c 2) (* dist 0.7))]
      :radius radius}))
 
-(defn- frame! [{:keys [^js camera ^js controls]} bbox-min bbox-max]
-  (let [{:keys [target position radius]} (frame-bounds bbox-min bbox-max (.-fov camera))]
+(defn- frame! [{:keys [^js camera ^js controls workspace ^js canvas]} bbox-min bbox-max]
+  (let [inspector (when (= workspace :paint) (.querySelector js/document ".paint-editor"))
+        width (max 1 (- (.-clientWidth canvas) (if inspector (+ 42 (.-offsetWidth inspector)) 0)))
+        aspect (/ width (max 1 (.-clientHeight canvas)))
+        fov (if inspector (* 2 (/ 180 js/Math.PI) (js/Math.atan (* (min 1 aspect) (js/Math.tan (/ (* (.-fov camera) js/Math.PI) 360))))) (.-fov camera))
+        {:keys [target position radius]} (frame-bounds bbox-min bbox-max fov)]
     (.set (.-position camera) (position 0) (position 1) (position 2))
     (.set (.-target controls) (target 0) (target 1) (target 2))
     (set! (.-near camera) (/ radius 100.0))
@@ -1387,12 +1391,15 @@
 
 ;; --- lifecycle --------------------------------------------------------------
 
-(defn- resize! [{:keys [^js renderer ^js camera ^js canvas]}]
+(defn- resize! [{:keys [^js renderer ^js camera ^js canvas workspace]}]
   (let [w (max 1 (.-clientWidth canvas))
         h (max 1 (.-clientHeight canvas))]
     (set! (.-aspect camera) (/ w h))
     (.updateProjectionMatrix camera)
-    (.setSize renderer w h false)))
+    (.setSize renderer w h false)
+    (if-let [inspector (when (= workspace :paint) (.querySelector js/document ".paint-editor"))]
+      (.setViewOffset camera w h (/ (+ 28 (.-offsetWidth inspector)) 2) 0 w h)
+      (.clearViewOffset camera))))
 
 (defn- sync-orientation-camera! [^js camera ^js orientation-camera]
   (let [position (three/Vector3. 0.0 0.0 6.0)]

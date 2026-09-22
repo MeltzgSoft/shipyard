@@ -510,6 +510,7 @@
       [:h1 "Shipyard"]
       (workspace-views/navigation (:workspace context))
       [:div.masthead__spacer]
+      [:span#paint-header]
       [:p.masthead__stats "Library ready · select a part to begin"]]
      [:main.layout
       (if (pos? (:activation context))

@@ -18,6 +18,15 @@
         (concat
          [["/paint" {:get {:handler (partial paint/current! deps) :responses contracts/html-responses}}]
           ["/paint/material" {:post {:handler (partial paint/material! deps) :responses contracts/html-responses}}]]
+         (for [action [:create :rename :delete :members :order]]
+           [(str "/paint/group/" (name action))
+            {:post {:handler (partial handlers/paint-selection! deps (keyword (str "group-" (name action))))
+                    :parameters {:form (into [:map]
+                                             (concat (when (not= action :create) [[:group [:and string? [:fn #(some? (parse-uuid %))]]]])
+                                                     (when (#{:create :rename} action) [[:name string?]])
+                                                     (when (#{:create :members} action) [[:members {:optional true} [:or string? [:sequential string?]]]])
+                                                     (when (= action :order) [[:direction [:enum "up" "down"]]])))}
+                    :responses contracts/html-responses}}])
          (for [action [:select :target :create :rename :default]]
            [(str "/paint/" (name action)) {:post {:handler (partial handlers/paint-selection! deps action)
                                                   :responses contracts/html-responses}}])
