@@ -94,11 +94,14 @@
       [:button {:type "submit"} "Delete group"]]]))
 
 (defn write-targets [record targets target anchor-key]
-  (let [anchor (or (when (contains? target :path) target)
-                   (first (filter #(= anchor-key (:key %)) targets))
-                   (first (filter #(and (contains? % :path)
-                                        (or (= (:role target) (:role %))
-                                            (some #{(select-keys % [:path :part-id])} (:group/members (group-record record target))))) targets)))
+  (let [belongs? (fn [entry]
+                   (and (contains? entry :path)
+                        (if (:group-id target)
+                          (some #{(select-keys entry [:path :part-id])} (:group/members (group-record record target)))
+                          (= (:role target) (:role entry)))))
+        anchor (or (when (contains? target :path) target)
+                   (first (filter #(and (= anchor-key (:key %)) (belongs? %)) targets))
+                   (first (filter belongs? targets)))
         groups (material/groups-for record (:path anchor) (:part-id anchor))
         group (or (group-record record target) (first groups))]
     [:div.paint-write
