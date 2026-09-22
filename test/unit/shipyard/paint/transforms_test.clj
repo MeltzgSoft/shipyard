@@ -9,8 +9,8 @@
 (deftest targets-test
   (testing "root and repeated instances remain distinct alongside role defaults"
     (let [targets (t/targets fixture/database draft)]
-      (is (= 5 (count targets)))
-      (is (= ["[]" "[[:weapon 0]]" "[[:weapon 1]]" "role/hull" "role/weapon"] (mapv :key targets)))
+      (is (= 7 (count targets)))
+      (is (= ["[]" "[[:weapon 0]]" "[[:weapon 1]]" "layer/Primary" "layer/Secondary" "role/hull" "role/weapon"] (mapv :key targets)))
       (is (empty? (t/targets fixture/database {:assignments {}}))))))
 
 (deftest target-material-test

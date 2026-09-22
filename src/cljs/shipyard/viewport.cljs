@@ -12,7 +12,9 @@
   place here in the decoder, the event handling and the scene bookkeeping - not
   in per-frame matrix math, where `(set! (.-x (.-position o)) 1.0)` is plainly
   worse than the JavaScript."
-  (:require ["three" :as three]
+  (:require [shipyard.regions.brush :as region-brush]
+            [shipyard.regions.model :as regions]
+            ["three" :as three]
             ["three/examples/jsm/controls/OrbitControls.js" :refer [OrbitControls]]
             ["three/examples/jsm/environments/RoomEnvironment.js" :refer [RoomEnvironment]]
             [cljs.reader :as edn]
@@ -1014,6 +1016,8 @@
                      (set! (.-name obj) (or part-id url))
                      (set! (.. obj -userData -partId) part-id)
                      (set! (.. obj -userData -meshKey) mesh-key)
+                     (paint-render/set-regions! obj (:regions payload) (regions/preview-materials (:regions payload)))
+                     (apply-material! obj (get (regions/preview-materials (:regions payload)) "Primary" paint-material/neutral) @(:mount-colors-enabled sys))
                      (orient-object! obj part-orientation)
                      (clear-authoring-preview! sys)
                      (clear-interface-highlights! sys)
@@ -1070,6 +1074,7 @@
                      (set! (.. object -userData -partId) (:part-id payload))
                      (set! (.. object -userData -meshKey) (:mesh-key payload))
                      (paint-render/set-details! object (:details payload))
+                     (paint-render/set-regions! object (:regions payload) (:layers payload))
                      (apply-material! object (:material payload) @mount-colors-enabled)
                      (.updateMatrixWorld object true)
                      (put-part! sys slot object)
@@ -1104,6 +1109,7 @@
       (reset! assembly after)
       (doseq [[slot ^js object] @parts]
         (paint-render/set-details! object (get-in after [:slots slot :payload :details]))
+        (paint-render/set-regions! object (get-in after [:slots slot :payload :regions]) (get-in after [:slots slot :payload :layers]))
         (apply-material! object (get-in after [:slots slot :payload :material]) @(:mount-colors-enabled sys)))
       (sync-mount-markers! sys (:mount-markers event))
       (doseq [{:keys [op slot] :as command} (:commands event)
@@ -1365,6 +1371,8 @@
          :render-frame (.. renderer -info -render -frame)
          :target    (let [t (.-target controls)] #js [(.-x t) (.-y t) (.-z t)])
          :camera    (let [p (.-position camera)] #js [(.-x p) (.-y p) (.-z p)])
+         :region-faces (clj->js (when-let [^js object (first objs)]
+                                  (paint-render/projected-faces object camera (:canvas sys))))
          :materials (clj->js (mapv (fn [^js o] (.getHexString (.. o -material -color))) objs))
          ;; three's own count of geometries live on the GPU, decremented by
          ;; `geometry.dispose()`. The only thing here that is not derived from
@@ -1393,6 +1401,8 @@
                                                         (when (<= (paint-render/triangle-count (.-geometry object)) 64)
                                                           (mapv (fn [triangle]
                                                                   {:key (paint-render/face-key (.-geometry object) triangle)
+                                                                   :base (when-let [color (.getAttribute (.-geometry object) "color")]
+                                                                           [(.getX color (* 3 triangle)) (.getY color (* 3 triangle)) (.getZ color (* 3 triangle))])
                                                                    :metalness (.getX finish (* 3 triangle))
                                                                    :roughness (.getY finish (* 3 triangle))})
                                                                 (range (paint-render/triangle-count (.-geometry object))))))
@@ -1527,16 +1537,31 @@
             material {:base (mapv #(/ (js/parseInt (subs hex % (+ % 2)) 16) 255) [1 3 5])
                       :metalness (js/parseFloat (value "metalness"))
                       :roughness (js/parseFloat (value "roughness"))}
-            paths (edn/read-string (.getAttribute form "data-paint-slots"))]
+            paths (edn/read-string (.getAttribute form "data-paint-slots"))
+            layer (.getAttribute form "data-paint-layer")
+            override? (= "true" (.getAttribute form "data-paint-override"))]
         (doseq [path paths]
-          (swap! (:assembly sys) assoc-in [:slots path :payload :material] material)
+          (if layer
+            (do (swap! (:assembly sys) assoc-in [:slots path :payload :layers layer] material)
+                (when (= layer "Primary") (swap! (:assembly sys) assoc-in [:slots path :payload :material] material)))
+            (do (swap! (:assembly sys) assoc-in [:slots path :payload :material] material)
+                (when override? (swap! (:assembly sys) assoc-in [:slots path :payload :layers] nil))))
           (when-let [object (get @(:parts sys) path)]
-            (apply-material! object material @(:mount-colors-enabled sys))))))))
+            (let [payload (get-in @(:assembly sys) [:slots path :payload])]
+              (paint-render/set-regions! object (:regions payload) (:layers payload))
+              (apply-material! object (:material payload) @(:mount-colors-enabled sys)))))))))
 
 (defn- listen! [sys]
   (let [body (.-body js/document)
         payload (fn [^js e] (edn/read-string (.. e -detail -value)))]
     (listen-event! body sys "shipyard:load-mesh" #(load-mesh! sys (payload %)))
+    (listen-event! body sys "shipyard:part-regions"
+                   (fn [e]
+                     (let [{:keys [part-id mesh-key regions]} (payload e)]
+                       (doseq [[_ ^js object] @(:parts sys)
+                               :when (and (= part-id (.. object -userData -partId)) (= mesh-key (.. object -userData -meshKey)))]
+                         (paint-render/set-regions! object regions (regions/preview-materials regions))
+                         (apply-material! object (get (regions/preview-materials regions) "Primary") @(:mount-colors-enabled sys))))))
     (listen-event! body sys "shipyard:clear" (fn [_] (clear! sys)))
     (listen-event! body sys "shipyard:status" #(reset! (:status sys) (payload %)))
     (listen-event! body sys "shipyard:authoring" #(authoring! sys (payload %)))
@@ -1641,6 +1666,7 @@
     (if environment (set! (.-environment scene) environment) (environment! renderer scene))
     (listen! sys)
     (when (= mode :paint) (brush/listen! sys apply-material!))
+    (when (= mode :browse) (region-brush/install! sys apply-material!))
     sys))
 
 (defn- active-runtime [{:keys [runtimes active-workspace]}]

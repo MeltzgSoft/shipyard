@@ -1,0 +1,71 @@
+(ns shipyard.integration.part-regions-test
+  (:require [babashka.fs :as fs]
+            [clojure.string :as str]
+            [clojure.test :refer [deftest is]]
+            [ring.mock.request :as mock]
+            [shipyard.assembly-fixture :as fixture]
+            [shipyard.catalog.db :as catalog]
+            [shipyard.catalog.sidecar :as sidecar]
+            [shipyard.http.jobs :as jobs]
+            [shipyard.library.index :as index]
+            [shipyard.paint.strokes :as strokes]
+            [shipyard.scheme.db :as schemes]
+            [shipyard.loadout.db :as loadouts]
+            [shipyard.workspace.db :as workspace]))
+
+(deftest regions-roundtrip-and-source-guards
+  (let [started (fixture/start!) sys (:system started) handler (:handler started)
+        id (:weapon fixture/ids) library (:shipyard.library/index sys) cat (:shipyard.catalog/db sys)
+        post #(handler (mock/request :post "/parts/regions" %))]
+    (try
+      (jobs/submit! (:shipyard.http/jobs sys) id (index/fresh-source-file! library id))
+      (loop [attempt 0]
+        (when (and (< attempt 200) (not (index/mesh-key! library id))) (Thread/sleep 25) (recur (inc attempt))))
+      (workspace/update-workspace! (:shipyard.workspace/db sys) :browse assoc :selection id)
+      (let [mesh (index/mesh-key! library id)
+            key (first (strokes/known-faces! {:cache (:shipyard.mesh/cache sys) :paint (:shipyard.paint/db sys)} mesh))
+            params {:part-id id :mesh-key mesh :revision "0" :action "assign" :layer "Secondary" :faces (pr-str [key])}
+            read! #(catalog/part-regions (catalog/part (catalog/snapshot! cat) id))]
+        (is (= 400 (:status (post (assoc params :action "invalid")))))
+        (is (= 200 (:status (post params))))
+        (is (= "Secondary" (get-in (read!) [:faces key])))
+        (is (= (read!) (:part/paint-regions (sidecar/read-sidecar! (str (:root started)) id))))
+        (catalog/reingest! cat (index/parts! library) (str (:root started)))
+        (is (= "Secondary" (get-in (read!) [:faces key])))
+        (let [before (read!)]
+          (is (str/includes? (:body (post params)) "Regions changed"))
+          (is (str/includes? (:body (post (assoc params :revision "1" :faces (pr-str [(apply str (repeat 72 "f"))])))) "Invalid region faces"))
+          (is (str/includes? (:body (post (assoc params :revision "1" :mesh-key (apply str (repeat 64 "b"))))) "Source changed"))
+          (is (= before (read!)))
+          (let [file (sidecar/sidecar-file (str (:root started)) id) backup (fs/path (:temp started) "part-backup.edn")]
+            (fs/move file backup) (fs/create-dirs file)
+            (is (str/includes? (:body (post (assoc params :revision "1"))) "Could not save"))
+            (is (= before (read!)))
+            (fs/delete-tree file) (fs/move backup file)))
+        (post (assoc params :revision "1" :action "add" :name "Trim"))
+        (is (= ["Primary" "Secondary" "Trim"] (:layers (read!))))
+        (post (assoc params :revision "2" :action "reset"))
+        (is (empty? (:faces (read!)))))
+      (finally (fixture/stop! started)))))
+
+(deftest scheme-delete-preserves-references-and-failed-writes
+  (let [started (fixture/start!) sys (:system started) handler (:handler started)
+        post #(handler (mock/request :post %1 %2)) store (:shipyard.scheme/db sys)]
+    (try
+      (post "/paint/create" {:name "Shared"})
+      (let [id (get-in @(:state (:shipyard.paint/db sys)) [:draft :scheme])
+            ship {:loadout/id (random-uuid) :loadout/name "Reference ship" :loadout/hull (:hull fixture/ids) :loadout/slots {} :loadout/scheme id}]
+        (loadouts/put! (:shipyard.loadout/db sys) ship :create)
+        (is (str/includes? (:body (handler (mock/request :get "/paint"))) (:loadout/name ship)))
+        (post "/paint/delete" {:id (str id)})
+        (is (get-in (schemes/snapshot! store) [:schemes id]))
+        (let [before (schemes/snapshot! store) file (:file store) backup (fs/path (:temp started) "schemes-backup.edn")]
+          (fs/move file backup) (fs/create-dirs file)
+          (post "/paint/delete" {:id (str id) :confirmed "true"})
+          (is (= before (schemes/snapshot! store)))
+          (fs/delete-tree file) (fs/move backup file))
+        (post "/paint/delete" {:id (str id) :confirmed "true"})
+        (is (empty? (:schemes (schemes/snapshot! (schemes/open! (:file store))))))
+        (is (= id (get-in (loadouts/snapshot! (:shipyard.loadout/db sys)) [:loadouts (:loadout/id ship) :loadout/scheme])))
+        (is (nil? (get-in @(:state (:shipyard.paint/db sys)) [:draft :scheme]))))
+      (finally (fixture/stop! started)))))

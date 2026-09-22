@@ -4,6 +4,7 @@
             [shipyard.catalog.db :as catalog]
             [shipyard.http.htmx :as htmx]
             [shipyard.loadout.transforms :as loadout]
+            [shipyard.loadout.db :as loadouts]
             [shipyard.paint.db :as db]
             [shipyard.paint.groups :as groups]
             [shipyard.paint.strokes :as strokes]
@@ -12,10 +13,13 @@
             [shipyard.scheme.db :as schemes]
             [shipyard.workspace.db :as workspace]))
 
-(defn current! [{:keys [workspace paint schemes] :as deps} {:keys [params]}]
+(defn current! [{:keys [workspace paint schemes loadouts] :as deps} {:keys [params]}]
   (let [result (assembly/request! (assoc deps :assembly paint) nil {:resume? (not= "1" (get params "poll"))})
         draft (:draft result) records (:schemes (schemes/snapshot! schemes))
-        record (get records (:scheme draft))
+        record (when-let [record (get records (:scheme draft))]
+                 (assoc record :referenced-ships (mapv :loadout/name
+                                                       (filter #(= (:scheme draft) (:loadout/scheme %))
+                                                               (vals (:loadouts (loadouts/snapshot! loadouts)))))))
         targets (transforms/targets (:database result) draft record)
         state (workspace/workspace! workspace :paint)
         target (or (first (filter #(= (:target state) (:key %)) targets)) (first targets))]
@@ -120,3 +124,11 @@
                [:span#paint-header-status {:hx-swap-oob "outerHTML" :role "status"} "Details saved."]
                [:span#paint-face-count {:hx-swap-oob "outerHTML"} (str (reduce + 0 (map #(count (:faces %)) (vals (:scheme/details record)))) " painted faces")]
                [:input {:type "hidden" :data-assembly-event (pr-str (:event scene))}]))))))
+
+(defn delete! [{:keys [schemes paint]} {:strs [id confirmed]}]
+  (let [selected (get-in @(:state paint) [:draft :scheme])]
+    (if-not (and (= confirmed "true") (= id (str selected)))
+      {:error "Select the scheme and confirm its deletion."}
+      (let [result (schemes/delete! schemes selected)]
+        (if (:error result) {:error (or (:message result) "Scheme could not be deleted.")}
+            (do (swap! (:state paint) update :draft #(-> % (dissoc :scheme) (update :revision inc))) {}))))))

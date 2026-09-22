@@ -17,6 +17,9 @@
                                   :responses contracts/html-responses}}]]
         (concat
          [["/paint/stroke" {:post {:handler (partial paint/stroke! deps) :responses contracts/html-responses}}]
+          ["/paint/delete" {:post {:handler (partial handlers/paint-selection! deps :delete)
+                                   :parameters {:form (conj ship-id-form [:confirmed [:enum "true"]])}
+                                   :responses contracts/html-responses}}]
           ["/paint" {:get {:handler (partial paint/current! deps) :responses contracts/html-responses}}]
           ["/paint/material" {:post {:handler (partial paint/material! deps) :responses contracts/html-responses}}]]
          (for [action [:create :rename :delete :members :order]]

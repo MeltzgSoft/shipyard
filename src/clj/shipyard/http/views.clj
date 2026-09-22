@@ -5,7 +5,9 @@
   unit-testable without opening a socket (§10.1). The handlers in
   `shipyard.http.routes` do the looking-up; this namespace only decides what a
   thing looks like."
-  (:require [clojure.string :as str]
+  (:require [shipyard.regions.views :as regions]
+            [shipyard.catalog.db :as catalog]
+            [clojure.string :as str]
             [shipyard.catalog.part :as catalog-part]
             [shipyard.http.urls :as urls]
             [shipyard.interface-colors :as interface-colors]
@@ -235,7 +237,9 @@
        [:button.detail__tab
         {:type "button" :role "tab" :aria-selected (str mount-active?)
          :data-detail-tab "mounts" :class (when mount-active? "detail__tab--active")
-         :hx-on:click detail-tab-activation} "Mounts"]]
+         :hx-on:click detail-tab-activation} "Mounts"]
+       [:button.detail__tab {:type "button" :role "tab" :aria-selected "false" :data-detail-tab "regions"
+                             :hx-on:click detail-tab-activation} "Regions"]]
       [:div.detail__summary {:data-detail-panel "part" :role "tabpanel" :hidden mount-active?}
        (detail-head part)
        [:p.detail__status "Loaded."]
@@ -247,6 +251,8 @@
                                                            :data-workspace-mode "assembly" :data-hull (:part/id part)}) "Assemble this hull"])
        (part-metadata part)
        (part-orientation part orientation-error)]
+      [:div.detail__tab-panel {:data-detail-panel "regions" :role "tabpanel" :hidden true}
+       (regions/panel (:part/id part) mesh-key (catalog/part-regions part) nil nil)]
       [:div.detail__tab-panel {:data-detail-panel "mounts" :role "tabpanel" :hidden (not mount-active?)}
        (interface-legend part)
        (mount-list part)

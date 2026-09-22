@@ -47,9 +47,9 @@
             (recur (inc attempt)))))
       (finally (fs/delete-if-exists tmp)))))
 
-(defn put! [{:keys [file state]} record mode]
+(defn- transact! [{:keys [file state]} operation & args]
   (locking state
-    (let [result (transforms/put-record @state record mode)]
+    (let [result (apply operation @state args)]
       (if (:error result)
         result
         (try
@@ -59,3 +59,6 @@
           (catch Exception e
             {:error :store-write-failed
              :message (str "Could not save schemes at " file ". Check the folder permissions and retry. " (ex-message e))}))))))
+
+(defn put! [store record mode] (transact! store transforms/put-record record mode))
+(defn delete! [store id] (transact! store transforms/delete-record id))

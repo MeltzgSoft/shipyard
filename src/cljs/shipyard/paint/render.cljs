@@ -65,9 +65,28 @@
         (set! (.-needsUpdate surface) true)
         enabled)))
 
+(defn set-regions! [^js object regions layers]
+  (set! (.. object -userData -paintRegions)
+        (when (= (:mesh-key regions) (.. object -userData -meshKey)) regions))
+  (set! (.. object -userData -paintLayers) layers))
+
+(defn- projected-mask! [^js object inherited]
+  (let [regions (.. object -userData -paintRegions) layers (.. object -userData -paintLayers)
+        signature [regions layers inherited]
+        base (if (= signature (.. object -userData -regionSignature))
+               (.. object -userData -regionMask)
+               (let [mask (when (seq layers)
+                            (into {} (map (fn [[key name]] [key (or (get layers name) inherited)])) (:faces regions)))]
+                 (set! (.. object -userData -regionSignature) signature)
+                 (set! (.. object -userData -regionMask) mask)
+                 mask))]
+    (reduce-kv (fn [mask key detail]
+                 (assoc mask key (faces/resolve-material (or (get base key) inherited) detail)))
+               (or base {}) (or (:faces (.. object -userData -paintDetails)) {}))))
+
 (defn apply-details! [^js object inherited colors?]
   (let [inherited (select-keys inherited [:base :metalness :roughness])
-        mask (:faces (.. object -userData -paintDetails))
+        mask (projected-mask! object inherited)
         ^js surface (.-material object)
         enabled? (and (not colors?) (seq mask))]
     (when (not= (boolean enabled?) (.-vertexColors surface))

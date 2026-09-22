@@ -512,7 +512,7 @@ Mapping to actual manufacturer ranges is not attempted in v1.
 An optional `:scheme/instances` map holds entries such as
 `{[[:port-1 0]] {:part-id "human-navy/cruiser/lance-battery"
                  :material {:base [0.8 0.1 0.1] :metalness 0.2 :roughness 0.6}}}`.
-Instance material wins over group material, then role material and neutral studio material. Unmapped
+Instance material wins over group material, then the shared layer palette, role material and neutral studio material. Unmapped
 roles are valid. All RGB channels, metalness and roughness are finite numbers in
 `[0,1]`; stored RGB uses sRGB, as do the editor's colour swatches. Paint names are
 optional free text. A detail brush adds per-face colour, metalness and roughness
@@ -555,6 +555,29 @@ for retry. Leaving Paint restores committed values on return, discarding uncommi
 scrubbing. Pending responses cannot change another selection or activation. Mount
 colors temporarily override base colour only; turning them off restores paint,
 including the material's metalness and roughness.
+
+Parts may carry reusable, source-bound face regions authored in Part Browser's
+Regions tab. Primary and Secondary are permanent shared layer names; users can add,
+rename and delete any number of named detail layers. Every face belongs to one layer;
+unassigned faces belong to Primary. Assigning Primary erases an explicit assignment.
+Deleting a detail layer on a part returns its faces to Primary without deleting scheme
+colors. Regions use the same visible-only, whole-triangle brush selection as detail
+painting and persist with the library part. Changed source meshes retain old regions
+but cannot display or extend them until the user confirms a reset.
+
+Optional `:scheme/layers` maps shared layer-name strings to complete materials.
+Per-face resolution is freehand detail, matching instance material, winning group
+material, assigned layer material, Primary material, role material, then neutral.
+Legacy color-only detail strokes inherit the resolved region's finish. Region names
+match exactly across parts. Scheme defaults are reusable without a preview model;
+instance/group and brush tools still require one. Before a scheme is selected or
+created, hide unavailable editing controls and explain how to create a named scheme.
+
+Schemes can be deleted after confirmation that identifies referencing saved ships.
+Deletion preserves those references and the existing missing-scheme warning. A failed
+write keeps the scheme and selection intact. Confirmed deletion clears Paint's selected
+scheme. Group management opens when selecting a group and includes rename, membership,
+ordering and deletion.
 
 The **Detail brush** paints across instances by default. Turn **Cross instances** off
 to confine it to the selected individual instance. **Select** and **Brush** choose the

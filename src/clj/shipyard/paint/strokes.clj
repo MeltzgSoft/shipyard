@@ -33,7 +33,7 @@
                       (range 3)))))
         (range (quot (count indices) 3))))
 
-(defn- known-faces! [{:keys [cache paint]} mesh-key]
+(defn known-faces! [{:keys [cache paint]} mesh-key]
   (let [file (cache/tier-file cache mesh-key 0) signature [mesh-key (fs/size file)]]
     (or (get @(:face-cache paint) signature)
         (let [keys (mesh-faces (wire/decode (Files/readAllBytes (fs/path file))))]

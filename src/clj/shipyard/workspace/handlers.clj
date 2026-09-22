@@ -145,6 +145,7 @@
   (let [result (case action
                  :create (paint/create! deps params)
                  :rename (paint/rename! deps params)
+                 :delete (paint/delete! deps params)
                  :default (paint/default! deps params)
                  :tool (when (#{"select" "brush"} (get params "tool"))
                          (workspace/update-workspace! workspace :paint assoc :tool (get params "tool")))

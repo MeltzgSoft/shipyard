@@ -1,5 +1,6 @@
 (ns shipyard.paint.views
-  (:require [shipyard.paint.transforms :as transforms]
+  (:require [clojure.string :as str]
+            [shipyard.paint.transforms :as transforms]
             [shipyard.scheme.material :as material]
             [shipyard.workspace.views :as workspace]))
 
@@ -7,7 +8,7 @@
   (merge workspace/transition-attrs {:hx-target "#detail" :hx-swap "innerHTML settle:0ms"}))
 
 (def competing-controls
-  "#workspace-navigation button, #paint-select select, #paint-target button, #paint-create button, #paint-rename button, button[form=paint-default], .paint-write button, .paint-write select, .paint-group-controls button, #mount-colors-toggle")
+  "#workspace-navigation button, #paint-select select, #paint-target button, #paint-create button, #paint-rename button, #paint-delete button, button[form=paint-default], .paint-write button, .paint-write select, .paint-group-controls button, #mount-colors-toggle")
 
 (defn transfer-button [source label]
   [:form (merge selection-attrs {:novalidate true :hx-post (str "/" source "/paint")
@@ -34,7 +35,7 @@
       (swatch (transforms/target-material record entry))
       [:span.paint-target-name (or (:name entry) (some-> (:role entry) (name)) (:label entry))
        (when instance? [:small (str (if (empty? (:path entry)) "Hull" (pr-str (:path entry))) " · "
-                                    (case (first source) :instance "instance material" :group (:group/name inherited) "role default"))])]
+                                    (case (first source) :instance "instance material" :group (:group/name inherited) :layer "layer defaults" "role default"))])]
       (when count [:small (str count " instances")])]]))
 
 (defn scheme-controls [records draft record]
@@ -54,6 +55,16 @@
        [:form#paint-rename (merge selection-attrs {:hx-post "/paint/rename"})
         [:label "Scheme name" [:input {:name "name" :value (:scheme/name record) :required true :maxlength 200}]]
         [:button {:type "submit"} "Rename scheme"]]])]
+   (when record
+     [:form#paint-delete (merge selection-attrs
+                                {:hx-post "/paint/delete"
+                                 :hx-confirm (str "Delete scheme “" (:scheme/name record) "”? "
+                                                  (when (seq (:referenced-ships record))
+                                                    (str "Used by: " (str/join ", " (:referenced-ships record)) ". These ships will keep their references and show a missing-scheme warning. "))
+                                                  "This cannot be undone.")})
+      [:input {:type "hidden" :name "id" :value (str (:scheme/id record))}]
+      [:input {:type "hidden" :name "confirmed" :value "true"}]
+      [:button {:type "submit"} "Delete scheme"]])
    (if record
      [:p "Edits affect every saved ship using this scheme."]
      [:p.paint-empty "Choose a scheme, or open New and name a scheme to start painting."])])
@@ -63,7 +74,10 @@
         members (set (:group/members (group-record record target)))]
     [:div.paint-targets
      [:form#paint-target (merge selection-attrs {:hx-post "/paint/target"})
-      [:h3 "Role defaults"]
+      [:h3 "Layer defaults"]
+      (for [entry targets :when (:layer-name entry)] (target-row record target entry nil members))
+      [:h3 "Role fallbacks"]
+      [:p.muted "Used when no layer default is set."]
       (for [entry targets :when (and (:role entry) (not (contains? entry :path)))]
         (target-row record target entry (count (filter #(= (:role entry) (:role %)) instances)) members))
       [:h3 "Groups" [:button.paint-group-link {:type "button" :onclick "var d=document.getElementById('paint-group-disclosure');if(d){d.open=true;d.scrollIntoView({block:'nearest'});}"} "Group selection"]]
@@ -130,6 +144,8 @@
    {:hx-post "/paint/material" :hx-target "#paint-status" :hx-swap "innerHTML"
     :hx-trigger "change, submit" :hx-sync "this:queue last" :hx-disabled-elt competing-controls
     :data-paint-slots (pr-str paths)
+    :data-paint-layer (:layer-name target)
+    :data-paint-override (str (boolean (or (contains? target :path) (:group-id target))))
     :hx-on:input "this.elements.sequence.value=Number(this.elements.sequence.value)+1;document.getElementById('paint-status').textContent='Preview not saved';document.getElementById('paint-header-status').textContent='Preview not saved';"
     :hx-on--config-request "var field=this.elements.sequence;field.value=Number(field.value)+1;event.detail.parameters.sequence=field.value;"
     :hx-on--before-request "document.getElementById('paint-status').textContent='Saving…';document.getElementById('paint-header-status').textContent='Saving…';"
@@ -186,8 +202,9 @@
       [:p#brush-status {:role "status"} "Release to save. Undo keeps the last 20 strokes."]]]))
 
 (defn panel [records draft targets target record value paths sequence error prepared anchor-key state flush-interval]
-  (let [brush? (and record (= "brush" (:tool state)))
-        ready? (and target record (every? #(= :ready (:state %)) (vals prepared)))]
+  (let [brush? (and record (:hull draft) (= "brush" (:tool state)))
+        ready? (and target record (every? #(= :ready (:state %)) (vals prepared)))
+        model-ready? (and ready? (:hull draft))]
     (list
      [:span#paint-header {:hx-swap-oob "outerHTML"}
       [:code (or (:hull draft) "No model")]
@@ -221,17 +238,17 @@
         [:p.detail__error (str "Could not load " id ". " (:message status))])
       (when ready?
         (list (when-not brush?
-                (list (write-targets record targets target anchor-key)
+                (list (when-not (:layer-name target) (write-targets record targets target anchor-key))
                       (group-controls record target)
                       (material-form record target value paths sequence)))
-              (brush-panel record target targets prepared state flush-interval value)))
+              (when model-ready? (brush-panel record target targets prepared state flush-interval value))))
       (when (and record target (contains? target :path))
         [:form#paint-default (merge selection-attrs {:hx-post "/paint/default"})])]
-     (when record [:div.paint-tools
-                   [:form.paint-segmented (merge selection-attrs {:hx-post "/paint/tool"})
-                    [:button {:type "submit" :name "tool" :data-workspace-transition "true" :value "select" :aria-pressed (str (not brush?))} "Select"]
-                    [:button {:type "submit" :name "tool" :data-workspace-transition "true" :value "brush" :aria-pressed (str brush?) :disabled (not ready?)} "Brush"]]
-                   (when brush? [:span "Orbit Alt+drag"])])
+     (when (and record (:hull draft)) [:div.paint-tools
+                                       [:form.paint-segmented (merge selection-attrs {:hx-post "/paint/tool"})
+                                        [:button {:type "submit" :name "tool" :data-workspace-transition "true" :value "select" :aria-pressed (str (not brush?))} "Select"]
+                                        [:button {:type "submit" :name "tool" :data-workspace-transition "true" :value "brush" :aria-pressed (str brush?) :disabled (not model-ready?)} "Brush"]]
+                                       (when brush? [:span "Orbit Alt+drag"])])
      (when record [:div.paint-legend
                    (if brush? (list [:span "Brush radius (screen px)"] [:span "Painted this stroke"] [:span "Occluded — skipped"])
                        (list [:span "Selected target"] [:span "Role default"] [:span "Group material"] [:span "Instance material"]))]))))
