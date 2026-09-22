@@ -1,7 +1,8 @@
 (ns shipyard.scheme.transforms
   "Pure scheme representation and explicit identity-based updates."
   (:require [shipyard.loadout.transforms :as loadout]
-            [shipyard.paint.faces :as faces]))
+            [shipyard.paint.faces :as faces]
+            [shipyard.regions.model :as regions]))
 
 (def empty-store {:version 1 :schemes {}})
 
@@ -43,8 +44,11 @@
 
 (defn scheme? [value]
   (and (map? value)
-       (every? #{:scheme/id :scheme/name :scheme/roles :scheme/instances :scheme/groups :scheme/details} (keys value))
+       (every? #{:scheme/id :scheme/name :scheme/roles :scheme/instances :scheme/groups :scheme/details :scheme/layers} (keys value))
        (or (not (contains? value :scheme/groups)) (groups? (:scheme/groups value)))
+       (or (not (contains? value :scheme/layers))
+           (and (map? (:scheme/layers value))
+                (every? (fn [[name value]] (and (regions/name? name) (material? value))) (:scheme/layers value))))
        (uuid? (:scheme/id value)) (loadout/name? (:scheme/name value))
        (map? (:scheme/roles value)) (<= (count (:scheme/roles value)) 256)
        (every? (fn [[role material]] (and (keyword? role) (material? material))) (:scheme/roles value))
@@ -70,3 +74,8 @@
     (and (= mode :create) (contains? (:schemes store) (:scheme/id record))) {:error :id-exists}
     (and (= mode :update) (not (contains? (:schemes store) (:scheme/id record)))) {:error :missing-scheme}
     :else {:store (assoc-in store [:schemes (:scheme/id record)] record) :scheme record}))
+
+(defn delete-record [store id]
+  (if (contains? (:schemes store) id)
+    {:store (update store :schemes dissoc id)}
+    {:error :missing-scheme}))

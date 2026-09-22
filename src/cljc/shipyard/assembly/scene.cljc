@@ -52,7 +52,7 @@
          :reset (-> state (assoc :slots {} :mode :assembly) (update :generation inc))
          :remove (update state :slots dissoc slot)
          :set (let [payload (dissoc command :op)]
-                (if (= (dissoc payload :material :details) (dissoc (get-in state [:slots slot :payload]) :material :details))
+                (if (= (dissoc payload :material :details :regions :layers) (dissoc (get-in state [:slots slot :payload]) :material :details :regions :layers))
                   (assoc-in state [:slots slot :payload] payload)
                   (assoc-in state [:slots slot]
                             {:payload payload :token [(:generation state) sequence index]})))

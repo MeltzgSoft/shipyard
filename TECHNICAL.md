@@ -2230,7 +2230,7 @@ override. The default file is `$XDG_DATA_HOME/shipyard/schemes.edn`. The scheme 
 uses exact `Files.move` semantics and rejects directory destinations before staging.
 
 Material resolution is pure: matching instance path and part identity, then the first
-matching group with a material in rail order, then authoritative catalog role and neutral. A loadout override selects the scheme before any fleet
+matching group with a material in rail order, then shared region-layer defaults, authoritative catalog role and neutral. A loadout override selects the scheme before any fleet
 default; a dangling override warns and uses neutral, without silently selecting a
 different scheme or removing its UUID. Fleet assignment is an M6 integration.
 RGB values are stored in sRGB; convert explicitly at the three.js boundary. Reuse
@@ -2358,3 +2358,37 @@ new face keys; dirty-key hints avoid rescanning the accumulated layer on pointer
 The existing 20-entry undo bound remains. The brush rail's occlusion hints use actual
 ray intersections; paint eligibility still comes exclusively from the depth-tested
 ID buffer, never the hint ray.
+
+
+### 15.3 Reusable part regions and scheme palettes
+
+Part sidecars may contain `:part/paint-regions` with `:mesh-key` (source SHA-256),
+`:revision` (nonnegative integer), `:layers` (ordered unique strings beginning with
+"Primary" and "Secondary") and `:faces` (stable face key to layer-name string).
+Primary assignments are implicit. The catalog stores this metadata as EDN text in
+`:part/paint-regions`, decoded at its boundary; no geometry enters Datascript.
+Region writes preserve the other sidecar fields and publish catalog state only after
+writing the file. Requests include part identity, mesh key and expected revision;
+the workspace admission boundary rejects stale activations, and domain admission
+checks selection, fresh source, face membership and revision before persistence.
+
+`POST /parts/regions` accepts assign/add/rename/delete/reset. Part Browser owns the
+selection. Its Regions tab is server-rendered; transient stroke state captures one
+visible-ID buffer and submits the union of touched faces on release. It reuses the
+Paint brush's depth-tested picker and stable face keys. Navigation/cancellation drops
+uncommitted preview. A failed save restores the prior preview and exposes retry by
+repeating the stroke. Part and scheme selection remain server-owned.
+
+Optional `:scheme/layers` maps exact shared names to validated full materials.
+Assembly payloads carry source-bound regions and layer materials unless an instance
+or group overrides them. These fields are material updates, excluded from mesh-fetch
+identity. The renderer projects regions underneath freehand details into the existing
+vertex color/finish buffers, reusing the shader and draw calls. Source mismatch skips
+the mask. Primary supplies the unassigned-face material; absent layer materials fall
+back through Primary, role and neutral. Live layer edits update matching payloads and
+installed objects so asynchronous geometry completion uses the latest palette.
+
+Scheme deletion uses the same serialized atomic EDN boundary as scheme updates.
+The UI confirms deletion and lists referencing saved ships. Their UUID references
+remain untouched; consumers resume with the existing missing-scheme warning. Only a
+successful deletion clears Paint's selected scheme.

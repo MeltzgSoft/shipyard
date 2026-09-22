@@ -9,6 +9,8 @@
   already on disk and the next restart picks it up. The reverse order can lose
   a write."
   (:require [clojure.tools.logging :as log]
+            [clojure.edn :as edn]
+            [shipyard.regions.model :as regions]
             [datascript.core :as d]
             [integrant.core :as ig]
             [shipyard.catalog.sidecar :as sidecar]
@@ -34,6 +36,7 @@
    :part/mesh-key    {}
    :part/tris        {}
    :part/orientation {}
+   :part/paint-regions {}
    :part/mounts      {:db/cardinality :db.cardinality/many
                       :db/valueType   :db.type/ref
                       :db/isComponent true}
@@ -83,6 +86,7 @@
                                                             :part/renderable :part/mesh-key :part/tris
                                                             :part/weapons? :part/turrets?
                                                             :part/accepts-turrets?]))
+      (regions/valid? (:part/paint-regions sidecar)) (assoc :part/paint-regions (pr-str (:part/paint-regions sidecar)))
       (seq (:part/variants part)) (assoc :part/variants (vec (:part/variants part)))
       (seq (:mounts sidecar))     (assoc :part/mounts (vec (:mounts sidecar)))
       part-orientation            (assoc :part/orientation part-orientation))))
@@ -240,3 +244,17 @@
         root  (index/root! library)]
     (log/infof "catalog: %d parts ingested" (count parts))
     {:state (atom {:conn (ingest! (or parts []) root) :root root})}))
+
+(defn part-regions [part]
+  (some-> (:part/paint-regions part) (edn/read-string)))
+
+(defn save-regions! [{:keys [state]} part-id value]
+  (when-not (regions/valid? value) (throw (ex-info "Invalid part regions" {})))
+  (locking state
+    (let [{:keys [conn root]} @state]
+      (let [file (sidecar/sidecar-file root part-id)]
+        (when (and (.exists file) (not (.isFile file)))
+          (throw (ex-info "Part sidecar must be a regular file" {}))))
+      (sidecar/update-sidecar! root part-id assoc :part/paint-regions value)
+      (d/transact! conn [{:part/id part-id :part/paint-regions (pr-str value)}])
+      value)))

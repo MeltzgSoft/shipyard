@@ -66,8 +66,11 @@
                                            (:scheme effective-draft) nil)
           after (if (:error placement-result) scene
                     (into {} (map (fn [[path placement]]
-                                    (let [id (:part-id placement) role (:part/role-hint (catalog/part database id))]
+                                    (let [id (:part-id placement) part (catalog/part database id) role (:part/role-hint part)]
                                       [path (assoc placement :role role
+                                                   :regions (catalog/part-regions part)
+                                                   :layers (when (#{:role :layer} (first (material/material-source (:scheme selected) path id role)))
+                                                             (get-in selected [:scheme :scheme/layers]))
                                                    :details (get-in selected [:scheme :scheme/details path])
                                                    :material (material/resolve-material (:scheme selected) path id role))])))
                           (:scene placement-result)))

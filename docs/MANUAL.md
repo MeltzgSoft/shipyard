@@ -299,6 +299,27 @@ as an unsaved copy; **Save ship** gives it a new identity. Deletion also works f
 whose library parts are missing. A failed write keeps the saved ship and your work
 available so you can correct the problem and retry.
 
+## Reusable part paint regions
+
+In **Part Browser**, select a part and open its **Regions** tab. Every face starts
+as **Primary**. Choose **Secondary**, or enter a **New detail layer** name and
+choose **Add detail layer**. Names are shared across parts: “Trim” on two different
+parts uses the same scheme material.
+
+Check **Paint regions in viewport**, choose **Assign layer**, and brush visible
+faces. Release saves one complete stroke to the part's `shipyard.edn`. The brush
+uses whole triangles and cannot paint through the model. Adjust its screen-space
+radius; use Alt+drag to orbit. Region preview colors identify assignments; schemes
+supply their final colors and finishes. Enabling the brush turns Mount colors off.
+Choose Primary to remove assignments. **Manage <layer>** renames or deletes a detail
+layer on this part; deleting it returns its faces to Primary. Primary and Secondary
+are permanent. **Reset regions** clears all assignments after confirmation.
+
+Regions follow the library part into every instance and scheme. They survive restart
+and rescan. If the source mesh changes, old regions are retained but do not apply;
+open Regions and explicitly reset before authoring the replacement. A failed save
+keeps the previous durable assignments and reports the error.
+
 ## Paint
 
 Choose **Paint assembly** in Assemble or **Paint ship** in the selected ship's inspector
@@ -310,6 +331,20 @@ Choose a scheme, or open **New**, enter a name and select **Create scheme**.
 Until a scheme exists, material and group controls are hidden. Selecting a group
 opens **Manage group**, where you can rename it, change its checked members,
 reorder it, or delete it.
+
+**Layer defaults** sets shared Primary, Secondary and named detail materials. Select
+a layer, then choose Base colour, Metalness, Roughness and an optional Paint name.
+Changes preview immediately and save on release. A new scheme reuses the part regions
+with its own palette. Unconfigured layers fall back to Primary, then the part's role
+material and neutral material. Instance and group materials override every layer on
+those instances; freehand detail strokes override individual faces. **Use inherited
+material** restores the layer palette beneath an instance override; erasing a detail
+stroke reveals its region material.
+
+**Delete scheme** asks for confirmation, naming saved ships that reference it.
+Cancel preserves the scheme. Confirm deletes it; those ships retain the reference
+and display the missing-scheme warning until you assign another scheme and save.
+
 Select a role, group or individual instance in the left rail. The floating inspector
 shows its full slot path and material. **Write to** switches between the instance,
 its shared role material and a group; a group picker appears for overlapping groups.
@@ -320,8 +355,8 @@ failed write; check the status before leaving. Returning to Paint restores commi
 values rather than uncommitted scrubbing.
 
 **Use inherited material** removes the selected instance override, revealing the
-highest-priority matching group material, or its role default. Replacing a part also
-uses the role default unless the new part matches that instance override's identity.
+highest-priority matching group material, or its layer/role defaults. Replacing a part also
+uses those defaults unless the new part matches that instance override's identity.
 Check instance rows, open **Group selection**, name the group and choose **Create
 group**. A new group inherits until you save its material. Instances may belong to
 several groups; the highest group in the rail with a material wins. An instance's
@@ -329,7 +364,7 @@ own material takes precedence. Select a group and open **Manage group** to renam
 move up/down, replace its membership from checked rows, or delete it. Deletion keeps
 individual overrides. Membership matches both path and part identity; replacing a
 part does not transfer the old part's membership. Instance rows name the inherited
-group or show **role default**.
+group, **layer defaults**, or **role default**.
 
 **Mount colors** temporarily replaces base colors; turning it off restores paint.
 Schemes are shared: editing one changes every ship using it when that ship is next

@@ -1006,3 +1006,19 @@ body:has(.paint-editor) .masthead__stats { display: none; }
 .paint-tools .paint-segmented { margin: 0; background: var(--panel); }
 .paint-tools button { color: var(--ink); border-radius: 4px; cursor: pointer; padding: 5px 12px; }
 .paint-tools button[aria-pressed=true] { background: var(--accent); color: var(--bg); }
+
+#part-regions form { display: grid; gap: 0.65rem; margin: 0.9rem 0; }
+#part-regions label { display: grid; gap: 0.35rem; }
+#part-regions label:has(input[type=checkbox]) { display: flex; align-items: center; }
+#part-regions input:not([type=checkbox]), #part-regions select { min-width: 0; width: 100%; }
+.region-legend { display: flex; flex-wrap: wrap; gap: 0.4rem 0.9rem; }
+.region-legend p { display: flex; align-items: center; gap: 0.4rem; margin: 0; }
+#part-regions { font-size: 12px; }
+#part-regions input:not([type=range]):not([type=checkbox]), #part-regions select, #part-regions button {
+  box-sizing: border-box; color: var(--ink); background: var(--bg); border: 1px solid var(--line);
+  border-radius: 5px; padding: 6px 9px; font: inherit;
+}
+#part-regions input[type=range], #part-regions input[type=checkbox] { accent-color: var(--accent); }
+#part-regions button, #part-regions summary { cursor: pointer; }
+#part-regions button:hover { border-color: var(--accent); }
+#part-regions button:disabled { opacity: .45; cursor: default; }

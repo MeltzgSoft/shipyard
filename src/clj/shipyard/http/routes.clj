@@ -19,6 +19,7 @@
             [shipyard.bulk-orientation.routes :as bulk-routes]
             [shipyard.catalog.db :as db]
             [shipyard.catalog.part :as catalog-part]
+            [shipyard.regions.handlers :as regions]
             [shipyard.http.contracts :as contracts]
             [shipyard.http.htmx :as htmx]
             [shipyard.http.jobs :as jobs]
@@ -104,6 +105,7 @@
                    {:events {:load-mesh {:url     (urls/mesh-url mesh-key 0)
                                          :part-id (:part/id part)
                                          :mesh-key mesh-key
+                                         :regions (db/part-regions part)
                                          :mounts  (catalog-part/durable-mounts (:part/mounts part))
                                          :orientation (orientation/orientation-of
                                                        (:part/orientation part))
@@ -546,6 +548,13 @@
                            :responses contracts/html-responses}}]
    ["/mounts/delete" {:post {:handler (partial delete-mount! deps)
                              :parameters {:form contracts/mount-id-form}
+                             :responses contracts/html-responses}}]
+   ["/parts/regions" {:post {:handler (partial regions/save! deps)
+                             :parameters {:form [:map [:part-id string?] [:mesh-key string?]
+                                                 [:revision [:and string? [:fn #(some? (parse-long %))]]]
+                                                 [:action [:enum "assign" "add" "rename" "delete" "reset"]]
+                                                 [:layer {:optional true} string?] [:name {:optional true} string?]
+                                                 [:faces {:optional true} string?]]}
                              :responses contracts/html-responses}}]
    ["/parts/role" {:post {:handler (partial save-part-role! deps)
                           :parameters {:form contracts/role-form}

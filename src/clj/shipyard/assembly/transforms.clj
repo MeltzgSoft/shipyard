@@ -85,15 +85,15 @@
     (when reset? [{:op :reset}])
     (when-not reset?
       (for [slot (sort-by pr-str (keys before))
-            :when (not= (dissoc (get before slot) :material :details) (dissoc (get after slot) :material :details))]
+            :when (not= (dissoc (get before slot) :material :details :regions :layers) (dissoc (get after slot) :material :details :regions :layers))]
         {:op :remove :slot slot}))
-    (for [[slot {:keys [part-id matrix mount-position material role details]}] (sort-by (comp pr-str key) after)
+    (for [[slot {:keys [part-id matrix mount-position material role details regions layers]}] (sort-by (comp pr-str key) after)
           :let [mesh-key (get mesh-keys part-id)]
           :when mesh-key]
       {:op :set :slot slot :part-id part-id :matrix matrix
        :mesh-key mesh-key :url (urls/mesh-url mesh-key 0)
        :color (:hex (scene/color-for-slot slot))
-       :mount-position mount-position :material material :role role :details details}))))
+       :mount-position mount-position :material material :role role :details details :regions regions :layers layers}))))
 
 (defn mount-markers
   "World-space marker positions for every reachable mount, including empty slots."

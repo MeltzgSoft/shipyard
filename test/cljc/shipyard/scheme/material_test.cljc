@@ -41,3 +41,15 @@
     (is (= [:role :hull] (m/material-source scheme [] "replacement" :hull)))
     (is (= (:group/material a) (m/resolve-material (assoc scheme :scheme/groups [a (dissoc b :group/material)]) [] "hull" :hull)))
     (is (= [:instance []] (m/material-source (assoc scheme :scheme/instances {[] {:part-id "hull" :material m/neutral}}) [] "hull" :hull)))))
+
+(deftest primary-layer-and-overrides
+  (let [primary (assoc m/neutral :metalness 1)
+        role (assoc m/neutral :roughness 0.1)
+        scheme {:scheme/roles {:hull role} :scheme/layers {"Primary" primary}}]
+    (is (= primary (m/resolve-material scheme [] "hull" :hull)))
+    (is (= [:layer "Primary"] (m/material-source scheme [] "hull" :hull)))
+    (is (= role (m/resolve-material (dissoc scheme :scheme/layers) [] "hull" :hull)))
+    (is (= role (m/resolve-material (assoc scheme :scheme/instances {[] {:part-id "hull" :material role}}) [] "hull" :hull)))
+    (is (= role (m/resolve-material (assoc scheme :scheme/groups [{:group/id :a :group/order 0
+                                                                   :group/members [{:path [] :part-id "hull"}]
+                                                                   :group/material role}]) [] "hull" :hull)))))

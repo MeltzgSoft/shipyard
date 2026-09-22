@@ -15,12 +15,13 @@
     [:instance path]
     (if-let [group (winning-group scheme path part-id)]
       [:group (:group/id group)]
-      [:role role])))
+      (if (get-in scheme [:scheme/layers "Primary"]) [:layer "Primary"] [:role role]))))
 
 (defn resolve-material [scheme path part-id role]
   (let [instance (get-in scheme [:scheme/instances path])]
     (or (when (= part-id (:part-id instance)) (:material instance))
         (:group/material (winning-group scheme path part-id))
+        (get-in scheme [:scheme/layers "Primary"])
         (get-in scheme [:scheme/roles role]) neutral)))
 
 (defn select-scheme [schemes override fleet-default]

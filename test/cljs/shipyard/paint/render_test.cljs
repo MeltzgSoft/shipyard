@@ -45,3 +45,39 @@
         (is (false? (.. surface -userData -finishEnabled -value)))
         (is (empty? (.-groups geometry)))
         (.dispose geometry) (.dispose surface)))))
+
+(deftest region-palette-under-detail-overrides
+  (let [geometry (three/BufferGeometry.) surface (three/MeshStandardMaterial.) object (three/Mesh. geometry surface)
+        primary {:base [0 0 1] :metalness 0 :roughness 0.9}
+        trim {:base [1 0.7 0.1] :metalness 1 :roughness 0.15}]
+    (.setAttribute geometry "position" (three/BufferAttribute. (js/Float32Array. #js [0 0 0 1 0 0 0 1 0 0 0 1 1 0 1 0 1 1]) 3))
+    (set! (.. object -userData -partId) "part")
+    (set! (.. object -userData -meshKey) "hash")
+    (let [key (render/face-key geometry 0)
+          regions {:mesh-key "hash" :faces {key "Trim"}}
+          layers {"Primary" primary "Trim" trim}]
+      (render/set-regions! object regions layers)
+      (render/apply-details! object primary false)
+      (let [finish (.getAttribute geometry "shipyardFinish")]
+        (is (= 1 (.getX finish 0)))
+        (is (= 0 (.getX finish 3)))
+        (render/set-details! object {:part-id "part" :mesh-key "hash" :faces {key [1 0 0]}})
+        (render/apply-details! object primary false)
+        (is (= 1 (.getX finish 0)) "Legacy RGB detail inherits the region finish")
+        (render/set-details! object {:part-id "part" :mesh-key "hash" :faces {key primary}})
+        (render/apply-details! object primary false)
+        (is (= 0 (.getX finish 0)))
+        (render/set-details! object nil)
+        (render/apply-details! object primary false)
+        (is (= 1 (.getX finish 0)) "Erasing detail reveals its region")
+        (render/set-regions! object regions (assoc layers "Trim" (assoc trim :metalness 0.3)))
+        (render/apply-details! object primary true)
+        (is (near? 0.3 (.getX finish 0)))
+        (is (false? (.-vertexColors surface)))
+        (render/set-regions! object regions nil)
+        (render/apply-details! object primary false)
+        (is (false? (.-vertexColors surface)) "Instance or group override hides region colors")
+        (render/set-regions! object (assoc regions :mesh-key "changed") layers)
+        (render/apply-details! object primary false)
+        (is (false? (.-vertexColors surface)) "Changed sources do not apply old region masks")
+        (.dispose geometry) (.dispose surface)))))
