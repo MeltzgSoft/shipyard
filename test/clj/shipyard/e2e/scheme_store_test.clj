@@ -3,12 +3,13 @@
             [shipyard.assembly-fixture :as fixture]
             [shipyard.e2e.support :as s]
             [shipyard.scheme.db :as db]
-            [shipyard.scheme.transforms-test :refer [record]]))
+            [shipyard.scheme.transforms-test :refer [record group-record]]))
 
 (deftest assembly-work-preserves-durable-schemes
   (s/assert-bundle!)
   (let [started (fixture/start! true) driver (s/make-driver)
-        store (:shipyard.scheme/db (:system started))]
+        store (:shipyard.scheme/db (:system started))
+        record (assoc record :scheme/groups [group-record])]
     (try
       (is (= record (:scheme (db/put! store record :create))))
       (let [before (slurp (str (:file store)))]

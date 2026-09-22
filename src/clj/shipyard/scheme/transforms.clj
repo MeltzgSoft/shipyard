@@ -21,9 +21,29 @@
        (map? value) (= #{:part-id :material} (set (keys value)))
        (loadout/part-id? (:part-id value)) (material? (:material value))))
 
+(defn member? [value]
+  (and (map? value) (= #{:path :part-id} (set (keys value)))
+       (or (= [] (:path value)) (loadout/slot-path? (:path value)))
+       (loadout/part-id? (:part-id value))))
+
+(defn group? [value]
+  (and (map? value)
+       (every? #{:group/id :group/name :group/order :group/members :group/material} (keys value))
+       (uuid? (:group/id value)) (loadout/name? (:group/name value))
+       (nat-int? (:group/order value))
+       (vector? (:group/members value)) (every? member? (:group/members value))
+       (= (count (:group/members value)) (count (set (:group/members value))))
+       (or (not (contains? value :group/material)) (material? (:group/material value)))))
+
+(defn groups? [value]
+  (and (vector? value) (every? group? value)
+       (= (count value) (count (set (map :group/id value))))
+       (= (count value) (count (set (map :group/order value))))))
+
 (defn scheme? [value]
   (and (map? value)
-       (every? #{:scheme/id :scheme/name :scheme/roles :scheme/instances} (keys value))
+       (every? #{:scheme/id :scheme/name :scheme/roles :scheme/instances :scheme/groups} (keys value))
+       (or (not (contains? value :scheme/groups)) (groups? (:scheme/groups value)))
        (uuid? (:scheme/id value)) (loadout/name? (:scheme/name value))
        (map? (:scheme/roles value)) (<= (count (:scheme/roles value)) 256)
        (every? (fn [[role material]] (and (keyword? role) (material? material))) (:scheme/roles value))

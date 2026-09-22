@@ -145,7 +145,7 @@ a valid backup instead of deleting data you want to keep.
 
 Paint-scheme storage follows the same rules at `$XDG_DATA_HOME/shipyard/schemes.edn`.
 Configure `:shipyard.scheme/db {:data-home "/path/to/data"}` to override its base
-directory. Scheme records retain role defaults and individual instance overrides;
+directory. Scheme records retain role defaults, ordered material groups and individual instance overrides;
 the store does not contain workspace selections or uncommitted material previews.
 
 ### Git hooks

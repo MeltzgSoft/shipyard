@@ -55,3 +55,28 @@
       (is (= :invalid-scheme (:error (t/put-record store {} :create))))
       (is (= "Updated" (get-in (t/put-record store (assoc record :scheme/name "Updated") :update)
                                [:scheme :scheme/name]))))))
+
+(def group-record {:group/id #uuid "8621a7ab-c9e7-43a7-a2b9-8e0700589fb1" :group/name "Battery"
+                   :group/order 0 :group/members [{:path [[:weapon 0]] :part-id "weapon"}]
+                   :group/material material})
+
+(deftest member?-test
+  (is (t/member? {:path [] :part-id "hull"}))
+  (is (not (t/member? {:path [[:weapon -1]] :part-id "weapon"})))
+  (is (not (t/member? {:path []}))))
+
+(deftest group?-test
+  (is (t/group? group-record))
+  (is (t/group? (dissoc group-record :group/material)))
+  (doseq [value [(assoc group-record :group/order -1)
+                 (assoc group-record :group/name " ")
+                 (assoc group-record :group/material {})
+                 (update group-record :group/members #(into % %))]]
+    (is (not (t/group? value)))))
+
+(deftest groups?-test
+  (is (t/groups? []))
+  (is (t/scheme? (assoc record :scheme/groups [group-record])))
+  (is (not (t/groups? [group-record group-record])))
+  (is (not (t/groups? [group-record (assoc group-record :group/id (random-uuid))])))
+  (is (t/groups? [group-record (assoc group-record :group/id (random-uuid) :group/order 1)])))
