@@ -69,15 +69,18 @@
             signature [base mask]
             [old-base old-mask] (.. object -userData -colorSignature)]
         ;; Pointer moves with the same mask need no allocation or buffer upload.
-        (when (not= signature (.. object -userData -colorSignature))
+        (when (or (.. object -userData -paintDirtyFaces) (not= signature (.. object -userData -colorSignature)))
           (when (not= base old-base)
             (let [[r g b] (mapv material/srgb->linear base)]
               (dotimes [vertex (.-count attribute)] (.setXYZ attribute vertex r g b))))
-          (doseq [key (keys (if (= base old-base) (merge old-mask mask) mask))
+          (doseq [key (if (and (= base old-base) (.. object -userData -paintDirtyFaces))
+                        (.. object -userData -paintDirtyFaces)
+                        (keys (if (= base old-base) (merge old-mask mask) mask)))
                   :when (or (not= base old-base) (not= (get old-mask key) (get mask key)))]
             (let [entry (.get index key) [r g b] (mapv material/srgb->linear (get mask key base))]
               (doseq [triangle (if (number? entry) [entry] (array-seq entry))]
                 (dotimes [corner 3] (.setXYZ attribute (+ (* triangle 3) corner) r g b)))))
           (set! (.-needsUpdate attribute) true)
           (set! (.. object -userData -colorSignature) signature))
-        (.setRGB (.-color surface) 1 1 1)))))
+        (.setRGB (.-color surface) 1 1 1)))
+    (set! (.. object -userData -paintDirtyFaces) nil)))

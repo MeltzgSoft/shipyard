@@ -106,6 +106,7 @@
                   (workspace/activate! workspace mode))]
     (when (and (= mode :orient) (= "1" (get params "table")))
       (workspace/update-workspace! workspace mode assoc :grid? false))
+    (workspace/update-workspace! workspace :paint dissoc :brush-pending)
     (binding [workspace/*context* context]
       (let [{:keys [filters selection colors grid?]} (workspace/workspace! workspace mode)]
         (if (not= "true" (get headers "hx-request"))
@@ -145,13 +146,16 @@
                  :create (paint/create! deps params)
                  :rename (paint/rename! deps params)
                  :default (paint/default! deps params)
+                 :tool (when (#{"select" "brush"} (get params "tool"))
+                         (workspace/update-workspace! workspace :paint assoc :tool (get params "tool")))
                  :group-create (paint/group! deps :create params)
                  :group-rename (paint/group! deps :rename params)
                  :group-delete (paint/group! deps :delete params)
                  :group-members (paint/group! deps :members params)
                  :group-order (paint/group! deps :order params)
                  (paint/select! deps params))]
-    (workspace/update-workspace! workspace :paint assoc :edit-sequence 0 :brush-sequence 0 :brush-history nil)
+    (when (not= action :tool)
+      (workspace/update-workspace! workspace :paint assoc :edit-sequence 0 :brush-sequence 0 :brush-history nil))
     (transition! deps {:path-params {:mode "paint"} :params (when (:error result) {"error" (:error result)})
                        :headers {"hx-request" "true"}})))
 

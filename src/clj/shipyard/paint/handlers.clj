@@ -25,8 +25,9 @@
                           (transforms/target-material record target)
                           (transforms/affected-paths record targets target)
                           (or (:edit-sequence state) 0)
-                          (or (get params "error") (when (:scheme-warning result) "Scheme unavailable. Choose another scheme; its saved reference is preserved."))
-                          (:prepared result) (:anchor-target state))
+                          (or (get params "error") (when (:scheme-warning result) "Scheme unavailable. Choose another scheme; its saved reference is preserved.")
+                              (when (:detail-warning result) "Some details belong to a changed part or source mesh. Select that instance and Clear instance details before repainting."))
+                          (:prepared result) (:anchor-target state) state (:flush-interval-ms paint))
              [[:input {:type "hidden" :data-assembly-event (pr-str (:event result))}]]))))
 
 (defn select! [{:keys [paint schemes workspace catalog]} {:strs [id target]}]
@@ -93,20 +94,28 @@
           (when (= action :create)
             (workspace/update-workspace! workspace :paint assoc :target (str "group/" id)))))))
 
-(defn stroke! [{:keys [paint] :as deps} {:keys [params]}]
+(defn stroke! [{:keys [paint schemes] :as deps} {:keys [params]}]
   (let [result (strokes/stroke! deps params)]
-    (htmx/fragment
-     (if (:error result)
-       [:span.detail__error {:role "alert"}
+    (cond
+      (or (:buffered result) (:canceled result)) (htmx/fragment nil {:status 204 :headers {"X-Shipyard-Brush" "buffered"}})
+      (:error result)
+      (htmx/fragment
+       [:span.detail__error {:role "alert" :data-brush-result "failed"}
         (or (:message result)
             (case (:error result)
               :changed-source "Source mesh changed. Clear instance details before repainting. Nothing saved."
-              :invalid-faces "Invalid or oversized stroke. Use a smaller brush or shorter stroke (maximum 1,024 faces). Nothing saved."
-              :paint-limit "Scheme detail limit reached (100,000 faces). Erase or clear some details first."
-              :stale-stroke "Paint selection changed. Reopen it before retrying."
+              :invalid-faces "Invalid stroke faces. Nothing saved."
+              :stale-stroke "Paint selection changed, or the stroke is out of order. Reopen it before retrying."
+              :stroke-in-progress "Finish the current stroke before changing detail history."
               :no-undo "No detail stroke to undo for this selection."
               :no-redo "No detail stroke to redo for this selection."
               "Stroke was not saved. Retry, or reopen Paint to restore saved details."))]
-       (let [scene (assembly/request! (assoc deps :assembly paint) nil {})]
-         (list [:span "Details saved."]
+       (when (= "false" (get params "final")) {:status 409}))
+      :else
+      (let [scene (assembly/request! (assoc deps :assembly paint) nil {})
+            record (get-in (schemes/snapshot! schemes) [:schemes (get-in @(:state paint) [:draft :scheme])])]
+        (htmx/fragment
+         (list [:span {:data-brush-result "saved"} "Details saved."]
+               [:span#paint-header-status {:hx-swap-oob "outerHTML" :role "status"} "Details saved."]
+               [:span#paint-face-count {:hx-swap-oob "outerHTML"} (str (reduce + 0 (map #(count (:faces %)) (vals (:scheme/details record)))) " painted faces")]
                [:input {:type "hidden" :data-assembly-event (pr-str (:event scene))}]))))))

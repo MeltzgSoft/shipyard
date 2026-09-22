@@ -28,7 +28,7 @@
                                                      (when (#{:create :members} action) [[:members {:optional true} [:or string? [:sequential string?]]]])
                                                      (when (= action :order) [[:direction [:enum "up" "down"]]])))}
                     :responses contracts/html-responses}}])
-         (for [action [:select :target :create :rename :default]]
+         (for [action [:select :target :create :rename :default :tool]]
            [(str "/paint/" (name action)) {:post {:handler (partial handlers/paint-selection! deps action)
                                                   :responses contracts/html-responses}}])
          (for [source [:assembly :ships]]

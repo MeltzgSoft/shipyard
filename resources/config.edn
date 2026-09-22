@@ -41,7 +41,7 @@
 
  :shipyard.loadout/db {}
  :shipyard.scheme/db {}
- :shipyard.paint/db {}
+ :shipyard.paint/db {:paint/flush-interval-ms 120}
  :shipyard.loadout.operations/preview {}
  :shipyard.workspace/db {:assembly #ig/ref :shipyard.assembly/db
                          :preview #ig/ref :shipyard.loadout.operations/preview}

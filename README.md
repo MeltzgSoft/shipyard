@@ -148,6 +148,10 @@ Configure `:shipyard.scheme/db {:data-home "/path/to/data"}` to override its bas
 directory. Scheme records retain role defaults, ordered material groups and individual instance overrides;
 the store does not contain workspace selections or uncommitted material previews.
 
+The Paint brush sends new faces during each drag at the interval configured by
+`:shipyard.paint/db {:paint/flush-interval-ms 120}` (milliseconds, positive integer).
+The server buffers these parts and saves the entire drag atomically on release.
+
 ### Git hooks
 
 Install once per clone - git does not do this for you:

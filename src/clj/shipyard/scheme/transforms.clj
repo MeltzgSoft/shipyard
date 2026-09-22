@@ -56,8 +56,7 @@
                 (<= (count (:scheme/details value)) 4097)
                 (every? (fn [[path layer]]
                           (and (or (= [] path) (loadout/slot-path? path)) (faces/layer? layer)))
-                        (:scheme/details value))
-                (<= (reduce + 0 (map #(count (:faces %)) (vals (:scheme/details value)))) faces/max-painted-faces)))))
+                        (:scheme/details value))))))
 
 (defn store? [value]
   (and (map? value) (= #{:version :schemes} (set (keys value)))

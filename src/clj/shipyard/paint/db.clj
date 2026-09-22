@@ -9,9 +9,12 @@
             [shipyard.scheme.db :as schemes]
             [shipyard.workspace.db :as workspace]))
 
-(defmethod ig/init-key :shipyard.paint/db [_ _]
+(defmethod ig/init-key :shipyard.paint/db [_ {:keys [paint/flush-interval-ms] :or {flush-interval-ms 120}}]
+  (when-not (pos-int? flush-interval-ms)
+    (throw (ex-info "paint/flush-interval-ms must be a positive integer" {})))
   {:state (atom {:draft assembly/empty-draft :sequence 0 :root nil :scene {}})
-   :face-cache (atom nil)})
+   :flush-interval-ms flush-interval-ms
+   :face-cache (atom {})})
 
 (defn transfer! [{:keys [paint library catalog]} source]
   (let [draft (:draft @(:state source))

@@ -2305,8 +2305,9 @@ tier 0 only, never facet indices or decimated LOD indices. Rendering filters by 
 part id and current source hash. A mismatch retains data and warns in Paint.
 
 The browser creates one temporary depth-tested RGB triangle-ID render at CSS canvas
-resolution per stroke. All assembly instances occlude; only IDs from the selected
-instance are admitted. The pass uses front faces, no MSAA, blending, lighting or
+resolution per stroke. All assembly instances occlude. The ID ranges map to full
+instance paths; Cross instances admits every frontmost instance, while disabling it
+admits only the selected instance. The pass uses front faces, no MSAA, blending, lighting or
 colour conversion. Readback is sampled at pixel centres inside the circular brush;
 pointer segments are sampled at intervals of at most half the radius. Camera updates
 pause during a stroke. Temporary ID geometries, material and render target are
@@ -2315,10 +2316,31 @@ geometry and one vertex-colour buffer with linear RGB, not materials/draws per f
 This preserves face normals and placement; clearing overlays restores base material.
 
 `POST /paint/stroke` uses workspace/activation admission, a separate monotonic brush
-sequence and selected scheme/target guards. It validates bounded face keys against
-the current tier-0 source geometry, caching one membership set in the Paint component.
+sequence and selected scheme/target guards. It validates face keys against the
+current tier-0 source geometry, caching membership sets per mesh in the Paint component.
 It commits through the same atomic scheme boundary; no partial strokes. Undo/redo
 history is bounded to 20 snapshots in server workspace state, with before/after guards;
 only successful commits change history. Navigation restores committed masks. Strokes
 and material saves disable competing controls until acknowledgement. Success emits
 material/detail commands without replacing geometry or changing mesh fetch tokens.
+
+
+A drag generates a UUID and sends ordered parts containing only newly sampled face
+keys per instance. `:paint/flush-interval-ms` in the `:shipyard.paint/db` system config
+(default 120) sets the interval; it is rendered onto the brush form, with no UI
+setting. Fetch transports intermediate parts sequentially with the captured workspace
+headers; HTMX handles the final form and acknowledgement. Own brush requests do not
+cancel the active drag. Competing controls are disabled from pointerdown through final
+acknowledgement. Intermediate requests return 204 with `X-Shipyard-Brush: buffered`.
+
+The workspace buffers one drag, incrementally extending validated per-instance layers.
+Parts must have a matching UUID, next part number, target, scheme and captured material.
+Finalization rechecks all touched source identities and the pre-stroke details before
+one atomic EDN write. Undo/redo records the complete before/after details map once;
+final UUID acknowledgements are idempotent. Failure or cancellation never persists a
+partial stroke. A new drag or workspace transition discards abandoned buffered parts.
+No face-count limits apply to strokes, layers or schemes. Local preview updates only
+new face keys; dirty-key hints avoid rescanning the accumulated layer on pointer moves.
+The existing 20-entry undo bound remains. The brush rail's occlusion hints use actual
+ray intersections; paint eligibility still comes exclusively from the depth-tested
+ID buffer, never the hint ray.

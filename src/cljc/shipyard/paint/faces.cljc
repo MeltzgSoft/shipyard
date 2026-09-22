@@ -1,8 +1,5 @@
 (ns shipyard.paint.faces
-  "Stable source-space triangle identity and bounded sparse color masks.")
-
-(def max-stroke-faces 1024)
-(def max-painted-faces 100000)
+  "Stable source-space triangle identity and sparse color masks.")
 
 (defn- float-hex [value]
   (let [value (if (zero? value) 0.0 value)]
@@ -30,16 +27,16 @@
   (and (map? value) (= #{:part-id :mesh-key :faces} (set (keys value)))
        (string? (:part-id value)) (<= 1 (count (:part-id value)) 2048)
        (string? (:mesh-key value)) (boolean (re-matches #"[0-9a-f]{64}" (:mesh-key value)))
-       (map? (:faces value)) (<= (count (:faces value)) max-painted-faces)
+       (map? (:faces value))
        (every? (fn [[key rgb]] (and (key? key) (rgb? rgb))) (:faces value))))
 
 (defn stroke [layer part-id mesh-key keys rgb erase?]
   (cond
-    (not (and (vector? keys) (<= 1 (count keys) max-stroke-faces) (every? key? keys))) {:error :invalid-faces}
+    (not (and (vector? keys) (seq keys) (every? key? keys))) {:error :invalid-faces}
     (not (rgb? rgb)) {:error :invalid-color}
     (and layer (or (not= part-id (:part-id layer)) (not= mesh-key (:mesh-key layer)))) {:error :changed-source}
     :else (let [result {:part-id part-id :mesh-key mesh-key
                         :faces (if erase? (apply dissoc (:faces layer) keys)
                                    (reduce #(assoc %1 %2 rgb) (or (:faces layer) {}) keys))}
                 result (update result :faces #(or % {}))]
-            (if (layer? result) {:layer result} {:error :paint-limit}))))
+            {:layer result})))

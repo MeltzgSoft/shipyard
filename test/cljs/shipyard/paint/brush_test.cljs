@@ -22,3 +22,11 @@
     (is (not= expected (faces/face-key (reverse vertices))))
     (is (= expected (faces/face-key [[0 1 0] [0 0 0] [1 0 0]])))
     (is (= expected (faces/face-key [[0 -0.0 0] [1 0 0] [0 1 0]])))))
+
+(deftest cross-instance-id-ranges
+  (let [pixels (js/Uint8Array. #js [1 0 0 255 2 0 0 255 4 0 0 255 0 0 0 255])
+        buffer {:pixels pixels :width 4 :height 1
+                :ranges {[] {:start 1 :end 3} [[:weapon 0]] {:start 3 :end 6}}}]
+    (is (= {[] #{0 1} [[:weapon 0]] #{1}} (brush/sampled-instances buffer 2 0.5 10 [] true)))
+    (is (= {[] #{0 1}} (brush/sampled-instances buffer 2 0.5 10 [] false)))
+    (is (= {} (brush/sampled-instances buffer 20 0.5 1 [] true)))))
