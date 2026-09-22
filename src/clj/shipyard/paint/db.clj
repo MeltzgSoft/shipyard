@@ -26,7 +26,8 @@
   (let [state (workspace/workspace! workspace :paint)
         selected (get-in @(:state paint) [:draft :scheme])
         request-sequence (when (string? sequence) (parse-long sequence))
-        targets (transforms/targets (catalog/snapshot! catalog) (:draft @(:state paint)))
+        targets (transforms/targets (catalog/snapshot! catalog) (:draft @(:state paint))
+                                    (get-in (schemes/snapshot! schemes) [:schemes selected]))
         selected-target (first (filter #(= target (:key %)) targets))]
     (if (or (not= (str selected) id) (not= target (:target state))
             (nil? request-sequence) (<= request-sequence (or (:edit-sequence state) 0)))

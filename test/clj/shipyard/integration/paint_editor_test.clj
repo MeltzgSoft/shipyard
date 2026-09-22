@@ -34,3 +34,34 @@
         (post "/paint/default" {})
         (is (empty? (get-in (schemes/snapshot! store) [:schemes id :scheme/instances]))))
       (finally (fixture/stop! started)))))
+
+(deftest groups-membership-order-and-validation
+  (let [started (fixture/start!) sys (:system started) handler (:handler started)
+        paint (:shipyard.paint/db sys) store (:shipyard.scheme/db sys)
+        post (fn [uri form] (handler (mock/request :post uri form)))]
+    (try
+      (swap! (:state (:shipyard.assembly/db sys)) assoc :draft lf/draft)
+      (post "/assembly/paint" {})
+      (post "/paint/create" {:name "Groups"})
+      (let [id (get-in @(:state paint) [:draft :scheme])
+            record #(get-in (schemes/snapshot! store) [:schemes id])]
+        (post "/paint/group/create" {:name "One" :members ["[[:weapon 0]]" "[[:weapon 1]]"]})
+        (let [group (first (:scheme/groups (record))) gid (str (:group/id group))]
+          (is (= 2 (count (:group/members group))))
+          (is (= 400 (:status (post "/paint/group/order" {:group gid :direction "sideways"}))))
+          (is (str/includes? (:body (post "/paint/group/members" {:group gid :members "not-present"})) "Choose instances"))
+          (is (= 2 (count (:group/members (first (:scheme/groups (record)))))))
+          (post "/paint/material" {:id (str id) :target (str "group/" gid) :sequence "1" :base "#ff0000" :metalness "0.7" :roughness "0.2"})
+          (is (= [1.0 0.0 0.0] (:base (:group/material (first (:scheme/groups (record)))))))
+          (post "/paint/group/create" {:name "Two" :members "[[:weapon 0]]"})
+          (let [second-id (:group/id (second (:scheme/groups (record))))]
+            (post "/paint/group/order" {:group (str second-id) :direction "up"})
+            (is (= second-id (:group/id (first (:scheme/groups (record)))))))
+          (post "/paint/group/rename" {:group gid :name "Renamed"})
+          (is (= "Renamed" (:group/name (second (:scheme/groups (record))))))
+          (post "/paint/group/members" {:group gid :members "[]"})
+          (is (= [{:path [] :part-id (:hull fixture/ids)}] (:group/members (second (:scheme/groups (record))))))
+          (post "/paint/group/delete" {:group gid})
+          (is (= [0] (mapv :group/order (:scheme/groups (record)))))
+          (is (= (schemes/snapshot! store) (schemes/snapshot! (schemes/open! (:file store)))))))
+      (finally (fixture/stop! started)))))

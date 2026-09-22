@@ -49,3 +49,18 @@
       (is (empty? (:scheme/instances (:scheme (t/edit-record changed target nil true)))))
       (is (= :invalid-material (:error (t/edit-record record target {} false))))
       (is (= :missing-target (:error (t/edit-record record nil m/neutral false)))))))
+
+(deftest group-target-preview-precedence
+  (let [gid #uuid "dc57ee7b-1a06-43e8-a86b-06d7c36cdcfb"
+        record {:scheme/groups [{:group/id gid :group/name "Guns" :group/order 0
+                                 :group/members [{:path [[:weapon 0]] :part-id "weapon"}
+                                                 {:path [[:weapon 1]] :part-id "weapon"}]}]
+                :scheme/instances {[[:weapon 1]] {:part-id "weapon" :material m/neutral}}}
+        targets (t/targets fixture/database draft record)
+        group (first (filter :group-id targets))]
+    (is (= (str "group/" gid) (:key group)))
+    (is (= [[[:weapon 0]]] (t/affected-paths record targets group)))
+    (is (= [[[:weapon 0]]] (t/affected-paths record targets {:role :weapon})))
+    (let [changed (:scheme (t/edit-record record group m/neutral false))]
+      (is (= [] (t/affected-paths changed targets {:role :weapon})))
+      (is (= m/neutral (t/target-material changed group))))))

@@ -306,16 +306,28 @@ to copy its configuration into the independent Paint workspace. Partial ships an
 hull alone are supported. Returning through the **Paint** selector restores that preview;
 painting does not change Assemble's model or save a ship.
 
-Choose a scheme, or enter a name and select **Create scheme**. Select a **Paint target**:
-an individual part instance (identified by its full slot path) or a role default.
+Choose a scheme, or open **New**, enter a name and select **Create scheme**.
+Select a role, group or individual instance in the left rail. The floating inspector
+shows its full slot path and material. **Write to** switches between the instance,
+its shared role material and a group; a group picker appears for overlapping groups.
 Repeated copies of the same weapon can have different colors. Use **Base colour**,
 **Metalness**, **Roughness** and optional **Paint name** to edit it. Color and finish
-preview while dragging and save when released. **Save material / Retry** retries a
+preview while dragging and save when released. **Save material** retries a
 failed write; check the status before leaving. Returning to Paint restores committed
 values rather than uncommitted scrubbing.
 
-**Use role default** removes the selected instance override. Replacing a part also
+**Use inherited material** removes the selected instance override, revealing the
+highest-priority matching group material, or its role default. Replacing a part also
 uses the role default unless the new part matches that instance override's identity.
+Check instance rows, open **Group selection**, name the group and choose **Create
+group**. A new group inherits until you save its material. Instances may belong to
+several groups; the highest group in the rail with a material wins. An instance's
+own material takes precedence. Select a group and open **Manage group** to rename,
+move up/down, replace its membership from checked rows, or delete it. Deletion keeps
+individual overrides. Membership matches both path and part identity; replacing a
+part does not transfer the old part's membership. Instance rows name the inherited
+group or show **role default**.
+
 **Mount colors** temporarily replaces base colors; turning it off restores paint.
 Schemes are shared: editing one changes every ship using it when that ship is next
 loaded. Scheme creation does not automatically assign it to a saved ship. Surface
