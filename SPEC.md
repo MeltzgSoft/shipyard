@@ -556,13 +556,16 @@ scrubbing. Pending responses cannot change another selection or activation. Moun
 colors temporarily override base colour only; turning them off restores paint,
 including the material's metalness and roughness.
 
-The **Detail brush** targets one individual instance. Its adjustable circular
+The **Detail brush** paints across instances by default. Turn **Cross instances** off
+to confine it to the selected individual instance. **Select** and **Brush** choose the
+viewport tool; the Brush rail shows touched instances and their running face counts.
+Occluded instances identified behind the brush are explanatory only and are not painted. Its adjustable circular
 screen-space footprint selects triangles with at least one visible pixel centre
 inside the circle. It fills entire triangles, not partial faces, including at the
 footprint boundary. Occluded and back-facing triangles are excluded; there is no
 paint-through volume. Drag samples overlap along the pointer path. Left-drag paints
-when enabled; Alt+drag or disabling the brush permits ordinary orbiting. A stroke
-commits on release. Detail colour overrides base colour only; **Erase to base**
+when enabled; Alt+drag or disabling the brush permits ordinary orbiting. Face deltas flush periodically during a drag; a stroke commits atomically on release
+and remains one undo step across all touched instances. Detail colour overrides base colour only; **Erase to base**
 removes the selected face overrides. Mount colors hides details without erasing them.
 
 Detail masks are shared scheme data, scoped to full slot path, part id and source
@@ -571,8 +574,10 @@ retain the old data and warn in Paint. **Clear instance details** explicitly rem
 it so that the new source can be painted. Undo/redo retains up to 20 detail strokes
 in the current server-owned selection, including clear; selection changes reset
 history. Failed writes leave durable masks/history untouched and allow retry.
-The limits are 1,024 faces per stroke and 100,000 painted faces per scheme; reject
-oversized strokes visibly rather than painting an arbitrary subset.
+There are no per-stroke or per-layer face limits. A failed chunk or final save restores
+the pre-stroke preview on every touched instance and leaves the stroke available for
+retry. Buffered parts do not change durable state; leaving or canceling discards them.
+Undo is unavailable until the current drag has finished.
 
 ---
 

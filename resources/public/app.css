@@ -988,3 +988,21 @@ body:has(.paint-editor) .masthead__stats { display: none; }
 .assembly__scheme label { display: grid; gap: 4px; }
 
 .paint-brush-cursor { display: none; position: fixed; pointer-events: none; border: 1px solid white; box-shadow: 0 0 0 1px #000; border-radius: 50%; transform: translate(-50%, -50%); z-index: 1000; }
+
+#paint-brush { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+#paint-brush[hidden] { display: none; }
+.paint-editor .paint-checkbox { display: flex; align-items: center; gap: 8px; }
+.paint-stroke-summary { flex: 1; min-height: 0; overflow: auto; }
+.paint-stroke-summary h3 { display: flex; justify-content: space-between; padding: 12px; border-bottom: 1px solid var(--line); }
+.paint-stroke-summary p { padding: 12px; font-size: 12px; }
+.paint-stroke-row { display: flex; justify-content: space-between; gap: 10px; padding: 12px; border-bottom: 1px solid var(--line); font-size: 12px; }
+.paint-stroke-row span:last-child { font-family: ui-monospace, monospace; }
+.paint-stroke-row.is-behind { color: var(--ink-dim); border-left: 2px dashed var(--ink-faint); }
+.paint-rail-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px; border-top: 1px solid var(--line); font-size: 11px; }
+#paint-face-count { font-family: ui-monospace, monospace; color: var(--ink-dim); }
+.paint-rail-footer button { color: var(--accent); border: 0; padding: 0; background: none; }
+.paint-segmented label { flex: 1; padding: 6px; border-radius: 4px; text-align: center; }
+.paint-segmented label:has(input:checked) { background: var(--line); }
+.paint-tools .paint-segmented { margin: 0; background: var(--panel); }
+.paint-tools button { color: var(--ink); border-radius: 4px; cursor: pointer; padding: 5px 12px; }
+.paint-tools button[aria-pressed=true] { background: var(--accent); color: var(--bg); }

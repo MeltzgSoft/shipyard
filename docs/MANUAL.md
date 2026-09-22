@@ -342,27 +342,34 @@ Fleet-default assignment is not yet available.
 
 ### Painting details
 
-Select an individual instance (not a role default), turn off **Mount colors**, then
-check **Enable brush**. Choose a **Detail colour** and radius in screen pixels.
-Left-drag on the model to colour whole visible triangles under the circle; release
-to save the stroke. Hidden faces and other parts are not painted. Precision follows
-the mesh triangulation: even a small brush fills a whole triangle. Alt+drag or disable
-the brush to orbit. Detail colour overlays the instance base; its finish stays unchanged.
+Turn off **Mount colors**, then choose **Brush** over the viewport. Pick a detail
+colour and radius (2–100 screen pixels). **Cross instances** is on by default: one
+drag can touch several parts. Turn it off to paint only the instance selected in
+**Select** mode. The left rail lists touched parts and face counts for the live drag;
+parts identified behind the brush are skipped.
 
-**Erase to base** removes details under the same visible-only brush. **Undo detail
-stroke** / **Redo detail stroke** keep the last 20 strokes for this target selection.
-Changing target or scheme resets that history. **Clear instance details** removes
-the whole selected layer after confirmation. Shared schemes also share these details.
+Left-drag to fill whole visible triangles under the circle. Hidden and back-facing
+faces are never painted. Even a small brush fills a whole triangle. Alt+drag or the
+**Select** tool permits orbiting. The chosen colour is captured at the start of the
+drag. **Erase to base** restores the underlying instance/group/role material.
 
-Check **Details saved.** after release. A failed write keeps the preview for **Retry
-last stroke**; leaving Paint discards unsaved previews. Each stroke is limited to
-1,024 faces and a scheme to 100,000 painted faces. If a stroke is too large, use a
-smaller brush or shorter stroke; it is not partially saved. Large meshes take longer
-to prepare their first detail layer. Replaced parts/source files suppress incompatible
-details and show a warning in Paint; the old mask stays saved until you explicitly
-clear that instance's details. After replacing a source file, reselect your library
-in Settings to rescan it before reopening Paint. Restoring the original source
-restores its mask after the same rescan.
+New faces are sent periodically while dragging, but nothing is durably saved until
+you release. The whole drag is one undo step, including when it crosses parts.
+**Undo** / **Redo** keep the last 20 strokes for the current target selection. Changing
+target or scheme resets that history. **Clear instance details** removes the selected
+instance's entire layer after confirmation and can also be undone. Choose an instance
+in Select mode to clear it. Shared schemes share these details.
+
+Check **Details saved.** after release. If saving fails, every touched part returns to
+its pre-stroke appearance; **Retry last stroke** retries the captured stroke. Leaving
+Paint or canceling the drag discards its uncommitted preview. Face counts are
+informational: strokes and saved layers have no face-count limits. Large meshes may
+take longer to prepare their first detail layer.
+
+Replaced parts/source files suppress incompatible details and show a warning in
+Paint. The old mask remains saved until you explicitly clear that instance's details.
+After replacing a source file, reselect your library in Settings to rescan it before
+reopening Paint. Restoring the original source restores its mask after the same rescan.
 
 ## Troubleshooting
 

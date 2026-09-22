@@ -148,32 +148,87 @@
       [:button {:type "submit" :form "paint-default"} "Use inherited material"])
     [:p#paint-status {:role "status"} "Saved values"]]])
 
-(defn panel [records draft targets target record value paths sequence error prepared anchor-key]
-  (list
-   [:span#paint-header {:hx-swap-oob "outerHTML"}
-    [:code (or (:hull draft) "No model")]
-    [:span#paint-header-status {:role "status"} "Saved values"]]
-   [:section#library.panel.paint-rail {:hx-swap-oob "outerHTML"}
-    (scheme-controls records draft record)
-    (when record (target-tree record targets target))]
-   [:section.paint-editor
-    [:header.paint-inspector-header
-     [:div [:h2 (if record (or (:name target) (:label target) "Paint preview") "Choose a scheme")]
-      [:p (when (and record target) (str (if (contains? target :path) (pr-str (:path target)) (:key target))
-                                         (when (:role target) (str " · role " (name (:role target))))))]]
-     (when (and record value) (swatch value))]
-    (when-not record [:p "Choose a scheme from the left rail, or open New and enter a name. Material and group controls appear after you create it."])
-    (when error [:p.detail__error {:role "alert"} error])
-    (when-not (:hull draft) [:p "No paint model selected. Use Paint assembly or Paint ship to copy a model here."])
-    (when (some #(= :running (:state %)) (vals prepared))
-      [:p {:hx-get "/paint?poll=1" :hx-trigger "load delay:400ms" :hx-target "#detail"} "Preparing paint preview…"])
-    (for [[id status] prepared :when (= :failed (:state status))]
-      [:p.detail__error (str "Could not load " id ". " (:message status))])
-    (when (and target record (every? #(= :ready (:state %)) (vals prepared)))
-      (list (write-targets record targets target anchor-key)
-            (group-controls record target)
-            (material-form record target value paths sequence)))
-    (when (and record target (contains? target :path))
-      [:form#paint-default (merge selection-attrs {:hx-post "/paint/default"})])]
-   (when record [:div.paint-tools [:span.paint-tool-active "Select"]])
-   (when record [:div.paint-legend [:span "Selected target"] [:span "Role default"] [:span "Group material"] [:span "Instance material"]])))
+(defn brush-panel [record target targets prepared state flush-interval]
+  (let [brush? (= "brush" (:tool state))
+        stale (for [instance targets :when (contains? instance :path)
+                    :let [layer (get-in record [:scheme/details (:path instance)])]
+                    :when (and layer (or (not= (:part-id layer) (:part-id instance))
+                                         (not= (:mesh-key layer) (get-in prepared [(:part-id instance) :mesh-key]))))] (:path instance))]
+    [:form#paint-brush
+     {:hidden (not brush?) :hx-post "/paint/stroke" :hx-target (if brush? "#brush-status" "#paint-status")
+      :hx-swap "innerHTML" :hx-sync "this:queue all"
+      :hx-disabled-elt (str competing-controls ", #paint-brush input:not([type=hidden]), #paint-brush select, #paint-brush button, .paint-tools button, button[form=paint-brush]")
+      :data-flush-interval flush-interval :data-stale-targets (pr-str (vec stale))
+      :data-instance-labels (pr-str (into {} (for [entry targets :when (contains? entry :path)] [(:key entry) (:label entry)])))
+      :hx-on--config-request "var field=this.elements.sequence;field.value=Number(field.value)+1;event.detail.parameters.sequence=field.value;"
+      :hx-on--after-request "if(document.contains(this)&&!event.detail.successful){document.getElementById('paint-header-status').textContent='Save not confirmed';}"}
+     (for [[name value] {"id" (str (:scheme/id record)) "target" (:key target) "sequence" (or (:brush-sequence state) 0)
+                         "mesh-key" (get-in prepared [(:part-id target) :mesh-key]) "faces" "[]" "color" "#ff0000"
+                         "entries" "[]" "stroke-id" "" "part" "0" "final" "true" "enabled" (str brush?) "operation" "paint"}]
+       [:input {:type "hidden" :name name :value value}])
+     [:div.paint-form-body
+      [:div.paint-segmented
+       [:label [:input {:type "radio" :name "mode" :value "paint" :checked true}] "Paint"]
+       [:label [:input {:type "radio" :name "mode" :value "erase"}] "Erase to base"]]
+      [:label.paint-control [:span "Radius (screen pixels)" [:output "20 px"]]
+       [:input {:type "range" :name "radius" :min 2 :max 100 :value 20
+                :oninput "this.parentElement.querySelector('output').value=this.value+' px'"}]]
+      [:label.paint-checkbox [:input {:type "checkbox" :name "cross-instances" :checked true}] "Cross instances"]
+      (material-control "Detail colour" "brush-color" "color" "#ff0000")
+      [:p.muted "Turn off Mount colors to paint. Alt+drag to orbit."]]
+     [:footer.paint-actions
+      [:button {:type "submit" :name "history" :value "undo" :aria-label "Undo detail stroke"} "Undo"]
+      [:button {:type "submit" :name "history" :value "redo" :aria-label "Redo detail stroke"} "Redo"]
+      [:button {:type "button" :data-brush-retry "true"} "Retry last stroke"]
+      [:p#brush-status {:role "status"} "Release to save. Undo keeps the last 20 strokes."]]]))
+
+(defn panel [records draft targets target record value paths sequence error prepared anchor-key state flush-interval]
+  (let [brush? (and record (= "brush" (:tool state)))
+        ready? (and target record (every? #(= :ready (:state %)) (vals prepared)))]
+    (list
+     [:span#paint-header {:hx-swap-oob "outerHTML"}
+      [:code (or (:hull draft) "No model")]
+      [:span#paint-header-status {:role "status"} "Saved values"]]
+     [:section#library.panel.paint-rail {:hx-swap-oob "outerHTML"}
+      (scheme-controls records draft record)
+      (if brush?
+        [:section.paint-stroke-summary
+         [:h3 "This stroke" [:span#paint-stroke-count "0 faces"]]
+         [:div#paint-stroke-list]
+         [:p.muted "Whole visible triangles. Occluded surfaces are skipped."]]
+        (when record (target-tree record targets target)))
+      (when record [:footer.paint-rail-footer
+                    [:span#paint-face-count (str (reduce + 0 (map #(count (:faces %)) (vals (:scheme/details record)))) " painted faces")]
+                    [:button {:type "submit" :form "paint-brush" :name "history" :value "clear"
+                              :disabled (not (and ready? (contains? target :path)))
+                              :onclick "return window.confirm('Clear all details on this instance?')"} "Clear instance details"]])]
+     [:section.paint-editor
+      [:header.paint-inspector-header
+       [:div [:h2 (cond (nil? record) "Choose a scheme" brush? "Detail brush" :else (or (:name target) (:label target) "Paint preview"))]
+        [:p (if brush? "Whole visible triangles, nearest surface only"
+                (when (and record target) (str (if (contains? target :path) (pr-str (:path target)) (:key target))
+                                               (when (:role target) (str " · role " (name (:role target)))))))]]
+       (when (and record value) (swatch value))]
+      (when-not record [:p "Choose a scheme from the left rail, or open New and enter a name. Material and group controls appear after you create it."])
+      (when error [:p.detail__error {:role "alert"} error])
+      (when-not (:hull draft) [:p "No paint model selected. Use Paint assembly or Paint ship to copy a model here."])
+      (when (some #(= :running (:state %)) (vals prepared))
+        [:p {:hx-get "/paint?poll=1" :hx-trigger "load delay:400ms" :hx-target "#detail"} "Preparing paint preview…"])
+      (for [[id status] prepared :when (= :failed (:state status))]
+        [:p.detail__error (str "Could not load " id ". " (:message status))])
+      (when ready?
+        (list (when-not brush?
+                (list (write-targets record targets target anchor-key)
+                      (group-controls record target)
+                      (material-form record target value paths sequence)))
+              (brush-panel record target targets prepared state flush-interval)))
+      (when (and record target (contains? target :path))
+        [:form#paint-default (merge selection-attrs {:hx-post "/paint/default"})])]
+     (when record [:div.paint-tools
+                   [:form.paint-segmented (merge selection-attrs {:hx-post "/paint/tool"})
+                    [:button {:type "submit" :name "tool" :value "select" :aria-pressed (str (not brush?))} "Select"]
+                    [:button {:type "submit" :name "tool" :value "brush" :aria-pressed (str brush?) :disabled (not ready?)} "Brush"]]
+                   (when brush? [:span "Orbit Alt+drag"])])
+     (when record [:div.paint-legend
+                   (if brush? (list [:span "Brush radius (screen px)"] [:span "Painted this stroke"] [:span "Occluded — skipped"])
+                       (list [:span "Selected target"] [:span "Role default"] [:span "Group material"] [:span "Instance material"]))]))))

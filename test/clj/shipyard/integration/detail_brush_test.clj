@@ -6,6 +6,8 @@
             [shipyard.assembly-fixture :as fixture]
             [shipyard.fixtures :as fixtures]
             [shipyard.library.index :as index]
+            [shipyard.loadout-fixture :as lf]
+            [shipyard.workspace.db :as workspace]
             [shipyard.mesh.cache :as cache]
             [shipyard.paint.strokes :as strokes]
             [shipyard.scheme.db :as schemes]
@@ -57,4 +59,58 @@
             (is (nil? (get-in (schemes/snapshot! store) [:schemes scheme :scheme/details []])))
             (is (str/includes? (:body (post "/paint/stroke" (assoc params :sequence "6" :mesh-key new-key :history "undo"))) "Details saved"))
             (is (= before (schemes/snapshot! store)) "Undo clear recovers the retained incompatible layer"))))
+      (finally (fixture/stop! started)))))
+
+(deftest streamed-cross-instance-stroke-is-one-atomic-history-entry
+  (let [started (fixture/start!) sys (:system started) handler (:handler started)
+        paint (:shipyard.paint/db sys) store (:shipyard.scheme/db sys)
+        library (:shipyard.library/index sys) cache (:shipyard.mesh/cache sys)
+        part-id (:weapon fixture/ids) source (index/fresh-source-file! library part-id)
+        mesh-key (:mesh-key (cache/ensure! cache source))
+        face-keys (vec (strokes/mesh-faces (wire/decode (Files/readAllBytes (fs/path (cache/tier-file cache mesh-key 0))))))
+        post #(handler (mock/request :post "/paint/stroke" %))
+        entry (fn [path key] {:target (pr-str path) :mesh-key mesh-key :faces [key]})]
+    (try
+      (index/record-mesh-key! library part-id mesh-key 12)
+      (swap! (:state (:shipyard.assembly/db sys)) assoc :draft lf/draft :root (str (:root started)))
+      (handler (mock/request :post "/assembly/paint" {}))
+      (handler (mock/request :post "/paint/create" {:name "Streamed"}))
+      (let [id (get-in @(:state paint) [:draft :scheme]) stroke-id (str (random-uuid))
+            params {:id (str id) :target "[]" :stroke-id stroke-id :part "0" :final "false"
+                    :sequence "1" :color "#ff0000" :operation "paint"
+                    :entries (pr-str [(entry [[:weapon 0]] (first face-keys)) (entry [[:weapon 1]] (first face-keys))])}
+            masks #(get-in (schemes/snapshot! store) [:schemes id :scheme/details])
+            history #(get-in (workspace/workspace! (:shipyard.workspace/db sys) :paint) [:brush-history :undo])
+            before (slurp (str (:file store)))]
+        (is (= 204 (:status (post params))))
+        (is (= before (slurp (str (:file store)))))
+        (is (empty? (history)))
+        (is (str/includes? (:body (post (assoc params :sequence "2" :history "undo"))) "Finish the current stroke"))
+        (let [final (assoc params :part "1" :final "true" :sequence "3"
+                           :entries (pr-str [(entry [[:weapon 1]] (second face-keys))]))]
+          (is (str/includes? (:body (post final)) "Details saved"))
+          (is (= #{[[:weapon 0]] [[:weapon 1]]} (set (keys (masks)))))
+          (is (= 2 (count (get-in (masks) [[[:weapon 1]] :faces]))))
+          (is (= 1 (count (history))))
+          (let [saved (schemes/snapshot! store)]
+            (is (str/includes? (:body (post (assoc final :sequence "4"))) "Details saved"))
+            (is (= saved (schemes/snapshot! store)))
+            (is (= 1 (count (history))) "Lost acknowledgement retry is idempotent")
+            (post (assoc final :sequence "5" :history "undo"))
+            (is (empty? (masks)))
+            (post (assoc final :sequence "6" :history "redo"))
+            (is (= saved (schemes/snapshot! store)))))
+        (let [bad (assoc params :stroke-id (str (random-uuid)) :sequence "7")
+              saved (schemes/snapshot! store)]
+          (is (= 204 (:status (post bad))))
+          (is (str/includes? (:body (post (assoc bad :part "1" :sequence "8" :final "true"
+                                                 :entries (pr-str [(assoc (entry [[:weapon 1]] (first face-keys)) :mesh-key (apply str (repeat 64 "f")))])))) "Source mesh changed"))
+          (is (= saved (schemes/snapshot! store)) "One bad instance rejects every buffered part")
+          (is (= 1 (count (history)))))
+        (let [cancel (assoc params :stroke-id (str (random-uuid)) :sequence "9")]
+          (is (= 204 (:status (post cancel))))
+          (is (= 204 (:status (post (assoc cancel :sequence "10" :operation "cancel")))))
+          (is (nil? (:brush-pending (workspace/workspace! (:shipyard.workspace/db sys) :paint))))
+          (is (str/includes? (:body (post (assoc cancel :sequence "11" :history "undo"))) "Details saved"))
+          (is (empty? (masks)))))
       (finally (fixture/stop! started)))))
