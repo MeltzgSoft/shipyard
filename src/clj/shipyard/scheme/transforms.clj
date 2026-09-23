@@ -44,10 +44,13 @@
 
 (defn scheme? [value]
   (and (map? value)
-       (every? #{:scheme/id :scheme/name :scheme/roles :scheme/instances :scheme/groups :scheme/details :scheme/layers} (keys value))
+       (every? #{:scheme/id :scheme/name :scheme/roles :scheme/instances :scheme/groups :scheme/details :scheme/layers :scheme/layer-ids?} (keys value))
+       (or (not (contains? value :scheme/layer-ids?)) (true? (:scheme/layer-ids? value)))
        (or (not (contains? value :scheme/groups)) (groups? (:scheme/groups value)))
        (or (not (contains? value :scheme/layers))
            (and (map? (:scheme/layers value))
+                (or (not (:scheme/layer-ids? value))
+                    (every? #(or (some #{%} regions/builtins) (regions/detail-id? %)) (keys (:scheme/layers value))))
                 (every? (fn [[name value]] (and (regions/name? name) (material? value))) (:scheme/layers value))))
        (uuid? (:scheme/id value)) (loadout/name? (:scheme/name value))
        (map? (:scheme/roles value)) (<= (count (:scheme/roles value)) 256)

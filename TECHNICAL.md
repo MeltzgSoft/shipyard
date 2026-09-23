@@ -2364,27 +2364,34 @@ ID buffer, never the hint ray.
 
 ### 15.3 Reusable part regions and scheme palettes
 
-Part sidecars may contain `:part/paint-regions` with `:mesh-key` (source SHA-256),
-`:revision` (nonnegative integer), `:layers` (ordered unique strings beginning with
-"Primary" and "Secondary") and `:faces` (stable face key to layer-name string).
-Primary assignments are implicit. The catalog stores this metadata as EDN text in
-`:part/paint-regions`, decoded at its boundary; no geometry enters Datascript.
-Region writes preserve the other sidecar fields and publish catalog state only after
-writing the file. The library-wide layer picker is the union of catalog region
-definitions; assignment admits a shared name and adds only that name to the target
-part. Definitions on other parts and their face maps remain untouched. Paint targets
-include current shared definitions; unused scheme palette entries remain stored
-but cannot reintroduce a deleted type.
-Requests include part identity, mesh key and expected revision;
-the workspace admission boundary rejects stale activations, and domain admission
-checks selection, fresh source, face membership and revision before persistence.
+The library root's `shipyard-layers.edn` stores a versioned registry:
+`{:version 1 :revision n :layers {id {:name label :preview-name original-label}}
+:deleted #{id}}`. Detail IDs are `layer:<UUID>` strings; the protected builtins use
+stable IDs `"Primary"` and `"Secondary"`. New IDs are random. Registry changes carry
+an expected registry revision, reject duplicate active labels, and atomically write
+the registry before publishing its derived Datascript representation. The registry
+is independent of which parts use a layer. Rename changes only a label.
 
-`POST /parts/regions` accepts assign/fill/add/rename/delete/reset. Delete requires
-`confirmed=true`, a selected part and its current region revision. It removes the
-type from all library sidecars, including masks for stale sources, without changing
-other metadata or assignments. Primary and Secondary are protected. The catalog
-preflights every affected sidecar, rolls back completed writes if a later write
-fails, then publishes the index after all writes succeed.
+Version 2 `:part/paint-regions` contains `:version 2`, `:mesh-key` (source SHA-256),
+`:revision`, `:layers` (ordered IDs beginning with the builtins), `:faces` (stable face
+key to layer ID), and `:layer-definitions` (detail ID to name/preview-name snapshots).
+Snapshots keep copied part folders understandable; the library registry wins over
+older snapshots. Primary assignments are implicit. No geometry enters Datascript.
+Legacy name-based masks normalize on read to deterministic namespaced UUIDs; legacy
+scheme palette keys use the same conversion. Scheme records with converted palettes
+carry `:scheme/layer-ids? true`. Normalization does not rewrite files at startup;
+the next successful edit writes the new representation. Shared labels are discovered
+from old masks until a registry is saved. Registry deletion tombstones prevent old
+snapshots from reintroducing deleted types. Unknown imported IDs retain their identity.
+
+`POST /parts/regions` accepts assign/fill/add/rename/delete/reset. Add and rename edit
+the shared registry regardless of selected-part usage. Delete requires confirmation,
+current part and registry revisions, and removes the ID from all library sidecars,
+including stale-source masks. Sidecars are preflighted and rolled back if any part
+write or the final registry write fails; catalog changes publish only after success.
+All catalog writers serialize on the same lock. Assignment rechecks the part revision
+and deleted IDs inside that lock before committing, so a concurrent delete cannot be
+undone by a delayed stroke. Source/revision guards and workspace admission remain.
 Fill enumerates
 all stable face keys from the validated source mesh on the server and uses the same
 revision-guarded assignment and atomic persistence path; no face list travels from
@@ -2407,14 +2414,15 @@ pressed state are restored together after temporary right-button erasing.
 Transient stroke state captures one
 visible-ID buffer and submits the union of touched faces on release. It reuses the
 Paint brush's depth-tested picker and stable face keys. Facets mode retains sampled
-triangles. Faces mode expands them through a cached partition of the source mesh
-into connected planar surfaces (1 degree and 0.01 mm from each surface’s seed
-plane). Coordinate-shared edges connect triangles despite hard-normal seams;
-non-manifold edges, opposite normals and disconnected components remain separate.
-Groups retain tier-0 order across indexed/nonindexed rendering. The mode is captured
-per stroke, applies equally to assignment and erasing, and survives region saves
-and layer operations. Only valid stable face keys cross the existing persistence
-boundary; expanded surfaces can include occluded triangles. Navigation/cancellation drops
+triangles. Faces mode uses a cached partition by the angle between adjacent triangle
+normals, in degrees (0–90, default 1). There is no distance-to-seed-plane constraint:
+small neighboring bends can join a curved surface. Coordinate-shared edges connect
+triangles despite hard-normal seams; non-manifold seams and degenerate triangles
+stop growth. Groups retain tier-0 order across indexed/nonindexed rendering. The
+cache holds only the latest angle's partition. Mode and angle are captured per stroke,
+apply equally to assignment and erasing, and survive region saves and layer operations.
+Only valid stable face keys cross the persistence boundary; expanded surfaces may
+include occluded triangles. Navigation/cancellation drops
 uncommitted preview. A failed save restores the prior preview and exposes retry by
 repeating the stroke. Part and scheme selection remain server-owned. Both brushes
 capture right-button strokes as erase, suppress the canvas context menu while
@@ -2422,13 +2430,14 @@ painting, and preserve the selected mode/material/layer for the next left stroke
 Region erasing submits Primary; freehand erasing uses the existing atomic erase
 operation and undo history. Alt-modified gestures retain camera control.
 
-Preview materials derive deterministic colors from exact layer names identically
-on the JVM and in the browser, independent of catalog ordering or membership.
+Preview materials derive deterministic colors from each entity’s immutable preview
+name identically on the JVM and in the browser. Rename, ordering and membership do
+not change existing colors; migration preserves the original name-based swatches.
 Region colors expand the displayed mesh into nonindexed triangle vertices without
 changing triangle order. Mount highlights, frame-based facet recovery and authoring
 previews accept both indexed and nonindexed geometry, retaining saved facet IDs.
 
-Optional `:scheme/layers` maps exact shared names to validated full materials.
+Optional `:scheme/layers` maps stable shared IDs to validated full materials.
 Assembly payloads carry source-bound regions and layer materials unless an instance
 or group overrides them. These fields are material updates, excluded from mesh-fetch
 identity. The renderer projects regions underneath freehand details into the existing

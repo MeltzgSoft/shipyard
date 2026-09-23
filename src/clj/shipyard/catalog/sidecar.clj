@@ -46,20 +46,22 @@
 (defn update-sidecars!
   "Preflight every existing sidecar, then update them with rollback on failure.
   The caller serializes catalog mutations and publishes its index after success."
-  [root updates]
-  (let [files (mapv (fn [[part-id update-fn]]
-                      (let [file (sidecar-file root part-id)]
-                        (when-not (.isFile file)
-                          (throw (ex-info "Part sidecar must be a regular file" {:part-id part-id})))
-                        (let [before (slurp file)]
-                          {:file file :before before
-                           :after (update-fn (edn/read-string before))}))) updates)
-        written (atom [])]
-    (try
-      (doseq [{:keys [file after] :as entry} files]
-        (system/write-atomically! file (pr-str (assoc after :shipyard/version format-version)))
-        (swap! written conj entry))
-      (catch Exception e
-        (doseq [{:keys [file before]} (reverse @written)]
-          (system/write-atomically! file before))
-        (throw e)))))
+  ([root updates] (update-sidecars! root updates (constantly nil)))
+  ([root updates finish!]
+   (let [files (mapv (fn [[part-id update-fn]]
+                       (let [file (sidecar-file root part-id)]
+                         (when-not (.isFile file)
+                           (throw (ex-info "Part sidecar must be a regular file" {:part-id part-id})))
+                         (let [before (slurp file)]
+                           {:file file :before before
+                            :after (update-fn (edn/read-string before))}))) updates)
+         written (atom [])]
+     (try
+       (doseq [{:keys [file after] :as entry} files]
+         (system/write-atomically! file (pr-str (assoc after :shipyard/version format-version)))
+         (swap! written conj entry))
+       (finish!)
+       (catch Exception e
+         (doseq [{:keys [file before]} (reverse @written)]
+           (system/write-atomically! file before))
+         (throw e))))))

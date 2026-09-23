@@ -557,39 +557,45 @@ colors temporarily override base colour only; turning them off restores paint,
 including the material's metalness and roughness.
 
 Parts may carry reusable, source-bound face regions authored in Part Browser's
-Regions tab. Primary and Secondary are permanent shared layer names; users can add,
-rename and delete any number of named detail layers. Names defined on any library
-part are selectable on every other part without being re-created; assignment adopts
-the selected name on that part. Rename remains part-local. Deleting a detail type
-requires confirmation, removes it from every part in the current library, and
-returns those regions to Primary. Primary and Secondary cannot be deleted.
-Layer preview colors depend on the exact name, so adding or removing another type
-does not recolor existing regions. A single selectable layer list combines the
-legend with pencil rename and confirmed delete actions. Selection drives both
-brushing and full-part assignment. Primary and Secondary remain protected.
-The visible inspector tab selects the tool:
-Regions enables brushing, Mounts enables face picking with a crosshair, and Part
-returns to navigation. Separate brush and face-picking toggles are unnecessary.
+Regions tab. Primary and Secondary are permanent layer identities with fixed labels.
+Detail layers are shared entities with stable IDs and editable names, stored in a
+library-wide registry independently of part usage. A layer can be added, renamed or
+deleted from any selected part, including parts that do not use it. Renaming changes
+only its shared label, preserving face assignments, scheme colors and preview colors.
+Existing name-based masks and palettes migrate to matching IDs without losing their
+assignments. Duplicate active names are rejected.
+
+A single selectable layer list combines preview colors with pencil rename and
+confirmed delete actions. Selection drives both brushing and full-part assignment.
+Deleting a detail layer requires confirmation, removes it from every part in the
+current library, and returns those regions to Primary. Primary and Secondary remain
+protected. The shared registry survives rescan, restart and resetting part regions.
+The visible inspector tab selects the tool: Regions enables brushing, Mounts enables
+face picking with a crosshair, and Part returns to navigation.
+
 Part Browser can display mount faces or layer types, remembering its own display
 choice independently. Apply layer to entire part replaces all face assignments,
-including hidden faces, with the selected layer; Primary clears the assignments
-without removing layer names. Every face belongs to one layer;
-unassigned faces belong to Primary. Assigning Primary or right-dragging erases an
-explicit assignment. In both region and freehand painting, right-drag temporarily
-erases without changing the selected paint layer, material or mode; Alt retains
-camera controls. Freehand erase reveals the inherited material.
-Deleting a detail type retains unused scheme colors for possible reuse, while
-removing the type from pickers and Paint defaults. Regions start with the same visible-triangle brush selection as detail painting.
-Facets mode assigns touched triangles; Faces mode expands to connected flat
-surfaces, including triangles beyond the brush or behind occluders. Erasing uses
-the same mode. Region assignments persist with the library part. Changed source meshes retain old regions
-but cannot display or extend them until the user confirms a reset.
+including hidden faces, with the selected layer. Primary clears assignments without
+removing shared layers. Unassigned faces belong to Primary. Right-drag temporarily
+erases without changing the selected layer, material or mode; Alt retains camera
+controls. Freehand erase reveals the inherited material.
 
-Optional `:scheme/layers` maps shared layer-name strings to complete materials.
+Regions start with the same visible-triangle brush selection as detail painting.
+Facets mode assigns touched triangles. Faces mode follows connected triangles whose
+neighboring normals differ by at most the selected angle tolerance (0–90°, default
+1°), allowing painting around curves while stopping at larger creases. Expansion can
+include triangles outside the brush or behind occluders. Erasing uses the same
+mode and tolerance. These settings survive region saves and layer operations.
+Changed source meshes retain old regions but cannot display or extend them until
+reset. Shared rename and delete remain available even for stale masks.
+
+Optional `:scheme/layers` maps stable layer IDs to complete materials. Deleted IDs
+may retain dormant palette entries, but cannot reappear in available layers; a newly
+created layer has a new identity even if its label matches a deleted layer.
 Per-face resolution is freehand detail, matching instance material, winning group
 material, assigned layer material, Primary material, role material, then neutral.
-Legacy color-only detail strokes inherit the resolved region's finish. Region names
-match exactly across parts. Scheme defaults are reusable without a preview model;
+Legacy color-only detail strokes inherit the resolved region's finish. Layer identities
+are shared across parts. Scheme defaults are reusable without a preview model;
 instance/group and brush tools still require one. Before a scheme is selected or
 created, hide unavailable editing controls and explain how to create a named scheme.
 

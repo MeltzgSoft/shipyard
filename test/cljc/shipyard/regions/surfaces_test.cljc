@@ -22,11 +22,17 @@
   (testing "non-manifold edges and degenerate triangles do not leak into another surface"
     (is (= [#{0} #{1} #{2}]
            (surfaces/groups (conj square [[0 0 0] [1 1 0] [2 0 0]]))))
-    (is (= [#{0}] (surfaces/groups [[[0 0 0] [0 0 0] [0 0 0]]]))))
-  (testing "small local slope changes cannot walk around a curved surface"
-    (let [quad (fn [x z next-z]
-                 [[[x 0 z] [(inc x) 0 next-z] [(inc x) 1 next-z]]
-                  [[x 0 z] [(inc x) 1 next-z] [x 1 z]]])
-          groups (surfaces/groups (vec (concat (quad 0 0 0) (quad 1 0 0.008) (quad 2 0.008 0.016))))]
-      (is (= #{0 1 2 3} (first groups)))
-      (is (= #{4 5} (last groups))))))
+    (is (= [#{0}] (surfaces/groups [[[0 0 0] [0 0 0] [0 0 0]]])))))
+
+(deftest adjustable-curvature
+  (let [quad (fn [[x z] [next-x next-z]]
+               [[[x 0 z] [next-x 0 next-z] [next-x 1 next-z]]
+                [[x 0 z] [next-x 1 next-z] [x 1 z]]])
+        triangles (vec (mapcat (fn [[a b]] (quad a b))
+                               (partition 2 1 [[0 0] [1 0] [2 0.2] [3 0.6] [4 1.8]])))]
+    (is (= #{0 1} (first (surfaces/groups triangles 0))))
+    (is (= #{0 1} (first (surfaces/groups triangles 10))))
+    (is (= #{0 1 2 3 4 5} (first (surfaces/groups triangles 12)))
+        "Neighbor-relative growth follows gradual curves but stops at the larger crease")
+    (is (= (set (range 8)) (first (surfaces/groups triangles 30))))
+    (is (= (set (range 8)) (first (surfaces/groups triangles 90))))))

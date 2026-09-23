@@ -5,6 +5,7 @@
             [shipyard.fixtures :as fixtures]
             [shipyard.assembly-fixture :as fixture]
             [shipyard.catalog.db :as catalog]
+            [shipyard.region-fixture :as rf]
             [shipyard.catalog.sidecar :as sidecar]
             [shipyard.e2e.support :as s]
             [shipyard.e2e.workspace-test :as workspace]
@@ -31,8 +32,8 @@
     [x y]))
 
 (defn set-layer! [driver layer color metal]
-  (s/click! driver (str "#paint-target button[data-paint-target='layer/" layer "']"))
-  (is (s/wait-until #(= (str "layer/" layer) (s/js driver "() => document.querySelector('#paint-material')?.elements.target.value"))))
+  (s/click! driver (str "#paint-target button:has(.paint-target-name:text-is('" layer "'))"))
+  (is (s/wait-until #(= layer (s/text driver "#paint-target button[aria-pressed=true] .paint-target-name"))))
   (editor/input! driver "#paint-material input[name=base]" color "input")
   (editor/input! driver "#paint-material input[name=metalness]" metal "input")
   (s/click! driver "#paint-material button.paint-primary")
@@ -49,7 +50,7 @@
   (let [started (fixture/start! true) sys (:system started) driver (s/make-driver)
         cat (:shipyard.catalog/db sys) id (:weapon fixture/ids)
         regions #(catalog/part-regions (catalog/part (catalog/snapshot! cat) id))
-        selected #(s/js driver "() => document.querySelector('[data-region-layer][aria-pressed=true]').dataset.regionLayer")
+        selected #(s/js driver "() => document.querySelector('[data-region-layer][aria-pressed=true] .region-layer__name').textContent")
         mode #(s/js driver "() => document.querySelector('[data-region-mode][aria-pressed=true]').dataset.regionMode")]
     (try
       (s/go! driver (s/base-url sys))
@@ -87,7 +88,7 @@
       (s/click! driver "button[data-region-mode=facets]")
       (editor/input! driver "#region-stroke input[name=radius]" "2" "input")
       (apply brush/stroke! driver (region-point driver 0))
-      (is (s/wait-until #(= 5 (:revision (regions)))))
+      (is (s/wait-until #(= 4 (:revision (regions)))))
       (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
       (is (= 1 (count (:faces (regions)))))
       (is (= "Panels" (selected)))
@@ -109,19 +110,19 @@
       (is (zero? (s/count-els driver "#region-stroke input[name=enabled], [data-authoring-toggle]")))
       (s/fill-and-blur! driver "#region-add input[name=name]" "Trim")
       (s/click! driver "button:text-is('Add layer')")
-      (is (s/wait-until #(some #{"Trim"} (:layers (regions id)))))
+      (is (s/wait-until #(rf/id cat "Trim")))
       (editor/input! driver "#region-stroke input[name=radius]" "2" "input")
       (apply brush/stroke! driver (region-point driver 0))
       (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
       (let [before (regions id) colors (region-colors driver)
-            swatch (s/js driver "() => document.querySelector('[data-region-layer=Trim] .paint-swatch').style.background")]
+            swatch (s/js driver "() => document.querySelector('[aria-label=\"Paint Trim\"] .paint-swatch').style.background")]
         (is (seq (:faces before)) "Opening Regions enables painting without a checkbox")
         (s/fill-and-blur! driver "#region-add input[name=name]" "Running Lights")
         (s/click! driver "button:text-is('Add layer')")
-        (is (s/wait-until #(some #{"Running Lights"} (:layers (regions id)))))
+        (is (s/wait-until #(rf/id cat "Running Lights")))
         (is (= (:faces before) (:faces (regions id))))
         (is (= colors (region-colors driver)))
-        (is (= swatch (s/js driver "() => document.querySelector('[data-region-layer=Trim] .paint-swatch').style.background")))
+        (is (= swatch (s/js driver "() => document.querySelector('[aria-label=\"Paint Trim\"] .paint-swatch').style.background")))
         (s/click! driver "[data-detail-tab=mounts]")
         (is (s/wait-until #(= id (get-in (s/stats driver) [:authoring :part-id]))))
         (is (= "crosshair" (s/js driver "() => getComputedStyle(document.querySelector('canvas')).cursor")))
@@ -139,21 +140,28 @@
       (s/click! driver ".part__select:has(.part__name:text-is('weapon-alt'))")
       (s/await-part driver other)
       (s/click! driver "[data-detail-tab=regions]")
-      (s/click! driver "button[data-region-layer='Trim']")
+      (s/click! driver "button[aria-label='Paint Trim']")
       (s/click! driver "button:text-is('Apply layer to entire part')")
       (is (s/wait-until #(= 12 (count (:faces (regions other))))))
       ;; A shared type can be deleted from a part that never adopted it.
       (s/click! driver ".part__select:has(.part__name:text-is('hull'))")
       (s/await-part driver (:hull fixture/ids))
       (s/click! driver "[data-detail-tab=regions]")
+      (let [layer (rf/id cat "Trim") before (mapv regions [id other])]
+        (s/click! driver "button[aria-label='Rename Trim']")
+        (s/fill-and-blur! driver ".region-layer__rename:not([hidden]) input[name=name]" "Accent")
+        (s/click! driver ".region-layer__rename:not([hidden]) button:text-is('Save name')")
+        (is (s/wait-until #(= layer (rf/id cat "Accent"))))
+        (is (= before (mapv regions [id other])))
+        (is (nil? (catalog/part-regions (catalog/part (catalog/snapshot! cat) (:hull fixture/ids))))))
       (let [before (mapv regions [id other]) confirmation (atom nil)]
         (.onceDialog ^Page (:page driver) (reify Consumer (accept [_ d] (reset! confirmation (.message ^Dialog d)) (.dismiss ^Dialog d))))
-        (s/click! driver "button[aria-label='Delete Trim']")
+        (s/click! driver "button[aria-label='Delete Accent']")
         (is (re-find #"every part.*Primary" @confirmation))
         (is (= before (mapv regions [id other])))
         (.onceDialog ^Page (:page driver) (reify Consumer (accept [_ d] (.accept ^Dialog d))))
-        (s/click! driver "button[aria-label='Delete Trim']")
-        (is (s/wait-until #(not (some #{"Trim"} (catalog/region-layers (catalog/snapshot! cat))))))
+        (s/click! driver "button[aria-label='Delete Accent']")
+        (is (s/wait-until #(nil? (rf/id cat "Accent"))))
         (doseq [part-id [id other]]
           (is (empty? (:faces (regions part-id))))
           (is (= (regions part-id) (:part/paint-regions (sidecar/read-sidecar! (str (:root started)) part-id))))))
@@ -161,7 +169,7 @@
       (s/wait-visible! driver ".detail--ready")
       (s/click! driver "[data-detail-tab=regions]")
       (is (= ["Primary" "Secondary" "Running Lights"]
-             (s/js driver "() => [...document.querySelectorAll('[data-region-layer]')].map(o => o.dataset.regionLayer)")))
+             (s/js driver "() => [...document.querySelectorAll('.region-layer__name')].map(o => o.textContent)")))
       (s/screenshot-el! driver "body" (java.io.File. "/tmp/shipyard-layer-types.png"))
       (finally (s/quit! driver) (fixture/stop! started)))))
 
@@ -179,7 +187,7 @@
       (s/click! driver "[data-detail-tab=regions]")
       (s/fill-and-blur! driver "#region-add input[name=name]" "Trim")
       (s/click! driver "button:text-is('Add layer')")
-      (is (s/wait-until #(= ["Primary" "Secondary" "Trim"] (:layers (regions)))))
+      (is (s/wait-until #(= ["Primary" "Secondary" "Trim"] (rf/names cat))))
       (s/click! driver "button[data-region-layer='Secondary']")
 
       (is (s/wait-until #(false? (:mount-colors-enabled (s/stats driver)))))
@@ -198,10 +206,10 @@
 
         (editor/input! driver "#region-stroke input[name=radius]" "2" "input"))
       (let [secondary (first (keys (:faces (regions))))]
-        (s/click! driver "button[data-region-layer='Trim']")
+        (s/click! driver "button[aria-label='Paint Trim']")
         (apply brush/stroke! driver (region-point driver 1))
-        (is (s/wait-until #(some #{"Trim"} (vals (:faces (regions))))))
-        (let [trim (first (keep (fn [[key layer]] (when (= "Trim" layer) key)) (:faces (regions))))]
+        (is (s/wait-until #(some #{(rf/id cat "Trim")} (vals (:faces (regions))))))
+        (let [trim (first (keep (fn [[key layer]] (when (= (rf/id cat "Trim") layer) key)) (:faces (regions))))]
           (is (= (regions) (:part/paint-regions (sidecar/read-sidecar! (str (:root started)) id))))
           (is (nil? (catalog/part-regions (catalog/part (catalog/snapshot! cat) (:weapon-alt fixture/ids)))))
           (let [camera (:camera (s/stats driver))]
@@ -209,20 +217,20 @@
             (is (s/wait-until #(not (contains? (:faces (regions)) trim))))
             (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
             (is (= camera (:camera (s/stats driver))))
-            (is (= "Trim" (s/js driver "() => document.querySelector('#region-stroke input[name=layer]').value")))
+            (is (= (rf/id cat "Trim") (s/js driver "() => document.querySelector('#region-stroke input[name=layer]').value")))
             (apply brush/stroke! driver (region-point driver 1))
-            (is (s/wait-until #(= "Trim" (get-in (regions) [:faces trim])))))
+            (is (s/wait-until #(= (rf/id cat "Trim") (get-in (regions) [:faces trim])))))
           (s/click! driver ".part__select:has(.part__name:text-is('hull'))")
           (s/wait-visible! driver ".detail--ready")
           (s/await-part driver (:hull fixture/ids))
           (s/click! driver "[data-detail-tab=regions]")
           ;; Select the existing shared name without defining it on this part.
-          (s/click! driver "button[data-region-layer='Trim']")
+          (s/click! driver "button[aria-label='Paint Trim']")
 
           (editor/input! driver "#region-stroke input[name=radius]" "2" "input")
           (apply brush/stroke! driver (region-point driver 0))
           (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
-          (is (some #{"Trim"} (vals (:faces (catalog/part-regions (catalog/part (catalog/snapshot! cat) (:hull fixture/ids)))))))
+          (is (some #{(rf/id cat "Trim")} (vals (:faces (catalog/part-regions (catalog/part (catalog/snapshot! cat) (:hull fixture/ids)))))))
           (s/screenshot-el! driver "body" (java.io.File. "/tmp/shipyard-part-regions.png"))
           (workspace/switch! driver "assembly") (workspace/await-ship! driver)
           (s/click! driver "button:text-is('Paint assembly')")
@@ -303,20 +311,20 @@
       (s/click! driver "button[aria-label='Rename Trim']")
       (s/fill-and-blur! driver ".region-layer__rename:not([hidden]) input[name=name]" "Discarded")
       (s/click! driver ".region-layer__rename:not([hidden]) button:text-is('Cancel')")
-      (is (= ["Primary" "Secondary" "Trim"] (:layers (regions))))
+      (is (= ["Primary" "Secondary" "Trim"] (rf/names cat)))
       (is (= "false" (s/js driver "() => document.querySelector('[aria-label=\"Rename Trim\"]').getAttribute('aria-expanded')")))
       (s/click! driver "button[aria-label='Rename Trim']")
       (is (= "Trim" (s/js driver "() => document.querySelector('.region-layer__rename:not([hidden]) input[name=name]').value")))
       (s/fill-and-blur! driver ".region-layer__rename:not([hidden]) input[name=name]" "Accent")
       (s/click! driver ".region-layer__rename:not([hidden]) button:text-is('Save name')")
-      (is (s/wait-until #(= ["Primary" "Secondary" "Accent"] (:layers (regions)))))
+      (is (s/wait-until #(= ["Primary" "Secondary" "Accent"] (rf/names cat))))
 
       (is (s/wait-until #(false? (:mount-colors-enabled (s/stats driver)))))
       (apply brush/stroke! driver (region-point driver 0))
-      (is (s/wait-until #(some #{"Accent"} (vals (:faces (regions))))))
+      (is (s/wait-until #(some #{(rf/id cat "Accent")} (vals (:faces (regions))))))
       (.onceDialog ^Page (:page driver) (reify Consumer (accept [_ d] (.dismiss ^Dialog d))))
       (s/click! driver "button[aria-label='Delete Accent']")
-      (is (some #{"Accent"} (:layers (regions))))
+      (is (some #{(rf/id cat "Accent")} (:layers (regions))))
       (.onceDialog ^Page (:page driver) (reify Consumer (accept [_ d] (.accept ^Dialog d))))
       (s/click! driver "button[aria-label='Delete Accent']")
       (is (s/wait-until #(= ["Primary" "Secondary"] (:layers (regions)))))
@@ -427,4 +435,51 @@
       (is (= (regions) (:part/paint-regions (sidecar/read-sidecar! (str (:root started)) id))))
       (s/click! driver "[data-detail-tab=regions]")
       (s/screenshot-el! driver "body" (java.io.File. "/tmp/shipyard-layer-fill.png"))
+      (finally (s/quit! driver) (fixture/stop! started)))))
+
+(deftest angle-tolerance-paints-and-erases-a-curved-surface
+  (s/assert-bundle!)
+  (let [id (:weapon fixture/ids)
+        started (fixture/start!
+                 true (fn [root]
+                        (fixture/library! root)
+                        (with-open [out (io/output-stream (fs/file root id "unsupported.stl"))]
+                          (.write out ^bytes (fixtures/->binary-stl (fixtures/uv-sphere 1 4 8))))
+                        root))
+        sys (:system started) driver (s/make-driver) cat (:shipyard.catalog/db sys)
+        regions #(catalog/part-regions (catalog/part (catalog/snapshot! cat) id))]
+    (try
+      (s/go! driver (s/base-url sys))
+      (s/click! driver ".part__select:has(.part__name:text-is('weapon'))")
+      (s/await-part driver id)
+      (s/click! driver "[data-detail-tab=regions]")
+      (is (s/wait-until #(false? (:mount-colors-enabled (s/stats driver)))))
+      (is (true? (s/js driver "() => document.querySelector('#region-angle-control').hidden")))
+      (s/click! driver "button[data-region-mode=faces]")
+      (s/wait-visible! driver "#region-angle")
+      (editor/input! driver "#region-stroke input[name=radius]" "2" "input")
+      (editor/input! driver "#region-angle" "0" "input")
+      (apply brush/stroke! driver (region-point driver 0))
+      (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
+      (is (< 0 (count (:faces (regions))) 48))
+      (editor/input! driver "#region-angle" "60" "input")
+      (apply brush/stroke! driver (region-point driver 0))
+      (is (s/wait-until #(= 48 (count (:faces (regions))))))
+      (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
+      (is (= "60" (s/js driver "() => document.querySelector('#region-angle').value")))
+      (apply brush/right-stroke! driver (region-point driver 0))
+      (is (s/wait-until #(empty? (:faces (regions)))))
+      (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
+      (s/fill-and-blur! driver "#region-add input[name=name]" "Curved panels")
+      (s/click! driver "button:text-is('Add layer')")
+      (s/wait-visible! driver "button[aria-label='Rename Curved panels']")
+      (is (= "60" (s/js driver "() => document.querySelector('#region-angle').value")))
+      (s/click! driver "button[data-region-mode=facets]")
+      (is (true? (s/js driver "() => document.querySelector('#region-angle-control').hidden")))
+      (s/click! driver "button[data-region-mode=faces]")
+      (editor/input! driver "#region-angle" "0" "input")
+      (apply brush/stroke! driver (region-point driver 0))
+      (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
+      (is (< 0 (count (:faces (regions))) 48) "Lowering tolerance recomputes the cached surface groups")
+      (s/screenshot-el! driver "body" (java.io.File. "/tmp/shipyard-angle-tolerance.png"))
       (finally (s/quit! driver) (fixture/stop! started)))))

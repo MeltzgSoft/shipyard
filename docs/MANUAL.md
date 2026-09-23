@@ -306,8 +306,8 @@ setting separately from the other workspaces. Select a part and open its **Regio
 tab. Every face starts
 as **Primary**. Choose **Secondary**, or enter a **New detail layer** name and
 choose **Add layer**. The name immediately appears in the selectable layer list on
-every other library part; choose it there without creating it again. Names match
-exactly: “Trim” on two different parts uses the same scheme material, set once in Paint.
+every other library part; choose it there without creating it again. Layers are shared library-wide: choose the same layer on multiple parts and set its
+scheme material once in Paint. A layer remains available even when no part uses it.
 
 Select a layer in the list and click **Apply layer to entire part** to replace every
 face assignment, including hidden/back faces, with that layer. The display switches
@@ -318,22 +318,26 @@ Open **Regions**, click a colored layer row, and brush visible faces. The select
 row is highlighted and marked with a check. The brush is
 active whenever this tab is visible; no extra toggle is needed. Release saves one complete stroke to the part's `shipyard.edn`. The brush
 starts from visible triangles. **Facets** paints the triangles touched by the brush;
-**Faces** extends them to the entire connected flat surface, including triangles
-outside the brush or hidden behind other geometry. It stops at sharp edges and
-disconnected surfaces. Right-drag erasing follows the same mode. Adjust its screen-space
+**Faces** follows connected surfaces. Its **Angle tolerance** slider (0–90°, default
+1°) sets the largest bend between neighboring triangles that the brush can cross.
+Raise it to follow curved surfaces; larger creases and disconnected surfaces stop
+the stroke. Expansion can include triangles outside the brush or behind other geometry. Right-drag erasing follows the same mode. Adjust its screen-space
 radius; use Alt+drag to orbit. Region preview colors identify assignments and stay stable when other layer types
 are added or deleted; schemes supply their final colors and finishes. Opening Regions
 switches to Layer types. The display toggle can still show Mount faces independently.
 Right-drag to erase assignments back to Primary without changing the selected layer;
 the next left-drag uses that layer again. Choosing Primary also removes assignments.
-Use a detail row’s **pencil** to edit its name on this part, then **Save name** or
-**Cancel**. Shared types must first be used on this part before they can be renamed
-here. Primary and Secondary have no edit or delete actions.
+Use any detail row’s **pencil** to edit its shared name, then **Save name** or
+**Cancel**. You can rename or delete layers from any part, even if it does not use
+them. Renaming preserves painted regions, scheme colors and preview swatches. Primary and Secondary have no edit or delete actions.
 The row’s **×** asks for confirmation, then removes that type from every part in
 the current library and returns its painted regions to Primary. It is available
 even on parts that have not used that type. Primary and Secondary are permanent.
-Unused scheme colors are retained for reuse if the type is created again; deleted
-types disappear from the layer pickers and Paint defaults. **Reset regions** clears all assignments after confirmation.
+Deleted layers disappear from the list and Paint defaults. Recreating the same
+name makes a new layer. **Reset regions** clears this part’s assignments after
+confirmation while retaining shared layers. Existing files upgrade automatically to
+stable identities; keep the library’s `shipyard-layers.edn` file when moving or
+backing up the library.
 
 Regions follow the library part into every instance and scheme. They survive restart
 and rescan. If the source mesh changes, old regions are retained but do not apply;
