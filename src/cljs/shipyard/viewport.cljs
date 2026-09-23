@@ -994,13 +994,28 @@
               (activate-detail-tab! "mounts")
               (post-facet! sys face-index))))))))
 
+(defn- regions-from-dom [part-id mesh-key]
+  (when-let [panel (.getElementById js/document "part-regions")]
+    (when (and (= part-id (.getAttribute panel "data-part-id"))
+               (= mesh-key (.getAttribute panel "data-mesh-key")))
+      (edn/read-string (.getAttribute panel "data-regions")))))
+
+(defn- sync-regions-from-dom! [sys]
+  (when (= :browse (:workspace sys))
+    (doseq [[_ ^js object] @(:parts sys)]
+      (when-let [regions (regions-from-dom (.. object -userData -partId) (.. object -userData -meshKey))]
+        (let [palette (regions/preview-materials regions)]
+          (paint-render/set-regions! object regions palette)
+          (apply-material! object (get palette "Primary") @(:mount-colors-enabled sys)))))))
+
 (defn- load-mesh!
   "Fetch, decode, upload, and optionally reframe. Errors are reported and
   swallowed: a part that fails to load must not take the session with it."
   [{:keys [^js scene ^js canvas authoring authoring-enabled current repeat] :as sys}
    {:keys [url part-id mesh-key frame mounts] :as payload}]
   (clear! sys)
-  (let [generation @(:browse-generation sys)]
+  (let [generation @(:browse-generation sys)
+        regions (regions-from-dom part-id mesh-key)]
     (-> (js/fetch url)
         (.then (fn [^js res]
                  (if (.-ok res)
@@ -1016,8 +1031,8 @@
                      (set! (.-name obj) (or part-id url))
                      (set! (.. obj -userData -partId) part-id)
                      (set! (.. obj -userData -meshKey) mesh-key)
-                     (paint-render/set-regions! obj (:regions payload) (regions/preview-materials (:regions payload)))
-                     (apply-material! obj (get (regions/preview-materials (:regions payload)) "Primary" paint-material/neutral) @(:mount-colors-enabled sys))
+                     (paint-render/set-regions! obj regions (regions/preview-materials regions))
+                     (apply-material! obj (get (regions/preview-materials regions) "Primary" paint-material/neutral) @(:mount-colors-enabled sys))
                      (orient-object! obj part-orientation)
                      (clear-authoring-preview! sys)
                      (clear-interface-highlights! sys)
@@ -1371,6 +1386,9 @@
          :render-frame (.. renderer -info -render -frame)
          :target    (let [t (.-target controls)] #js [(.-x t) (.-y t) (.-z t)])
          :camera    (let [p (.-position camera)] #js [(.-x p) (.-y p) (.-z p)])
+         :region-preview (clj->js (when-let [^js object (first objs)]
+                                    {:faces (count (.. object -userData -regionMask))
+                                     :vertex-colors (.. object -material -vertexColors)}))
          :region-faces (clj->js (when-let [^js object (first objs)]
                                   (paint-render/projected-faces object camera (:canvas sys))))
          :materials (clj->js (mapv (fn [^js o] (.getHexString (.. o -material -color))) objs))
@@ -1555,13 +1573,6 @@
   (let [body (.-body js/document)
         payload (fn [^js e] (edn/read-string (.. e -detail -value)))]
     (listen-event! body sys "shipyard:load-mesh" #(load-mesh! sys (payload %)))
-    (listen-event! body sys "shipyard:part-regions"
-                   (fn [e]
-                     (let [{:keys [part-id mesh-key regions]} (payload e)]
-                       (doseq [[_ ^js object] @(:parts sys)
-                               :when (and (= part-id (.. object -userData -partId)) (= mesh-key (.. object -userData -meshKey)))]
-                         (paint-render/set-regions! object regions (regions/preview-materials regions))
-                         (apply-material! object (get (regions/preview-materials regions) "Primary") @(:mount-colors-enabled sys))))))
     (listen-event! body sys "shipyard:clear" (fn [_] (clear! sys)))
     (listen-event! body sys "shipyard:status" #(reset! (:status sys) (payload %)))
     (listen-event! body sys "shipyard:authoring" #(authoring! sys (payload %)))
@@ -1574,6 +1585,7 @@
     (listen-event! body sys "shipyard:part-orientation" #(orient-part! sys (payload %)))
     (listen-event! body sys "htmx:afterSwap" (fn [_]
                                                (sync-assembly-from-dom! sys)
+                                               (sync-regions-from-dom! sys)
                                                (sync-bulk-from-dom! sys)
                                                (sync-bulk-save-result! sys)
                                                (sync-bulk-save-button! sys)

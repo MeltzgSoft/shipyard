@@ -861,7 +861,7 @@ These are the required working practices for the native interop boundary.
 |---|---|
 | `GET /` | App shell - library panel, filter form, viewport canvas |
 | `GET /library` | Hiccup fragment. Params `bundle` `class` `role` `q` |
-| `GET /part/*id` | Detail fragment + `HX-Trigger` to load the mesh |
+| `GET /part/*id` | Detail fragment + `HX-Trigger-After-Swap` to load the mesh |
 | `GET /mesh/:key.:tier.symesh` | Binary (§6.4). Immutable, content-addressed |
 | `POST /settings` | Relocates the library (§7.3). 204 + `HX-Refresh`, or 422 |
 | `GET /healthz` | Liveness |
@@ -928,8 +928,10 @@ transport shape; domain decisions such as whether a mount id is valid remain
 in the pure mount and orientation functions.
 
 The canvas is `hx-preserve` and never a swap target (SPEC §6.1). Small viewport
-notifications use `HX-Trigger`. Assembly scene envelopes travel in the HTML
-response body to avoid HTTP header-size limits (see §13.3).
+notifications use `HX-Trigger`; Browse mesh metadata uses `HX-Trigger-After-Swap`
+so its matching region panel is available before loading. Assembly scene envelopes
+and part region masks travel in the HTML response body to avoid HTTP header-size
+limits (see §13.3 and §15.3).
 
 **JSON is htmx's envelope; EDN is the payload.** htmx parses this header itself and
 dispatches one event per key of the outer object (`handleTriggerHeader`), so the envelope
@@ -938,7 +940,7 @@ keywords, sets and vectors reach the viewport as themselves rather than as a JSO
 re-mapped by hand on the client.
 
 ```clojure
-{"HX-Trigger"
+{"HX-Trigger-After-Swap"
  (json/write-str
    {"shipyard:load-mesh"
     (pr-str {:url "/mesh/3f9a….0.symesh"
@@ -2373,7 +2375,11 @@ the workspace admission boundary rejects stale activations, and domain admission
 checks selection, fresh source, face membership and revision before persistence.
 
 `POST /parts/regions` accepts assign/add/rename/delete/reset. Part Browser owns the
-selection. Its Regions tab is server-rendered; transient stroke state captures one
+selection. Region masks travel in the server-rendered panel body, never in HTTP
+headers. The mesh-load event fires after the swap and snapshots the matching panel
+mask before fetching geometry; later panel swaps update the matching Browse mesh.
+Workspace admission still rejects stale responses before either events or swaps.
+Its Regions tab is server-rendered; transient stroke state captures one
 visible-ID buffer and submits the union of touched faces on release. It reuses the
 Paint brush's depth-tested picker and stable face keys. Navigation/cancellation drops
 uncommitted preview. A failed save restores the prior preview and exposes retry by

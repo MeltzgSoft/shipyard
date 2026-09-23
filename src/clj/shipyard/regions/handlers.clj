@@ -24,6 +24,4 @@
                    (try (catalog/save-regions! catalog part-id (:regions result)) result
                         (catch Exception _ {:error "Could not save part regions. Check the part folder permissions and retry."})))
         saved (if (:error result) before (:regions result))]
-    (htmx/fragment (views/panel part-id mesh-key saved (if (#{"add" "rename"} action) name layer) (:error result))
-                   (when-not (:error result)
-                     {:events {:part-regions {:part-id part-id :mesh-key mesh-key :regions saved}}}))))
+    (htmx/fragment (views/panel part-id mesh-key saved (if (#{"add" "rename"} action) name layer) (:error result)))))
