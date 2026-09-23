@@ -561,7 +561,10 @@ Regions tab. Primary and Secondary are permanent shared layer names; users can a
 rename and delete any number of named detail layers. Names defined on any library
 part are selectable on every other part without being re-created; assignment adopts
 the selected name on that part. Rename and delete remain part-local.
-Every face belongs to one layer;
+Part Browser can display mount faces or layer types, remembering its own display
+choice independently. Apply layer to entire part replaces all face assignments,
+including hidden faces, with the selected layer; Primary clears the assignments
+without removing layer names. Every face belongs to one layer;
 unassigned faces belong to Primary. Assigning Primary or right-dragging erases an
 explicit assignment. In both region and freehand painting, right-drag temporarily
 erases without changing the selected paint layer, material or mode; Alt retains

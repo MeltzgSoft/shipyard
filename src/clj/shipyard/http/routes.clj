@@ -551,7 +551,7 @@
    ["/parts/regions" {:post {:handler (partial regions/save! deps)
                              :parameters {:form [:map [:part-id string?] [:mesh-key string?]
                                                  [:revision [:and string? [:fn #(some? (parse-long %))]]]
-                                                 [:action [:enum "assign" "add" "rename" "delete" "reset"]]
+                                                 [:action [:enum "assign" "fill" "add" "rename" "delete" "reset"]]
                                                  [:layer {:optional true} string?] [:name {:optional true} string?]
                                                  [:faces {:optional true} string?]]}
                              :responses contracts/html-responses}}]

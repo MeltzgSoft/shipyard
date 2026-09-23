@@ -301,17 +301,26 @@ available so you can correct the problem and retry.
 
 ## Reusable part paint regions
 
-In **Part Browser**, select a part and open its **Regions** tab. Every face starts
+In **Part Browser**, use the viewport **View: Mount faces / View: Layer types**
+toggle to switch between mount highlighting and region colors. It remembers its
+setting separately from the other workspaces. Select a part and open its **Regions**
+tab. Every face starts
 as **Primary**. Choose **Secondary**, or enter a **New detail layer** name and
 choose **Add detail layer**. The name immediately appears in **Assign layer** on
 every other library part; choose it there without creating it again. Names match
 exactly: “Trim” on two different parts uses the same scheme material, set once in Paint.
 
+Choose **Assign layer** and click **Apply layer to entire part** to replace every
+face assignment, including hidden/back faces, with that layer. The display switches
+to Layer types to show the result. Choosing Primary
+clears all assignments while retaining the part’s named layers.
+
 Check **Paint regions in viewport**, choose **Assign layer**, and brush visible
 faces. Release saves one complete stroke to the part's `shipyard.edn`. The brush
 uses whole triangles and cannot paint through the model. Adjust its screen-space
 radius; use Alt+drag to orbit. Region preview colors identify assignments; schemes
-supply their final colors and finishes. Enabling the brush turns Mount colors off.
+supply their final colors and finishes. Enabling the brush switches to Layer types;
+the brush is inactive while viewing Mount faces.
 Right-drag to erase assignments back to Primary without changing the selected layer;
 the next left-drag uses that layer again. Choosing Primary also removes assignments.
 **Manage <layer>** renames or deletes a detail
