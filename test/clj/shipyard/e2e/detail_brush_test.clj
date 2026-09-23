@@ -11,8 +11,9 @@
             [shipyard.loadout-fixture :as lf]
             [shipyard.scheme.db :as schemes]
             [shipyard.workspace.db :as workspace-db])
-  (:import [com.microsoft.playwright Page Mouse$MoveOptions Dialog Route]
-           [java.util.function Consumer]))
+  (:import [com.microsoft.playwright Page Mouse$MoveOptions Mouse$DownOptions Mouse$UpOptions Dialog Route]
+           [java.util.function Consumer]
+           [com.microsoft.playwright.options MouseButton]))
 
 (defn await-saved! [driver]
   (when-not (s/wait-until #(= "Details saved." (s/text driver "#brush-status")))
@@ -21,6 +22,13 @@
 (defn stroke! [driver x y]
   (let [mouse (.mouse ^Page (:page driver))]
     (.move mouse (double x) (double y)) (.down mouse) (.up mouse)))
+
+(defn right-stroke! [driver x y]
+  (let [mouse (.mouse ^Page (:page driver))]
+    (.move mouse (double x) (double y))
+    (.down mouse (doto (Mouse$DownOptions.) (.setButton MouseButton/RIGHT)))
+    (.move mouse (+ (double x) 1) (double y) (doto (Mouse$MoveOptions.) (.setSteps 2)))
+    (.up mouse (doto (Mouse$UpOptions.) (.setButton MouseButton/RIGHT)))))
 
 (defn face-point [driver slot face]
   (let [centers (:face-centers (materials/slot driver slot))
@@ -82,10 +90,17 @@
             (is (s/wait-until #(nil? (get (masks) []))))
             (s/click! driver "#paint-brush button[value=undo]")
             (is (s/wait-until #(= painted (get-in (masks) [[] :faces])))))
-          (s/click! driver "#paint-brush input[name=mode][value=erase]")
-          (paint!)
-          (is (s/wait-until #(empty? (get-in (masks) [[] :faces]))))
-          (s/click! driver "#paint-brush input[name=mode][value=paint]")
+          (testing "Right-drag erases without changing the paint tool or camera"
+            (let [camera (:camera (s/stats driver))]
+              (apply right-stroke! driver center)
+              (await-saved! driver)
+              (is (empty? (get-in (masks) [[] :faces])))
+              (is (= camera (:camera (s/stats driver))))
+              (is (= "paint" (s/js driver "() => document.querySelector('#paint-brush input[name=mode]:checked').value")))
+              (s/click! driver "#paint-brush button[value=undo]")
+              (is (s/wait-until #(= painted (get-in (masks) [[] :faces]))))
+              (s/click! driver "#paint-brush button[value=redo]")
+              (is (s/wait-until #(empty? (get-in (masks) [[] :faces]))))))
           (testing "A real write failure keeps a preview and a retryable stroke"
             (let [before (schemes/snapshot! store) file (:file store) backup (fs/path (:temp started) "before-brush.edn")]
               (fs/move file backup) (fs/create-dirs file)

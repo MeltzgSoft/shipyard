@@ -2370,7 +2370,11 @@ Part sidecars may contain `:part/paint-regions` with `:mesh-key` (source SHA-256
 Primary assignments are implicit. The catalog stores this metadata as EDN text in
 `:part/paint-regions`, decoded at its boundary; no geometry enters Datascript.
 Region writes preserve the other sidecar fields and publish catalog state only after
-writing the file. Requests include part identity, mesh key and expected revision;
+writing the file. The library-wide layer picker is the union of catalog region
+definitions; assignment admits a shared name and adds only that name to the target
+part. Definitions on other parts and their face maps remain untouched. Paint targets
+include these shared names as well as names already present in the scheme.
+Requests include part identity, mesh key and expected revision;
 the workspace admission boundary rejects stale activations, and domain admission
 checks selection, fresh source, face membership and revision before persistence.
 
@@ -2383,7 +2387,11 @@ Its Regions tab is server-rendered; transient stroke state captures one
 visible-ID buffer and submits the union of touched faces on release. It reuses the
 Paint brush's depth-tested picker and stable face keys. Navigation/cancellation drops
 uncommitted preview. A failed save restores the prior preview and exposes retry by
-repeating the stroke. Part and scheme selection remain server-owned.
+repeating the stroke. Part and scheme selection remain server-owned. Both brushes
+capture right-button strokes as erase, suppress the canvas context menu while
+painting, and preserve the selected mode/material/layer for the next left stroke.
+Region erasing submits Primary; freehand erasing uses the existing atomic erase
+operation and undo history. Alt-modified gestures retain camera control.
 
 Optional `:scheme/layers` maps exact shared names to validated full materials.
 Assembly payloads carry source-bound regions and layer materials unless an instance

@@ -248,6 +248,14 @@
 (defn part-regions [part]
   (some-> (:part/paint-regions part) (edn/read-string)))
 
+(defn region-layers
+  "Shared layer names defined anywhere in this library, including unused layers."
+  [database]
+  (into regions/builtins
+        (sort (remove (set regions/builtins)
+                      (set (mapcat #(-> % edn/read-string :layers)
+                                   (d/q '[:find [?regions ...] :where [_ :part/paint-regions ?regions]] database)))))))
+
 (defn save-regions! [{:keys [state]} part-id value]
   (when-not (regions/valid? value) (throw (ex-info "Invalid part regions" {})))
   (locking state

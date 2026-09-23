@@ -74,6 +74,25 @@
         (let [trim (first (keep (fn [[key layer]] (when (= "Trim" layer) key)) (:faces (regions))))]
           (is (= (regions) (:part/paint-regions (sidecar/read-sidecar! (str (:root started)) id))))
           (is (nil? (catalog/part-regions (catalog/part (catalog/snapshot! cat) (:weapon-alt fixture/ids)))))
+          (let [camera (:camera (s/stats driver))]
+            (apply brush/right-stroke! driver (region-point driver 1))
+            (is (s/wait-until #(not (contains? (:faces (regions)) trim))))
+            (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
+            (is (= camera (:camera (s/stats driver))))
+            (is (= "Trim" (s/js driver "() => document.querySelector('#region-stroke select').value")))
+            (apply brush/stroke! driver (region-point driver 1))
+            (is (s/wait-until #(= "Trim" (get-in (regions) [:faces trim])))))
+          (s/click! driver ".part__select:has(.part__name:text-is('hull'))")
+          (s/wait-visible! driver ".detail--ready")
+          (s/await-part driver (:hull fixture/ids))
+          (s/click! driver "[data-detail-tab=regions]")
+          ;; Select the existing shared name without defining it on this part.
+          (s/select-option! driver "#region-stroke select" "Trim")
+          (s/check! driver "#region-stroke input[name=enabled]")
+          (editor/input! driver "#region-stroke input[name=radius]" "2" "input")
+          (apply brush/stroke! driver (region-point driver 0))
+          (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
+          (is (some #{"Trim"} (vals (:faces (catalog/part-regions (catalog/part (catalog/snapshot! cat) (:hull fixture/ids)))))))
           (s/screenshot-el! driver "body" (java.io.File. "/tmp/shipyard-part-regions.png"))
           (workspace/switch! driver "assembly") (workspace/await-ship! driver)
           (s/click! driver "button:text-is('Paint assembly')")
@@ -84,6 +103,9 @@
           (set-layer! driver "Primary" "#0000ff" "0")
           (set-layer! driver "Secondary" "#00ff00" "0.3")
           (set-layer! driver "Trim" "#d4af37" "1")
+          (let [hull-trim (first (keys (:faces (catalog/part-regions (catalog/part (catalog/snapshot! cat) (:hull fixture/ids))))))]
+            (is (s/wait-until #(metallic/near? 1 (:metalness (face driver [] hull-trim)))))
+            (is (= (:base (face driver [] hull-trim)) (:base (face driver [["weapon" 0]] trim)))))
           (doseq [slot [[["weapon" 0]] [["weapon" 1]]]]
             (is (s/wait-until #(metallic/near? 1 (:metalness (face driver slot trim)))))
             (is (metallic/near? 0.3 (:metalness (face driver slot secondary))))

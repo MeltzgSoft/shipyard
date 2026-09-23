@@ -16,7 +16,7 @@
                               :name (or (:part/name part) id)
                               :label (str (or (:part/name part) id) " · " (if (empty? path) "Hull" (pr-str path)))}))
                          (loadout/part-tree draft))]
-     (into (into (into instances (for [layer (when (or record (seq instances)) (distinct (concat regions/builtins (sort (keys (:scheme/layers record))) (mapcat :layers instances))))]
+     (into (into (into instances (for [layer (when (or record (seq instances)) (distinct (concat regions/builtins (sort (keys (:scheme/layers record))) (catalog/region-layers database))))]
                                    {:key (str "layer/" layer) :layer-name layer :label layer})) (map (fn [g] {:key (str "group/" (:group/id g)) :group-id (:group/id g) :label (:group/name g)})
                                                                                                      (sort-by :group/order (:scheme/groups record))))
            (for [role (sort (set (keep :role instances)))]

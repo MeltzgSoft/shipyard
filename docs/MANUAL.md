@@ -99,7 +99,7 @@ Select a part to load it.
 | action | control |
 |---|---|
 | Rotate | drag with the left mouse button |
-| Pan | drag with the right mouse button |
+| Pan | drag with the right mouse button (Alt+right-drag while a paint brush is active) |
 | Zoom | scroll wheel |
 
 The first time you open a part, Shipyard prepares it for display, which takes a moment on
@@ -303,15 +303,18 @@ available so you can correct the problem and retry.
 
 In **Part Browser**, select a part and open its **Regions** tab. Every face starts
 as **Primary**. Choose **Secondary**, or enter a **New detail layer** name and
-choose **Add detail layer**. Names are shared across parts: “Trim” on two different
-parts uses the same scheme material.
+choose **Add detail layer**. The name immediately appears in **Assign layer** on
+every other library part; choose it there without creating it again. Names match
+exactly: “Trim” on two different parts uses the same scheme material, set once in Paint.
 
 Check **Paint regions in viewport**, choose **Assign layer**, and brush visible
 faces. Release saves one complete stroke to the part's `shipyard.edn`. The brush
 uses whole triangles and cannot paint through the model. Adjust its screen-space
 radius; use Alt+drag to orbit. Region preview colors identify assignments; schemes
 supply their final colors and finishes. Enabling the brush turns Mount colors off.
-Choose Primary to remove assignments. **Manage <layer>** renames or deletes a detail
+Right-drag to erase assignments back to Primary without changing the selected layer;
+the next left-drag uses that layer again. Choosing Primary also removes assignments.
+**Manage <layer>** renames or deletes a detail
 layer on this part; deleting it returns its faces to Primary. Primary and Secondary
 are permanent. **Reset regions** clears all assignments after confirmation.
 
@@ -391,8 +394,10 @@ match the selected target's effective material. Changing them affects the next s
 not existing details. Older colour-only details inherit the instance's current finish.
 
 For gold trim, choose a gold colour, metalness `1` and roughness around `0.2`.
-Lower roughness gives sharper reflections. **Erase to base** restores the underlying
-instance/group/role colour and finish. **Mount colors** temporarily replaces displayed
+Lower roughness gives sharper reflections. Right-drag erases details and restores
+the underlying instance/group/layer/role colour and finish without changing the
+selected mode or paint material. The next left-drag can paint again. **Erase to base**
+is also available for erasing with the left button. **Mount colors** temporarily replaces displayed
 colours while keeping face finishes.
 
 New faces are sent periodically while dragging, but nothing is durably saved until

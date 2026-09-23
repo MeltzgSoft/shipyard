@@ -194,7 +194,7 @@
       (material-control "Detail colour" "brush-color" "color" "#ff0000")
       (material-control "Detail metalness" "brush-metalness" "range" (:metalness material))
       (material-control "Detail roughness" "brush-roughness" "range" (:roughness material))
-      [:p.muted "Turn off Mount colors to paint. Alt+drag to orbit."]]
+      [:p.muted "Left-drag paints; right-drag erases to the inherited material. Turn off Mount colors to paint. Alt+drag to orbit."]]
      [:footer.paint-actions
       [:button {:type "submit" :name "history" :value "undo" :aria-label "Undo detail stroke"} "Undo"]
       [:button {:type "submit" :name "history" :value "redo" :aria-label "Redo detail stroke"} "Redo"]
