@@ -340,14 +340,15 @@
   (math/dot v v))
 
 (defn- triangle-count [^js obj]
-  (quot (.. obj -geometry -index -count) 3))
+  (paint-render/triangle-count (.-geometry obj)))
 
 (defn- triangle-points [^js obj triangle-index]
   (let [source (.-geometry obj)
         position (.getAttribute source "position")
         index (.-index source)]
     (mapv (fn [corner]
-            (let [vertex-index (.getX index (+ (* triangle-index 3) corner))
+            (let [offset (+ (* triangle-index 3) corner)
+                  vertex-index (if index (.getX index offset) offset)
                   p (three/Vector3.)]
               (.fromBufferAttribute p position vertex-index)
               [(.-x p) (.-y p) (.-z p)]))
@@ -512,7 +513,10 @@
         values (array)]
     (doseq [triangle facet-indices
             corner (range 3)]
-      (let [vertex-index (.getX index (+ (* triangle 3) corner))
+      ;; Region colors expand indexed geometry into per-triangle vertices.
+      ;; Facet IDs keep their order in either representation.
+      (let [offset (+ (* triangle 3) corner)
+            vertex-index (if index (.getX index offset) offset)
             p (three/Vector3.)]
         (.fromBufferAttribute p position vertex-index)
         (when mirror (reflect-point! p mirror))
