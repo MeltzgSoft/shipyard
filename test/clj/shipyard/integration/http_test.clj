@@ -82,11 +82,13 @@
   (h (mock/request :post path params)))
 
 (defn- triggers
-  "The `HX-Trigger` header, decoded: JSON envelope, EDN payloads (§7.1)."
+  "Decode both immediate and after-swap htmx events."
   [response]
-  (some-> (get-in response [:headers "HX-Trigger"])
-          (json/read-str)
-          (update-vals edn/read-string)))
+  (into {} (mapcat (fn [header]
+                     (some-> (get-in response [:headers header])
+                             json/read-str
+                             (update-vals edn/read-string))))
+        ["HX-Trigger" "HX-Trigger-After-Swap"]))
 
 (defn- await-ready
   "Poll `/part/:id` the way the browser does until the mesh URL is issued."
@@ -224,7 +226,9 @@
       (is (= :preparing (:state (get (triggers first-r) "shipyard:status")))))
     (let [ready (await-ready h hull-id)
           {:strs [shipyard:load-mesh]} (triggers ready)]
-      (testing "the mesh URL arrives by HX-Trigger, in the shipyard namespace"
+      (testing "the mesh URL arrives after the swap, in the shipyard namespace"
+        (is (get-in ready [:headers "HX-Trigger-After-Swap"]))
+        (is (not (contains? shipyard:load-mesh :regions)))
         (is (= hull-id (:part-id shipyard:load-mesh)))
         (is (true? (:frame shipyard:load-mesh)))
         (is (= [0.0 0.0 0.0 1.0] (:orientation shipyard:load-mesh)))

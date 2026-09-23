@@ -1,6 +1,8 @@
 (ns shipyard.e2e.part-regions-test
   (:require [babashka.fs :as fs]
             [clojure.test :refer [deftest is]]
+            [clojure.java.io :as io]
+            [shipyard.fixtures :as fixtures]
             [shipyard.assembly-fixture :as fixture]
             [shipyard.catalog.db :as catalog]
             [shipyard.catalog.sidecar :as sidecar]
@@ -162,4 +164,51 @@
       (s/click! driver "button:text-is('Delete layer')")
       (is (s/wait-until #(= ["Primary" "Secondary"] (:layers (regions)))))
       (is (empty? (:faces (regions))))
+      (finally (s/quit! driver) (fixture/stop! started)))))
+
+(deftest dense-regions-save-and-resume
+  (s/assert-bundle!)
+  (let [id (:weapon fixture/ids)
+        started (fixture/start!
+                 true (fn [root]
+                        (fixture/library! root)
+                        (with-open [out (io/output-stream (fs/file root id "unsupported.stl"))]
+                          (.write out ^bytes (fixtures/->binary-stl (fixtures/uv-sphere 1.0 64 96))))
+                        root))
+        sys (:system started) driver (s/make-driver)
+        cat (:shipyard.catalog/db sys)
+        regions #(catalog/part-regions (catalog/part (catalog/snapshot! cat) id))]
+    (try
+      (s/go! driver (s/base-url sys))
+      (s/click! driver ".part__select:has(.part__name:text-is('weapon'))")
+      (s/wait-visible! driver ".detail--ready")
+      (is (s/wait-until #(= "loaded" (:status (s/stats driver)))))
+      (s/click! driver "[data-detail-tab=regions]")
+      (s/check! driver "#region-stroke input[name=enabled]")
+      (is (s/wait-until #(false? (:mount-colors-enabled (s/stats driver)))))
+      (editor/input! driver "#region-stroke input[name=radius]" "100" "input")
+      (let [center (s/js driver "() => {const c=document.querySelector('canvas').getBoundingClientRect();return [c.x+c.width/2,c.y+c.height/2];}")]
+        (apply brush/stroke! driver center)
+        (is (s/wait-until #(> (count (:faces (regions))) 100)))
+        (when-not (s/wait-until #(= "Regions saved." (s/text driver "#region-status")))
+          (throw (ex-info "Dense region save response failed" {:status (s/text driver "#region-status")})))
+        (is (> (count (pr-str (regions))) 8192) "Region payload exceeds Jetty's response header budget")
+        (apply brush/stroke! driver center)
+        (is (s/wait-until #(= 2 (:revision (regions)))))
+        (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status")))))
+      (let [saved (regions)]
+        (is (= saved (:part/paint-regions (sidecar/read-sidecar! (str (:root started)) id))))
+        (workspace/switch! driver "assembly")
+        (workspace/switch! driver "browse")
+        (s/wait-visible! driver ".detail--ready")
+        (is (s/wait-until #(= {:faces (count (:faces saved)) :vertex-colors true} (:region-preview (s/stats driver)))))
+        (s/go! driver (s/base-url sys))
+        (s/wait-visible! driver ".detail--ready")
+        (is (s/wait-until #(= {:faces (count (:faces saved)) :vertex-colors true} (:region-preview (s/stats driver)))))
+        (s/click! driver "[data-detail-tab=regions]")
+        (s/check! driver "#region-stroke input[name=enabled]")
+        (apply brush/stroke! driver (s/js driver "() => {const c=document.querySelector('canvas').getBoundingClientRect();return [c.x+c.width/2,c.y+c.height/2];}"))
+        (is (s/wait-until #(= 3 (:revision (regions)))))
+        (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
+        (is (every? #(= "Secondary" (get-in (regions) [:faces %])) (keys (:faces saved)))))
       (finally (s/quit! driver) (fixture/stop! started)))))

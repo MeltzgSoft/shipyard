@@ -93,23 +93,22 @@
   (fs/file (index/root! library) id (index/name-of source)))
 
 (defn- ready
-  "The mesh is on disk. The fragment says so and the `HX-Trigger` hands the
-  viewport the URL - the canvas is never swapped, so this header is the only
-  channel to it (§7.1)."
+  "Send mesh metadata after the swap, when the body-carried region mask is
+  available. Face maps must never travel in size-limited HTTP headers."
   [deps part mesh-key]
   (if (= :running (:state (facet-recovery/recover! deps part mesh-key)))
     (htmx/fragment (views/detail-preparing part)
                    {:events {:status {:state :preparing
                                       :message "Restoring saved mount faces."}}})
     (htmx/fragment (views/detail-ready part mesh-key)
-                   {:events {:load-mesh {:url     (urls/mesh-url mesh-key 0)
-                                         :part-id (:part/id part)
-                                         :mesh-key mesh-key
-                                         :regions (db/part-regions part)
-                                         :mounts  (catalog-part/durable-mounts (:part/mounts part))
-                                         :orientation (orientation/orientation-of
-                                                       (:part/orientation part))
-                                         :frame   true}}})))
+                   {:headers {"HX-Trigger-After-Swap"
+                              (htmx/trigger {:load-mesh {:url     (urls/mesh-url mesh-key 0)
+                                                         :part-id (:part/id part)
+                                                         :mesh-key mesh-key
+                                                         :mounts  (catalog-part/durable-mounts (:part/mounts part))
+                                                         :orientation (orientation/orientation-of
+                                                                       (:part/orientation part))
+                                                         :frame   true}})}})))
 
 (defn- preprocessing!
   "Submit the job if it is not already running and answer with whatever is true
