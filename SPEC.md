@@ -392,7 +392,11 @@ modest, self-contained JVM code with no native dependency.
 
 ## 8. Domain model
 
-Stored as EDN initially; SQLite if query patterns demand it.
+Authored metadata is stored in a shared Datalevin database. Shared concepts such as
+layers are entities referenced by parts and schemes. Owned children and shared refs
+have distinct lifecycles; related changes commit atomically. The maps below are domain
+projections, not serialized storage documents. Source STLs and derived mesh files stay
+outside the database. Legacy EDN authoring is imported once and retained unchanged.
 
 ### 8.1 Part
 

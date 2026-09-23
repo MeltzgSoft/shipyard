@@ -1,5 +1,6 @@
 (ns shipyard.e2e.detail-brush-test
-  (:require [babashka.fs :as fs]
+  (:require [shipyard.persistence-fixture :as persisted]
+            [babashka.fs :as fs]
             [clojure.java.io :as io]
             [shipyard.fixtures :as fixtures]
             [clojure.test :refer [deftest is testing]]
@@ -71,7 +72,7 @@
         (let [painted (get-in (masks) [[] :faces])]
           (is (<= 1 (count painted) 6) "Only front-facing visible faces of the 12-triangle cube")
           (is (= #{[]} (set (keys (masks)))) "Repeated and nested instances stay untouched")
-          (is (= painted (get-in (schemes/snapshot! (schemes/open! (:file store))) [:schemes id :scheme/details [] :faces])))
+          (is (= painted (get-in (persisted/records! store :schemes) [:schemes id :scheme/details [] :faces])))
           (is (true? (:vertex-colors (materials/slot driver []))))
           (s/click! driver "[data-mount-colors-toggle]")
           (is (s/wait-until #(false? (:vertex-colors (materials/slot driver [])))))
@@ -101,16 +102,20 @@
               (is (s/wait-until #(= painted (get-in (masks) [[] :faces]))))
               (s/click! driver "#paint-brush button[value=redo]")
               (is (s/wait-until #(empty? (get-in (masks) [[] :faces]))))))
-          (testing "A real write failure keeps a preview and a retryable stroke"
-            (let [before (schemes/snapshot! store) file (:file store) backup (fs/path (:temp started) "before-brush.edn")]
-              (fs/move file backup) (fs/create-dirs file)
-              (paint!)
-              (s/wait-visible! driver "#brush-status [role=alert]")
-              (is (= before (schemes/snapshot! store)))
-              (fs/delete-if-exists file) (fs/move backup file)
+          (testing "A failed database transaction preserves the stroke and supports retry"
+            (is (s/wait-until #(and (empty? (:details (materials/slot driver [])))
+                                    (false? (s/js driver "() => document.querySelector('#paint-brush').elements.radius.disabled")))))
+            (let [before (schemes/snapshot! store)
+                  revision (persisted/scheme-revision! store id Long/MAX_VALUE)]
+              (try
+                (paint!)
+                (s/wait-visible! driver "#brush-status [role=alert]")
+                (is (= before (schemes/snapshot! store)))
+                (is (= before (persisted/records! store :schemes)))
+                (finally (persisted/scheme-revision! store id revision)))
               (s/click! driver "button:text-is('Retry last stroke')")
-              (await-saved! driver)
-              (is (= painted (get-in (masks) [[] :faces])))))
+              (is (s/wait-until #(= painted (get-in (masks) [[] :faces]))))
+              (await-saved! driver)))
           (workspace/switch! driver "assembly")
           (workspace/switch! driver "paint") (workspace/await-ship! driver)
           (is (= (count painted) (count (:details (materials/slot driver [])))))
@@ -185,15 +190,15 @@
             masks #(get-in (schemes/snapshot! store) [:schemes id :scheme/details])
             [ax ay] (face-point driver [["weapon" 0]] 2)
             [bx by] (face-point driver [["weapon" 1]] 2)
-            before (slurp (str (:file store)))]
+            before (schemes/snapshot! store)]
         (.move mouse ax ay) (.down mouse)
         (when-not (s/wait-until #(:brush-pending (state)))
           (throw (ex-info "First chunk did not flush" {:status (s/text driver "#brush-status")})))
-        (is (= before (slurp (str (:file store)))))
+        (is (= before (schemes/snapshot! store)))
         (is (pos? (count (:layers (:brush-pending (state))))))
         (.move mouse bx by (doto (Mouse$MoveOptions.) (.setSteps 4)))
         (is (s/wait-until #(> (:next-part (:brush-pending (state)) 0) 1)))
-        (is (= before (slurp (str (:file store)))))
+        (is (= before (schemes/snapshot! store)))
         (is (re-find #"faces" (s/text driver "#paint-stroke-count")))
         (s/screenshot-el! driver "body" (fs/file "/tmp/shipyard-paint-live-stroke.png"))
         (.up mouse)
@@ -264,11 +269,11 @@
           (throw (ex-info "Large stroke failed" {:status (s/text driver "#brush-status")})))
         (let [layer (get-in (schemes/snapshot! store) [:schemes id :scheme/details []])]
           (is (> (count (:faces layer)) 1024))
-          (is (= layer (get-in (schemes/snapshot! (schemes/open! (:file store))) [:schemes id :scheme/details []])))
+          (is (= layer (get-in (persisted/records! store :schemes) [:schemes id :scheme/details []])))
           (is (<= (:geometries (s/stats driver)) (inc geometries)))
           (spit "/tmp/shipyard-large-stroke.edn"
                 (pr-str {:triangles (* 2 256 191) :painted-faces (count (:faces layer))
                          :elapsed-ms (/ (- (System/nanoTime) began) 1e6)
-                         :store-bytes (fs/size (:file store)) :renderer :swiftshader
+                         :store-bytes (fs/size (fs/path (get-in store [:store :directory]) "data.mdb")) :renderer :swiftshader
                          :geometries-before geometries :geometries-after (:geometries (s/stats driver))}))))
       (finally (s/quit! driver) (fixture/stop! started)))))

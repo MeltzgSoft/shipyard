@@ -1,7 +1,6 @@
 (ns shipyard.assembly.model
-  "Pure Datascript queries and authored assembly decisions. No filesystem or mutable state."
-  (:require [datascript.core :as d]
-            [shipyard.catalog.db :as db]
+  "Pure catalog queries and authored assembly decisions. No filesystem or mutable state."
+  (:require [shipyard.catalog.db :as db]
             [shipyard.mount.split :as split]
             [shipyard.mount.wizard :as wizard]))
 
@@ -51,18 +50,9 @@
       :else nil)))
 
 (defn candidates
-  "Query accepted part roles through Datascript; return only valid candidates."
+  "Select accepted part roles from the immutable catalog; return only valid candidates."
   [database root parent-role parent-mount ancestors]
-  (let [parts (if (= :socket (:mount/kind parent-mount))
-                (d/q '[:find [(pull ?p [*]) ...]
-                       :in $ ?bundle [?role ...]
-                       :where [?p :part/bundle ?bundle]
-                       [?p :part/role-hint ?role]]
-                     database (:part/bundle root) (:mount/accepts parent-mount))
-                (d/q '[:find [(pull ?p [*]) ...]
-                       :in $ ?bundle
-                       :where [?p :part/bundle ?bundle]]
-                     database (:part/bundle root)))]
+  (let [parts (db/browse database {:bundle (:part/bundle root)})]
     (->> parts
          (remove #(candidate-error root parent-role parent-mount ancestors %))
          (sort-by :part/id)

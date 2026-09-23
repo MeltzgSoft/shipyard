@@ -247,6 +247,11 @@
          :source-files (source-files root parts)
          :index-file f}))))
 
+(defn prepare-root!
+  "Scan a candidate root without publishing it as the active library."
+  [{:keys [cache-home]} root]
+  (scan-state! root cache-home))
+
 (defn set-root!
   "Point the library at `root` and rescan, in place.
 

@@ -1,47 +1,26 @@
 (ns shipyard.integration.scheme-store-test
-  (:require [babashka.fs :as fs]
-            [clojure.test :refer [deftest is testing]]
+  (:require [clojure.test :refer [deftest is]]
+            [shipyard.assembly-fixture :as fixture]
             [shipyard.scheme.db :as db]
-            [shipyard.scheme.transforms-test :refer [record group-record]]))
+            [shipyard.persistence-fixture :as persisted]))
 
-(deftest atomic-roundtrip-and-failures
-  (let [dir (fs/create-temp-dir) file (fs/path dir "schemes.edn") store (db/open! file)]
+(deftest normalized-scheme-roundtrip
+  (let [started (fixture/start!) facade (:shipyard.scheme/db (:system started))
+        material {:base [0.1 0.2 0.3] :metalness 0.7 :roughness 0.3 :paint "Example"}
+        part (:weapon fixture/ids) path [[:weapon 0]]
+        record {:scheme/id (random-uuid) :scheme/name "Scheme" :scheme/roles {:hull material}
+                :scheme/layers {"Primary" material} :scheme/layer-ids? true
+                :scheme/instances {path {:part-id part :material material}}
+                :scheme/groups [{:group/id (random-uuid) :group/name "Group" :group/order 0
+                                 :group/members [{:path path :part-id part} {:path [] :part-id (:hull fixture/ids)}] :group/material material}]
+                :scheme/details {path {:part-id part :mesh-key (apply str (repeat 64 "a"))
+                                       :faces {(apply str (repeat 72 "0")) (dissoc material :paint)}}}}]
     (try
-      (is (not (fs/exists? file)))
-      (is (= record (:scheme (db/put! store record :create))))
-      (is (= (db/snapshot! store) (db/snapshot! (db/open! file))))
-      (testing "concurrent creates preserve independent identities"
-        (let [records (mapv #(assoc record :scheme/id (random-uuid) :scheme/name (str %)) (range 8))]
-          (is (every? :scheme (mapv deref (mapv #(future (db/put! store % :create)) records))))
-          (db/put! store (assoc record :scheme/name "Edited") :update)
-          (is (= 9 (count (:schemes (db/snapshot! (db/open! file))))))
-          (doseq [r records] (is (= r (get-in (db/snapshot! store) [:schemes (:scheme/id r)]))))))
-      (testing "directory targets cannot report success or publish memory"
-        (let [blocked (fs/create-dirs (fs/path dir "blocked"))
-              before (db/snapshot! store) bytes (slurp (fs/file file))]
-          (is (= :store-write-failed (:error (db/put! (assoc store :file blocked) record :update))))
-          (is (empty? (fs/list-dir blocked)))
-          (is (= before (db/snapshot! store)))
-          (is (= bytes (slurp (fs/file file))))))
-      (finally (fs/delete-tree dir)))))
-
-(deftest invalid-store-preserved
-  (let [dir (fs/create-temp-dir) file (fs/file dir "schemes.edn")]
-    (try
-      (doseq [text ["{" "nil" "{:version 2 :schemes {}}" "{:version 1 :schemes {}} {}"
-                    "{:version 1 :schemes {nil {}}}"]]
-        (spit file text)
-        (is (thrown-with-msg? clojure.lang.ExceptionInfo #"Restore a valid backup" (db/open! file)))
-        (is (= text (slurp file))))
-      (finally (fs/delete-tree dir)))))
-
-(deftest group-roundtrip-and-invalid-write
-  (let [dir (fs/create-temp-dir) file (fs/path dir "schemes.edn") store (db/open! file)
-        grouped (assoc record :scheme/groups [group-record])]
-    (try
-      (is (= grouped (:scheme (db/put! store grouped :create))))
-      (is (= grouped (get-in (db/snapshot! (db/open! file)) [:schemes (:scheme/id record)])))
-      (let [before (slurp (str file))]
-        (is (:error (db/put! store (assoc grouped :scheme/groups [group-record group-record]) :update)))
-        (is (= before (slurp (str file)))))
-      (finally (fs/delete-tree dir)))))
+      (is (= record (:scheme (db/put! facade record :create))))
+      (is (= record (get-in (persisted/records! facade :schemes) [:schemes (:scheme/id record)])))
+      (let [updated (assoc record :scheme/name "Changed" :scheme/groups [] :scheme/instances {} :scheme/details {})]
+        (is (= updated (:scheme (db/put! facade updated :update))))
+        (is (= updated (get-in (persisted/records! facade :schemes) [:schemes (:scheme/id record)]))))
+      (db/delete! facade (:scheme/id record))
+      (is (empty? (:schemes (persisted/records! facade :schemes))))
+      (finally (fixture/stop! started)))))

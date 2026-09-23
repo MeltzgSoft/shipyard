@@ -26,91 +26,41 @@ Instead: a flat binary format (§6) that decodes straight into a three.js
 The encoder lives behind `shipyard.mesh.wire` alone. If interop ever matters, swapping in
 GLB touches one namespace.
 
-### 1.2 Datascript for querying - it does not replace the sidecars
+### 1.2 One durable metadata database
 
-**Datascript ingests at startup. It never owns data.**
+Datalevin owns authored metadata in `$XDG_DATA_HOME/shipyard/database` (normally
+`~/.local/share/shipyard/database`). `:shipyard.store/db` owns the connection and
+accepts `:data-home` or an explicit `:directory`. Catalog, loadout and scheme
+components share it. Only one application process owns a database.
 
-Datascript is in-memory and non-durable; a process restart loses everything in it. So it
-can only be a derived index. The durable layer is plain EDN files.
+All mutations run inside `datalevin.core/with-transaction`, under the store's lock.
+Validation, identity resolution, related changes and revision updates commit together.
+An exception rolls back the entire transaction. The same lock protects materialization
+of immutable domain maps. Pure domain logic receives those maps, never a live Datalevin
+handle: dereferencing a Datalevin connection is not a historical DataScript snapshot.
+Old domain snapshots remain ordinary immutable Clojure values after later writes.
 
-```
-   DURABLE (source of truth)                    DERIVED (rebuildable, disposable)
-   ─────────────────────────                    ────────────────────────────────
-   <part folder>/shipyard.edn   ─── scan ──┐
-     mounts, per-part overrides            │
-                                           ├──▶  Datascript DB    (in memory)
-   $XDG_DATA_HOME/shipyard/                │       parts, mounts, loadouts,
-     loadouts.edn  fleets.edn  schemes.edn ┘       fleets, schemes - all queryable
+Source STLs stay in their existing folders. Geometry and regenerable `.symesh` files
+remain outside the database. The mtime/size scan index remains a disposable EDN cache;
+configuration and the selected library location remain configuration files. None of
+these files owns mounts, orientations, shared layers, loadouts or paint schemes.
 
-   $XDG_CACHE_HOME/shipyard/
-     index-<digest>.edn  scan cache, mtime+size keyed - one per library (§7.3)
-     mesh/<sha>.symesh  encoded meshes
-```
+### 1.3 Legacy import and identities
 
-**Read path.** At startup, scan the library, read every `shipyard.edn`, read the user
-data files, transact the lot into a fresh Datascript DB. 1,661 small EDN files is a fast
-read; no mesh is touched (§5.3).
+On first scan, import each part's `shipyard.edn` and the library's
+`shipyard-layers.edn`. Import sibling `loadouts.edn` and `schemes.edn` once when a
+library is selected. Validate input, reject unsupported or malformed records, retain
+all original files unchanged, and record completed imports in the database. Later
+rescans refresh observed file facts without rereading imported authoring. Unknown
+part-level legacy fields are retained in `:migration/extra`. Missing sources retain
+metadata but are excluded from the available catalog.
 
-**What each layer may hold - and what never moves.**
-
-| Layer | Holds | Never holds |
-|---|---|---|
-| Datascript | Metadata only: ids, names, roles, variants, a triangle count, a content hash, mount frames | Any geometry. Not one vertex |
-| `$XDG_CACHE_HOME/…/mesh/` | Derived `.symesh` encodings, regenerable from source at any time | Copies of STLs |
-| The library | The STLs, exactly where they are | - |
-
-**Source STLs are never copied, moved, or ingested.** They are opened lazily, once, when
-a part is first viewed, and read again only if their mtime or size changes. The full
-library at rest is untouched by Shipyard; deleting the entire cache costs nothing but
-recomputation.
-
-The naming invites a misreading worth heading off: `:part/mesh-key` is the SHA-256 *of*
-the source STL, used to name the derived file `mesh/<sha>.symesh`. The STL itself is not
-stored under that hash - the hash is an identity for the encoding produced from it.
-
-**Write path is write-through, file first.**
-
-```clojure
-(defn save-mount! [part-id mount]
-  (sidecar/update! part-id #(update % :mounts conj mount))  ; 1. durable write
-  (d/transact! conn [(mount->tx part-id mount)]))           ; 2. index update
-```
-
-File first matters: if the transact throws, the data is already safe on disk and the next
-restart picks it up. The reverse order can lose a write.
-
-**Why Datascript earns its place** even though M1's queries are simple: compatibility
-filtering in M3 is a genuine join - every part whose role satisfies some socket's
-`accepts`, within a class, excluding those already slotted. That's a datalog one-liner
-and an awkward nest of `filter` over maps. Establishing it in M1 avoids a migration.
-
-**Why not Datalevin**, which would be durable and remove the ingest step: it would make a
-database the source of truth for data that wants to live beside the STLs - greppable,
-diffable, and portable if the library moves. Sidecars keep mounts attached to the parts
-they describe. The ingest step is the price and it is small.
-
-### 1.3 Mounts live in the part folder
-
-```
-Human Navy Fleet Bundle/Cruiser/Hull/
-    unsupported.stl
-    unsupported-pitted.stl
-    supported.stl
-    shipyard.edn          ← mounts for this part
-```
-
-```clojure
-{:shipyard/version 1
- :part/role   :hull
- :part/orientation [0.0 0.0 0.0 1.0]
- :mounts [{:mount/id :prow  :mount/kind :socket :mount/accepts #{:prow}
-           :mount/pos [0.0 0.0 86.77] :mount/axis [0.0 0.0 1.0] :mount/roll [0.0 1.0 0.0]
-           :mount/origin :picked}]}
-```
-
-Consequences: mounts survive library reorganisation, diff per-part rather than as one
-churning central file, and are trivially inspectable. The library becomes
-self-describing - a copied part folder carries its own mount data.
+A library has a UUID and root location. A part has a stable UUID, library ref and
+current relative path; HTTP/domain projections continue using that path for compatible
+workspace and URL contracts. Rescanning the same location preserves its UUID. A new
+path is a new discovery; automatic detection of moved parts is not implemented.
+Copying an STL folder does not copy its current authored metadata. Back up the database
+as well as the source library. Stop Shipyard before copying its database directory.
 
 ---
 
@@ -133,7 +83,8 @@ shipyard/
 │   ├── main.clj                    entry point: read config, ig/init, shutdown hook
 │   ├── system.clj                  integrant key derivation, halt ordering
 │   ├── library/{scan,index}.clj    part-folder discovery; mtime+size scan cache
-│   ├── catalog/{db,sidecar}.clj    datascript conn + schema; shipyard.edn read/write
+│   ├── catalog/db.clj             immutable catalog projections and authoring boundary
+│   ├── store/{db,schema,transforms,legacy}.clj  shared Datalevin persistence and import
 │   ├── mesh/{stl,weld,lod,cache}.clj
 │   └── http/{server,routes,views,htmx,urls,jobs}.clj  server = jetty lifecycle
 │
@@ -244,7 +195,7 @@ call to make.
   metosin/reitit-ring            {:mvn/version "0.7.2"}
   ring/ring-jetty-adapter        {:mvn/version "1.12.2"}
   hiccup/hiccup                  {:mvn/version "2.0.0-RC3"}
-  datascript/datascript          {:mvn/version "1.7.3"}
+  datalevin/datalevin            {:mvn/version "1.1.0"}
   integrant/integrant            {:mvn/version "1.0.1"}
   aero/aero                      {:mvn/version "1.1.6"}
   org.clojure/tools.logging      {:mvn/version "1.3.0"}
@@ -296,58 +247,35 @@ JVM stack viable.
 
 ---
 
-## 4. Datascript schema
+## 4. Datalevin schema
 
-```clojure
-(def schema
-  {:part/id          {:db/unique :db.unique/identity}   ; relative folder path
-   :part/bundle      {:db/index true}
-   :part/class       {:db/index true}                   ; :cruiser, :escort, nil
-   :part/role-hint   {:db/index true}                   ; browsing only - never compatibility (§5.2)
-   :part/role-source {}                                 ; :inferred | :class | :manual
-   :part/name        {}
-   :part/variants    {:db/cardinality :db.cardinality/many}  ; :supported :unsupported :unsupported-pitted
-   :part/mesh-key    {}                                 ; sha256 of chosen STL, nil until preprocessed
-   :part/tris        {}
-   :part/mounts      {:db/cardinality :db.cardinality/many :db/valueType :db.type/ref
-                      :db/isComponent true}
+`shipyard.store.schema/schema` is the executable, typed, closed schema. Store version
+1 is checked at open. UUID and scoped identity attributes carry uniqueness constraints;
+active layer names are unique within their library. Record and relationship validation
+also runs at the transactional boundary.
 
-   :mount/id         {}
-   :mount/kind       {:db/index true}                   ; :socket | :plug
-   ;; Stored cardinality-many keeps old sidecars readable. New socket authoring selects
-   ;; one radio profile: a singleton role, or the hull-only #{:turret :antenna} profile.
-   :mount/accepts    {:db/cardinality :db.cardinality/many}
-   :mount/pos        {} :mount/axis {} :mount/roll {}
-   :mount/origin     {}
+| Entity | Identity and relationships |
+|---|---|
+| Library | UUID, root, shared-layer revision, import marker |
+| Part | UUID, unique `[library UUID, relative path]`, library ref, present flag, observed source facts, manual role/orientation |
+| Source/content | Source identity `[part UUID, variant]`, file stamps; shared content keyed by SHA-256 |
+| Mount | UUID, part-owned component, local mount ID, explicit order, frame, role profile, optional facet provenance |
+| Layer | Unique `[library UUID, layer ID]`, label, stable preview label, builtin/deleted flags |
+| Region set | Part-owned, content ref, revision; owned masks referring to shared layers |
+| Mask/detail chunk | Owned, ordered, versioned face payload; Primary is implicit |
+| Loadout | UUID, name, library and hull refs, optional scheme ref; owned full-path slot assignments |
+| Scheme | UUID, name, library ref; owned role/layer material bindings, targets and ordered groups |
+| Target | Scheme-owned, full instance path and part ref; optional material and source-bound detail mask |
+| Group membership | Group-owned, explicit order and target ref |
+| Fleet | Schema reserved for later fleet workflows; no fleet authoring UI yet |
 
-   :loadout/id       {:db/unique :db.unique/identity}
-   :loadout/hull     {:db/valueType :db.type/ref}
-   :loadout/slots    {:db/cardinality :db.cardinality/many :db/valueType :db.type/ref
-                      :db/isComponent true}
-   :slot/mount-id    {} :slot/part {:db/valueType :db.type/ref}
-
-   :fleet/id         {:db/unique :db.unique/identity}
-   :fleet/loadouts   {:db/cardinality :db.cardinality/many :db/valueType :db.type/ref}
-   :scheme/id        {:db/unique :db.unique/identity}})
-```
-
-`:part/id` is the library-relative folder path - stable, human-readable, debuggable in a
-URL. Distinct from `:part/mesh-key`, the content hash used for mesh caching (§5.4).
-
-The M1 query surface is small, but the shape it establishes is what M3 needs:
-
-```clojure
-;; M1: browse
-(d/q '[:find ?id ?name :in $ ?bundle ?class
-       :where [?e :part/bundle ?bundle] [?e :part/class ?class]
-              [?e :part/id ?id] [?e :part/name ?name]]
-     @conn "Human Navy Fleet Bundle" :cruiser)
-
-;; M3: what can go in this socket - the join that justifies datascript
-(d/q '[:find ?id :in $ ?class [?role ...]
-       :where [?e :part/class ?class] [?e :part/role ?role] [?e :part/id ?id]]
-     @conn :cruiser (:mount/accepts socket))
-```
+Refs to shared parts, layers, content, schemes and targets are not components. Deleting
+owned children must not delete their shared references. Deleted schemes/layers remain
+tombstones so old references are preserved without reviving deleted definitions.
+Material values belong to their binding or target. Dense face payloads and small numeric
+vectors are EDN values inside Datalevin; whole parts, schemes and loadouts are not opaque
+serialized documents. Region chunks contain face membership; their owning mask's layer
+ref supplies the assignment. Derived projections reconstruct existing domain map shapes.
 
 ---
 
@@ -601,8 +529,8 @@ library**, because the root is a setting and can change (§7.3). Not one shared 
 part id is library-relative, so a shared index would have to be discarded on every switch,
 and re-hashing is precisely the cost this cache exists to avoid.
 
-Budget: full scan of 1,661 folders, cold, **under 2 s**. It stats files and reads small
-EDN; it opens no mesh.
+Budget: full scan of 1,661 folders, cold, **under 2 s**. It stats files and updates source metadata; initial migration also reads legacy
+EDN. It opens no mesh.
 
 ---
 
@@ -1056,14 +984,14 @@ table closes over its dependencies at build time - `routes` is a tree of
 `(partial handler deps)` - so a rebuilt component would be invisible to every handler
 already holding the old one. `shipyard.http.settings/relocate!` therefore:
 
-1. **persists first.** If the write throws, nothing has changed and the message the user
-   gets is true. Applying first would leave a running application whose library silently
-   reverts at the next restart - the failure nobody thinks to check for. It is the same
-   file-first rule §4 states for the catalog, for the same reason.
-2. rescans the library (`index/set-root!` resets one atom holding root, parts and index),
-3. re-ingests the catalog (`db/reingest!` - datascript is derived, so a new connection is
-   the cheapest correct answer to "the library moved"),
+1. scans the candidate root without changing the active library;
+2. validates/imports its metadata transactionally into the shared store;
+3. persists the selected root, then publishes the new library and catalog state;
 4. clears the job table (`jobs/clear!`).
+
+A failed import or settings write leaves the active library and selection setting
+unchanged. A successfully imported inactive library can remain in the database for
+later reuse.
 
 **A success answers `HX-Refresh: true`, not a fragment.** The library has been replaced
 wholesale: the filter facets in the shell were built from the old one, and so was every
@@ -1282,7 +1210,7 @@ pretending otherwise is what makes suites slow and flaky.
 | level | may touch | budget | runs |
 |---|---|---|---|
 | **Unit** | nothing outside the process | < 10 s whole suite | every save |
-| **Integration** | filesystem, natives, HTTP, real EDN | < 2 min | every push |
+| **Integration** | filesystem, natives, HTTP, real Datalevin | < 2 min | every push |
 | **E2E** | a real browser against the running system | < 5 min | pull requests |
 
 Runner is kaocha with one suite per level, so `clojure -M:test:unit` is a sub-second
@@ -1307,7 +1235,7 @@ greebled plate); STL parsing is tested against a `byte[]`, never a path.
 | Symmetry mirroring | Mirrored mount is the exact reflection; roll handedness preserved |
 | Settings validation | Path normalization and validation messages from inspected facts |
 | Scan index refresh | Unchanged sources retain derived keys; changed sources drop them |
-| Catalog authoring | Sidecar data and Datascript transactions are planned without I/O |
+| Catalog authoring | Storage entities and domain projections are converted without I/O |
 | Cache eviction | Oldest entries are selected until the remaining bytes fit the cap |
 | Job claiming | An existing result wins; only an unclaimed part receives a job |
 
@@ -1328,8 +1256,8 @@ user's library.
 | Cache lifecycle | Miss -> generate -> hit; touching an STL invalidates its `mesh-key`; LRU evicts at the cap |
 | Atomic writes | A concurrent reader never observes a partial `.symesh` |
 | Concurrent preprocess | Two requests for one part produce one job, not two (§6.5) |
-| Sidecar | Write -> read -> equal; malformed EDN fails loudly and does **not** silently drop mounts |
-| Write-through order | A failed transact still leaves the sidecar on disk (§1.2) |
+| Metadata | Commit -> durable reopen -> equal; malformed legacy input aborts import without dropping authoring |
+| Atomic metadata writes | A failed transaction preserves all prior entities (§1.2) |
 | meshoptimizer | Real native calls: simplify hits target, `optimizeVertexFetch` compacts, Prune is not enabled |
 | HTTP | Routes return expected fragments; `/mesh/*` sends immutable cache headers; `HX-Trigger` payloads parse |
 
@@ -1512,7 +1440,7 @@ experience - it is paid once per part, ever.
 
 M2 turns a triangle clicked in the browser into a durable mount frame. The apparently
 small word "triangle" crosses the mesh cache, meshoptimizer, Three.js, HTTP and the
-sidecar write path, so this section fixes that contract before any handler or viewport
+metadata write path, so this section fixes that contract before any handler or viewport
 code grows its own interpretation. It does not specify assembly transforms or compatible
 part selection; those are outside this contract (SPEC §5.3).
 
@@ -1725,7 +1653,7 @@ and disposes the previous highlight and gizmo before adding its replacements.
 
 ### 12.6 Durable and transient values
 
-The sidecar remains the source of truth. A confirmed mount stores only durable authoring
+The shared database is the source of truth. A confirmed mount stores only durable authoring
 data:
 
 ```clojure
@@ -1739,19 +1667,18 @@ data:
 ```
 
 `:mount/id`, kind, accepts, position, axis, roll and origin are durable. The normalized
-`:part/orientation` quaternion is durable at the sidecar top level; missing or malformed
+`:part/orientation` quaternion is durable on the part entity; missing or malformed
 values resolve to identity. A manual
-`:part/role` override is durable at the sidecar top level and takes precedence over
+`:part/role` override is durable on the part entity and takes precedence over
 `:part/role-hint`; inferred role and its evidence remain derived catalog data. Once M2
 adds manual roles to the catalog transaction, browsing displays the manual role as
 authoritative and keeps the original hint only as evidence, never as a compatibility
-fact. Existing unknown sidecar keys are preserved on every edit.
+fact. Unknown imported fields are retained as migration data.
 
 The selected triangle, ambiguity flag, roll source, symmetry plane, unsaved Twist
 adjustment, repeated classification, form validation state and preview geometry are
 transient. A confirmed mount additionally keeps its selected facet's mesh-key-scoped
-triangle indices as derived render data, after the sidecar has been atomically written
-first (§1.2). Positions, normals and index buffers never otherwise enter Datascript.
+triangle indices as derived render data, in the same database transaction (§1.2). Positions, normals and index buffers never otherwise enter Datalevin.
 
 #### 12.6.1 Bulk orientation
 
@@ -1805,7 +1732,7 @@ completions, including failures and retries from previous grids.
 
 **Editing semantics.** Each loaded entry has a normalized source-to-canonical
 quaternion `[x y z w]`, a saved baseline and a dirty flag. Selection, working quaternions,
-rotation step and dirty flags are transient; they are not catalog or sidecar entities.
+rotation step and dirty flags are transient; they are not durable entities.
 
 Relative toolbar turns use `rotate-around-world-axis`, multiplying the delta on the
 left: `q-next = q-axis(delta) * q-current`. That preserves fixed canonical axes after
@@ -1847,8 +1774,7 @@ normalization; only missing/invalid legacy metadata retains the preview identity
 fallback. An invalid member rejects the whole payload without writing any member.
 
 For a valid map, save known parts individually through `catalog.db/save-part-orientation!`.
-Each write atomically updates `:part/orientation` in that part's sidecar before updating
-Datascript, preserving mounts and unrelated metadata (§1.2). This is atomic per part,
+Each write atomically updates `:part/orientation` on that part’s database entity, preserving mounts and unrelated metadata (§1.2). This is atomic per part,
 not one transaction across the selection. Unknown ids and write failures are reported
 as failed; successful writes are retained. The result carries saved ids, request sequence and activation in the HTML
 `data-bulk-save-result` attribute and names failures in the visible status text. CLJS
@@ -1899,17 +1825,17 @@ another, evaluate `:mount/accepts`, choose compatible components, create loadout
 align a child mount to its parent with the global-Y assembly transform. Those are M3
 behaviours even though the shared frame representation and `geom.cljc` make them
 technically possible earlier. The M2
-end-to-end proof stops after mounts reload from their sidecars and render plausibly on the
+end-to-end proof stops after mounts reload from the database and render plausibly on the
 individual parts that own them.
 
 ## 13. M3 assembly contract
 
 ### 13.1 Authored compatibility and draft identity
 
-The current catalog stores a durable sidecar `:part/role` as `:part/role-hint` with
+The current catalog stores a durable `:part/role-override` as `:part/role-hint` with
 `:part/role-source :manual`. The effective `:part/role-hint` authorizes compatibility
 regardless of whether its source is `:manual`, `:inferred` or `:class`; a manual role
-overrides scan inference. Query Datascript for accepted roles, then validate exactly
+overrides scan inference. Filter the immutable catalog for accepted roles, then validate exactly
 one plug, finite orthonormal frames, renderability and
 source availability. Bundle AND class must match the root. Missing class is a value
 for this comparison only: two classless parts match only in the same bundle.
@@ -2038,23 +1964,14 @@ paint schemes and thumbnails remain outside M3.
 
 ### 13.5 Named-loadout storage
 
-An Integrant-owned `:shipyard.loadout/db` stores a versioned EDN envelope at
-`$XDG_DATA_HOME/shipyard/loadouts.edn` (default `~/.local/share/shipyard/loadouts.edn`).
-Its `:data-home` option overrides the base directory, including for isolated tests.
-The envelope is `{:version 1 :loadouts {uuid loadout-record}}`. Records use SPEC §8.3's
-UUID, name, hull, full path-keyed slots and optional scheme UUID; transient workspace
-state and unsaved drafts never enter the store. Names are not unique identities.
-
-The boundary validates the complete envelope and every record on startup, rejecting
-unsupported versions, extra EDN forms and malformed records with an actionable error
-without modifying the source. Creates require an unused UUID; updates require an
-existing explicit UUID and change only that record. Deletion also requires an existing
-explicit UUID and removes only that record. Mutations serialize within the
-component, write a sibling temporary file, then atomically replace the store before
-publishing the new in-memory value. Filesystems without atomic replacement fail the
-mutation visibly rather than weakening that guarantee. Failed writes leave the prior
-in-memory value intact and temporary files are removed. One application process owns
-the store; simultaneous processes writing the same store are unsupported.
+`:shipyard.loadout/db` is a domain facade over the shared Datalevin store (§1.2).
+Its immutable projection is `{:version 1 :loadouts {uuid loadout-record}}`.
+Records retain SPEC §8.3's UUID, name, hull, full path-keyed slots and optional
+scheme UUID. Names are not unique identities. Creates require unused active UUIDs;
+updates and deletes require an existing explicit UUID. Slot assignments are owned
+entities referring to shared parts. Deletion tombstones the loadout. Transient
+workspace state and unsaved drafts never enter the database. A failed transaction
+leaves the previous durable record intact.
 
 The `shipyard.loadout.operations` boundary revalidates the hull and assigned parts against
 current authored catalog facts and fresh source files for every Save, Preview, Edit
@@ -2140,7 +2057,7 @@ Assemble draft. Preserve the canvas and dispose superseded scene resources as in
   allocates a new UUID and cannot update the source record. Duplicate alone does not
   persist a new record. New drafts use create semantics; edited drafts use update
   semantics, decided by explicit identity rather than name matching.
-- Delete confirms the saved ship name through HTMX and uses the same atomic EDN
+- Delete confirms the saved ship name through HTMX and uses the same database transaction
   mutation boundary as Save. It does not validate library availability or delete
   catalog parts. After the durable commit, clear a matching Ship Browser draft and
   emit scene removals; detach a matching Assemble draft from its deleted identity,
@@ -2220,16 +2137,13 @@ unsaved viewport poses, while selections and settings remain in the running serv
 
 ## 15. Paint schemes and individual instances
 
-The scheme store follows §13.5's serialized, exact-path atomic EDN boundary. Its
-envelope is `{:version 1 :schemes {uuid record}}`; records contain `:scheme/id`,
-`:scheme/name`, `:scheme/roles` and optional `:scheme/instances`. Instance keys are
-full path vectors, including `[]` for the hull; values contain `:part-id` and
-`:material`. Validate the whole envelope before publishing memory. Persist no
-workspace selection or uncommitted preview values. A missing store starts empty;
-malformed stores stop startup with a recovery message and remain untouched.
-The Integrant key is `:shipyard.scheme/db`, with an optional `:data-home` base-directory
-override. The default file is `$XDG_DATA_HOME/shipyard/schemes.edn`. The scheme writer
-uses exact `Files.move` semantics and rejects directory destinations before staging.
+`:shipyard.scheme/db` is a facade over the same transactional store. Its immutable
+projection is `{:version 1 :schemes {uuid record}}`. Role and layer bindings, instance
+targets, ordered groups and detail masks are normalized entities (§4). Full target
+paths include `[]` for the hull and refer to stable part entities. They belong to
+the scheme, not to a particular saved ship. No workspace selection or uncommitted
+preview is persisted. Library refs preserve the scope used to resolve shared layers
+and parts when a record is updated.
 
 Material resolution is pure: matching instance path and part identity, then the first
 matching group with a material in rail order, then shared region-layer defaults, authoritative catalog role and neutral. A loadout override selects the scheme before any fleet
@@ -2352,7 +2266,7 @@ acknowledgement. Intermediate requests return 204 with `X-Shipyard-Brush: buffer
 The workspace buffers one drag, incrementally extending validated per-instance layers.
 Parts must have a matching UUID, next part number, target, scheme and captured material.
 Finalization rechecks all touched source identities and the pre-stroke details before
-one atomic EDN write. Undo/redo records the complete before/after details map once;
+one database transaction. Undo/redo records the complete before/after details map once;
 final UUID acknowledgements are idempotent. Failure or cancellation never persists a
 partial stroke. A new drag or workspace transition discards abandoned buffered parts.
 No face-count limits apply to strokes, layers or schemes. Local preview updates only
@@ -2364,34 +2278,25 @@ ID buffer, never the hint ray.
 
 ### 15.3 Reusable part regions and scheme palettes
 
-The library root's `shipyard-layers.edn` stores a versioned registry:
-`{:version 1 :revision n :layers {id {:name label :preview-name original-label}}
-:deleted #{id}}`. Detail IDs are `layer:<UUID>` strings; the protected builtins use
-stable IDs `"Primary"` and `"Secondary"`. New IDs are random. Registry changes carry
-an expected registry revision, reject duplicate active labels, and atomically write
-the registry before publishing its derived Datascript representation. The registry
-is independent of which parts use a layer. Rename changes only a label.
+Layers are shared, library-scoped entities. Detail IDs are `layer:<UUID>` strings;
+the protected builtins use stable IDs `"Primary"` and `"Secondary"`. Active names
+are unique within a library. Adding an unused layer persists it independently of
+parts. Renaming changes one entity's name and preserves identity and preview color.
 
-Version 2 `:part/paint-regions` contains `:version 2`, `:mesh-key` (source SHA-256),
-`:revision`, `:layers` (ordered IDs beginning with the builtins), `:faces` (stable face
-key to layer ID), and `:layer-definitions` (detail ID to name/preview-name snapshots).
-Snapshots keep copied part folders understandable; the library registry wins over
-older snapshots. Primary assignments are implicit. No geometry enters Datascript.
-Legacy name-based masks normalize on read to deterministic namespaced UUIDs; legacy
-scheme palette keys use the same conversion. Scheme records with converted palettes
-carry `:scheme/layer-ids? true`. Normalization does not rewrite files at startup;
-the next successful edit writes the new representation. Shared labels are discovered
-from old masks until a registry is saved. Registry deletion tombstones prevent old
-snapshots from reintroducing deleted types. Unknown imported IDs retain their identity.
+`:part/paint-regions` is an immutable compatibility projection containing version,
+source hash, revision, builtins and used layer IDs, face assignments, and shared layer
+definitions. Labels are looked up from layer refs, never persisted on each part.
+Legacy names normalize to deterministic IDs during import; palettes use the same
+conversion. Imported files stay unchanged. Tombstones prevent deleted layers from
+reappearing during later scans.
 
-`POST /parts/regions` accepts assign/fill/add/rename/delete/reset. Add and rename edit
-the shared registry regardless of selected-part usage. Delete requires confirmation,
-current part and registry revisions, and removes the ID from all library sidecars,
-including stale-source masks. Sidecars are preflighted and rolled back if any part
-write or the final registry write fails; catalog changes publish only after success.
-All catalog writers serialize on the same lock. Assignment rechecks the part revision
-and deleted IDs inside that lock before committing, so a concurrent delete cannot be
-undone by a delayed stroke. Source/revision guards and workspace admission remain.
+`POST /parts/regions` accepts assign/fill/add/rename/delete/reset. Add and rename
+operate independently of selected-part usage. Confirmed deletion queries masks by
+layer ref and removes those masks, advances affected part/region revisions, releases
+the active name, and tombstones the layer in one transaction, including stale-source
+masks. Scheme bindings retain the deleted layer ref. Assignment checks part revision
+and layer existence under the same transaction lock. Source guards and workspace
+admission remain in force.
 Fill enumerates
 all stable face keys from the validated source mesh on the server and uses the same
 revision-guarded assignment and atomic persistence path; no face list travels from
@@ -2446,7 +2351,7 @@ the mask. Primary supplies the unassigned-face material; absent layer materials 
 back through Primary, role and neutral. Live layer edits update matching payloads and
 installed objects so asynchronous geometry completion uses the latest palette.
 
-Scheme deletion uses the same serialized atomic EDN boundary as scheme updates.
+Scheme deletion uses the same serialized database transaction boundary as scheme updates.
 The UI confirms deletion and lists referencing saved ships. Their UUID references
 remain untouched; consumers resume with the existing missing-scheme warning. Only a
 successful deletion clears Paint's selected scheme.

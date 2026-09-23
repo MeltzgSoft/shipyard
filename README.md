@@ -44,7 +44,7 @@ without a restart. See the [user manual](docs/MANUAL.md).
 ## Development
 
 Anything that touches the mesh pipeline needs **a platform alias for the LWJGL natives** -
-`:natives-linux` below; substitute `:natives-windows`, `:natives-macos` or
+`:natives-linux` below; substitute `:natives-windows` or
 `:natives-macos-arm64`. Commands without one below do not need one.
 
 ```bash
@@ -71,8 +71,8 @@ clojure -M:outdated                     # dependency freshness, deps.edn + packa
 
 The Human Navy Cruiser proof is an on-demand check over proprietary user-owned STL data,
 so it is not a CI gate and it should not run against your only copy. Materialize a
-temporary Shipyard-style Cruiser library first; the proof command writes `shipyard.edn`
-sidecars into that copy, reloads a fresh catalog, checks the M3 slot/attachment contract,
+temporary Shipyard-style Cruiser library first; the proof command writes
+an isolated database under its cache directory, reopens it, checks the M3 slot/attachment contract,
 audits every authored mount against its source surface, and writes an EDN report. A
 blocked report deliberately identifies mounts that need reauthoring rather than guessing
 their mating geometry.
@@ -136,17 +136,21 @@ a server bug; the suite checks for both up front and tells you which command to 
 suite is hermetic: its library, mesh cache and scan index all live in a temp directory, so
 it never touches your real one.
 
-Named-loadout storage uses `$XDG_DATA_HOME/shipyard/loadouts.edn`, defaulting to
-`~/.local/share/shipyard/loadouts.edn`. Configure `:shipyard.loadout/db {:data-home
-"/path/to/data"}` in your user `config.edn` to override the base directory. The
-filesystem must support atomic file replacement. Run only one Shipyard process per
-store. An invalid store stops startup with its path and a recovery message; restore
-a valid backup instead of deleting data you want to keep.
+Authored metadata uses one Datalevin database at `$XDG_DATA_HOME/shipyard/database`,
+defaulting to `~/.local/share/shipyard/database`. Configure
+`:shipyard.store/db {:data-home "/path/to/data"}` or `{:directory "/exact/database"}`
+in user `config.edn`. Catalog, loadouts and schemes share this store; configure its
+location once. Run one Shipyard process per database. Stop the application before
+copying the entire database directory for backup or restore.
 
-Paint-scheme storage follows the same rules at `$XDG_DATA_HOME/shipyard/schemes.edn`.
-Configure `:shipyard.scheme/db {:data-home "/path/to/data"}` to override its base
-directory. Scheme records retain role defaults, ordered material groups and individual instance overrides;
-the store does not contain workspace selections or uncommitted material previews.
+Existing part/layer sidecars and sibling `loadouts.edn`/`schemes.edn` are imported once
+when the library is scanned. Existing per-store `:data-home` overrides are honored
+as import locations. Original files remain unchanged and are not used for later
+edits. Malformed legacy records stop import with a path and recovery message. Repair
+or restore the named original and retry. Back up both the database and source STLs;
+copying an STL folder alone no longer carries authored metadata. The scan index and
+mesh cache remain disposable. Database native binaries support Linux x86-64/ARM64,
+Windows x86-64 and macOS ARM64; this dependency does not ship macOS Intel binaries.
 
 The Paint brush sends new faces during each drag at the interval configured by
 `:shipyard.paint/db {:paint/flush-interval-ms 120}` (milliseconds, positive integer).

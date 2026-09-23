@@ -56,16 +56,16 @@
         {:error (:message result)}
         (do (swap! (:state paint) assoc-in [:draft :scheme] (:scheme/id record)) {})))))
 
-(defn rename! [{:keys [schemes paint] {scheme-state :state} :schemes} {:strs [name]}]
-  (locking scheme-state
+(defn rename! [{:keys [schemes paint] {scheme-lock :lock} :schemes} {:strs [name]}]
+  (locking scheme-lock
     (let [id (get-in @(:state paint) [:draft :scheme]) record (get-in (schemes/snapshot! schemes) [:schemes id])]
       (if (and record (loadout/name? name))
         (let [result (schemes/put! schemes (assoc record :scheme/name name) :update)]
           (when (:error result) {:error (:message result)}))
         {:error "Select a scheme and enter a valid name."}))))
 
-(defn default! [{:keys [schemes paint workspace catalog] {scheme-state :state} :schemes} _]
-  (locking scheme-state
+(defn default! [{:keys [schemes paint workspace catalog] {scheme-lock :lock} :schemes} _]
+  (locking scheme-lock
     (let [draft (:draft @(:state paint)) record (get-in (schemes/snapshot! schemes) [:schemes (:scheme draft)])
           target (first (filter #(= (:key %) (:target (workspace/workspace! workspace :paint)))
                                 (transforms/targets (catalog/snapshot! catalog) draft record)))
@@ -87,8 +87,8 @@
          (list [:span "Material saved."]
                (assoc-in tree [1 :hx-swap-oob] "outerHTML")))))))
 
-(defn group! [{:keys [schemes paint catalog workspace] {scheme-state :state} :schemes} action params]
-  (locking scheme-state
+(defn group! [{:keys [schemes paint catalog workspace] {scheme-lock :lock} :schemes} action params]
+  (locking scheme-lock
     (let [draft (:draft @(:state paint)) record (get-in (schemes/snapshot! schemes) [:schemes (:scheme draft)])
           id (if (= action :create) (random-uuid) (some-> (get params "group") (parse-uuid)))
           selected (groups/members (transforms/targets (catalog/snapshot! catalog) draft) (get params "members"))

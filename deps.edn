@@ -10,7 +10,7 @@
   ;; key per event, so the envelope is not ours to choose (TECHNICAL.md §7.1).
   ;; The payload inside it is EDN.
   org.clojure/data.json          {:mvn/version "2.5.1"}
-  datascript/datascript          {:mvn/version "1.7.3"}
+  datalevin/datalevin            {:mvn/version "1.1.0"}
   integrant/integrant            {:mvn/version "1.0.1"}
   aero/aero                      {:mvn/version "1.1.6"}
   org.clojure/tools.logging      {:mvn/version "1.3.0"}
@@ -98,7 +98,7 @@
 
   ;; --- M2 real Cruiser proof -----------------------------------------------
   ;; On-demand because the Human Navy Cruiser STLs are user-owned data, not test
-  ;; fixtures. Run it against a temporary copy; it writes proof sidecars there.
+  ;; fixtures. Run it against a temporary copy; it uses an isolated proof database.
   :m2-human-navy-cruiser-proof
   {:main-opts ["-m" "shipyard.proof.m2-human-navy-cruiser"]}
 

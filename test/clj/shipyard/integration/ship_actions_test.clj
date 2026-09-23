@@ -37,7 +37,7 @@
     (try
       (swap! state assoc :draft lf/draft)
       (let [record (:loadout (ops/save! deps 1 "Saved")) id (str (:loadout/id record))
-            file (:file (:loadouts deps)) bytes (slurp (str file))]
+            bytes (store/snapshot! (:loadouts deps))]
         (swap! state assoc :draft (assoc lf/draft :revision 3))
         (doseq [action ["edit" "duplicate"]]
           (let [before @state response (post (str "/ships/" action) {:id id})]
@@ -61,5 +61,5 @@
             (is (= 200 (:status (post "/assembly/hull" (assoc params :discard-revision revision)))))
             (is (empty? (get-in @state [:draft :assignments])))
             (is (nil? (get-in @state [:draft :loadout-id])))))
-        (is (= bytes (slurp (str file)))))
+        (is (= bytes (store/snapshot! (:loadouts deps)))))
       (finally (fixture/stop! started)))))

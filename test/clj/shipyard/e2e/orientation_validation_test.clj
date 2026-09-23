@@ -1,5 +1,6 @@
 (ns shipyard.e2e.orientation-validation-test
-  (:require [clojure.data.json :as json]
+  (:require [shipyard.persistence-fixture :as persisted]
+            [clojure.data.json :as json]
             [clojure.string :as str]
             [clojure.test :refer [deftest is]]
             [shipyard.assembly-fixture :as fixture]
@@ -35,7 +36,7 @@
             (doseq [id [a b]]
               (is (saves/same-pose? q45 (orient/durable started id)))
               (is (saves/same-pose? q90 (orient/preview driver id))))))
-        (let [fresh @(catalog/ingest! (catalog/browse (catalog/snapshot! c) {}) root)]
+        (let [fresh (persisted/catalog! c)]
           (doseq [id [a b]]
             (is (saves/same-pose? q45 (:part/orientation (catalog/part fresh id))))))
         (orient/save! driver)

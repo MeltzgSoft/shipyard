@@ -1,5 +1,6 @@
 (ns shipyard.integration.loadout-paint-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [shipyard.persistence-fixture :as persisted]
+            [clojure.test :refer [deftest is]]
             [ring.mock.request :as mock]
             [shipyard.assembly-fixture :as fixture]
             [shipyard.loadout-fixture :as lf]
@@ -25,6 +26,6 @@
         (is (= before (loadouts/snapshot! (:loadouts deps))))
         (is (= 422 (:status (post revision ""))))
         (operations/save! deps (get-in @state [:draft :revision]) "Original")
-        (is (= id (get-in (loadouts/snapshot! (loadouts/open! (:file (:loadouts deps))))
+        (is (= id (get-in (persisted/records! (:loadouts deps) :loadouts)
                           [:loadouts (:loadout/id record) :loadout/scheme]))))
       (finally (fixture/stop! started)))))

@@ -28,8 +28,11 @@
   :cap-bytes  #profile {:default 4294967296   ; 4 GB
                         :test    67108864}}   ; 64 MB so LRU eviction is testable in seconds
 
+ :shipyard.store/db {}
+
  :shipyard.catalog/db
- {:library #ig/ref :shipyard.library/index}
+ {:library #ig/ref :shipyard.library/index
+  :store #ig/ref :shipyard.store/db}
 
  ;; Preprocessing runs here rather than on the Jetty thread: a cold hull takes
  ;; seconds and GET /part/:id must return immediately (TECHNICAL.md §7).
@@ -39,8 +42,8 @@
 
  :shipyard.assembly/db {}
 
- :shipyard.loadout/db {}
- :shipyard.scheme/db {}
+ :shipyard.loadout/db {:store #ig/ref :shipyard.store/db :catalog #ig/ref :shipyard.catalog/db}
+ :shipyard.scheme/db {:store #ig/ref :shipyard.store/db :catalog #ig/ref :shipyard.catalog/db}
  :shipyard.paint/db {:paint/flush-interval-ms 120}
  :shipyard.loadout.operations/preview {}
  :shipyard.workspace/db {:assembly #ig/ref :shipyard.assembly/db

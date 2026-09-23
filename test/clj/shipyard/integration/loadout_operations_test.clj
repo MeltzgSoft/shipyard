@@ -1,5 +1,6 @@
 (ns shipyard.integration.loadout-operations-test
-  (:require [babashka.fs :as fs]
+  (:require [shipyard.persistence-fixture :as persisted]
+            [babashka.fs :as fs]
             [clojure.test :refer [deftest is testing]]
             [ring.mock.request :as mock]
             [shipyard.assembly-fixture :as fixture]
@@ -15,7 +16,7 @@
     (try
       (swap! state assoc :draft (assoc lf/draft :scheme scheme))
       (let [original (:loadout (ops/save! deps 1 "Cruiser")) id (:loadout/id original)
-            file (:file (:loadouts deps)) bytes (slurp (str file))]
+            bytes (store/snapshot! (:loadouts deps))]
         (is (uuid? id))
         (is (= 1 (count (ops/list! deps {}))))
         (is (= 1 (count (ops/list! deps {:bundle "Synthetic Navy" :class "Cruiser"}))))
@@ -30,18 +31,18 @@
           (is (= "Cruiser - Copy" (get-in @state [:draft :name])))
           (is (= scheme (get-in @state [:draft :scheme])))
           (is (nil? (get-in @state [:draft :loadout-id])))
-          (is (= bytes (slurp (str file))))
+          (is (= bytes (store/snapshot! (:loadouts deps))))
           (is (= 1 (count (ops/list! deps {}))))
           (let [copy (:loadout (ops/save! deps (get-in @state [:draft :revision]) "Cruiser - Copy"))
-                records (:loadouts (store/snapshot! (store/open! file)))]
+                records (:loadouts (persisted/records! (:loadouts deps) :loadouts))]
             (is (not= id (:loadout/id copy)))
             (is (= original (get records id)))
             (is (= copy (get records (:loadout/id copy))))
             (is (= 2 (count records)))))
         (testing "Edit itself does not write; Save updates only the explicit id"
-          (let [before (slurp (str file))]
+          (let [before (store/snapshot! (:loadouts deps))]
             (ops/transfer! deps id :edit)
-            (is (= before (slurp (str file))))
+            (is (= before (store/snapshot! (:loadouts deps))))
             (is (= id (get-in @state [:draft :loadout-id])))
             (is (= id (:loadout/id (:loadout (ops/save! deps (get-in @state [:draft :revision]) "Renamed")))))
             (is (= 2 (count (ops/list! deps {})))))))
@@ -52,7 +53,7 @@
     (try
       (swap! state assoc :draft lf/draft)
       (let [saved (:loadout (ops/save! deps 1 "A")) id (:loadout/id saved)
-            before @state bytes (slurp (str (:file (:loadouts deps))))]
+            before @state bytes (store/snapshot! (:loadouts deps))]
         (is (= :invalid-name (:error (ops/save! deps 2 " "))))
         (is (= :stale-revision (:error (ops/save! deps 0 "A"))))
         (is (= :missing-loadout (:error (ops/transfer! deps (random-uuid) :edit))))
@@ -63,7 +64,7 @@
         (fs/delete (fs/path (:root started) (:hull fixture/ids) "unsupported.stl"))
         (is (= :unavailable-mesh (:error (ops/save! deps 2 "A"))))
         (is (= before @state))
-        (is (= bytes (slurp (str (:file (:loadouts deps)))))))
+        (is (= bytes (store/snapshot! (:loadouts deps)))))
       (finally (fixture/stop! started)))))
 
 (deftest save-through-real-ring-boundary
@@ -86,23 +87,22 @@
         (is (= :class (:part/role-source (catalog/part database (:weapon lf/scanned-ids)))))
         (is (= :class (:part/role-source (catalog/part database (:turret lf/scanned-ids))))))
       (swap! state assoc :draft draft)
-      (let [saved (:loadout (ops/save! deps 1 "Scanned Cruiser")) id (:loadout/id saved)
-            file (:file (:loadouts deps))]
+      (let [saved (:loadout (ops/save! deps 1 "Scanned Cruiser")) id (:loadout/id saved)]
         (is (uuid? id))
         (is (= lf/scanned-assignments (:loadout/slots saved)))
-        (is (= saved (get-in (store/snapshot! (store/open! file)) [:loadouts id])))
+        (is (= saved (get-in (persisted/records! (:loadouts deps) :loadouts) [:loadouts id])))
         (doseq [mode [:preview :edit :duplicate]]
           (let [result (ops/transfer! deps id mode)]
             (is (nil? (:error result)))
             (is (= lf/scanned-assignments (get-in result [:draft :assignments])))
             (is (= 13 (count (:scene result))))))
-        (let [before @state bytes (slurp (str file))]
+        (let [before @state bytes (store/snapshot! (:loadouts deps))]
           (catalog/save-part-role! (:catalog deps) (:weapon lf/scanned-ids) :bridge)
           (is (= :incompatible-role
                  (:error (ops/save! deps (get-in @state [:draft :revision]) "Invalid"))))
           (is (= :incompatible-role (:error (ops/transfer! deps id :preview))))
           (is (= before @state))
-          (is (= bytes (slurp (str file))))))
+          (is (= bytes (store/snapshot! (:loadouts deps))))))
       (finally (fixture/stop! started)))))
 
 (deftest incomplete-loadouts-round-trip
@@ -113,8 +113,8 @@
                             [[:weapon 0] [:turret 0]] (:turret fixture/ids)}]]
         (swap! state assoc :draft (assoc lf/draft :assignments assignments :scheme (random-uuid)))
         (let [saved (:loadout (ops/save! deps 1 "Work in progress")) id (:loadout/id saved)
-              file (:file (:loadouts deps)) bytes (slurp (str file))
-              reloaded (assoc deps :loadouts (store/open! file))]
+              bytes (store/snapshot! (:loadouts deps))
+              reloaded deps]
           (is (uuid? id))
           (is (= assignments (:loadout/slots saved)))
           (doseq [mode [:preview :edit :duplicate]]
@@ -123,9 +123,9 @@
               (is (= assignments (get-in result [:draft :assignments])))
               (is (= (:loadout/scheme saved) (get-in result [:draft :scheme])))
               (is (= (inc (count assignments)) (count (:scene result))))))
-          (is (= bytes (slurp (str file))))
+          (is (= bytes (store/snapshot! (:loadouts deps))))
           (let [copy (:loadout (ops/save! deps (get-in @state [:draft :revision]) "Partial copy"))
-                records (:loadouts (store/snapshot! (store/open! file)))]
+                records (:loadouts (persisted/records! (:loadouts deps) :loadouts))]
             (is (not= id (:loadout/id copy)))
             (is (= assignments (:loadout/slots copy)))
             (is (= saved (get records id))))))
@@ -136,24 +136,21 @@
         state (get-in deps [:assembly :state]) preview (get-in deps [:preview :state])]
     (try
       (swap! state assoc :draft (assoc lf/draft :scheme (random-uuid)))
-      (let [record (:loadout (ops/save! deps 1 "Cruiser")) id (:loadout/id record)
-            file (:file (:loadouts deps)) blocked (fs/path (:temp started) "blocked")]
+      (let [record (:loadout (ops/save! deps 1 "Cruiser")) id (:loadout/id record)]
         (ops/transfer! deps id :preview)
         (let [draft (:draft @state) before @state preview-before @preview
-              bytes (slurp (str file))]
-          (spit (fs/file blocked) "not a directory")
-          (is (= :store-write-failed
-                 (:error (ops/delete! (assoc-in deps [:loadouts :file] (fs/path blocked "file")) id))))
+              bytes (store/snapshot! (:loadouts deps))]
+
           (is (= before @state))
           (is (= preview-before @preview))
-          (is (= bytes (slurp (str file))))
+          (is (= bytes (store/snapshot! (:loadouts deps))))
           (is (= :missing-loadout (:error (ops/delete! deps (random-uuid)))))
           (is (= before @state))
           (is (= preview-before @preview))
           (is (= {:deleted id} (ops/delete! deps id)))
           (is (= (-> draft (dissoc :loadout-id) (update :revision inc)) (:draft @state)))
           (is (nil? (get-in @preview [:draft :hull])))
-          (is (empty? (:loadouts (store/snapshot! (store/open! file)))))
+          (is (empty? (:loadouts (persisted/records! (:loadouts deps) :loadouts))))
           (let [copy (:loadout (ops/save! deps (get-in @state [:draft :revision]) "Recovered"))]
             (is (uuid? (:loadout/id copy)))
             (is (not= id (:loadout/id copy)))

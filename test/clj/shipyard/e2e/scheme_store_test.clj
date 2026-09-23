@@ -1,5 +1,6 @@
 (ns shipyard.e2e.scheme-store-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [shipyard.persistence-fixture :as persisted]
+            [clojure.test :refer [deftest is]]
             [shipyard.assembly-fixture :as fixture]
             [shipyard.e2e.support :as s]
             [shipyard.scheme.db :as db]
@@ -12,7 +13,7 @@
         record (assoc record :scheme/groups [group-record])]
     (try
       (is (= record (:scheme (db/put! store record :create))))
-      (let [before (slurp (str (:file store)))]
+      (let [before (db/snapshot! store)]
         (s/go! driver (s/base-url (:system started)))
         (s/wait-visible! driver "#library-results .part")
         (s/click! driver ".masthead__mode:has-text('Assemble')")
@@ -20,6 +21,6 @@
         (s/select-option! driver ".assembly__hull select[name=part-id]" "hull")
         (s/click! driver ".assembly__hull button")
         (is (s/wait-until #(= 1 (count (get-in (s/stats driver) [:assembly :slots])))))
-        (is (= before (slurp (str (:file store)))))
-        (is (= record (get-in (db/snapshot! (db/open! (:file store))) [:schemes (:scheme/id record)]))))
+        (is (= before (db/snapshot! store)))
+        (is (= record (get-in (persisted/records! store :schemes) [:schemes (:scheme/id record)]))))
       (finally (s/quit! driver) (fixture/stop! started)))))

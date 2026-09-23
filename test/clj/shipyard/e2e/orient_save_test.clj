@@ -1,11 +1,10 @@
 (ns shipyard.e2e.orient-save-test
-  (:require [babashka.fs :as fs]
+  (:require [shipyard.persistence-fixture :as persisted]
             [clojure.string :as str]
             [clojure.test :refer [deftest is]]
             [shipyard.assembly-fixture :as fixture]
             [shipyard.bulk-orientation.save-state :as saves]
             [shipyard.catalog.db :as catalog]
-            [shipyard.catalog.sidecar :as sidecar]
             [shipyard.e2e.support :as s]
             [shipyard.part.orientation :as orientation])
   (:import [com.microsoft.playwright APIResponse Page Route Route$FulfillOptions]
@@ -50,7 +49,7 @@
       (save! driver)
       (is (s/wait-until #(do (s/stats driver) (some? @held))))
       (is (saves/same-pose? q45 (durable started id)))
-      (is (saves/same-pose? q45 (:part/orientation (sidecar/read-sidecar! (str (:root started)) id))))
+      (is (saves/same-pose? q45 (:part/orientation (persisted/authored! (:shipyard.catalog/db (:system started)) id))))
       (set-yaw! driver 90)
       (let [[^Route route ^APIResponse response] @held]
         (.fulfill route (doto (Route$FulfillOptions.) (.setResponse response))))
@@ -68,8 +67,7 @@
       (save! driver)
       (is (s/wait-until #(zero? (get-in (s/stats driver) [:bulk :dirty]))))
       (is (saves/same-pose? q90 (durable started id)))
-      (let [parts (catalog/browse (catalog/snapshot! (:shipyard.catalog/db (:system started))) {})
-            reloaded @(catalog/ingest! parts (str (:root started)))]
+      (let [reloaded (persisted/catalog! (:shipyard.catalog/db (:system started)))]
         (is (saves/same-pose? q90 (:part/orientation (catalog/part reloaded id)))))
       (s/go! driver (s/base-url (:system started)))
       (s/click! driver ".masthead [data-workspace-mode='orient']")
@@ -79,12 +77,10 @@
 (deftest partial-save-keeps-only-the-failed-part-dirty
   (let [started (fixture/start! true) driver (s/make-driver)
         a (:prow fixture/ids) b (:bridge fixture/ids)
-        file (sidecar/sidecar-file (str (:root started)) b)
-        backup (str file ".backup") q45 (orientation/from-euler-degrees 45 0 0)]
+        cat (:shipyard.catalog/db (:system started)) q45 (orientation/from-euler-degrees 45 0 0)]
     (try
       (open-grid! driver started [a b])
-      (fs/move file backup)
-      (spit file "{")
+      (persisted/available! cat b false)
       (set-yaw! driver 45)
       (save! driver)
       (is (s/wait-until #(str/includes? (s/text driver "#bulk-orient-status") "Saved 1. Failed:"))
@@ -94,12 +90,11 @@
       (is (saves/same-pose? q45 (durable started a)))
       (is (nil? (durable started b)))
       (is (saves/same-pose? q45 (preview driver b)))
-      (fs/delete file)
-      (fs/move backup file)
+      (persisted/available! cat b true)
       (save! driver)
       (is (s/wait-until #(zero? (get-in (s/stats driver) [:bulk :dirty]))))
       (is (saves/same-pose? q45 (durable started b)))
-      (is (saves/same-pose? q45 (:part/orientation (sidecar/read-sidecar! (str (:root started)) b))))
+      (is (saves/same-pose? q45 (:part/orientation (persisted/authored! (:shipyard.catalog/db (:system started)) b))))
       (finally (s/quit! driver) (fixture/stop! started)))))
 
 (deftest acknowledgement-from-a-finished-grid-cannot-clear-new-edits

@@ -1,8 +1,8 @@
 (ns shipyard.e2e.cache-concurrency-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [shipyard.persistence-fixture :as persisted]
+            [clojure.test :refer [deftest is]]
             [shipyard.assembly-fixture :as fixture]
             [shipyard.catalog.db :as catalog]
-            [shipyard.catalog.sidecar :as sidecar]
             [shipyard.e2e.support :as s]
             [shipyard.library.index :as index]
             [shipyard.part.orientation :as orientation])
@@ -41,6 +41,6 @@
       (s/click! driver "[data-bulk-save] button")
       (is (s/wait-until #(zero? (get-in (s/stats driver) [:bulk :dirty]))))
       (doseq [id [a b]]
-        (let [q (:part/orientation (sidecar/read-sidecar! (str (:root started)) id))]
+        (let [q (:part/orientation (persisted/authored! (:shipyard.catalog/db (:system started)) id))]
           (is (< (abs (- 90.0 (first (orientation/to-euler-degrees q)))) 0.001))))
       (finally (remove-watch inflight ::admission) (s/quit! driver) (fixture/stop! started)))))

@@ -41,7 +41,7 @@
   [:span.part__role
    {:title (case role-source
              :class "Taken from the folder layout."
-             :manual "Set in this part's sidecar."
+             :manual "Authored for this part."
              "Guessed from the part name - roughly one in ten is wrong.")
     :class (when (= :inferred role-source) "part__role--guessed")}
    (name (or role-hint :unknown))])

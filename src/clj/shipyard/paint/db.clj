@@ -26,7 +26,7 @@
              :root (index/root! library)))
     result))
 
-(defn edit! [{:keys [workspace paint schemes catalog] {scheme-state :state} :schemes} {:strs [id target sequence] :as params}]
+(defn edit! [{:keys [workspace paint schemes catalog] {scheme-lock :lock} :schemes} {:strs [id target sequence] :as params}]
   (let [state (workspace/workspace! workspace :paint)
         selected (get-in @(:state paint) [:draft :scheme])
         request-sequence (when (string? sequence) (parse-long sequence))
@@ -36,7 +36,7 @@
     (if (or (not= (str selected) id) (not= target (:target state))
             (nil? request-sequence) (<= request-sequence (or (:edit-sequence state) 0)))
       {:error :stale-edit :message "This paint selection changed. Reopen it before retrying."}
-      (locking scheme-state
+      (locking scheme-lock
         (if-let [record (get-in (schemes/snapshot! schemes) [:schemes selected])]
           (let [result (transforms/edit-record record selected-target (transforms/parse-material params)
                                                (= "true" (get params "clear")))

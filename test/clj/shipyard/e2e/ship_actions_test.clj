@@ -1,5 +1,6 @@
 (ns shipyard.e2e.ship-actions-test
-  (:require [babashka.fs :as fs]
+  (:require [shipyard.persistence-fixture :as persisted]
+            [babashka.fs :as fs]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [digest :as digest]
@@ -33,7 +34,7 @@
       (swap! state assoc :draft lf/draft)
       (let [saved (:loadout (ops/save! deps 1 "Cruiser")) id (:loadout/id saved)
             other (assoc saved :loadout/id (random-uuid) :loadout/name "Other")
-            file (:file (:loadouts deps)) library-before (library-digests (:root started))]
+            library-before (library-digests (:root started))]
         (store/put! (:loadouts deps) other :create)
         (ops/transfer! deps id :edit)
         (s/go! driver (s/base-url (:system started)))
@@ -43,10 +44,10 @@
         (s/select-option! driver "#ship-filters select[name=bundle]" "Synthetic Navy")
         (s/click! driver "[data-mount-colors-toggle]")
         (is (s/wait-until #(true? (:mount-colors-enabled (s/stats driver)))))
-        (let [draft (:draft @state) slots (get-in (s/stats driver) [:assembly :slots]) bytes (slurp (str file))]
+        (let [draft (:draft @state) slots (get-in (s/stats driver) [:assembly :slots]) bytes (store/snapshot! (:loadouts deps))]
           (action! driver id "Delete")
           (is (str/includes? (last @messages) "Cruiser"))
-          (is (= bytes (slurp (str file))))
+          (is (= bytes (store/snapshot! (:loadouts deps))))
           (is (= draft (:draft @state)))
           (is (= slots (get-in (s/stats driver) [:assembly :slots])))
           (is (= 2 (s/count-els driver ".ship-card")))
@@ -68,7 +69,7 @@
             (is (zero? (s/count-els driver ".ship-card")))
             (is (str/includes? (s/text driver "#ship-results") "No saved ships match."))
             (is (= (-> draft (dissoc :loadout-id) (update :revision inc)) (:draft @state)))
-            (is (empty? (:loadouts (store/snapshot! (store/open! file)))))
+            (is (empty? (:loadouts (persisted/records! (:loadouts deps) :loadouts))))
             (is (= library-before (library-digests (:root started)))))
           (testing "the retained draft can be saved under a new identity"
             (workspace/switch! driver "assembly")
@@ -77,7 +78,7 @@
             (s/click! driver ".assembly__save button:text-is('Save ship')")
             (is (s/wait-until #(= 1 (count (:loadouts (store/snapshot! (:loadouts deps)))))))
             (is (not= id (get-in @state [:draft :loadout-id])))
-            (is (nil? (get-in (store/snapshot! (store/open! file)) [:loadouts id]))))))
+            (is (nil? (get-in (persisted/records! (:loadouts deps) :loadouts) [:loadouts id]))))))
       (finally (s/quit! driver) (fixture/stop! started)))))
 
 (deftest browser-transfers-confirm-before-discarding-unsaved-work
@@ -86,7 +87,7 @@
     (try
       (swap! state assoc :draft lf/draft)
       (let [saved (:loadout (ops/save! deps 1 "Cruiser")) id (:loadout/id saved)
-            file (:file (:loadouts deps)) bytes (slurp (str file))]
+            bytes (store/snapshot! (:loadouts deps))]
         (ops/transfer! deps id :edit)
         (s/go! driver (s/base-url (:system started)))
         (workspace/switch! driver "assembly")
@@ -116,7 +117,7 @@
               (is (= lf/assignments (get-in @state [:draft :assignments])))
               (is (= (if (= label "Edit") id nil) (get-in @state [:draft :loadout-id])))
               (is (= (if (= label "Edit") "Cruiser" "Cruiser - Copy") (get-in @state [:draft :name])))
-              (is (= bytes (slurp (str file))))
+              (is (= bytes (store/snapshot! (:loadouts deps))))
               (workspace/switch! driver "ships")
               (workspace/await-ship! driver))))
         (testing "an unchanged saved assembly transfers immediately"
@@ -132,7 +133,7 @@
     (try
       (swap! state assoc :draft lf/draft)
       (let [saved (:loadout (ops/save! deps 1 "Cruiser")) id (:loadout/id saved)
-            file (:file (:loadouts deps)) bytes (slurp (str file))]
+            bytes (store/snapshot! (:loadouts deps))]
         (ops/transfer! deps id :edit)
         (s/go! driver (s/base-url (:system started)))
         (workspace/switch! driver "assembly")
@@ -160,41 +161,6 @@
             (s/click! driver ".assembly-discard button:text-is('Cancel')")
             (is (s/wait-until #(zero? (s/count-els driver ".assembly-discard"))))
             (is (= draft (:draft @state)))))
-        (is (= bytes (slurp (str file))))
-        (is (= saved (get-in (store/snapshot! (store/open! file)) [:loadouts id]))))
-      (finally (s/quit! driver) (fixture/stop! started)))))
-
-(deftest failed-deletion-reports-error-and-keeps-preview-and-draft
-  (let [started (fixture/start! true) deps (lf/deps started) driver (s/make-driver)
-        state (get-in deps [:assembly :state]) file (:file (:loadouts deps))
-        dir (fs/parent file) backup (fs/path (:temp started) "data-backup")]
-    (try
-      (.onDialog ^Page (:page driver) (reify Consumer (accept [_ dialog] (.accept ^Dialog dialog))))
-      (swap! state assoc :draft lf/draft)
-      (let [saved (:loadout (ops/save! deps 1 "Cruiser")) id (:loadout/id saved)]
-        (ops/transfer! deps id :edit)
-        (s/go! driver (s/base-url (:system started)))
-        (workspace/switch! driver "ships")
-        (s/click! driver (card id))
-        (workspace/await-ship! driver)
-        (let [draft (:draft @state) preview @(get-in deps [:preview :state])
-              bytes (slurp (fs/file file)) slots (get-in (s/stats driver) [:assembly :slots])]
-          ;; Real filesystem failure, isolated to this fixture; works without permission mocks.
-          (fs/move dir backup)
-          (spit (fs/file dir) "not a directory")
-          (action! driver id "Delete")
-          (s/wait-visible! driver ".ship-inspector [role=alert]")
-          (is (str/includes? (s/text driver ".ship-inspector [role=alert]") "Check the folder permissions and retry"))
-          (is (= 1 (s/count-els driver ".ship-card")))
-          (is (= "Cruiser" (s/text driver ".ship-inspector h2")))
-          (is (= draft (:draft @state)))
-          (is (= preview @(get-in deps [:preview :state])))
-          (is (= slots (get-in (s/stats driver) [:assembly :slots])))
-          (is (= saved (get-in (store/snapshot! (:loadouts deps)) [:loadouts id])))
-          (is (= bytes (slurp (fs/file backup "loadouts.edn"))))
-          (fs/delete dir)
-          (fs/move backup dir)
-          (action! driver id "Delete")
-          (is (s/wait-until #(zero? (s/count-els driver ".ship-card"))))
-          (is (empty? (:loadouts (store/snapshot! (store/open! file)))))))
+        (is (= bytes (store/snapshot! (:loadouts deps))))
+        (is (= saved (get-in (persisted/records! (:loadouts deps) :loadouts) [:loadouts id]))))
       (finally (s/quit! driver) (fixture/stop! started)))))

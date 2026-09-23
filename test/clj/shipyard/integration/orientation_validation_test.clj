@@ -1,5 +1,6 @@
 (ns shipyard.integration.orientation-validation-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [shipyard.persistence-fixture :as persisted]
+            [clojure.test :refer [deftest is]]
             [ring.mock.request :as mock]
             [shipyard.assembly-fixture :as fixture]
             [shipyard.bulk-orientation.save-state :as saves]
@@ -26,5 +27,5 @@
       (let [q [1.0e308 0.0 0.0 1.0e308]
             result ((:handler started) (mock/request :post "/orient/save" {"orientations" (pr-str {a q})}))]
         (is (= 200 (:status result)))
-        (is (saves/same-pose? q (:part/orientation (sidecar/read-sidecar! root a)))))
+        (is (saves/same-pose? q (:part/orientation (persisted/authored! c a)))))
       (finally (fixture/stop! started)))))

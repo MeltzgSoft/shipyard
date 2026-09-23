@@ -1,329 +1,157 @@
 (ns shipyard.catalog.db
-  "In-memory catalog over datascript (TECHNICAL.md §1.2, §4).
-
-  **Datascript ingests at startup; it never owns data.** It is in-memory and
-  non-durable, so it can only be a derived index. The durable layer is per-part
-  `shipyard.edn` sidecars plus the user data files.
-
-  Writes are write-through, file first: if a transact throws, the data is
-  already on disk and the next restart picks it up. The reverse order can lose
-  a write."
-  (:require [clojure.tools.logging :as log]
-            [clojure.edn :as edn]
+  "Catalog projections and transactional authoring over the shared metadata store."
+  (:require [datalevin.core :as d]
+            [integrant.core :as ig]
+            [shipyard.store.db :as store]
+            [shipyard.store.transforms :as t]
             [shipyard.regions.model :as regions]
             [shipyard.regions.migration :as migration]
             [shipyard.regions.registry :as registry]
-            [shipyard.catalog.layers :as layers]
-            [datascript.core :as d]
-            [integrant.core :as ig]
-            [shipyard.catalog.sidecar :as sidecar]
             [shipyard.library.index :as index]
             [shipyard.part.orientation :as orientation]))
 
-(def schema
-  {:layer-registry/id {:db/unique :db.unique/identity}
-   :layer-registry/data {}
-   :part/id          {:db/unique :db.unique/identity}
-   :part/bundle      {:db/index true}
-   :part/class       {:db/index true}
-   :part/role-hint   {:db/index true}     ; browsing only - never compatibility (§5.2)
-   :part/role-source {}
-   :part/weapons?    {:db/index true}     ; directory facts, not guesses
-   :part/turrets?    {:db/index true}
-   ;; Indexed because the mount wizard's first question is "what still needs
-   ;; turret pits authored" - a shortlist of 180, superseded per part by a real
-   ;; socket with :mount/accepts #{:turret} (SPEC §5.4).
-   :part/accepts-turrets? {:db/index true}
-   :part/name        {}
-   :part/variants    {:db/cardinality :db.cardinality/many}
-   :part/source      {}
-   :part/renderable  {:db/index true}
-   :part/mesh-key    {}
-   :part/tris        {}
-   :part/orientation {}
-   :part/paint-regions {}
-   :part/mounts      {:db/cardinality :db.cardinality/many
-                      :db/valueType   :db.type/ref
-                      :db/isComponent true}
+(def geometry-keys #{:part/positions :part/normals :part/indices :part/vertices :part/geometry})
 
-   :mount/id         {}
-   :mount/kind       {:db/index true}
-   :mount/accepts    {:db/cardinality :db.cardinality/many}
-   :mount/capacity   {}
-   :mount/split      {}
-   :mount/pos        {} :mount/axis {} :mount/roll {}
-   :mount/magnet     {}
-   :mount/origin     {}
-   :mount/mirror-id  {}
-   :mount/mirror-plane {}
-   :mount/mirror-offset {}
+(defn from-parts
+  "Immutable domain catalog, also useful for pure fixtures."
+  [parts]
+  {:parts (into {} (map (juxt :part/id identity)) parts)
+   :registry (registry/discover registry/empty-registry (keep :part/paint-regions parts))})
 
-   :loadout/id       {:db/unique :db.unique/identity}
-   :loadout/hull     {:db/valueType :db.type/ref}
-   :loadout/slots    {:db/cardinality :db.cardinality/many
-                      :db/valueType   :db.type/ref
-                      :db/isComponent true}
-   :slot/mount-id    {} :slot/part {:db/valueType :db.type/ref}
+(defn snapshot! [{:keys [store state]}]
+  (store/read! store #(store/catalog-value % (:library @state))))
 
-   :fleet/id         {:db/unique :db.unique/identity}
-   :fleet/loadouts   {:db/cardinality :db.cardinality/many :db/valueType :db.type/ref}
-   :scheme/id        {:db/unique :db.unique/identity}})
+(defn region-registry [database] (or (:registry database) registry/empty-registry))
+(defn region-layers [database] (registry/ids (region-registry database)))
+(defn part-regions [part] (:part/paint-regions part))
 
-(def geometry-keys
-  "Attributes that must never exist. The catalog holds metadata only; a vertex
-  buffer in here would balloon the heap and make the DB non-derivable."
-  #{:part/positions :part/normals :part/indices :part/vertices :part/geometry})
+(defn part [database id]
+  (let [value (get-in database [:parts id])]
+    (when-not (false? (:part/present? value)) value)))
 
-(defn- apply-sidecar
-  "Manual sidecar facts beat scan inference; scan facts remain only hints."
-  [part sidecar]
-  (if-let [role (:part/role sidecar)]
-    (assoc part :part/role-hint role :part/role-source :manual)
-    part))
-
-(defn part->tx
-  "Part record plus its sidecar data -> a transaction map."
-  [part sidecar]
-  (let [part-orientation (orientation/normalize-quaternion (:part/orientation sidecar))]
-    (cond-> (into {} (remove (comp nil? val)) (select-keys part
-                                                           [:part/id :part/bundle :part/class :part/name
-                                                            :part/role-hint :part/role-source :part/source
-                                                            :part/renderable :part/mesh-key :part/tris
-                                                            :part/weapons? :part/turrets?
-                                                            :part/accepts-turrets?]))
-      (regions/valid? (:part/paint-regions sidecar)) (assoc :part/paint-regions (pr-str (migration/regions (:part/paint-regions sidecar))))
-      (seq (:part/variants part)) (assoc :part/variants (vec (:part/variants part)))
-      (seq (:mounts sidecar))     (assoc :part/mounts (vec (:mounts sidecar)))
-      part-orientation            (assoc :part/orientation part-orientation))))
-
-(defn ingest!
-  "Build a fresh DB from scanned parts, reading each part's sidecar.
-
-  A malformed sidecar is logged and skipped rather than aborting the whole
-  library - one bad file must not make every other part invisible."
-  [parts root]
-  (let [conn (d/create-conn schema)
-        tx   (reduce (fn [acc part]
-                       (let [sc (try
-                                  (sidecar/read-sidecar! root (:part/id part))
-                                  (catch Exception e
-                                    (log/warn (ex-message e))
-                                    nil))]
-                         (conj acc (part->tx (apply-sidecar part sc) sc))))
-                     [] parts)]
-    (let [shared (registry/discover (layers/read! root)
-                                    (keep #(some-> (:part/paint-regions %) (edn/read-string)) tx))]
-      (d/transact! conn (conj tx {:layer-registry/id "shared" :layer-registry/data (pr-str shared)})))
-    conn))
-
-;; --- queries ----------------------------------------------------------------
-
-(defn conn!
-  "The live connection. `snapshot` is what a handler wants; this is for the
-  writers, and for tests asserting on transactions."
-  [{:keys [state]}]
-  (:conn @state))
-
-(defn snapshot!
-  "The current value of the catalog. A query takes a db value, not a connection,
-  so a handler that reads several facets sees one consistent index.
-
-  One deref, not two: a relocation replaces the whole state map, so reading it
-  once is what stops a handler pairing one library's connection with another's
-  root."
-  [{:keys [state]}]
-  (d/db (:conn @state)))
-
-(defn bundles [db]
-  (sort (d/q '[:find [?b ...] :where [_ :part/bundle ?b]] db)))
-
-(defn classes
-  "Hull classes, across the library or within one bundle."
-  ([db] (sort (d/q '[:find [?c ...] :where [_ :part/class ?c]] db)))
-  ([db bundle]
-   (sort (d/q '[:find [?c ...] :in $ ?b
-                :where [?e :part/bundle ?b] [?e :part/class ?c]] db bundle))))
-
-(defn roles
-  "Role hints present in the library. Derived rather than listed: the inference
-  rules in §5.2 grow, and a hard-coded menu would quietly stop matching them."
-  [db]
-  (sort-by name (d/q '[:find [?r ...] :where [_ :part/role-hint ?r]] db)))
-
-(defn browse
-  "Filter the library. Every criterion is optional; `q` matches the part name
-  case-insensitively, and `accepts-turrets?` narrows to the parts the mount
-  wizard still has turret pits to author on."
-  [db {:keys [bundle class role q accepts-turrets?]}]
-  (->> (d/q '[:find [(pull ?e [*]) ...] :where [?e :part/id]] db)
+(defn browse [database {:keys [bundle class role q accepts-turrets?]}]
+  (->> (vals (:parts database))
+       (remove #(false? (:part/present? %)))
        (filter #(or (nil? bundle) (= bundle (:part/bundle %))))
-       (filter #(or (nil? class)  (= class (:part/class %))))
-       (filter #(or (nil? role)   (= role (:part/role-hint %))))
-       (filter #(or (nil? accepts-turrets?)
-                    (= (boolean accepts-turrets?) (boolean (:part/accepts-turrets? %)))))
-       (filter #(or (nil? q)
-                    (re-find (re-pattern (str "(?i)" (java.util.regex.Pattern/quote q)))
-                             (str (:part/name %)))))
+       (filter #(or (nil? class) (= class (:part/class %))))
+       (filter #(or (nil? role) (= role (:part/role-hint %))))
+       (filter #(or (nil? accepts-turrets?) (= (boolean accepts-turrets?) (boolean (:part/accepts-turrets? %)))))
+       (filter #(or (nil? q) (re-find (re-pattern (str "(?i)" (java.util.regex.Pattern/quote q))) (str (:part/name %)))))
        (sort-by :part/id)))
 
-(defn part [db id]
-  (d/pull db '[*] [:part/id id]))
+(defn bundles [database] (sort (set (keep :part/bundle (browse database {})))))
+(defn classes
+  ([database] (classes database nil))
+  ([database bundle] (sort (set (keep :part/class (browse database {:bundle bundle}))))))
+(defn roles [database] (sort-by name (set (keep :part/role-hint (browse database {})))))
 
-;; --- write-through ----------------------------------------------------------
+(defn reingest! [{:keys [store state]} parts root]
+  (let [lock (:lock store)]
+    (locking lock
+      (let [library (store/write! store
+                                  (fn [conn]
+                                    (let [transaction (assoc store :conn conn)
+                                          library (store/scan! transaction (or parts []) root)]
+                                      (store/import-records! transaction library)
+                                      library)))]
+        (reset! state {:library library :root root})))))
 
-(defn- retract-current-mounts [db part-id]
-  (mapv (fn [eid] [:db.fn/retractEntity eid])
-        (d/q '[:find [?m ...]
-               :in $ ?id
-               :where [?p :part/id ?id]
-               [?p :part/mounts ?m]]
-             db part-id)))
+(defn open! [store parts root]
+  (let [catalog {:store store :state (atom {})}]
+    (reingest! catalog parts root)
+    catalog))
 
-(defn authoring-sidecar
-  "Apply mount authoring values to existing durable sidecar data."
-  [data {:keys [mounts part-role]}]
-  (cond-> (assoc data :mounts (vec mounts))
-    part-role (assoc :part/role part-role)))
+(defmethod ig/init-key :shipyard.catalog/db [_ {:keys [library store]}]
+  (open! store (index/parts! library) (index/root! library)))
 
-(defn authoring-tx
-  "Build the catalog transaction for authored mounts and an optional role."
-  [db part-id {:keys [mounts part-role]}]
-  (let [part-tx (cond-> {:part/id part-id :part/mounts (vec mounts)}
-                  part-role (assoc :part/role-hint part-role
-                                   :part/role-source :manual))]
-    (vec (concat (retract-current-mounts db part-id) [part-tx]))))
+(defn- mutate! [{:keys [store state]} part-id f]
+  (store/write! store
+                (fn [conn]
+                  (let [library (:library @state)
+                        ref [:part/key [library part-id]]
+                        entity (d/pull @conn store/part-pattern ref)]
+                    (when-not (:part/present? entity)
+                      (throw (ex-info "Part is unavailable" {:part-id part-id})))
+                    (let [result (f conn library ref entity)]
+                      (d/transact! conn [{:db/id ref :part/revision (inc (or (:part/revision entity) 0))}])
+                      result)))))
 
-(defn save-mounts!
-  "Persist a part's mounts. **File first**, then index: if the transact throws,
-  the data is already safe on disk and the next restart picks it up."
-  [{:keys [state]} part-id mounts]
-  (locking state
-    (let [{:keys [conn root]} @state]
-      (sidecar/update-sidecar! root part-id assoc :mounts mounts)
-      (d/transact! conn (authoring-tx @conn part-id {:mounts mounts}))
-      mounts)))
+(defn save-authoring! [catalog part-id {:keys [mounts part-role] :as value}]
+  (mutate! catalog part-id
+           (fn [conn _ ref entity]
+             (let [ids (into {} (map (juxt :mount/id :mount/uid)) (:part/mounts entity))
+                   mounts (mapv (fn [order mount] (assoc (dissoc mount :db/id) :mount/order order :mount/uid (or (ids (:mount/id mount)) (random-uuid)))) (range) mounts)]
+               (d/transact! conn (store/retract-children @conn ref [:part/mounts]))
+               (d/transact! conn [(cond-> {:db/id ref :part/mounts mounts}
+                                    part-role (assoc :part/role-override part-role))])
+               value))))
 
-(defn save-authoring!
-  "Persist mounts and an optional manual role override, file first."
-  [{:keys [state]} part-id {:keys [mounts part-role]}]
-  (locking state
-    (let [{:keys [conn root]} @state
-          authoring {:mounts mounts :part-role part-role}]
-      (sidecar/update-sidecar! root part-id authoring-sidecar authoring)
-      (d/transact! conn (authoring-tx @conn part-id authoring))
-      {:mounts mounts :part-role part-role})))
+(defn save-mounts! [catalog part-id mounts]
+  (save-authoring! catalog part-id {:mounts mounts})
+  mounts)
 
-(defn save-part-role!
-  "Persist a part-level role override without changing mount authoring data."
-  [{:keys [state]} part-id part-role]
-  (locking state
-    (let [{:keys [conn root]} @state]
-      (sidecar/update-sidecar! root part-id assoc :part/role part-role)
-      (d/transact! conn [{:part/id part-id
-                          :part/role-hint part-role
-                          :part/role-source :manual}])
-      part-role)))
+(defn save-part-role! [catalog part-id role]
+  (mutate! catalog part-id
+           (fn [conn _ ref _]
+             (d/transact! conn (if role [{:db/id ref :part/role-override role}]
+                                   [[:db.fn/retractAttribute ref :part/role-override]]))
+             role)))
 
-(defn save-part-orientation!
-  "Persist a part's source-to-canonical orientation without changing mounts."
-  [{:keys [state]} part-id part-orientation]
-  (locking state
-    (let [{:keys [conn root]} @state
-          part-orientation (or (orientation/normalize-quaternion part-orientation)
-                               (throw (ex-info "Invalid part orientation" {:type :invalid-orientation :part-id part-id})))]
-      (sidecar/update-sidecar! root part-id assoc :part/orientation part-orientation)
-      (d/transact! conn [{:part/id part-id :part/orientation part-orientation}])
-      part-orientation)))
-
-;; --- component --------------------------------------------------------------
-
-(defn reingest!
-  "Rebuild the catalog from `parts` scanned under `root`, in place.
-
-  Datascript is a derived index and never the durable layer, so there is
-  nothing to migrate here - the cheapest correct answer to \"the library
-  moved\" is a new connection. In place rather than a new component because the
-  route table closes over its dependencies; see
-  `shipyard.library.index/set-root!`."
-  [{:keys [state]} parts root]
-  (locking state
-    (let [parts (or parts [])]
-      (log/infof "catalog: %d parts re-ingested" (count parts))
-      (reset! state {:conn (ingest! parts root) :root root}))))
-
-(defmethod ig/init-key :shipyard.catalog/db [_ {:keys [library]}]
-  (let [parts (index/parts! library)
-        root  (index/root! library)]
-    (log/infof "catalog: %d parts ingested" (count parts))
-    {:state (atom {:conn (ingest! (or parts []) root) :root root})}))
-
-(defn part-regions [part]
-  (some-> (:part/paint-regions part) (edn/read-string) (migration/regions)))
-
-(defn region-registry [database]
-  (or (some-> (d/pull database [:layer-registry/data] [:layer-registry/id "shared"])
-              :layer-registry/data (edn/read-string))
-      ;; Small pure fixtures may construct catalog records directly.
-      (registry/discover registry/empty-registry
-                         (map #(migration/regions (edn/read-string %))
-                              (d/q '[:find [?regions ...] :where [_ :part/paint-regions ?regions]] database)))))
-
-(defn region-layers [database] (registry/ids (region-registry database)))
-
-(defn- registry-tx [value]
-  {:layer-registry/id "shared" :layer-registry/data (pr-str value)})
+(defn save-part-orientation! [catalog part-id value]
+  (let [value (or (orientation/normalize-quaternion value)
+                  (throw (ex-info "Invalid part orientation" {:type :invalid-orientation :part-id part-id})))]
+    (mutate! catalog part-id (fn [conn _ ref _] (d/transact! conn [{:db/id ref :part/orientation value}]) value))))
 
 (defn save-regions!
   ([catalog part-id value] (save-regions! catalog part-id value nil))
-  ([{:keys [state]} part-id value expected-revision]
+  ([catalog part-id value expected-revision]
    (when-not (regions/valid? value) (throw (ex-info "Invalid part regions" {})))
-   (locking state
-     (let [{:keys [conn root]} @state
-           normalized (migration/regions value)
-           shared (registry/discover (region-registry @conn) [normalized])
-           normalized (assoc normalized :layer-definitions
-                             (select-keys (:layers shared) (:layers normalized)))]
-       (when (and expected-revision
-                  (or (not= expected-revision (or (:revision (part-regions (part @conn part-id))) 0))
-                      (some (:deleted shared) (:layers normalized))))
-         (throw (ex-info "Regions or shared layers changed before saving. Reopen the part." {})))
-       (let [file (sidecar/sidecar-file root part-id)]
-         (when (and (.exists file) (not (.isFile file)))
-           (throw (ex-info "Part sidecar must be a regular file" {}))))
-       (sidecar/update-sidecar! root part-id assoc :part/paint-regions normalized)
-       (d/transact! conn [{:part/id part-id :part/paint-regions (pr-str normalized)} (registry-tx shared)])
-       normalized))))
+   (mutate! catalog part-id
+            (fn [conn library _ entity]
+              (let [shared (store/registry-value @conn library)
+                    current (t/region (:part/regions entity) shared)
+                    normalized (migration/regions value)
+                    known (set (registry/ids shared))]
+                (when (or (and expected-revision (not= expected-revision (or (:revision current) 0)))
+                          (not-every? known (vals (:faces normalized))))
+                  (throw (ex-info "Regions or shared layers changed before saving. Reopen the part." {})))
+                (store/save-region! conn library part-id normalized)
+                (assoc normalized :layer-definitions (select-keys (:layers shared) (:layers normalized))))))))
 
 (defn edit-region-layer!
-  "Edit the shared entity regardless of selected-part usage. Deletion rolls back
-  sidecars if either a part write or the final registry write fails."
-  [{:keys [state]} part-id revision layer-revision action layer name]
-  (locking state
-    (let [{:keys [conn root]} @state
-          database @conn
-          selected (part-regions (part database part-id))
-          result (registry/change (region-registry database) layer-revision action layer name
-                                  (when (= action "add") (str "layer:" (random-uuid))))]
-      (cond
-        (not= revision (or (:revision selected) 0))
-        {:error "Regions changed. Reopen this part before retrying."}
-        (:error result) result
-        :else
-        (let [changes (if (= action "delete")
-                        (into (sorted-map)
-                              (keep (fn [[id encoded]]
-                                      (let [before (migration/regions (edn/read-string encoded))
-                                            after (regions/without-layer before layer)]
-                                        (when (not= before after) [id {:before before :after after}]))))
-                              (d/q '[:find ?id ?regions :where [?p :part/id ?id] [?p :part/paint-regions ?regions]] database))
-                        {})]
-          (sidecar/update-sidecars!
-           root (mapv (fn [[id {:keys [before after]}]]
-                        [id (fn [data]
-                              (when-not (= before (migration/regions (:part/paint-regions data)))
-                                (throw (ex-info "Part regions changed on disk. Rescan before deleting this layer." {:part-id id})))
-                              (assoc data :part/paint-regions after))]) changes)
-           #(layers/write! root (:registry result)))
-          (d/transact! conn (conj (mapv (fn [[id {:keys [after]}]] {:part/id id :part/paint-regions (pr-str after)}) changes)
-                                  (registry-tx (:registry result))))
-          {:regions (part-regions (part @conn part-id)) :selected (:selected result)})))))
+  [{:keys [store state]} part-id revision layer-revision action layer name]
+  (store/write! store
+                (fn [conn]
+                  (let [library (:library @state)
+                        shared (store/registry-value @conn library)
+                        entity (d/pull @conn store/part-pattern [:part/key [library part-id]])
+                        selected (t/region (:part/regions entity) shared)
+                        result (registry/change shared layer-revision action layer name
+                                                (when (= action "add") (str "layer:" (random-uuid))))]
+                    (cond
+                      (not= revision (or (:revision selected) 0)) {:error "Regions changed. Reopen this part before retrying."}
+                      (:error result) result
+                      :else
+                      (do
+                        (when (= action "delete")
+                          (let [layer-ref [:layer/key [library layer]]
+                                layer-eid (:db/id (d/pull @conn [:db/id] layer-ref))
+                                affected (d/q '[:find ?part ?region ?mask :in $ ?layer
+                                                :where [?mask :mask/layer ?layer]
+                                                [?region :region/masks ?mask]
+                                                [?part :part/regions ?region]] @conn layer-eid)]
+                            (doseq [[part region mask] affected]
+                              (let [r (:region/revision (d/pull @conn [:region/revision] region))
+                                    p (:part/revision (d/pull @conn [:part/revision] part))]
+                                (d/transact! conn [[:db/retractEntity mask]
+                                                   {:db/id region :region/revision (inc (or r 0))}
+                                                   {:db/id part :part/revision (inc (or p 0))}])))
+                            (d/transact! conn [[:db.fn/retractAttribute layer-ref :layer/active-name]
+                                               {:db/id layer-ref :layer/deleted? true}])))
+                        (d/transact! conn (cond-> [{:library/id library :library/revision (:revision (:registry result))}]
+                                            (not= action "delete")
+                                            (conj (t/layer-tx library (:selected result)
+                                                              (get-in result [:registry :layers (:selected result)])))))
+                        {:selected (:selected result)
+                         :regions (t/region (:part/regions (d/pull @conn store/part-pattern [:part/key [library part-id]]))
+                                            (:registry result))}))))))

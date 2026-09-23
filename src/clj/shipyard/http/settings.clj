@@ -58,27 +58,22 @@
     (path-problem p (inspect-path! p))))
 
 (defn relocate!
-  "Point the application at `path`: persist it, rescan, re-ingest, and drop the
-  job table. Returns nil on success, or the reason it refused.
-
-  **Persisted first**, for the reason §4 already gives for the catalog: if the
-  write throws, nothing has changed and the message is accurate. Applying first
-  would leave a running application whose library silently reverts at the next
-  restart, which is the failure nobody thinks to check for."
+  "Validate and import a candidate library before persisting and activating it.
+  Failed import or settings writes leave the running library unchanged."
   [{:keys [library catalog jobs config-dir]} path]
   (or (problem! path)
       (let [root (normalise (System/getProperty "user.home") path)]
-        (if-let [failure (try
-                           (if config-dir
-                             (system/save-library-root! config-dir root)
-                             (system/save-library-root! root))
-                           nil
-                           (catch Exception e
-                             (log/warn e "could not save the library root")
-                             (str "Could not save the setting: " (ex-message e))))]
-          failure
-          (let [{:keys [parts root]} (index/set-root! library root)]
-            (db/reingest! catalog parts root)
+        (try
+          (let [candidate (index/prepare-root! library root)
+                staged (db/open! (:store catalog) (:parts candidate) root)]
+            (if config-dir
+              (system/save-library-root! config-dir root)
+              (system/save-library-root! root))
+            (reset! (:state library) candidate)
+            (reset! (:state catalog) @(:state staged))
             (jobs/clear! jobs)
             (log/info "library relocated to" root)
-            nil)))))
+            nil)
+          (catch Exception e
+            (log/warn e "could not activate the library")
+            (str "Could not save the setting: " (ex-message e)))))))

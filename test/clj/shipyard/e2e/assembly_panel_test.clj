@@ -1,5 +1,6 @@
 (ns shipyard.e2e.assembly-panel-test
-  (:require [clojure.string :as str]
+  (:require [shipyard.persistence-fixture :as persisted]
+            [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [shipyard.assembly-fixture :as fixture]
             [shipyard.e2e.support :as s]
@@ -85,7 +86,7 @@
         (is (s/wait-until #(str/includes? (s/text driver "#library") "Ship saved.")))
         (is (= 1 (count (get-in (s/stats driver) [:assembly :slots]))))
         (let [store (:shipyard.loadout/db (:system started))
-              records (:loadouts (loadouts/snapshot! (loadouts/open! (:file store))))
+              records (:loadouts (persisted/records! store :loadouts))
               saved (first (vals records))]
           (is (= 1 (count records)))
           (is (= "Incomplete" (:loadout/name saved)))
@@ -112,13 +113,13 @@
         (s/click! driver ".assembly__save button")
         (is (s/wait-until #(str/includes? (s/text driver "#library") "Ship saved.")))
         (let [store (:shipyard.loadout/db (:system started))
-              saved (first (vals (:loadouts (loadouts/snapshot! (loadouts/open! (:file store))))))]
+              saved (first (vals (:loadouts (persisted/records! store :loadouts))))]
           (is (= "Browser Cruiser" (:loadout/name saved)))
           (is (= lf/scanned-assignments (:loadout/slots saved)))
           (s/fill-and-blur! driver ".assembly__save input[name=name]" "Renamed Cruiser")
           (s/click! driver ".assembly__save button")
           (is (s/wait-until #(= "Renamed Cruiser" (get-in (loadouts/snapshot! store) [:loadouts (:loadout/id saved) :loadout/name]))))
-          (is (= 1 (count (:loadouts (loadouts/snapshot! (loadouts/open! (:file store)))))))))
+          (is (= 1 (count (:loadouts (persisted/records! store :loadouts)))))))
       (testing "alternative prow replacement removes its old object"
         (let [old (first (filter #(= (:prow fixture/ids) (:part-id %))
                                  (get-in (s/stats driver) [:assembly :slots])))]

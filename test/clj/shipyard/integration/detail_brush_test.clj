@@ -1,5 +1,6 @@
 (ns shipyard.integration.detail-brush-test
-  (:require [babashka.fs :as fs]
+  (:require [shipyard.persistence-fixture :as persisted]
+            [babashka.fs :as fs]
             [clojure.string :as str]
             [clojure.test :refer [deftest is]]
             [ring.mock.request :as mock]
@@ -81,9 +82,9 @@
                     :entries (pr-str [(entry [[:weapon 0]] (first face-keys)) (entry [[:weapon 1]] (first face-keys))])}
             masks #(get-in (schemes/snapshot! store) [:schemes id :scheme/details])
             history #(get-in (workspace/workspace! (:shipyard.workspace/db sys) :paint) [:brush-history :undo])
-            before (slurp (str (:file store)))]
+            before (schemes/snapshot! store)]
         (is (= 204 (:status (post params))))
-        (is (= before (slurp (str (:file store)))))
+        (is (= before (schemes/snapshot! store)))
         (is (empty? (history)))
         (is (str/includes? (:body (post (assoc params :sequence "2" :history "undo"))) "Finish the current stroke"))
         (let [final (assoc params :part "1" :final "true" :sequence "3"
@@ -134,13 +135,13 @@
         (is (vector? (get-in (schemes/snapshot! store) [:schemes scheme :scheme/details [] :faces a])))
         (is (str/includes? (:body (post "/paint/stroke" (assoc params :sequence "2" :faces (pr-str [b]) :metalness "1" :roughness "0.15"))) "Details saved"))
         (is (= {:base [1.0 0.8 0.0] :metalness 1.0 :roughness 0.15}
-               (get-in (schemes/snapshot! (schemes/open! (:file store))) [:schemes scheme :scheme/details [] :faces b])))
-        (is (vector? (get-in (schemes/snapshot! (schemes/open! (:file store))) [:schemes scheme :scheme/details [] :faces a])))
-        (let [before (schemes/snapshot! store) bytes (slurp (fs/file (:file store)))]
+               (get-in (persisted/records! store :schemes) [:schemes scheme :scheme/details [] :faces b])))
+        (is (vector? (get-in (persisted/records! store :schemes) [:schemes scheme :scheme/details [] :faces a])))
+        (let [before (schemes/snapshot! store) bytes (schemes/snapshot! store)]
           (doseq [[n invalid] (map-indexed vector [{:metalness "NaN" :roughness "0.5"}
                                                    {:metalness "1" :roughness "Infinity"}
                                                    {:metalness "1"} {:metalness "-0.1" :roughness "0.5"}])]
             (is (str/includes? (:body (post "/paint/stroke" (merge params invalid {:sequence (str (+ n 3))}))) "Invalid detail material")))
           (is (= before (schemes/snapshot! store)))
-          (is (= bytes (slurp (fs/file (:file store)))))))
+          (is (= bytes (schemes/snapshot! store)))))
       (finally (fixture/stop! started)))))

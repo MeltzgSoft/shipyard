@@ -89,7 +89,7 @@
                                    (or history (commit-history (:brush-history state) (or (:scheme/details record) {}) details))))
     saved))
 
-(defn stroke! [{:keys [paint workspace schemes catalog] {scheme-state :state} :schemes :as deps}
+(defn stroke! [{:keys [paint workspace schemes catalog] {scheme-lock :lock} :schemes :as deps}
                {:strs [id target sequence mesh-key operation history stroke-id part final] :as params}]
   (try
     (let [draft (:draft @(:state paint)) state (workspace/workspace! workspace :paint)
@@ -98,7 +98,7 @@
       (if (or (nil? n) (<= n (or (:brush-sequence state) 0))
               (not= id (str (:scheme draft))) (not= target (:target state)))
         {:error :stale-stroke}
-        (locking scheme-state
+        (locking scheme-lock
           (workspace/update-workspace! workspace :paint assoc :brush-sequence n)
           (if-let [record (get-in (schemes/snapshot! schemes) [:schemes (:scheme draft)])]
             (let [targets (transforms/targets (catalog/snapshot! catalog) draft record)

@@ -1,5 +1,6 @@
 (ns shipyard.e2e.metallic-details-test
-  (:require [babashka.fs :as fs]
+  (:require [shipyard.persistence-fixture :as persisted]
+            [babashka.fs :as fs]
             [clojure.test :refer [deftest is]]
             [shipyard.assembly-fixture :as fixture]
             [shipyard.e2e.detail-brush-test :as brush]
@@ -86,7 +87,7 @@
         (is (s/wait-until #(near? 0 (:metalness (finish driver a)))))
         (s/click! driver "#paint-brush button[value=undo]")
         (is (s/wait-until #(near? 1 (:metalness (finish driver a)))))
-        (is (= (durable) (get-in (schemes/snapshot! (schemes/open! (:file store))) [:schemes id :scheme/details [] :faces])))
+        (is (= (durable) (get-in (persisted/records! store :schemes) [:schemes id :scheme/details [] :faces])))
         (workspace/switch! driver "assembly") (workspace/switch! driver "paint")
         (workspace/await-ship! driver)
         (is (s/wait-until #(near? 1 (:metalness (finish driver a)))))

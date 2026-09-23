@@ -1,5 +1,6 @@
 (ns shipyard.e2e.part-regions-test
-  (:require [babashka.fs :as fs]
+  (:require [shipyard.persistence-fixture :as persisted]
+            [babashka.fs :as fs]
             [clojure.test :refer [deftest is]]
             [clojure.java.io :as io]
             [shipyard.fixtures :as fixtures]
@@ -152,7 +153,11 @@
         (s/fill-and-blur! driver ".region-layer__rename:not([hidden]) input[name=name]" "Accent")
         (s/click! driver ".region-layer__rename:not([hidden]) button:text-is('Save name')")
         (is (s/wait-until #(= layer (rf/id cat "Accent"))))
-        (is (= before (mapv regions [id other])))
+        (is (= (mapv #(dissoc % :layer-definitions) before)
+               (mapv #(dissoc (regions %) :layer-definitions) [id other])))
+        (doseq [part-id [id other]]
+          (is (= {:name "Accent" :preview-name "Trim"}
+                 (get-in (regions part-id) [:layer-definitions layer]))))
         (is (nil? (catalog/part-regions (catalog/part (catalog/snapshot! cat) (:hull fixture/ids))))))
       (let [before (mapv regions [id other]) confirmation (atom nil)]
         (.onceDialog ^Page (:page driver) (reify Consumer (accept [_ d] (reset! confirmation (.message ^Dialog d)) (.dismiss ^Dialog d))))
@@ -164,7 +169,7 @@
         (is (s/wait-until #(nil? (rf/id cat "Accent"))))
         (doseq [part-id [id other]]
           (is (empty? (:faces (regions part-id))))
-          (is (= (regions part-id) (:part/paint-regions (sidecar/read-sidecar! (str (:root started)) part-id))))))
+          (is (= (regions part-id) (:part/paint-regions (persisted/authored! (:shipyard.catalog/db (:system started)) part-id))))))
       (s/go! driver (s/base-url sys))
       (s/wait-visible! driver ".detail--ready")
       (s/click! driver "[data-detail-tab=regions]")
@@ -195,22 +200,16 @@
       (apply brush/stroke! driver (region-point driver 0))
       (is (s/wait-until #(seq (:faces (regions)))))
       (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
-      (let [before (regions) file (sidecar/sidecar-file (str (:root started)) id)
-            backup (fs/path (:temp started) "regions-backup.edn")]
-        (fs/move file backup) (fs/create-dirs file)
-        (apply brush/stroke! driver (region-point driver 1))
-        (s/wait-visible! driver "#part-regions [role=alert]")
-        (is (= before (regions)))
-        (is (s/wait-until #(false? (s/js driver "() => document.querySelector('[data-workspace-mode=assembly]').disabled"))))
-        (fs/delete-tree file) (fs/move backup file)
-
-        (editor/input! driver "#region-stroke input[name=radius]" "2" "input"))
+      (let [before (regions)]
+        ;; Legacy files are no longer authoritative after import.
+        (spit (sidecar/sidecar-file (str (:root started)) id) "{invalid legacy data")
+        (is (= before (:part/paint-regions (persisted/authored! cat id)))))
       (let [secondary (first (keys (:faces (regions))))]
         (s/click! driver "button[aria-label='Paint Trim']")
         (apply brush/stroke! driver (region-point driver 1))
         (is (s/wait-until #(some #{(rf/id cat "Trim")} (vals (:faces (regions))))))
         (let [trim (first (keep (fn [[key layer]] (when (= (rf/id cat "Trim") layer) key)) (:faces (regions))))]
-          (is (= (regions) (:part/paint-regions (sidecar/read-sidecar! (str (:root started)) id))))
+          (is (= (regions) (:part/paint-regions (persisted/authored! (:shipyard.catalog/db (:system started)) id))))
           (is (nil? (catalog/part-regions (catalog/part (catalog/snapshot! cat) (:weapon-alt fixture/ids)))))
           (let [camera (:camera (s/stats driver))]
             (apply brush/right-stroke! driver (region-point driver 1))
@@ -362,7 +361,7 @@
         (is (s/wait-until #(= 2 (:revision (regions)))))
         (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status")))))
       (let [saved (regions)]
-        (is (= saved (:part/paint-regions (sidecar/read-sidecar! (str (:root started)) id))))
+        (is (= saved (:part/paint-regions (persisted/authored! (:shipyard.catalog/db (:system started)) id))))
         (workspace/switch! driver "assembly")
         (workspace/switch! driver "browse")
         (s/wait-visible! driver ".detail--ready")
@@ -391,13 +390,13 @@
       (is (= "View: Mount faces" (s/text driver "#mount-colors-toggle")))
       (s/click! driver "[data-detail-tab=regions]")
       (s/click! driver "button[data-region-layer='Secondary']")
-      (let [sidecar-before (sidecar/read-sidecar! (str (:root started)) id)]
+      (let [sidecar-before (persisted/authored! (:shipyard.catalog/db (:system started)) id)]
         (s/click! driver "button:text-is('Apply layer to entire part')")
         (is (s/wait-until #(= 12 (count (:faces (regions))))))
         (is (= "View: Layer types" (s/text driver "#mount-colors-toggle")))
         (is (= #{"Secondary"} (set (vals (:faces (regions))))))
         (is (s/wait-until #(= {:faces 12 :vertex-colors true} (:region-preview (s/stats driver)))))
-        (is (= sidecar-before (dissoc (sidecar/read-sidecar! (str (:root started)) id) :part/paint-regions))))
+        (is (= sidecar-before (dissoc (persisted/authored! (:shipyard.catalog/db (:system started)) id) :part/paint-regions))))
       (let [saved (regions)]
         (s/click! driver "#mount-colors-toggle")
         (is (s/wait-until #(true? (:mount-colors-enabled (s/stats driver)))))
@@ -432,7 +431,7 @@
       (s/wait-visible! driver ".detail--ready")
       (s/await-part driver id)
       (is (= "View: Layer types" (s/text driver "#mount-colors-toggle")))
-      (is (= (regions) (:part/paint-regions (sidecar/read-sidecar! (str (:root started)) id))))
+      (is (= (regions) (:part/paint-regions (persisted/authored! (:shipyard.catalog/db (:system started)) id))))
       (s/click! driver "[data-detail-tab=regions]")
       (s/screenshot-el! driver "body" (java.io.File. "/tmp/shipyard-layer-fill.png"))
       (finally (s/quit! driver) (fixture/stop! started)))))

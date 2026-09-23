@@ -24,4 +24,5 @@ Check `~/.agents/skills/` as well as the session's advertised skills. Read appli
 `server-rendered-htmx`, `browser-e2e-testing` and `project-documentation`.
 If a skill is unavailable, say so and follow the repository's documented contracts.
 Project-specific architecture takes precedence over generic examples: Shipyard's
-durable store is EDN; a skill's SQL examples do not authorize replacing it.
+durable store is Datalevin; a skill's SQL examples do not authorize replacing it
+or bypassing the shared entity and transaction contracts.
