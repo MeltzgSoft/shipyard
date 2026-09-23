@@ -532,7 +532,7 @@
        [:button.stage__authoring-toggle
         {:type "button" :data-authoring-toggle "true" :aria-pressed "false" :disabled true}
         "Pick mount face"]
-       (workspace-views/colors-toggle colors)
+       (workspace-views/colors-toggle colors (:workspace context))
        [:div.stage__axis-legend {:aria-label "Canonical axes"}
         [:span.stage__axis.stage__axis--x [:i {:aria-hidden "true"}] "+X / Pitch"]
         [:span.stage__axis.stage__axis--y [:i {:aria-hidden "true"}] "+Y / Yaw"]

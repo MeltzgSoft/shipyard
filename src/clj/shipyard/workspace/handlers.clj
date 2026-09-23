@@ -66,7 +66,7 @@
         (assoc :status 200)
         (append (workspace-views/context context colors))
         (append (workspace-views/navigation workspace))
-        (append (workspace-views/colors-toggle colors))
+        (append (workspace-views/colors-toggle colors workspace))
         (update :headers assoc "HX-Trigger"
                 (json/write-str
                  (into (array-map "shipyard:workspace" (pr-str {:mode workspace :activation activation :colors colors}))
@@ -77,7 +77,7 @@
   (let [{mode :workspace :as context} (workspace/active-context! workspace)]
     (workspace/update-workspace! workspace mode update :colors not)
     (let [colors (:colors (workspace/workspace! workspace mode))]
-      (htmx/fragment (list (update (workspace-views/colors-toggle colors) 1 dissoc :hx-swap-oob)
+      (htmx/fragment (list (update (workspace-views/colors-toggle colors mode) 1 dissoc :hx-swap-oob)
                            (workspace-views/context context colors))
                      {:events {:display {:colors colors}}}))))
 

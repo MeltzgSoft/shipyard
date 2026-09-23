@@ -2378,8 +2378,15 @@ Requests include part identity, mesh key and expected revision;
 the workspace admission boundary rejects stale activations, and domain admission
 checks selection, fresh source, face membership and revision before persistence.
 
-`POST /parts/regions` accepts assign/add/rename/delete/reset. Part Browser owns the
-selection. Region masks travel in the server-rendered panel body, never in HTTP
+`POST /parts/regions` accepts assign/fill/add/rename/delete/reset. Fill enumerates
+all stable face keys from the validated source mesh on the server and uses the same
+revision-guarded assignment and atomic persistence path; no face list travels from
+the browser. The Browse display toggle uses its existing workspace-owned colors
+flag: true renders mounts, false renders layer types. Region brushing requires
+layer display. Full-part assignment is available in either display mode; a
+successful fill switches Browse to layer display using the same workspace context
+and display event as the toggle. Failed fills preserve the display setting.
+Part Browser owns the selection. Region masks travel in the server-rendered panel body, never in HTTP
 headers. The mesh-load event fires after the swap and snapshots the matching panel
 mask before fetching geometry; later panel swaps update the matching Browse mesh.
 Workspace admission still rejects stale responses before either events or swaps.

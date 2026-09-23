@@ -32,8 +32,13 @@
           [:label "Assign layer" [:select {:name "layer"}
                                   (for [layer available] [:option {:value layer :selected (= selected layer)} layer])]]
           [:label "Region brush radius (screen pixels)" [:input {:type "range" :name "radius" :min 2 :max 100 :value 20}]]
-          [:p "Left-drag assigns the selected layer. Right-drag restores Primary. Whole visible triangles only; Alt+drag to orbit."]
+          [:p "In Layer types view, left-drag assigns the selected layer. Right-drag restores Primary. Whole visible triangles only; Alt+drag to orbit."]
           [:p#region-status {:role "status"} "Release to save regions."]]
+         [:form#region-fill (assoc attrs :hx-include "#region-stroke select[name=layer]")
+          (fields part-id mesh-key regions)
+          [:input {:type "hidden" :name "action" :value "fill"}]
+          [:button {:type "submit"} "Apply layer to entire part"]
+          [:p.muted "Replaces every face assignment, including hidden faces, with the selected layer. Primary clears assignments."]]
          [:div.region-legend
           (for [[layer {:keys [base]}] (model/preview-materials preview)]
             [:p [:span.paint-swatch {:style (str "background:rgb(" (str/join "," (map #(* 255 %) base)) ")")}] layer])]

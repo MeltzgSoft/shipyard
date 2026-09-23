@@ -13,7 +13,7 @@
         field (fn [^js form name] (.namedItem (.-elements form) name))
         status! (fn [message] (when-let [el (.getElementById js/document "region-status")] (set! (.-textContent el) message)))
         available? (fn [] (when-let [form (form!)]
-                            (and @active (seq (.getClientRects form)) (.-checked (field form "enabled"))
+                            (and @active (not @mount-colors-enabled) (seq (.getClientRects form)) (.-checked (field form "enabled"))
                                  (not (.-disabled (field form "radius"))) (not @stroke))))]
     (letfn [(paint! [object regions]
               (let [palette (model/preview-materials regions)]

@@ -39,9 +39,14 @@
                                                       :class (when (= mode active) "masthead__mode--active")
                                                       :aria-current (if (= mode active) "page" "false")}) label])])
 
-(defn colors-toggle [colors]
-  [:button#mount-colors-toggle.stage__mount-colors-toggle
-   {:type "button" :data-mount-colors-toggle "true" :aria-pressed (str colors)
-    :hx-post "/workspace/display/colors" :hx-target "this" :hx-swap "outerHTML"
-    :hx-swap-oob "outerHTML"}
-   "Mount colors"])
+(defn colors-toggle
+  ([colors] (colors-toggle colors nil))
+  ([colors workspace]
+   [:button#mount-colors-toggle.stage__mount-colors-toggle
+    (cond-> {:type "button" :data-mount-colors-toggle "true" :aria-pressed (str colors)
+             :hx-post "/workspace/display/colors" :hx-target "this" :hx-swap "outerHTML"
+             :hx-swap-oob "outerHTML"}
+      (= workspace :browse) (assoc :title (if colors "Switch to layer types" "Switch to mount faces")))
+    (if (= workspace :browse)
+      (if colors "View: Mount faces" "View: Layer types")
+      "Mount colors")]))

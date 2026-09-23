@@ -1022,3 +1022,10 @@ body:has(.paint-editor) .masthead__stats { display: none; }
 #part-regions button, #part-regions summary { cursor: pointer; }
 #part-regions button:hover { border-color: var(--accent); }
 #part-regions button:disabled { opacity: .45; cursor: default; }
+
+body:has(#workspace-context[data-workspace="browse"]) .stage__mount-colors-toggle {
+  display: block;
+  top: 52px;
+  left: 14px;
+  right: auto;
+}
