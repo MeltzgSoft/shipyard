@@ -1,0 +1,39 @@
+(ns shipyard.catalog.sidecar
+  "Test-only writers for pre-migration EDN fixtures."
+  (:require [clojure.edn :as edn]
+            [clojure.java.io :as io]
+            [shipyard.system :as system])
+  (:import [java.io File]))
+
+(def filename "shipyard.edn")
+(def ^:const format-version 1)
+
+(defn sidecar-file ^File [root part-id] (io/file root part-id filename))
+
+(defn read-sidecar!
+  "Read a part's sidecar, or nil when it has none.
+
+  A malformed sidecar throws. It must never degrade to \"this part has no
+  mounts\": that looks identical to an unauthored part, so a syntax error would
+  silently discard work and the user would find out by re-doing it."
+  [root part-id]
+  (let [f (sidecar-file root part-id)]
+    (when (.isFile f)
+      (try
+        (edn/read-string (slurp f))
+        (catch Exception e
+          (throw (ex-info (str "malformed sidecar: " (.getPath f)
+                               " - fix or delete it; refusing to treat it as having no mounts")
+                          {:file (.getPath f) :part-id part-id} e)))))))
+
+(defn write-sidecar!
+  "Write legacy fixture input. Production only reads these files during import."
+  [root part-id data]
+  (let [f (sidecar-file root part-id)]
+    (system/write-atomically! f (pr-str (assoc data :shipyard/version format-version)))
+    f))
+
+(defn update-sidecar!
+  "Read, apply `f`, write back. For legacy fixture setup only."
+  [root part-id f & args]
+  (write-sidecar! root part-id (apply f (or (read-sidecar! root part-id) {}) args)))

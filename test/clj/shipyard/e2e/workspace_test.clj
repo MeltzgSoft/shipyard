@@ -1,5 +1,6 @@
 (ns shipyard.e2e.workspace-test
-  (:require [babashka.fs :as fs]
+  (:require [shipyard.persistence-fixture :as persisted]
+            [babashka.fs :as fs]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [shipyard.assembly-fixture :as fixture]
@@ -27,8 +28,7 @@
     (try
       (swap! state assoc :draft (assoc lf/draft :scheme (random-uuid)))
       (let [source (:loadout (operations/save! deps 1 "Original"))
-            id (:loadout/id source) file (:file (:loadouts deps))
-            card (str ".ship-card[data-loadout-id='" id "']")]
+            id (:loadout/id source)             card (str ".ship-card[data-loadout-id='" id "']")]
         (operations/transfer! deps id :edit)
         (swap! state assoc :draft (assoc lf/draft :assignments (assoc lf/assignments [[:prow 0]] (:prow-alt fixture/ids))))
         (s/go! driver (s/base-url (:system started)))
@@ -79,20 +79,20 @@
         (is (true? (:mount-colors-enabled (s/stats driver))))
         (is (> (count (set (:materials (s/stats driver)))) 1))
         (is (= "true" (s/js driver "() => document.querySelector('[data-mount-colors-toggle]').getAttribute('aria-pressed')")))
-        (let [bytes (slurp (str file))]
+        (let [bytes (store/snapshot! (:loadouts deps))]
           (s/click! driver (str card " button:text-is('Duplicate')"))
           (s/click! driver ".assembly-discard button:text-is('Discard and duplicate')")
           (s/wait-visible! driver ".assembly__save")
           (await-ship! driver)
           (is (= "Assemble" (s/text driver ".masthead__mode--active")))
           (is (= "Original - Copy" (s/js driver "() => document.querySelector('.assembly__save input[name=name]').value")))
-          (is (= bytes (slurp (str file))))
+          (is (= bytes (store/snapshot! (:loadouts deps))))
           (is (nil? (get-in @state [:draft :loadout-id])))
           (is (= (:loadout/scheme source) (get-in @state [:draft :scheme])))
           (s/fill-and-blur! driver ".assembly__save input[name=name]" "Independent copy")
           (s/click! driver ".assembly__save button")
           (is (s/wait-until #(= 2 (count (:loadouts (store/snapshot! (:loadouts deps)))))))
-          (let [records (:loadouts (store/snapshot! (store/open! file)))]
+          (let [records (:loadouts (persisted/records! (:loadouts deps) :loadouts))]
             (is (= source (get records id)))
             (is (not= id (get-in @state [:draft :loadout-id])))))
         (testing "Edit preserves identity and updates only the selected ship"
@@ -105,7 +105,7 @@
           (s/fill-and-blur! driver ".assembly__save input[name=name]" "Edited source")
           (s/click! driver ".assembly__save button")
           (is (s/wait-until #(= "Edited source" (get-in (store/snapshot! (:loadouts deps)) [:loadouts id :loadout/name]))))
-          (is (= 2 (count (:loadouts (store/snapshot! (store/open! file))))))))
+          (is (= 2 (count (:loadouts (persisted/records! (:loadouts deps) :loadouts)))))))
       (finally (s/quit! driver) (fixture/stop! started)))))
 
 (deftest orient-dirty-session-round-trip

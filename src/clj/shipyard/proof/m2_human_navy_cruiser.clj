@@ -3,14 +3,14 @@
 
   The Cruiser STL files are proprietary user data, so this namespace records the
   exact authoring recipe without committing the models. Run it against a
-  temporary Shipyard-style copy of the Cruiser folders; it writes `shipyard.edn`
-  sidecars beside the parts and then proves a fresh catalog can reload them."
+  temporary Shipyard-style copy of the Cruiser folders; it writes an isolated
+  Datalevin database and proves a fresh connection can reload the authoring."
   (:require [babashka.fs :as fs]
             [clojure.pprint :as pp]
             [integrant.core :as ig]
             [shipyard.assembly.model :as assembly]
             [shipyard.catalog.db :as db]
-            [shipyard.catalog.sidecar :as sidecar]
+            [shipyard.store.db :as store]
             [shipyard.geom :as geom]
             [shipyard.library.index :as index]
             [shipyard.library.scan :as scan]
@@ -125,8 +125,8 @@
 (defn- library! [root cache-home]
   (ig/init-key :shipyard.library/index {:root root :cache-home cache-home}))
 
-(defn- catalog! [library]
-  (ig/init-key :shipyard.catalog/db {:library library}))
+(defn- catalog! [library store]
+  (ig/init-key :shipyard.catalog/db {:library library :store store}))
 
 (defn- save-authoring-with-times! [catalog]
   (into {}
@@ -233,7 +233,7 @@
               :ms-per-mount (round3 (/ elapsed-ms (max 1 mount-count)))
               :reloaded-role (:part/role-hint reloaded-part)
               :reloaded-mount-count (count (:part/mounts reloaded-part))
-              :sidecar-version (:shipyard/version (sidecar/read-sidecar! root part-id))}]))
+              :persisted? (uuid? (:part/uid reloaded-part))}]))
 
 (defn- totals []
   (let [mounts (mapcat :mounts (vals authoring))]
@@ -247,7 +247,7 @@
      :turret-sockets (count (filter #(contains? (:mount/accepts %) :turret) mounts))}))
 
 (defn run-proof!
-  "Write proof sidecars into `root` and return the report map."
+  "Write an isolated proof database under cache-home and return the report map."
   [{:keys [root cache-home notes]
     :or {cache-home (fs/file (System/getProperty "java.io.tmpdir") "shipyard-m2-human-navy-cache")}}]
   (when-not root
@@ -256,26 +256,30 @@
         scanned (verify-parts! (vec (scan/scan! (fs/file root))))
         scanned-by-id (into {} (map (juxt :part/id identity)) scanned)
         lib (library! root cache-home)
-        cat (catalog! lib)
-        timings (save-authoring-with-times! cat)
-        reloaded (catalog! (library! root cache-home))
+        database (store/open! (fs/path cache-home "proof-database"))
+        timings (try (save-authoring-with-times! (catalog! lib database))
+                     (finally (store/close! database)))
+        database (store/open! (fs/path cache-home "proof-database"))
+        reloaded (catalog! (library! root cache-home) database)
         m3-assembly (m3-assembly-audit root scanned-by-id reloaded)]
-    {:root root
-     :ran-at (str (java.time.Instant/now))
-     :parts (into (sorted-map)
-                  (map (fn [[k id]] [k (merge {:part/id id} (bbox! root scanned-by-id id))]))
-                  parts)
-     :facet-tolerances facet/default-options
-     :authored (into (sorted-map)
-                     (map (partial part-summary! root scanned-by-id reloaded timings))
-                     authoring)
-     :totals (totals)
-     :m3-assembly m3-assembly
-     :ambiguous-roll-cases []
-     :notes (vec (concat ["Run against a temporary Shipyard-style copy of Human Navy/HN Cruiser.zip."
-                          "Sidecars were written through shipyard.catalog.db/save-authoring! and reloaded through a fresh catalog."
-                          "The :m3-assembly audit checks legacy authoring before attempting a live Cruiser assembly."]
-                         notes))}))
+    (try
+      {:root root
+       :ran-at (str (java.time.Instant/now))
+       :parts (into (sorted-map)
+                    (map (fn [[k id]] [k (merge {:part/id id} (bbox! root scanned-by-id id))]))
+                    parts)
+       :facet-tolerances facet/default-options
+       :authored (into (sorted-map)
+                       (map (partial part-summary! root scanned-by-id reloaded timings))
+                       authoring)
+       :totals (totals)
+       :m3-assembly m3-assembly
+       :ambiguous-roll-cases []
+       :notes (vec (concat ["Run against a temporary Shipyard-style copy of Human Navy/HN Cruiser.zip."
+                            "Metadata was written through shipyard.catalog.db/save-authoring! and reloaded through a fresh database connection."
+                            "The :m3-assembly audit checks legacy authoring before attempting a live Cruiser assembly."]
+                           notes))}
+      (finally (store/close! database)))))
 
 (defn- parse-args [args]
   (reduce (fn [m [k v]]

@@ -1,2 +1,3 @@
-{:lint-as {shipyard.mesh.lod/with-native clojure.core/let}
+{:lint-as {datalevin.core/with-transaction clojure.core/let
+           shipyard.mesh.lod/with-native clojure.core/let}
  :linters {:unresolved-var {:exclude [digest/sha-256]}}}

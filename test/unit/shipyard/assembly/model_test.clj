@@ -1,8 +1,7 @@
 (ns shipyard.assembly.model-test
   (:require [clojure.test :refer [deftest is testing]]
-            [datascript.core :as d]
-            [shipyard.assembly.model :as model]
-            [shipyard.catalog.db :as db]))
+            [shipyard.store.catalog-fixture :as d]
+            [shipyard.assembly.model :as model]))
 
 (def frame {:mount/pos [0 0 0] :mount/axis [0 0 1] :mount/roll [1 0 0]})
 (def socket (merge frame {:mount/id :weapon :mount/kind :socket
@@ -18,7 +17,7 @@
              :part/mounts [plug (merge frame {:mount/id :turret :mount/kind :socket
                                               :mount/accepts [:turret]})]})
 (def turret (assoc weapon :part/id "turret" :part/role-hint :turret :part/mounts [plug]))
-(def database (d/db-with (d/empty-db db/schema) [hull weapon turret]))
+(def database (d/db-with (d/empty-db) [hull weapon turret]))
 
 (deftest root-error-test
   (testing "root must be a renderable hull"
@@ -58,7 +57,7 @@
         prow-socket (assoc socket :mount/id :hull :mount/accepts [:hull])
         plug-hull (assoc hull :part/mounts [prow-plug])
         prow (assoc weapon :part/id "prow" :part/role-hint :prow :part/mounts [prow-socket])
-        reverse-database (d/db-with (d/empty-db db/schema) [plug-hull prow])]
+        reverse-database (d/db-with (d/empty-db) [plug-hull prow])]
     (testing "a hull plug offers its own selector to a prow socket that accepts hull"
       (is (nil? (model/candidate-error plug-hull :hull prow-plug ["hull"] prow)))
       (is (= ["prow"]
@@ -84,7 +83,7 @@
   (testing "all accepted roles and an empty set"
     (doseq [role [:prow :bridge :antenna :weapon :turret]]
       (let [part (assoc weapon :part/id (name role) :part/role-hint role)
-            database (d/db-with (d/empty-db db/schema) [part])]
+            database (d/db-with (d/empty-db) [part])]
         (is (= [(name role)] (mapv :part/id (model/candidates database hull :hull
                                                               (assoc socket :mount/accepts [role]) []))))))
     (is (empty? (model/candidates database hull :hull (assoc socket :mount/accepts []) [])))))
@@ -117,13 +116,13 @@
             [[database "missing" {} :missing-part]
              [database "hull" {[[:gone 0]] "weapon"} :stale-slot]
              [database "hull" {[[:weapon 0]] "missing"} :missing-part]
-             [(d/db-with (d/empty-db db/schema)
+             [(d/db-with (d/empty-db)
                          [(assoc hull :part/mounts [(dissoc socket :mount/split)])])
               "hull" {} :incomplete-split]]]
       (is (some #(= code (:code %)) (:errors (model/slots database hull-id assignments))))))
   (testing "cyclic assignments stop traversal"
     (let [cyclic (assoc weapon :part/mounts [plug (assoc socket :mount/capacity 1)])
-          database (d/db-with (d/empty-db db/schema) [hull cyclic])
+          database (d/db-with (d/empty-db) [hull cyclic])
           result (model/slots database "hull" {[[:weapon 0]] "weapon"
                                                [[:weapon 0] [:weapon 0]] "weapon"})]
       (is (= [:cycle] (mapv :code (:errors result)))))))

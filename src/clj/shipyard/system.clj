@@ -163,10 +163,22 @@
          (update-in [:shipyard.library/index :root]
                     #(expand-home (System/getProperty "user.home") %))))))
 
+(defn persistence-config
+  "Retain explicitly configured legacy record locations as read-only import inputs."
+  [cfg]
+  (reduce (fn [cfg [component kind filename]]
+            (if-let [base (get-in cfg [component :data-home])]
+              (assoc-in cfg [:shipyard.store/db :legacy-files kind]
+                        (str (fs/file base "shipyard" filename)))
+              cfg))
+          cfg [[:shipyard.loadout/db :loadouts "loadouts.edn"]
+               [:shipyard.scheme/db :schemes "schemes.edn"]]))
+
 (defn start!
   ([] (start! (load-config!)))
   ([cfg]
-   (ig/load-namespaces cfg)
-   (ig/init cfg)))
+   (let [cfg (persistence-config cfg)]
+     (ig/load-namespaces cfg)
+     (ig/init cfg))))
 
 (defn stop! [system] (when system (ig/halt! system)))

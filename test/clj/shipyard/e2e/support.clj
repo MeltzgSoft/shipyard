@@ -121,12 +121,13 @@
                             :facet-angle-deg 1.0
                             :facet-plane-epsilon-mm 0.01
                             :cap-bytes 64000000 :cache-home (str cache-home)}
-   :shipyard.catalog/db    {:library (ig/ref :shipyard.library/index)}
+   :shipyard.store/db {:data-home (str cache-home)}
+   :shipyard.catalog/db    {:library (ig/ref :shipyard.library/index) :store (ig/ref :shipyard.store/db)}
    :shipyard.http/jobs     {:library (ig/ref :shipyard.library/index)
                             :cache   (ig/ref :shipyard.mesh/cache)}
    :shipyard.assembly/db {}
-   :shipyard.loadout/db {:data-home (str cache-home)}
-   :shipyard.scheme/db {:data-home (str cache-home)}
+   :shipyard.loadout/db {:store (ig/ref :shipyard.store/db) :catalog (ig/ref :shipyard.catalog/db)}
+   :shipyard.scheme/db {:store (ig/ref :shipyard.store/db) :catalog (ig/ref :shipyard.catalog/db)}
    :shipyard.paint/db {}
    :shipyard.loadout.operations/preview {}
    :shipyard.workspace/db {:assembly (ig/ref :shipyard.assembly/db)

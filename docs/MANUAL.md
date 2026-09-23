@@ -161,7 +161,7 @@ When capacity is above one, choose **Vertical — equal widths** or
 **Horizontal — equal heights**. The selected face is divided in its own frame:
 vertical cuts run along +Y, and horizontal cuts along +X. White lines show boundaries
 and arrows show each section's center. Capacity and Twist changes update the preview.
-Saved splits travel with the mount's sidecar, including when mirrored. Older
+Saved splits are stored with the mount in the database, including when mirrored. Older
 capacity-only mounts need their face picked again to define the split.
 
 Part-level metadata is edited outside the mount picker. Use **Part metadata** in the
@@ -176,7 +176,7 @@ corner shows an asymmetric wireframe box and canonical axes: red is `+X`/pitch, 
 `+Y`/yaw, and blue is `+Z`/roll. Colored circular arrows show positive rotation using the
 right-hand rule. The widget
 follows the model's view as you orbit the camera while staying fixed in its corner.
-Changes preview immediately; **Save orientation** stores the pose in the part's sidecar,
+Changes preview immediately; **Save orientation** stores the pose in the database,
 while **Reset** returns it to the source STL orientation. Configure this before picking
 mounts so each new mount derives its up direction consistently.
 An empty angle field means `0` degrees; invalid or non-finite values are rejected.
@@ -256,8 +256,9 @@ mounts also work when previewing, editing or duplicating a saved ship. Unavailab
 incompatible assigned parts still need correcting before saving; the draft stays
 available to correct and retry. Unsaved changes are lost when Shipyard stops.
 
-Saved ships live in `$XDG_DATA_HOME/shipyard/loadouts.edn` (normally
-`~/.local/share/shipyard/loadouts.edn`). Back up this file to keep your configurations.
+Parts, shared layers, saved ships and schemes live in `$XDG_DATA_HOME/shipyard/database`
+(normally `~/.local/share/shipyard/database`). Stop Shipyard and back up the whole
+directory to keep your authored work. Keep a separate backup of the source STLs.
 The viewport honors paint schemes referenced by saved ships, including ordered material
 groups and individual instance overrides. See Paint below for creating and editing
 schemes. Thumbnails are not yet available.
@@ -335,9 +336,11 @@ the current library and returns its painted regions to Primary. It is available
 even on parts that have not used that type. Primary and Secondary are permanent.
 Deleted layers disappear from the list and Paint defaults. Recreating the same
 name makes a new layer. **Reset regions** clears this part’s assignments after
-confirmation while retaining shared layers. Existing files upgrade automatically to
-stable identities; keep the library’s `shipyard-layers.edn` file when moving or
-backing up the library.
+confirmation while retaining shared layers. Existing EDN files import automatically once, retaining the originals unchanged.
+Later edits live in the database. Back up the database along with your library;
+copying a part folder alone does not carry current authoring. Rescanning the same
+folder preserves authoring. Automatic relinking after moving part folders is not
+currently supported.
 
 Regions follow the library part into every instance and scheme. They survive restart
 and rescan. If the source mesh changes, old regions are retained but do not apply;

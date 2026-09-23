@@ -1,7 +1,6 @@
 (ns shipyard.integration.m2-human-navy-cruiser-test
   (:require [clojure.java.io :as io]
             [clojure.test :refer [deftest is testing]]
-            [shipyard.catalog.sidecar :as sidecar]
             [shipyard.fixtures :as f]
             [shipyard.proof.m2-human-navy-cruiser :as proof]))
 
@@ -36,13 +35,12 @@
               :turret-sockets 3}
              (:totals report)))
       (is (empty? (:ambiguous-roll-cases report))))
-    (testing "all authored sidecars are durable and reloadable"
-      (doseq [[part-id {:keys [mount-count reloaded-mount-count reloaded-role part-role]}]
+    (testing "all authored metadata is durable and reloadable"
+      (doseq [[_ {:keys [mount-count reloaded-mount-count reloaded-role part-role persisted?]}]
               (:authored report)]
         (is (= mount-count reloaded-mount-count))
         (is (= part-role reloaded-role))
-        (is (= sidecar/format-version
-               (:shipyard/version (sidecar/read-sidecar! root part-id))))))
+        (is persisted?)))
     (testing "Cruiser weapon faces record two-module capacity"
       (let [hull (get-in report [:authored (:hull proof/parts)])
             by-id (into {} (map (juxt :mount/id identity)) (:mounts hull))]

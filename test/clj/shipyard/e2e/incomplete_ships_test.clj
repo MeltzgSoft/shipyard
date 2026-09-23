@@ -1,5 +1,6 @@
 (ns shipyard.e2e.incomplete-ships-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [shipyard.persistence-fixture :as persisted]
+            [clojure.test :refer [deftest is testing]]
             [shipyard.assembly-fixture :as fixture]
             [shipyard.e2e.support :as s]
             [shipyard.e2e.workspace-test :as workspace]
@@ -13,7 +14,7 @@
 
 (deftest incomplete-ships-preview-edit-duplicate-and-count-empty-mounts
   (let [started (fixture/start! true) deps (lf/deps started) driver (s/make-driver)
-        state (get-in deps [:assembly :state]) store (:loadouts deps) file (:file store)
+        state (get-in deps [:assembly :state]) store (:loadouts deps)
         empty-path [[:weapon 0] [:turret 0]]
         assignments (dissoc lf/assignments empty-path)
         original {:loadout/id (random-uuid) :loadout/name "Almost finished"
@@ -33,17 +34,17 @@
       (is (= 12 (s/count-els driver "[data-ship-slot]")))
       (is (nil? (get-in @state [:draft :hull])))
       (testing "duplicate preserves the partial configuration and writes only on Save"
-        (let [bytes (slurp (str file))]
+        (let [bytes (store/snapshot! (:loadouts deps))]
           (s/click! driver (str (card id) " button:text-is('Duplicate')"))
           (s/wait-visible! driver ".assembly__save")
           (await-count! driver 12)
           (is (= "Almost finished - Copy" (s/js driver "() => document.querySelector('.assembly__save input[name=name]').value")))
           (is (= assignments (get-in @state [:draft :assignments])))
           (is (nil? (get-in @state [:draft :loadout-id])))
-          (is (= bytes (slurp (str file))))
+          (is (= bytes (store/snapshot! (:loadouts deps))))
           (s/click! driver ".assembly__save button")
           (is (s/wait-until #(= 3 (count (:loadouts (store/snapshot! store)))))))
-        (let [records (:loadouts (store/snapshot! (store/open! file))) copy-id (get-in @state [:draft :loadout-id])]
+        (let [records (:loadouts (persisted/records! store :loadouts)) copy-id (get-in @state [:draft :loadout-id])]
           (is (not= id copy-id))
           (is (= original (get records id)))
           (is (= assignments (:loadout/slots (get records copy-id))))))
@@ -81,5 +82,5 @@
         (await-count! driver 1)
         (is (= 1 (s/count-els driver "[data-ship-slot]")))
         (is (= "8 empty mounts" (s/text driver (str (card (:loadout/id hull-only)) " .ship-card__empty-mounts"))))
-        (is (= 3 (count (:loadouts (store/snapshot! (store/open! file)))))))
+        (is (= 3 (count (:loadouts (persisted/records! store :loadouts))))))
       (finally (s/quit! driver) (fixture/stop! started)))))

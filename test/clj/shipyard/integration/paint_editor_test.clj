@@ -1,5 +1,6 @@
 (ns shipyard.integration.paint-editor-test
-  (:require [clojure.string :as str]
+  (:require [shipyard.persistence-fixture :as persisted]
+            [clojure.string :as str]
             [clojure.test :refer [deftest is]]
             [ring.mock.request :as mock]
             [shipyard.assembly-fixture :as fixture]
@@ -21,7 +22,7 @@
             params {:id (str id) :target "[]" :sequence "1" :base "#ff0000" :metalness "0.2" :roughness "0.8"}
             response (post "/paint/material" params)]
         (is (str/includes? (:body response) "Material saved"))
-        (is (= [1.0 0.0 0.0] (get-in (schemes/snapshot! (schemes/open! (:file store)))
+        (is (= [1.0 0.0 0.0] (get-in (persisted/records! store :schemes)
                                      [:schemes id :scheme/instances [] :material :base])))
         (is (str/includes? (:body (post "/paint/material" (assoc params :base "#0000ff"))) "selection changed"))
         (is (str/includes? (:body (post "/paint/material" (assoc params :sequence "2" :metalness "NaN"))) "not saved"))
@@ -63,5 +64,5 @@
           (is (= [{:path [] :part-id (:hull fixture/ids)}] (:group/members (second (:scheme/groups (record))))))
           (post "/paint/group/delete" {:group gid})
           (is (= [0] (mapv :group/order (:scheme/groups (record)))))
-          (is (= (schemes/snapshot! store) (schemes/snapshot! (schemes/open! (:file store)))))))
+          (is (= (schemes/snapshot! store) (persisted/records! store :schemes)))))
       (finally (fixture/stop! started)))))

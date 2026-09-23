@@ -1,6 +1,6 @@
 (ns shipyard.e2e.paint-editor-test
-  (:require [babashka.fs :as fs]
-            [clojure.test :refer [deftest is]]
+  (:require [shipyard.persistence-fixture :as persisted]
+            [clojure.test :refer [deftest is testing]]
             [shipyard.assembly-fixture :as fixture]
             [shipyard.e2e.support :as s]
             [shipyard.e2e.workspace-test :as workspace]
@@ -35,14 +35,14 @@
       (s/click! driver "#paint-target button[data-paint-target='[[:weapon 0]]']")
       (is (s/wait-until #(= "[[:weapon 0]]" (s/js driver "() => document.querySelector('#paint-material')?.elements.target.value"))))
       (workspace/await-ship! driver)
-      (let [before (slurp (str (:file store))) id (get-in @(:state (:shipyard.paint/db sys)) [:draft :scheme])]
+      (let [before (schemes/snapshot! store) id (get-in @(:state (:shipyard.paint/db sys)) [:draft :scheme])]
         (input! driver "#paint-material input[name=base]" "#ff0000" "input")
         (is (s/wait-until #(= "ff0000" (:color (materials/slot driver [["weapon" 0]])))))
         (is (= "9aa4af" (:color (materials/slot driver [["weapon" 1]]))))
-        (is (= before (slurp (str (:file store)))))
+        (is (= before (schemes/snapshot! store)))
         (input! driver "#paint-material input[name=base]" "#ff0000" "change")
         (is (s/wait-until #(= "Material saved." (s/text driver "#paint-status"))))
-        (is (= [1.0 0.0 0.0] (get-in (schemes/snapshot! (schemes/open! (:file store)))
+        (is (= [1.0 0.0 0.0] (get-in (persisted/records! store :schemes)
                                      [:schemes id :scheme/instances [[:weapon 0]] :material :base])))
         (is (= lf/draft (dissoc (:draft @state) :name)))
         (let [held (atom nil) ^Page page (:page driver)]
@@ -62,19 +62,11 @@
           (is (= "ff0000" (:color (materials/slot driver [["weapon" 0]]))))
           (s/click! driver "#paint-material button.paint-primary")
           (is (s/wait-until #(= "Material saved." (s/text driver "#paint-status")))))
-        (let [before (schemes/snapshot! store) file (:file store)
-              backup (fs/path (:temp started) "saved-schemes.edn")]
-          (fs/move file backup)
-          (fs/create-dirs file)
+        (testing "A finish edit persists through a separate database connection"
           (input! driver "#paint-material input[name=metalness]" "0.33" "input")
           (input! driver "#paint-material input[name=metalness]" "0.33" "change")
-          (s/wait-visible! driver "#paint-status [role=alert]")
-          (is (= before (schemes/snapshot! store)))
-          (fs/delete-if-exists file)
-          (fs/move backup file)
-          (s/click! driver "#paint-material button.paint-primary")
           (is (s/wait-until #(= "Material saved." (s/text driver "#paint-status")))))
-        (is (= 0.33 (get-in (schemes/snapshot! (schemes/open! (:file store)))
+        (is (= 0.33 (get-in (persisted/records! store :schemes)
                             [:schemes id :scheme/instances [[:weapon 0]] :material :metalness])))
         (workspace/switch! driver "assembly")
         (workspace/await-ship! driver)
@@ -159,6 +151,6 @@
           (.onceDialog ^Page (:page driver) (reify Consumer (accept [_ dialog] (.accept ^com.microsoft.playwright.Dialog dialog))))
           (s/click! driver "button:text-is('Delete group')")
           (is (s/wait-until #(not-any? (fn [g] (= gid (:group/id g))) (:scheme/groups (record)))))
-          (is (= (schemes/snapshot! store) (schemes/snapshot! (schemes/open! (:file store)))))
+          (is (= (schemes/snapshot! store) (persisted/records! store :schemes)))
           (s/screenshot-el! driver "body" (java.io.File. "/tmp/shipyard-paint-material.png"))))
       (finally (s/quit! driver) (fixture/stop! started)))))

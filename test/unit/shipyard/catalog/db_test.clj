@@ -1,30 +1,14 @@
 (ns shipyard.catalog.db-test
-  (:require [clojure.test :refer [deftest is testing]]
-            [datascript.core :as d]
+  (:require [clojure.test :refer [deftest is]]
             [shipyard.catalog.db :as db]))
 
-(deftest authoring-sidecar-test
-  (testing "unrelated durable data survives"
-    (is (= {:kept true :mounts [{:mount/id :prow}] :part/role :hull}
-           (db/authoring-sidecar {:kept true}
-                                 {:mounts [{:mount/id :prow}] :part-role :hull}))))
-  (testing "an absent role does not erase an existing override"
-    (is (= {:part/role :hull :mounts []}
-           (db/authoring-sidecar {:part/role :hull}
-                                 {:mounts []})))))
-
-(deftest authoring-tx-test
-  (let [catalog (d/db-with (d/empty-db db/schema)
-                           [{:part/id "hull"
-                             :part/mounts [{:mount/id :old :mount/kind :socket}]}])
-        tx (db/authoring-tx catalog "hull"
-                            {:mounts [{:mount/id :new :mount/kind :socket}]
-                             :part-role :hull})]
-    (testing "existing component entities are retracted"
-      (is (= :db.fn/retractEntity (ffirst tx))))
-    (testing "the replacement carries normalized values"
-      (is (= {:part/id "hull"
-              :part/mounts [{:mount/id :new :mount/kind :socket}]
-              :part/role-hint :hull
-              :part/role-source :manual}
-             (last tx))))))
+(deftest immutable-catalog-projection
+  (let [before (db/from-parts [{:part/id "a" :part/name "Hull" :part/bundle "Navy" :part/class "Cruiser"}
+                               {:part/id "b" :part/name "Weapon" :part/present? false}])
+        after (assoc-in before [:parts "a" :part/name] "New")]
+    (is (= ["a"] (mapv :part/id (db/browse before {}))))
+    (is (= "Hull" (:part/name (db/part before "a"))))
+    (is (= "New" (:part/name (db/part after "a"))))
+    (is (nil? (db/part before "b")))
+    (is (= ["Navy"] (db/bundles before)))
+    (is (= ["Cruiser"] (db/classes before)))))

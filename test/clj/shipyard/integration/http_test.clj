@@ -2,11 +2,13 @@
   "The HTTP surface end to end, against a real library on disk and a real mesh
   pipeline - but no socket. The handler is a function of its dependencies, so
   everything §7 promises can be asserted by calling it (§10.2)."
-  (:require [clojure.data.json :as json]
+  (:require [shipyard.persistence-fixture :as persisted]
+            [shipyard.store.db :as metadata]
+            [clojure.data.json :as json]
             [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.string :as str]
-            [clojure.test :refer [deftest is testing]]
+            [clojure.test :refer [deftest is testing use-fixtures]]
             [babashka.fs :as fs]
             [integrant.core :as ig]
             [ring.mock.request :as mock]
@@ -44,6 +46,17 @@
     (write-stl! (io/file root supported-id) "supported.stl" (f/cube 1.0))
     root))
 
+(def ^:dynamic *opened-systems* nil)
+
+(use-fixtures :each
+  (fn [f]
+    (binding [*opened-systems* (atom [])]
+      (try (f)
+           (finally
+             (doseq [{:keys [jobs catalog]} @*opened-systems*]
+               (ig/halt-key! :shipyard.http/jobs jobs)
+               (metadata/close! (:store catalog))))))))
+
 (defn- system
   "The component map the router is handed, built the way integrant builds it.
 
@@ -62,11 +75,13 @@
                  :facet-angle-deg 1.0
                  :facet-plane-epsilon-mm 0.01
                  :cap-bytes 64000000 :inflight (atom {}) :files-lock (Object.)}
-        catalog (ig/init-key :shipyard.catalog/db {:library library})
-        jobs    (ig/init-key :shipyard.http/jobs {:library library :cache cache})]
-    {:library library :catalog catalog :cache cache :jobs jobs
+        catalog (ig/init-key :shipyard.catalog/db {:library library :store (metadata/open! (temp-dir "shipyard-db"))})
+        jobs    (ig/init-key :shipyard.http/jobs {:library library :cache cache})
+        system {:library library :catalog catalog :cache cache :jobs jobs
      ;; Never the developer's real config dir: relocating writes a file.
-     :config-dir (temp-dir "shipyard-cfg")}))
+                :config-dir (temp-dir "shipyard-cfg")}]
+    (swap! *opened-systems* conj system)
+    system))
 
 (defn- handler [sys] (routes/handler sys))
 
@@ -247,7 +262,7 @@
                :mount/roll [1.0 0.0 0.0]
                :mount/origin :picked}
         _ (sidecar/write-sidecar! root hull-id {:mounts [mount] :part/role :hull})
-        h (handler (system root))
+        sys (system root) h (handler sys)
         ready (await-ready h hull-id)
         load-mesh (get (triggers ready) "shipyard:load-mesh")]
     (is (= [(update mount :mount/accepts vec)] (:mounts load-mesh)))
@@ -377,7 +392,7 @@
     (is (str/includes? (:body saved) "port-1"))
     (is (str/includes? (:body saved) "x2"))
     (is (str/includes? (:body saved) "Interface colors"))
-    (let [sidecar (sidecar/read-sidecar! root hull-id)
+    (let [sidecar (persisted/authored! (:catalog sys) hull-id)
           mount (first (:mounts sidecar))]
       (is (nil? (:part/role sidecar)))
       (is (= :port-1 (:mount/id mount)))
@@ -402,14 +417,14 @@
         (is (= 200 (:status rejected)))
         (is (str/includes? (:body rejected) "Choose one role"))
         (is (= #{:weapon}
-               (:mount/accepts (first (:mounts (sidecar/read-sidecar! root hull-id))))))))
+               (:mount/accepts (first (:mounts (persisted/authored! (:catalog sys) hull-id))))))))
 
     (testing "facet indices must be bounded and refer to the current mesh"
       (is (= 400 (:status (mount-post h (assoc save-params :facet-indices "[999999999999999999999]")))))
       (is (= 422 (:status (mount-post h (assoc save-params :facet-indices "[2]"))))))
     (testing "replace updates the durable mount instead of accumulating"
       (let [replaced (mount-post h (assoc save-params :accepts "prow" :action "replace"))
-            mounts (:mounts (sidecar/read-sidecar! root hull-id))]
+            mounts (:mounts (persisted/authored! (:catalog sys) hull-id))]
         (is (= 200 (:status replaced)))
         (is (= 1 (count mounts)))
         (is (= #{:prow} (:mount/accepts (first mounts))))))
@@ -418,7 +433,7 @@
         (is (= 200 (:status deleted)))
         (is (= {:part-id hull-id :mesh-key mesh-key :mounts []}
                (get (triggers deleted) "shipyard:interfaces")))
-        (is (empty? (:mounts (sidecar/read-sidecar! root hull-id))))
+        (is (empty? (:mounts (persisted/authored! (:catalog sys) hull-id))))
         (is (not (str/includes? (:body deleted) "port-1")))))))
 
 (deftest hull-acceptance-profile-allows-turrets-or-antennae
@@ -439,7 +454,7 @@
     (is (str/includes? (:body preview-response) "Turret or antenna hardpoint"))
     (is (= 200 (:status saved)))
     (is (= #{:turret :antenna}
-           (:mount/accepts (first (:mounts (sidecar/read-sidecar! root hull-id))))))))
+           (:mount/accepts (first (:mounts (persisted/authored! (:catalog sys) hull-id))))))))
 
 (deftest part-detail-backfills-legacy-mount-facets-on-the-server
   (let [root (library-tree)
@@ -471,7 +486,7 @@
       (is (= [{:mesh-key mesh-key :indices [0 1]}]
              (mapv :mount/facet mounts)))
       (is (= {:mesh-key mesh-key :indices [0 1]}
-             (:mount/facet (first (:mounts (sidecar/read-sidecar! root hull-id)))))))))
+             (:mount/facet (first (:mounts (persisted/authored! (:catalog sys) hull-id)))))))))
 
 (deftest mount-wizard-mirrors-and-repeats
   (let [root (library-tree)
@@ -493,7 +508,7 @@
                              :repeat "true"
                              :action "create"})
         events (triggers saved)
-        mounts (:mounts (sidecar/read-sidecar! root hull-id))
+        mounts (:mounts (persisted/authored! (:catalog sys) hull-id))
         by-id (into {} (map (juxt :mount/id identity)) mounts)]
     (is (= 200 (:status saved)))
     (is (str/includes? (:body saved) "port-1"))
@@ -572,7 +587,7 @@
                                    :frame (pr-str (:frame edit-preview))
                                    :twist-deg "90"
                                    :action "update"})
-            mounts (:mounts (sidecar/read-sidecar! root hull-id))
+            mounts (:mounts (persisted/authored! (:catalog sys) hull-id))
             mount (first mounts)]
         (is (= 200 (:status updated)))
         (is (= 1 (count mounts)))
@@ -597,10 +612,10 @@
                              :action "create"})]
     (testing "mount saves ignore any stray part-role field"
       (is (= 200 (:status saved)))
-      (is (nil? (:part/role (sidecar/read-sidecar! root hull-id)))))
+      (is (nil? (:part/role (persisted/authored! (:catalog sys) hull-id)))))
     (testing "the standalone metadata form persists the role override"
       (let [role-saved (part-role-post h {:part-id hull-id :part-role "hull"})
-            sidecar (sidecar/read-sidecar! root hull-id)]
+            sidecar (persisted/authored! (:catalog sys) hull-id)]
         (is (= 200 (:status role-saved)))
         (is (= :hull (:part/role sidecar)))
         (is (str/includes? (:body role-saved) "Part metadata"))
@@ -616,7 +631,7 @@
                                         :part-pitch-deg "0"
                                         :part-roll-deg "0"
                                         :action "save"})
-        part-orientation (:part/orientation (sidecar/read-sidecar! root hull-id))]
+        part-orientation (:part/orientation (persisted/authored! (:catalog sys) hull-id))]
     (is (= 200 (:status saved)))
     (is (= part-orientation
            (:orientation (get (triggers saved) "shipyard:part-orientation"))))
@@ -630,7 +645,7 @@
     (testing "reset persists identity and updates the live viewer"
       (let [reset-response (part-orientation-post h {:part-id hull-id :action "reset"})]
         (is (= [0.0 0.0 0.0 1.0]
-               (:part/orientation (sidecar/read-sidecar! root hull-id))))
+               (:part/orientation (persisted/authored! (:catalog sys) hull-id))))
         (is (= [0.0 0.0 0.0 1.0]
                (:orientation
                 (get (triggers reset-response) "shipyard:part-orientation"))))

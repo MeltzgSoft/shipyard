@@ -5,11 +5,12 @@
   without a restart. Integration rather than unit because every one of those
   claims is about the filesystem: what is on disk, what gets scanned, and what
   is still there after a restart."
-  (:require [babashka.fs :as fs]
+  (:require [shipyard.store.db :as metadata]
+            [babashka.fs :as fs]
             [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.string :as str]
-            [clojure.test :refer [deftest is testing]]
+            [clojure.test :refer [deftest is testing use-fixtures]]
             [integrant.core :as ig]
             [shipyard.fixtures :as f]
             [shipyard.http.routes :as routes]
@@ -33,6 +34,17 @@
     (with-open [o (io/output-stream f)] (.write o ^bytes (f/->binary-stl (f/cube 2.0))))
     root))
 
+(def ^:dynamic *opened-systems* nil)
+
+(use-fixtures :each
+  (fn [f]
+    (binding [*opened-systems* (atom [])]
+      (try (f)
+           (finally
+             (doseq [{:keys [jobs catalog]} @*opened-systems*]
+               (ig/halt-key! :shipyard.http/jobs jobs)
+               (metadata/close! (:store catalog))))))))
+
 (defn- system
   "A running application that has never been told where its library is - the
   state a fresh install starts in."
@@ -41,10 +53,12 @@
                              {:root nil :cache-home (temp-dir "shipyard-idx")})
         cache   {:dir (temp-dir "shipyard-cache") :crease-deg 35
                  :lod-tiers [1.0 0.25 0.05] :cap-bytes 64000000 :inflight (atom {}) :files-lock (Object.)}
-        catalog (ig/init-key :shipyard.catalog/db {:library library})
-        jobs    (ig/init-key :shipyard.http/jobs {:library library :cache cache})]
-    {:library library :catalog catalog :cache cache :jobs jobs
-     :config-dir (temp-dir "shipyard-cfg")}))
+        catalog (ig/init-key :shipyard.catalog/db {:library library :store (metadata/open! (temp-dir "shipyard-db"))})
+        jobs    (ig/init-key :shipyard.http/jobs {:library library :cache cache})
+        system {:library library :catalog catalog :cache cache :jobs jobs
+                :config-dir (temp-dir "shipyard-cfg")}]
+    (swap! *opened-systems* conj system)
+    system))
 
 (defn- GET [h path] (h {:request-method :get :uri path}))
 
@@ -204,3 +218,15 @@
     (is (some? (settings/problem! nil)))
     (is (some? (settings/problem! "   ")))
     (is (some? (settings/problem! (str root "/no/such/place"))))))
+
+(deftest failed-migration-keeps-the-active-library
+  (let [sys (system) root (library-tree "Hull") other (library-tree "Replacement Hull")]
+    (is (nil? (settings/relocate! sys (str root))))
+    (let [library-before @(:state (:library sys))
+          catalog-before @(:state (:catalog sys))
+          setting-before (slurp (system/library-file (:config-dir sys)))]
+      (spit (io/file other "Replacement Hull" "shipyard.edn") "{:shipyard/version 99}")
+      (is (str/includes? (settings/relocate! sys (str other)) "Cannot import"))
+      (is (= library-before @(:state (:library sys))))
+      (is (= catalog-before @(:state (:catalog sys))))
+      (is (= setting-before (slurp (system/library-file (:config-dir sys))))))))

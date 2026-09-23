@@ -1,6 +1,6 @@
 (ns shipyard.loadout.model-test
   (:require [clojure.test :refer [deftest is testing]]
-            [datascript.core :as d]
+            [shipyard.store.catalog-fixture :as d]
             [shipyard.loadout.model :as m]
             [shipyard.assembly.model-test :as assembly]
             [shipyard.loadout.transforms-test :refer [record]]))
