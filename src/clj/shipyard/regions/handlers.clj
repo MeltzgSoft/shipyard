@@ -9,7 +9,7 @@
             [shipyard.workspace.views :as workspace-views]))
 
 (defn save! [{:keys [catalog library workspace] :as deps} {:keys [params]}]
-  (let [{:strs [part-id mesh-key revision action layer name faces]} params
+  (let [{:strs [part-id mesh-key revision action layer name faces confirmed]} params
         database (catalog/snapshot! catalog)
         shared-layers (catalog/region-layers database)
         part (catalog/part database part-id)
@@ -18,6 +18,11 @@
         result (cond
                  (or (nil? (:part/id part)) (not= part-id (:selection (workspace/workspace! workspace :browse))))
                  {:error "Part selection changed. Reopen the part before retrying."}
+                 (= action "delete")
+                 (if (= confirmed "true")
+                   (try (catalog/delete-region-layer! catalog part-id (parse-long revision) layer)
+                        (catch Exception _ {:error "Could not delete this layer. Check the part folder permissions, rescan and retry."}))
+                   {:error "Confirm deleting this layer from every part. Its regions will return to Primary."})
                  (or (not (index/fresh-source-file! library part-id)) (not= mesh-key (index/mesh-key! library part-id)))
                  {:error "Source changed. Rescan and reopen this part before editing regions."}
                  (and (= action "assign") (or (nil? keys) (not-every? (strokes/known-faces! deps mesh-key) keys)))
@@ -26,7 +31,7 @@
                                      (if (= action "fill") "assign" action) layer name
                                      (if (= action "fill") (vec (strokes/known-faces! deps mesh-key)) keys)
                                      shared-layers))
-        result (if (:error result) result
+        result (if (or (:error result) (= action "delete")) result
                    (try (catalog/save-regions! catalog part-id (:regions result)) result
                         (catch Exception _ {:error "Could not save part regions. Check the part folder permissions and retry."})))
         saved (if (:error result) before (:regions result))

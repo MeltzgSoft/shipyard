@@ -2373,17 +2373,27 @@ Region writes preserve the other sidecar fields and publish catalog state only a
 writing the file. The library-wide layer picker is the union of catalog region
 definitions; assignment admits a shared name and adds only that name to the target
 part. Definitions on other parts and their face maps remain untouched. Paint targets
-include these shared names as well as names already present in the scheme.
+include current shared definitions; unused scheme palette entries remain stored
+but cannot reintroduce a deleted type.
 Requests include part identity, mesh key and expected revision;
 the workspace admission boundary rejects stale activations, and domain admission
 checks selection, fresh source, face membership and revision before persistence.
 
-`POST /parts/regions` accepts assign/fill/add/rename/delete/reset. Fill enumerates
+`POST /parts/regions` accepts assign/fill/add/rename/delete/reset. Delete requires
+`confirmed=true`, a selected part and its current region revision. It removes the
+type from all library sidecars, including masks for stale sources, without changing
+other metadata or assignments. Primary and Secondary are protected. The catalog
+preflights every affected sidecar, rolls back completed writes if a later write
+fails, then publishes the index after all writes succeed.
+Fill enumerates
 all stable face keys from the validated source mesh on the server and uses the same
 revision-guarded assignment and atomic persistence path; no face list travels from
 the browser. The Browse display toggle uses its existing workspace-owned colors
-flag: true renders mounts, false renders layer types. Region brushing requires
-layer display. Full-part assignment is available in either display mode; a
+flag: true renders mounts, false renders layer types. Entering Regions selects
+layer display; users can subsequently toggle display independently. Tool activation
+is derived from the visible inspector tab, including after fragment swaps and mesh
+loads: Regions enables brushing, Mounts enables face picking and its crosshair,
+and Part disables both. A new part opens Part; mount responses retain Mounts. Full-part assignment is available in either display mode; a
 successful fill switches Browse to layer display using the same workspace context
 and display event as the toggle. Failed fills preserve the display setting.
 Part Browser owns the selection. Region masks travel in the server-rendered panel body, never in HTTP
@@ -2400,6 +2410,8 @@ painting, and preserve the selected mode/material/layer for the next left stroke
 Region erasing submits Primary; freehand erasing uses the existing atomic erase
 operation and undo history. Alt-modified gestures retain camera control.
 
+Preview materials derive deterministic colors from exact layer names identically
+on the JVM and in the browser, independent of catalog ordering or membership.
 Region colors expand the displayed mesh into nonindexed triangle vertices without
 changing triangle order. Mount highlights, frame-based facet recovery and authoring
 previews accept both indexed and nonindexed geometry, retaining saved facet IDs.

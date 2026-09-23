@@ -190,39 +190,43 @@
   "Persist a part's mounts. **File first**, then index: if the transact throws,
   the data is already safe on disk and the next restart picks it up."
   [{:keys [state]} part-id mounts]
-  (let [{:keys [conn root]} @state]
-    (sidecar/update-sidecar! root part-id assoc :mounts mounts)
-    (d/transact! conn (authoring-tx @conn part-id {:mounts mounts}))
-    mounts))
+  (locking state
+    (let [{:keys [conn root]} @state]
+      (sidecar/update-sidecar! root part-id assoc :mounts mounts)
+      (d/transact! conn (authoring-tx @conn part-id {:mounts mounts}))
+      mounts)))
 
 (defn save-authoring!
   "Persist mounts and an optional manual role override, file first."
   [{:keys [state]} part-id {:keys [mounts part-role]}]
-  (let [{:keys [conn root]} @state
-        authoring {:mounts mounts :part-role part-role}]
-    (sidecar/update-sidecar! root part-id authoring-sidecar authoring)
-    (d/transact! conn (authoring-tx @conn part-id authoring))
-    {:mounts mounts :part-role part-role}))
+  (locking state
+    (let [{:keys [conn root]} @state
+          authoring {:mounts mounts :part-role part-role}]
+      (sidecar/update-sidecar! root part-id authoring-sidecar authoring)
+      (d/transact! conn (authoring-tx @conn part-id authoring))
+      {:mounts mounts :part-role part-role})))
 
 (defn save-part-role!
   "Persist a part-level role override without changing mount authoring data."
   [{:keys [state]} part-id part-role]
-  (let [{:keys [conn root]} @state]
-    (sidecar/update-sidecar! root part-id assoc :part/role part-role)
-    (d/transact! conn [{:part/id part-id
-                        :part/role-hint part-role
-                        :part/role-source :manual}])
-    part-role))
+  (locking state
+    (let [{:keys [conn root]} @state]
+      (sidecar/update-sidecar! root part-id assoc :part/role part-role)
+      (d/transact! conn [{:part/id part-id
+                          :part/role-hint part-role
+                          :part/role-source :manual}])
+      part-role)))
 
 (defn save-part-orientation!
   "Persist a part's source-to-canonical orientation without changing mounts."
   [{:keys [state]} part-id part-orientation]
-  (let [{:keys [conn root]} @state
-        part-orientation (or (orientation/normalize-quaternion part-orientation)
-                             (throw (ex-info "Invalid part orientation" {:type :invalid-orientation :part-id part-id})))]
-    (sidecar/update-sidecar! root part-id assoc :part/orientation part-orientation)
-    (d/transact! conn [{:part/id part-id :part/orientation part-orientation}])
-    part-orientation))
+  (locking state
+    (let [{:keys [conn root]} @state
+          part-orientation (or (orientation/normalize-quaternion part-orientation)
+                               (throw (ex-info "Invalid part orientation" {:type :invalid-orientation :part-id part-id})))]
+      (sidecar/update-sidecar! root part-id assoc :part/orientation part-orientation)
+      (d/transact! conn [{:part/id part-id :part/orientation part-orientation}])
+      part-orientation)))
 
 ;; --- component --------------------------------------------------------------
 
@@ -235,9 +239,10 @@
   route table closes over its dependencies; see
   `shipyard.library.index/set-root!`."
   [{:keys [state]} parts root]
-  (let [parts (or parts [])]
-    (log/infof "catalog: %d parts re-ingested" (count parts))
-    (reset! state {:conn (ingest! parts root) :root root})))
+  (locking state
+    (let [parts (or parts [])]
+      (log/infof "catalog: %d parts re-ingested" (count parts))
+      (reset! state {:conn (ingest! parts root) :root root}))))
 
 (defmethod ig/init-key :shipyard.catalog/db [_ {:keys [library]}]
   (let [parts (index/parts! library)
@@ -266,3 +271,31 @@
       (sidecar/update-sidecar! root part-id assoc :part/paint-regions value)
       (d/transact! conn [{:part/id part-id :part/paint-regions (pr-str value)}])
       value)))
+
+(defn delete-region-layer!
+  "Delete one shared type from every part, including stale-source masks."
+  [{:keys [state]} part-id revision layer]
+  (locking state
+    (let [{:keys [conn root]} @state
+          database @conn
+          selected (part-regions (part database part-id))]
+      (cond
+        (not= revision (or (:revision selected) 0))
+        {:error "Regions changed. Reopen this part before retrying."}
+        (or (some #{layer} regions/builtins) (not (some #{layer} (region-layers database))))
+        {:error "Choose an existing detail layer. Primary and Secondary cannot be deleted."}
+        :else
+        (let [changes (into (sorted-map)
+                            (keep (fn [[id encoded]]
+                                    (let [before (edn/read-string encoded)
+                                          after (regions/without-layer before layer)]
+                                      (when (not= before after) [id {:before before :after after}]))))
+                            (d/q '[:find ?id ?regions :where [?p :part/id ?id] [?p :part/paint-regions ?regions]] database))]
+          (sidecar/update-sidecars!
+           root (mapv (fn [[id {:keys [before after]}]]
+                        [id (fn [data]
+                              (when-not (= before (:part/paint-regions data))
+                                (throw (ex-info "Part regions changed on disk. Rescan before deleting this layer." {:part-id id})))
+                              (assoc data :part/paint-regions after))]) changes))
+          (d/transact! conn (mapv (fn [[id {:keys [after]}]] {:part/id id :part/paint-regions (pr-str after)}) changes))
+          {:regions (part-regions (part @conn part-id))})))))

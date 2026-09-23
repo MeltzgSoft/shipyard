@@ -35,6 +35,8 @@
                     front? (pos? (.dot normal (.sub (.clone (.-position camera)) center)))
                     projected (.project center camera)]
                 {:key (face-key geometry triangle) :front? front?
+                 :base (when-let [color (.getAttribute geometry "color")]
+                         [(.getX color (* 3 triangle)) (.getY color (* 3 triangle)) (.getZ color (* 3 triangle))])
                  :x (* (+ 1 (.-x projected)) 0.5 (.-clientWidth canvas))
                  :y (* (- 1 (.-y projected)) 0.5 (.-clientHeight canvas))}))
             (range (triangle-count geometry))))))

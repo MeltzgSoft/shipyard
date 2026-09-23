@@ -93,7 +93,7 @@
 
 (defn- enter-authoring! [part-id]
   (when-not (= part-id (get-in (s/stats *driver*) [:authoring :part-id]))
-    (s/click! *driver* "[data-authoring-toggle]"))
+    (s/click! *driver* "[data-detail-tab=mounts]"))
   (s/wait-until #(= part-id (get-in (s/stats *driver*) [:authoring :part-id]))))
 
 ;; --- WebGL first, per the acceptance criteria -------------------------------
@@ -337,6 +337,8 @@
   (is (vec-close? (:orientation (s/stats *driver*))
                   [-0.5 -0.5 0.5 0.5])
       "saving should leave the solid mesh in its canonical pose")
+  (is (s/wait-until #(= "part" (s/js *driver* "() => document.querySelector('[data-detail-tab][aria-selected=true]').dataset.detailTab"))))
+  (is (nil? (:authoring (s/stats *driver*))) "Saving part metadata must not enter face picking")
   (select-part! "Classic Ram Prow")
   (s/await-part *driver* s/prow-id)
   (select-part! "Mount Test Plate")
@@ -420,9 +422,10 @@
   (s/await-part *driver* s/mount-plate-id)
   (is (enter-authoring! s/mount-plate-id)
       "authoring mode should be active for the loaded plate")
-  (is (= "part"
+  (is (= "mounts"
          (s/js *driver* "() => document.querySelector('[data-detail-tab].detail__tab--active').dataset.detailTab"))
-      "part details should be the default inspector tab")
+      "the Mounts tab enables face picking")
+  (is (= "crosshair" (s/js *driver* "() => getComputedStyle(document.querySelector('canvas')).cursor")))
   (let [{:keys [x y]} (viewport-center)
         _ (s/click-point! *driver* x y)
         first-preview (await-preview)]
@@ -450,25 +453,17 @@
         (is (some? (await-preview revision)))
         (is (<= (s/await-rendered-geometries *driver*) baseline)
             "repeated picks should not leak Three.js geometries"))))
-  (testing "part changes clear previews but retain global face picking"
+  (testing "tools follow the visible tab after part changes"
     (select-part! "Cruiser Hull")
     (s/await-part *driver* s/hull-id)
-    (is (s/wait-until #(nil? (:preview (s/stats *driver*))))
-        "the old facet preview should not survive a part change")
-    (is (s/wait-until #(= s/hull-id (get-in (s/stats *driver*) [:authoring :part-id])))
-        "face picking should follow the newly loaded part")
-    (is (= "true"
-           (s/js *driver* "() => document.querySelector('[data-authoring-toggle]').getAttribute('aria-pressed')"))
-        "the viewport control should show that global face picking is active")
-    (is (= true
-           (s/js *driver* "() => {
-             const button = document.querySelector('[data-authoring-toggle]');
-             return button.closest('.stage') !== null && !document.querySelector('#detail [data-authoring-toggle]');
-           }"))
-        "the global mode control belongs to the viewport, not the changing detail panel")
-    (s/click! *driver* "[data-authoring-toggle]")
-    (is (s/wait-until #(nil? (:authoring (s/stats *driver*))))
-        "Done picking should disable the global mode")))
+    (is (s/wait-until #(nil? (:preview (s/stats *driver*)))))
+    (is (nil? (:authoring (s/stats *driver*))))
+    (is (not= "crosshair" (s/js *driver* "() => getComputedStyle(document.querySelector('canvas')).cursor")))
+    (is (zero? (s/count-els *driver* "[data-authoring-toggle]")))
+    (is (enter-authoring! s/hull-id))
+    (is (= "crosshair" (s/js *driver* "() => getComputedStyle(document.querySelector('canvas')).cursor")))
+    (s/click! *driver* "[data-detail-tab=part]")
+    (is (s/wait-until #(nil? (:authoring (s/stats *driver*)))))))
 
 (deftest orbit-controls-work-outside-authoring-mode
   (open-app!)

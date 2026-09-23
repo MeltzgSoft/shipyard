@@ -13,7 +13,7 @@
         field (fn [^js form name] (.namedItem (.-elements form) name))
         status! (fn [message] (when-let [el (.getElementById js/document "region-status")] (set! (.-textContent el) message)))
         available? (fn [] (when-let [form (form!)]
-                            (and @active (not @mount-colors-enabled) (seq (.getClientRects form)) (.-checked (field form "enabled"))
+                            (and @active (seq (.getClientRects form))
                                  (not (.-disabled (field form "radius"))) (not @stroke))))]
     (letfn [(paint! [object regions]
               (let [palette (model/preview-materials regions)]
@@ -97,12 +97,8 @@
       (.addEventListener canvas "contextmenu" (fn [^js e] (when (or @stroke (available?)) (.preventDefault e) (.stopImmediatePropagation e))) true)
       (.addEventListener canvas "pointercancel" (fn [_] (cancel! "Region stroke canceled.")) true)
       (.addEventListener canvas "click" (fn [^js e] (when (or @stroke (available?)) (.preventDefault e) (.stopImmediatePropagation e))) true)
-      (.addEventListener js/document "change"
-                         (fn [^js e]
-                           (when (and @active (= (.-target e) (some-> (form!) (field "enabled")))
-                                      (.-checked (.-target e)))
-                             (when @mount-colors-enabled
-                               (when-let [button (.querySelector js/document "[data-mount-colors-toggle]")] (.click button))))))
+      (.addEventListener js/document "shipyard:inspector-tab"
+                         (fn [_] (set! (.. cursor -style -display) "none")))
       (.addEventListener js/document "htmx:afterRequest"
                          (fn [^js e]
                            (when-let [current @stroke]
@@ -110,9 +106,9 @@
                                (if (and (.. e -detail -successful)
                                         (not (.querySelector js/document "#part-regions [role=alert]")))
                                  (do (unlock! current) (reset! stroke nil) (status! "Regions saved.")
-                                     (when-let [form (form!)] (set! (.-checked (field form "enabled")) true)
-                                               (set! (.-value (field form "radius")) (:radius current))
-                                               (set! (.-value (field form "layer")) (:selected-layer current))))
+                                     (when-let [form (form!)]
+                                       (set! (.-value (field form "radius")) (:radius current))
+                                       (set! (.-value (field form "layer")) (:selected-layer current))))
                                  (cancel! "Region save failed. Reopen this part or retry the stroke."))))))
       (.addEventListener js/document "htmx:beforeRequest"
                          (fn [^js e]
