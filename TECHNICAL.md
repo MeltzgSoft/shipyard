@@ -2400,9 +2400,21 @@ Part Browser owns the selection. Region masks travel in the server-rendered pane
 headers. The mesh-load event fires after the swap and snapshots the matching panel
 mask before fetching geometry; later panel swaps update the matching Browse mesh.
 Workspace admission still rejects stale responses before either events or swaps.
-Its Regions tab is server-rendered; transient stroke state captures one
+Its Regions tab is server-rendered. Selectable layer rows combine preview swatches,
+selection, inline rename forms and confirmed delete actions. A hidden stroke-form
+layer value drives brushing and full-part assignment; selection and its visible
+pressed state are restored together after temporary right-button erasing.
+Transient stroke state captures one
 visible-ID buffer and submits the union of touched faces on release. It reuses the
-Paint brush's depth-tested picker and stable face keys. Navigation/cancellation drops
+Paint brush's depth-tested picker and stable face keys. Facets mode retains sampled
+triangles. Faces mode expands them through a cached partition of the source mesh
+into connected planar surfaces (1 degree and 0.01 mm from each surface’s seed
+plane). Coordinate-shared edges connect triangles despite hard-normal seams;
+non-manifold edges, opposite normals and disconnected components remain separate.
+Groups retain tier-0 order across indexed/nonindexed rendering. The mode is captured
+per stroke, applies equally to assignment and erasing, and survives region saves
+and layer operations. Only valid stable face keys cross the existing persistence
+boundary; expanded surfaces can include occluded triangles. Navigation/cancellation drops
 uncommitted preview. A failed save restores the prior preview and exposes retry by
 repeating the stroke. Part and scheme selection remain server-owned. Both brushes
 capture right-button strokes as erase, suppress the canvas context menu while

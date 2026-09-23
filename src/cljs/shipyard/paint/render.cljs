@@ -9,12 +9,14 @@
   (/ (if-let [index (.-index geometry)] (.-count index)
              (.. geometry -attributes -position -count)) 3))
 
-(defn face-key [^js geometry triangle]
+(defn triangle-points [^js geometry triangle]
   (let [position (.getAttribute geometry "position") index (.-index geometry)]
-    (faces/face-key
-     (mapv (fn [corner]
-             (let [offset (+ (* triangle 3) corner) vertex (if index (.getX index offset) offset)]
-               [(.getX position vertex) (.getY position vertex) (.getZ position vertex)])) (range 3)))))
+    (mapv (fn [corner]
+            (let [offset (+ (* triangle 3) corner) vertex (if index (.getX index offset) offset)]
+              [(.getX position vertex) (.getY position vertex) (.getZ position vertex)])) (range 3))))
+
+(defn face-key [geometry triangle]
+  (faces/face-key (triangle-points geometry triangle)))
 
 (defn set-details! [^js object layer]
   (let [valid? (and (= (:part-id layer) (.. object -userData -partId))

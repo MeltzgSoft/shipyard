@@ -305,25 +305,31 @@ toggle to switch between mount highlighting and region colors. It remembers its
 setting separately from the other workspaces. Select a part and open its **Regions**
 tab. Every face starts
 as **Primary**. Choose **Secondary**, or enter a **New detail layer** name and
-choose **Add detail layer**. The name immediately appears in **Assign layer** on
+choose **Add layer**. The name immediately appears in the selectable layer list on
 every other library part; choose it there without creating it again. Names match
 exactly: “Trim” on two different parts uses the same scheme material, set once in Paint.
 
-Choose **Assign layer** and click **Apply layer to entire part** to replace every
+Select a layer in the list and click **Apply layer to entire part** to replace every
 face assignment, including hidden/back faces, with that layer. The display switches
 to Layer types to show the result. Choosing Primary
 clears all assignments while retaining the part’s named layers.
 
-Open **Regions**, choose **Assign layer**, and brush visible faces. The brush is
+Open **Regions**, click a colored layer row, and brush visible faces. The selected
+row is highlighted and marked with a check. The brush is
 active whenever this tab is visible; no extra toggle is needed. Release saves one complete stroke to the part's `shipyard.edn`. The brush
-uses whole triangles and cannot paint through the model. Adjust its screen-space
+starts from visible triangles. **Facets** paints the triangles touched by the brush;
+**Faces** extends them to the entire connected flat surface, including triangles
+outside the brush or hidden behind other geometry. It stops at sharp edges and
+disconnected surfaces. Right-drag erasing follows the same mode. Adjust its screen-space
 radius; use Alt+drag to orbit. Region preview colors identify assignments and stay stable when other layer types
 are added or deleted; schemes supply their final colors and finishes. Opening Regions
 switches to Layer types. The display toggle can still show Mount faces independently.
 Right-drag to erase assignments back to Primary without changing the selected layer;
 the next left-drag uses that layer again. Choosing Primary also removes assignments.
-**Manage <layer> → Rename layer** changes a detail layer on this part.
-**Delete layer** asks for confirmation, then removes that type from every part in
+Use a detail row’s **pencil** to edit its name on this part, then **Save name** or
+**Cancel**. Shared types must first be used on this part before they can be renamed
+here. Primary and Secondary have no edit or delete actions.
+The row’s **×** asks for confirmation, then removes that type from every part in
 the current library and returns its painted regions to Primary. It is available
 even on parts that have not used that type. Primary and Secondary are permanent.
 Unused scheme colors are retained for reuse if the type is created again; deleted

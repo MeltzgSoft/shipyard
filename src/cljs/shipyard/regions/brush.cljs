@@ -3,7 +3,27 @@
   (:require [cljs.reader :as edn]
             [shipyard.paint.brush :as brush]
             [shipyard.paint.render :as render]
-            [shipyard.regions.model :as model]))
+            [shipyard.regions.model :as model]
+            [shipyard.regions.surfaces :as surfaces]))
+
+(defn- select-layer! [layer]
+  (when-let [form (.getElementById js/document "region-stroke")]
+    (set! (.-value (.namedItem (.-elements form) "layer")) layer)
+    (doseq [button (array-seq (.querySelectorAll js/document "[data-region-layer]"))]
+      (.setAttribute button "aria-pressed" (str (= layer (.getAttribute button "data-region-layer")))))))
+
+(defn- select-mode! [mode]
+  (when-let [form (.getElementById js/document "region-stroke")]
+    (set! (.-value (.namedItem (.-elements form) "mode")) mode)
+    (doseq [button (array-seq (.querySelectorAll js/document "[data-region-mode]"))]
+      (.setAttribute button "aria-pressed" (str (= mode (.getAttribute button "data-region-mode")))))))
+
+(defn- surface-groups! [^js object]
+  (or (.. object -userData -regionSurfaces)
+      (let [geometry (.-geometry object)
+            groups (surfaces/groups (mapv #(render/triangle-points geometry %) (range (render/triangle-count geometry))))]
+        (set! (.. object -userData -regionSurfaces) groups)
+        groups)))
 
 (defn install! [sys apply-material!]
   (let [{:keys [^js canvas ^js controls active parts mount-colors-enabled]} sys
@@ -26,13 +46,12 @@
               (when-let [current @stroke]
                 (paint! (:object current) (:before current))
                 (unlock! current)
-                (when-let [form (form!)]
-                  (set! (.-value (field form "layer")) (:selected-layer current)))
+                (select-layer! (:selected-layer current))
                 (reset! stroke nil)
                 (set! (.. cursor -style -display) "none")
                 (status! message)))
             (sample! [^js e]
-              (when-let [{:keys [buffer radius slot ^js object before layer previous] :as current} @stroke]
+              (when-let [{:keys [buffer radius slot ^js object before layer previous groups] :as current} @stroke]
                 (when-not (:saving? current)
                   (let [bounds (.getBoundingClientRect canvas)
                         x (- (.-clientX e) (.-left bounds)) y (- (.-clientY e) (.-top bounds))
@@ -41,6 +60,7 @@
                         triangles (reduce into #{} (for [i (range 1 (inc steps))]
                                                      (get (brush/sampled-instances buffer (+ lx (* (/ i steps) (- x lx)))
                                                                                    (+ ly (* (/ i steps) (- y ly))) radius slot false) slot)))
+                        triangles (if groups (surfaces/expand groups triangles) triangles)
                         keys (into (:keys current) (map #(render/face-key (.-geometry object) %)) triangles)
                         changed (model/change before (:mesh-key before) (:revision before) "assign" layer nil (vec keys))]
                     (swap! stroke assoc :keys keys :previous [x y])
@@ -63,6 +83,8 @@
                                                    :selected-layer (.-value (field form "layer"))
                                                    :layer (if (= 2 (.-button e)) "Primary" (.-value (field form "layer")))
                                                    :radius (js/Number (.-value (field form "radius")))
+                                                   :mode (.-value (field form "mode"))
+                                                   :groups (when (= "faces" (.-value (field form "mode"))) (surface-groups! object))
                                                    :buffer (brush/visible-buffer sys slot) :keys #{} :locked locked})
                                    (set! (.-enabled controls) false)
                                    (doseq [[el _] locked] (set! (.-disabled el) true))
@@ -97,6 +119,15 @@
       (.addEventListener canvas "contextmenu" (fn [^js e] (when (or @stroke (available?)) (.preventDefault e) (.stopImmediatePropagation e))) true)
       (.addEventListener canvas "pointercancel" (fn [_] (cancel! "Region stroke canceled.")) true)
       (.addEventListener canvas "click" (fn [^js e] (when (or @stroke (available?)) (.preventDefault e) (.stopImmediatePropagation e))) true)
+      (.addEventListener js/document "click"
+                         (fn [^js e]
+                           (when (and @active (not @stroke))
+                             (when-let [button (some-> (.-target e) (.closest "[data-region-layer]"))]
+                               (when-not (.-disabled button)
+                                 (select-layer! (.getAttribute button "data-region-layer"))))
+                             (when-let [button (some-> (.-target e) (.closest "[data-region-mode]"))]
+                               (when-not (.-disabled button)
+                                 (select-mode! (.getAttribute button "data-region-mode")))))))
       (.addEventListener js/document "shipyard:inspector-tab"
                          (fn [_] (set! (.. cursor -style -display) "none")))
       (.addEventListener js/document "htmx:afterRequest"
@@ -107,8 +138,9 @@
                                         (not (.querySelector js/document "#part-regions [role=alert]")))
                                  (do (unlock! current) (reset! stroke nil) (status! "Regions saved.")
                                      (when-let [form (form!)]
-                                       (set! (.-value (field form "radius")) (:radius current))
-                                       (set! (.-value (field form "layer")) (:selected-layer current))))
+                                       (set! (.-value (field form "radius")) (:radius current)))
+                                     (select-layer! (:selected-layer current))
+                                     (select-mode! (:mode current)))
                                  (cancel! "Region save failed. Reopen this part or retry the stroke."))))))
       (.addEventListener js/document "htmx:beforeRequest"
                          (fn [^js e]
