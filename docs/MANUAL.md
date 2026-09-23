@@ -121,11 +121,10 @@ You will tell Shipyard how two parts mate by clicking the flat face where they m
 back of a weapon module, or a hull's weapon seat. One click gives Shipyard everything it
 needs - where the part sits, which way it faces, and how it is rotated.
 
-After a part has loaded, choose **Pick mount face** in the viewport's upper-left corner,
-then click the desired face.
-This is a global mode: it remains active as you move through the library, so you can
-configure mounts on several parts without enabling it again. Choose **Done picking** to
-turn it off.
+After a part has loaded, open the **Mounts** inspector tab and click the desired face.
+The crosshair cursor indicates face picking. Opening **Regions** switches to the
+region brush; opening **Part** returns to normal navigation. A newly selected part
+opens its Part tab. Hold Alt while dragging to orbit without picking a face.
 Shipyard highlights the selected flat facet and draws its complete orientation frame:
 the outward normal (`+Z`), in-plane twist reference (`+X`), and derived up direction (`+Y`).
 Configured interfaces are always colored in the viewer when the part is loaded; the
@@ -315,17 +314,20 @@ face assignment, including hidden/back faces, with that layer. The display switc
 to Layer types to show the result. Choosing Primary
 clears all assignments while retaining the part’s named layers.
 
-Check **Paint regions in viewport**, choose **Assign layer**, and brush visible
-faces. Release saves one complete stroke to the part's `shipyard.edn`. The brush
+Open **Regions**, choose **Assign layer**, and brush visible faces. The brush is
+active whenever this tab is visible; no extra toggle is needed. Release saves one complete stroke to the part's `shipyard.edn`. The brush
 uses whole triangles and cannot paint through the model. Adjust its screen-space
-radius; use Alt+drag to orbit. Region preview colors identify assignments; schemes
-supply their final colors and finishes. Enabling the brush switches to Layer types;
-the brush is inactive while viewing Mount faces.
+radius; use Alt+drag to orbit. Region preview colors identify assignments and stay stable when other layer types
+are added or deleted; schemes supply their final colors and finishes. Opening Regions
+switches to Layer types. The display toggle can still show Mount faces independently.
 Right-drag to erase assignments back to Primary without changing the selected layer;
 the next left-drag uses that layer again. Choosing Primary also removes assignments.
-**Manage <layer>** renames or deletes a detail
-layer on this part; deleting it returns its faces to Primary. Primary and Secondary
-are permanent. **Reset regions** clears all assignments after confirmation.
+**Manage <layer> → Rename layer** changes a detail layer on this part.
+**Delete layer** asks for confirmation, then removes that type from every part in
+the current library and returns its painted regions to Primary. It is available
+even on parts that have not used that type. Primary and Secondary are permanent.
+Unused scheme colors are retained for reuse if the type is created again; deleted
+types disappear from the layer pickers and Paint defaults. **Reset regions** clears all assignments after confirmation.
 
 Regions follow the library part into every instance and scheme. They survive restart
 and rescan. If the source mesh changes, old regions are retained but do not apply;

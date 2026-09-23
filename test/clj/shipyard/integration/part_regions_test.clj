@@ -11,7 +11,58 @@
             [shipyard.paint.strokes :as strokes]
             [shipyard.scheme.db :as schemes]
             [shipyard.loadout.db :as loadouts]
-            [shipyard.workspace.db :as workspace]))
+            [shipyard.workspace.db :as workspace])
+  (:import [java.nio.file Files LinkOption]
+           [java.nio.file.attribute PosixFilePermissions]))
+
+(deftest global-layer-deletion-is-confirmed-and-preserves-other-data
+  (let [started (fixture/start!) sys (:system started) handler (:handler started)
+        cat (:shipyard.catalog/db sys) root (str (:root started))
+        ids [(:hull fixture/ids) (:weapon fixture/ids)]
+        selected (:weapon-alt fixture/ids)
+        mesh (apply str (repeat 64 "a")) key (apply str (repeat 72 "0")) other-key (apply str (repeat 72 "1"))
+        region {:mesh-key mesh :revision 5 :layers ["Primary" "Secondary" "Trim" "Running Lights"]
+                :faces {key "Trim" other-key "Secondary"}}
+        post #(handler (mock/request :post "/parts/regions" %))
+        params {:part-id selected :mesh-key mesh :revision "0" :action "delete" :layer "Trim" :confirmed "true"}
+        read! #(mapv (fn [id] (sidecar/read-sidecar! root id)) ids)]
+    (try
+      (doseq [id ids] (catalog/save-regions! cat id region))
+      (workspace/update-workspace! (:shipyard.workspace/db sys) :browse assoc :selection selected)
+      (let [before (read!)]
+        (is (str/includes? (:body (post (dissoc params :confirmed))) "Confirm deleting"))
+        (is (str/includes? (:body (post (assoc params :revision "1"))) "Regions changed"))
+        (doseq [layer ["Primary" "Secondary" "Missing"]]
+          (is (str/includes? (:body (post (assoc params :layer layer))) "Choose an existing detail layer")))
+        (is (= before (read!)))
+        (let [file (sidecar/sidecar-file root (last ids)) backup (fs/path (:temp started) "delete-backup.edn")]
+          (fs/move file backup) (fs/create-dirs file)
+          (try
+            (is (str/includes? (:body (post params)) "Could not delete"))
+            (is (= (first before) (sidecar/read-sidecar! root (first ids))))
+            (is (every? #(= region (catalog/part-regions (catalog/part (catalog/snapshot! cat) %))) ids))
+            (finally (fs/delete-tree file) (fs/move backup file))))
+        ;; On POSIX, fail the second write after the first succeeds. This tests
+        ;; actual rollback without replacing any persistence functions.
+        (let [directory (fs/path root (last ids))]
+          (when (.supportsFileAttributeView (Files/getFileStore directory) "posix")
+            (let [permissions (Files/getPosixFilePermissions directory (make-array LinkOption 0))]
+              (try
+                (Files/setPosixFilePermissions directory (PosixFilePermissions/fromString "r-xr-xr-x"))
+                (when-not (Files/isWritable directory)
+                  (is (str/includes? (:body (post params)) "Could not delete"))
+                  (is (= before (read!)))
+                  (is (every? #(= region (catalog/part-regions (catalog/part (catalog/snapshot! cat) %))) ids)))
+                (finally (Files/setPosixFilePermissions directory permissions))))))
+        (is (= 200 (:status (post params))))
+        (doseq [[old new] (map vector before (read!))]
+          (is (= (dissoc old :part/paint-regions) (dissoc new :part/paint-regions)))
+          (is (= (assoc region :revision 6 :layers ["Primary" "Secondary" "Running Lights"] :faces {other-key "Secondary"})
+                 (:part/paint-regions new))))
+        (catalog/reingest! cat (index/parts! (:shipyard.library/index sys)) root)
+        (is (= ["Primary" "Secondary" "Running Lights"] (catalog/region-layers (catalog/snapshot! cat))))
+        (is (nil? (catalog/part-regions (catalog/part (catalog/snapshot! cat) selected)))))
+      (finally (fixture/stop! started)))))
 
 (deftest regions-roundtrip-and-source-guards
   (let [started (fixture/start!) sys (:system started) handler (:handler started)

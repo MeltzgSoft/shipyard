@@ -560,7 +560,13 @@ Parts may carry reusable, source-bound face regions authored in Part Browser's
 Regions tab. Primary and Secondary are permanent shared layer names; users can add,
 rename and delete any number of named detail layers. Names defined on any library
 part are selectable on every other part without being re-created; assignment adopts
-the selected name on that part. Rename and delete remain part-local.
+the selected name on that part. Rename remains part-local. Deleting a detail type
+requires confirmation, removes it from every part in the current library, and
+returns those regions to Primary. Primary and Secondary cannot be deleted.
+Layer preview colors depend on the exact name, so adding or removing another type
+does not recolor existing regions. The visible inspector tab selects the tool:
+Regions enables brushing, Mounts enables face picking with a crosshair, and Part
+returns to navigation. Separate brush and face-picking toggles are unnecessary.
 Part Browser can display mount faces or layer types, remembering its own display
 choice independently. Apply layer to entire part replaces all face assignments,
 including hidden faces, with the selected layer; Primary clears the assignments
@@ -569,8 +575,8 @@ unassigned faces belong to Primary. Assigning Primary or right-dragging erases a
 explicit assignment. In both region and freehand painting, right-drag temporarily
 erases without changing the selected paint layer, material or mode; Alt retains
 camera controls. Freehand erase reveals the inherited material.
-Deleting a detail layer on a part returns its faces to Primary without deleting scheme
-colors. Regions use the same visible-only, whole-triangle brush selection as detail
+Deleting a detail type retains unused scheme colors for possible reuse, while
+removing the type from pickers and Paint defaults. Regions use the same visible-only, whole-triangle brush selection as detail
 painting and persist with the library part. Changed source meshes retain old regions
 but cannot display or extend them until the user confirms a reset.
 

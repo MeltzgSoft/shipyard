@@ -105,8 +105,8 @@
       (is (str/includes? shell "aria-label=\"Canonical axes\""))
       (doseq [axis ["+X / Pitch" "+Y / Yaw" "+Z / Roll"]]
         (is (str/includes? shell axis))))
-    (testing "global face picking is a viewport control, disabled until a part loads"
-      (is (re-find #"<button[^>]*class=\"stage__authoring-toggle\"[^>]*data-authoring-toggle=\"true\"[^>]*disabled" shell)))
+    (testing "inspector tabs replace the separate face-picking toggle"
+      (is (not (str/includes? shell "data-authoring-toggle"))))
     (testing "mount coloring has a persistent viewport control"
       (is (re-find #"<button[^>]*class=\"stage__mount-colors-toggle\"" shell))
       (is (str/includes? shell "data-mount-colors-toggle=\"true\""))

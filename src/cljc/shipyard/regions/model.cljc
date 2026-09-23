@@ -16,6 +16,14 @@
        (map? (:faces value))
        (every? (fn [[key layer]] (and (faces/key? key) (contains? (set (:layers value)) layer))) (:faces value))))
 
+(defn without-layer [regions layer]
+  (if (and (not (some #{layer} builtins)) (some #{layer} (:layers regions)))
+    (-> regions
+        (update :layers #(filterv (complement #{layer}) %))
+        (update :faces #(into {} (remove (fn [[_ name]] (= name layer))) %))
+        (update :revision inc))
+    regions))
+
 (defn change
   ([regions mesh-key revision action layer new-name keys]
    (change regions mesh-key revision action layer new-name keys []))
@@ -49,11 +57,24 @@
                        (update :revision inc))}
          {:error "Enter a unique layer name between 1 and 200 characters."})
        (and (= action "delete") (not (some #{layer} builtins)))
-       {:regions (-> current (update :layers #(filterv (complement #{layer}) %))
-                     (update :faces #(into {} (remove (fn [[_ name]] (= name layer))) %)) (update :revision inc))}
+       {:regions (without-layer current layer)}
        :else {:error "Primary and Secondary cannot be renamed or deleted."}))))
 
-(def preview-colors [[0.6 0.65 0.7] [0.15 0.6 0.95] [1 0.6 0.1] [0.6 0.3 0.85] [0.15 0.8 0.4] [0.9 0.2 0.4]])
+(defn- preview-color [name]
+  (case name
+    "Primary" [0.6 0.65 0.7]
+    "Secondary" [0.15 0.6 0.95]
+    ;; Hash UTF-16 code units identically on the JVM and in the browser.
+    ;; A layer's color must not depend on other names or their ordering.
+    (let [hue (/ (reduce (fn [value ch]
+                           (mod (+ (* 31 value) #?(:clj (int ch) :cljs (.charCodeAt ch 0))) 360))
+                         0 name) 60.0)
+          c 0.72 x (* c (- 1 (abs (- (mod hue 2) 1))))
+          rgb (case (int hue)
+                0 [c x 0] 1 [x c 0] 2 [0 c x]
+                3 [0 x c] 4 [x 0 c] 5 [c 0 x])]
+      (mapv #(+ 0.19 %) rgb))))
+
 (defn preview-materials [regions]
-  (into {} (map-indexed (fn [i name] [name {:base (nth preview-colors (mod i (count preview-colors)))
-                                            :metalness 0.05 :roughness 0.65}]) (:layers regions))))
+  (into {} (map (fn [name] [name {:base (preview-color name)
+                                  :metalness 0.05 :roughness 0.65}]) (:layers regions))))

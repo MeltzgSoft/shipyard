@@ -87,7 +87,7 @@
 
 (def ^:private detail-tab-activation
   "Switch inspector tabs without replacing the detail fragment or viewport."
-  "var root=this.closest('.detail'); var tab=this.dataset.detailTab; root.querySelectorAll('[data-detail-tab]').forEach(function (el) { var active=el.dataset.detailTab===tab; el.classList.toggle('detail__tab--active', active); el.setAttribute('aria-selected', active); }); root.querySelectorAll('[data-detail-panel]').forEach(function (el) { el.hidden=el.dataset.detailPanel!==tab; });")
+  "var root=this.closest('.detail'); var tab=this.dataset.detailTab; root.querySelectorAll('[data-detail-tab]').forEach(function (el) { var active=el.dataset.detailTab===tab; el.classList.toggle('detail__tab--active', active); el.setAttribute('aria-selected', active); }); root.querySelectorAll('[data-detail-panel]').forEach(function (el) { el.hidden=el.dataset.detailPanel!==tab; }); this.dispatchEvent(new CustomEvent('shipyard:inspector-tab', {bubbles:true}));")
 
 (defn- poll
   "Self-sustaining poll. `load` fires again every time this element is inserted,
@@ -226,8 +226,8 @@
 
 (defn detail-ready
   ([part mesh-key] (detail-ready part mesh-key nil))
-  ([part mesh-key {:keys [error orientation-error preview repeat-values region-layers]}]
-   (let [mount-active? (boolean (or preview error))]
+  ([part mesh-key {:keys [error orientation-error preview repeat-values region-layers mount-active?]}]
+   (let [mount-active? (if (some? mount-active?) mount-active? (boolean (or preview error)))]
      [:div.detail.detail--ready
       [:nav.detail__tabs {:role "tablist" :aria-label "Part inspector"}
        [:button.detail__tab
@@ -529,9 +529,6 @@
           [:p.muted "Loading the library…"]]])
       [:section.stage
        [:canvas#viewport.stage__canvas {:hx-preserve "true"}]
-       [:button.stage__authoring-toggle
-        {:type "button" :data-authoring-toggle "true" :aria-pressed "false" :disabled true}
-        "Pick mount face"]
        (workspace-views/colors-toggle colors (:workspace context))
        [:div.stage__axis-legend {:aria-label "Canonical axes"}
         [:span.stage__axis.stage__axis--x [:i {:aria-hidden "true"}] "+X / Pitch"]

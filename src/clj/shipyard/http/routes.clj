@@ -279,7 +279,8 @@
    (let [part (db/part (db/snapshot! catalog) part-id)
          mesh-key (index/mesh-key! library part-id)]
      (if (and (:part/id part) mesh-key)
-       (htmx/fragment (views/detail-ready part mesh-key (assoc view-options :region-layers (db/region-layers (db/snapshot! catalog))))
+       (htmx/fragment (views/detail-ready part mesh-key (assoc (merge {:mount-active? true} view-options)
+                                                               :region-layers (db/region-layers (db/snapshot! catalog))))
                       {:events (assoc events :interfaces {:part-id part-id
                                                           :mesh-key mesh-key
                                                           :mounts (catalog-part/durable-mounts
@@ -413,7 +414,7 @@
           (mount-response! deps part-id {} {:error error})
           (try
             (db/save-part-role! catalog part-id (:part-role result))
-            (mount-response! deps part-id {})
+            (mount-response! deps part-id {} {:mount-active? false})
             (catch Exception _
               (facet-error :part-role-save-failed
                            "The part role was written, but the catalog did not update. Restart Shipyard to re-ingest it."
@@ -436,7 +437,7 @@
                            {:part-orientation {:part-id part-id
                                                :orientation (orientation/orientation-of
                                                              (:part/orientation part))}}
-                           {:orientation-error error})
+                           {:orientation-error error :mount-active? false})
           (try
             (let [part-orientation (db/save-part-orientation!
                                     catalog part-id (:orientation result))]
@@ -444,7 +445,8 @@
                                part-id
                                {:part-orientation {:part-id part-id
                                                    :saved? true
-                                                   :orientation part-orientation}}))
+                                                   :orientation part-orientation}}
+                               {:mount-active? false}))
             (catch Exception _
               (facet-error :part-orientation-save-failed
                            "The part orientation was written, but the catalog did not update. Restart Shipyard to re-ingest it."
@@ -553,6 +555,7 @@
                                                  [:revision [:and string? [:fn #(some? (parse-long %))]]]
                                                  [:action [:enum "assign" "fill" "add" "rename" "delete" "reset"]]
                                                  [:layer {:optional true} string?] [:name {:optional true} string?]
+                                                 [:confirmed {:optional true} [:enum "true"]]
                                                  [:faces {:optional true} string?]]}
                              :responses contracts/html-responses}}]
    ["/parts/role" {:post {:handler (partial save-part-role! deps)

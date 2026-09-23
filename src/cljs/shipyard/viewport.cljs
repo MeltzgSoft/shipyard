@@ -298,7 +298,7 @@
     (doseq [[slot payload] marker-data]
       (put-mount-marker! sys slot payload))))
 
-(declare sync-authoring-button!)
+(declare sync-inspector-tool!)
 
 (defn clear! [{:keys [^js canvas parts authoring current repeat bulk] :as sys}]
   (when-let [assembly (:assembly sys)] (swap! assembly assembly-scene/leave))
@@ -316,7 +316,7 @@
     (dispose-object! obj))
   (reset! parts {})
   (when bulk (reset! bulk {}))
-  (sync-authoring-button! sys))
+  (sync-inspector-tool! sys))
 
 ;; --- mount authoring --------------------------------------------------------
 
@@ -435,54 +435,37 @@
       (.traverse obj (fn [^js child] (when (.-geometry child) (swap! n inc)))))
     @n))
 
-(defn- sync-authoring-button! [{:keys [authoring-enabled current]}]
-  (when-let [button (when (and (exists? js/document) (.-querySelector js/document))
-                      (.querySelector js/document "[data-authoring-toggle]"))]
-    (let [enabled? @authoring-enabled]
-      (.setAttribute button "aria-pressed" (if enabled? "true" "false"))
-      (set! (.-disabled button) (nil? @current))
-      (set! (.-textContent button) (if enabled? "Done picking" "Pick mount face")))))
+(defn- inspector-tab []
+  (some-> (.querySelector js/document "[data-detail-tab][aria-selected=true]")
+          (.-dataset) (.-detailTab)))
 
-(defn- enter-authoring! [{:keys [^js canvas parts authoring authoring-enabled current] :as sys}
+(defn- enter-authoring! [{:keys [^js canvas parts authoring current] :as sys}
                          part-id mesh-key]
   (when (and (get @parts part-id)
              (current-part? {:current current} part-id mesh-key))
     (clear-authoring-preview! sys)
-    (reset! authoring-enabled true)
     (reset! authoring {:part-id part-id :mesh-key mesh-key})
-    (.add (.-classList canvas) "stage__canvas--authoring")
-    (sync-authoring-button! sys)))
+    (.add (.-classList canvas) "stage__canvas--authoring")))
 
-(defn- exit-authoring! [{:keys [^js canvas authoring authoring-enabled repeat] :as sys}]
+(defn- exit-authoring! [{:keys [^js canvas authoring repeat] :as sys}]
   (clear-authoring-preview! sys)
-  (reset! authoring-enabled false)
   (reset! authoring nil)
   (reset! repeat nil)
-  (.remove (.-classList canvas) "stage__canvas--authoring")
-  (sync-authoring-button! sys))
+  (.remove (.-classList canvas) "stage__canvas--authoring"))
+
+(defn- sync-inspector-tool! [{:keys [workspace active ^js canvas current authoring] :as sys}]
+  (when (and (exists? js/document) (.-querySelector js/document))
+    (let [desired (when (and (= :browse workspace) @active (= "mounts" (inspector-tab)))
+                    (select-keys @current [:part-id :mesh-key]))]
+      (.toggle (.-classList canvas) "stage__canvas--authoring" (boolean (seq desired)))
+      (if (seq desired)
+        (when (not= desired @authoring)
+          (enter-authoring! sys (:part-id desired) (:mesh-key desired)))
+        (when @authoring (exit-authoring! sys))))))
 
 (defn- authoring! [sys {:keys [state part-id mesh-key]}]
-  (case state
-    :enter (enter-authoring! sys part-id mesh-key)
-    :exit  (exit-authoring! sys)
-    nil))
-
-(defn- shipyard-event! [event payload]
-  (.dispatchEvent (.-body js/document)
-                  (js/CustomEvent. (str "shipyard:" event)
-                                   #js {:bubbles true
-                                        :detail  #js {:value (pr-str payload)}})))
-
-(defn- authoring-toggle! [sys ^js e]
-  (let [target (.-target e)
-        button (when (and target (.-closest target))
-                 (.closest target "[data-authoring-toggle]"))]
-    (when button
-      (.preventDefault e)
-      (when-let [{:keys [part-id mesh-key]} @(:current sys)]
-        (shipyard-event! "authoring" {:state (if @(:authoring-enabled sys) :exit :enter)
-                                      :part-id part-id
-                                      :mesh-key mesh-key})))))
+  (when (= state :enter) (enter-authoring! sys part-id mesh-key))
+  (sync-inspector-tool! sys))
 
 (defn- apply-material! [^js object value colors?]
   (let [{:keys [base metalness roughness]} (or value paint-material/neutral)
@@ -986,17 +969,18 @@
       (set! (.-hidden panel) (not= tab (.. panel -dataset -detailPanel))))))
 
 (defn- pick-face! [{:keys [^js canvas ^js camera parts authoring ^js raycaster ^js pointer] :as sys} ^js e]
-  (when-let [{:keys [part-id]} @authoring]
-    (when-let [obj (get @parts part-id)]
-      (canvas-pointer! pointer canvas e)
-      (.setFromCamera raycaster pointer camera)
-      (let [hits (.intersectObject raycaster obj false)]
-        (when (pos? (.-length hits))
-          (let [^js hit (aget hits 0)
-                face-index (.-faceIndex hit)]
-            (when (some? face-index)
-              (activate-detail-tab! "mounts")
-              (post-facet! sys face-index))))))))
+  (when (and (= 0 (.-button e)) (not (.-altKey e)))
+    (when-let [{:keys [part-id]} @authoring]
+      (when-let [obj (get @parts part-id)]
+        (canvas-pointer! pointer canvas e)
+        (.setFromCamera raycaster pointer camera)
+        (let [hits (.intersectObject raycaster obj false)]
+          (when (pos? (.-length hits))
+            (let [^js hit (aget hits 0)
+                  face-index (.-faceIndex hit)]
+              (when (some? face-index)
+                (activate-detail-tab! "mounts")
+                (post-facet! sys face-index)))))))))
 
 (defn- regions-from-dom [part-id mesh-key]
   (when-let [panel (.getElementById js/document "part-regions")]
@@ -1015,7 +999,7 @@
 (defn- load-mesh!
   "Fetch, decode, upload, and optionally reframe. Errors are reported and
   swallowed: a part that fails to load must not take the session with it."
-  [{:keys [^js scene ^js canvas authoring authoring-enabled current repeat] :as sys}
+  [{:keys [^js scene ^js canvas authoring current repeat] :as sys}
    {:keys [url part-id mesh-key frame mounts] :as payload}]
   (clear! sys)
   (let [generation @(:browse-generation sys)
@@ -1050,8 +1034,6 @@
                      (reset! repeat nil)
                      (.remove (.-classList canvas) "stage__canvas--authoring")
                      (show-only! sys part-id obj)
-                     (when @authoring-enabled
-                       (enter-authoring! sys part-id mesh-key))
                      (install-orientation-guide! sys orientation/identity-quaternion)
                      (draw-interfaces! sys {:part-id part-id
                                             :mesh-key mesh-key
@@ -1059,7 +1041,7 @@
                                             :mounts mounts})
                      (when frame (frame! sys oriented-min oriented-max))
                      (swap! (:status sys) assoc :state :loaded :part-id part-id)
-                     (sync-authoring-button! sys)
+                     (sync-inspector-tool! sys)
                      scene))))
         (.catch (fn [e]
                   (when (= generation @(:browse-generation sys))
@@ -1580,6 +1562,13 @@
     (listen-event! body sys "shipyard:clear" (fn [_] (clear! sys)))
     (listen-event! body sys "shipyard:status" #(reset! (:status sys) (payload %)))
     (listen-event! body sys "shipyard:authoring" #(authoring! sys (payload %)))
+    (listen-event! body sys "shipyard:inspector-tab"
+                   (fn [_]
+                     (sync-inspector-tool! sys)
+                     (when (and (= :browse (:workspace sys)) (= "regions" (inspector-tab))
+                                @(:mount-colors-enabled sys))
+                       (when-let [button (.querySelector js/document "[data-mount-colors-toggle]")]
+                         (.click button)))))
     (listen-event! body sys "shipyard:clear-preview" (fn [_] (clear-authoring-preview! sys)))
     (listen-event! body sys "shipyard:assembly" #(apply-assembly! sys (payload %)))
     (listen-event! body sys "shipyard:facet-preview" #(draw-preview! sys (payload %)))
@@ -1595,7 +1584,7 @@
                                                (sync-bulk-save-button! sys)
                                                (doseq [button (array-seq (.querySelectorAll js/document "[data-bulk-step]"))]
                                                  (.setAttribute button "aria-pressed" (str (= @(:bulk-step sys) (js/parseFloat (.getAttribute button "data-bulk-step"))))))
-                                               (sync-authoring-button! sys)
+                                               (sync-inspector-tool! sys)
                                                (sync-socket-fields-from-dom!)
                                                (sync-interfaces-from-dom! sys)
                                                (refresh-preview-after-swap! sys)))
@@ -1627,7 +1616,6 @@
                                            (prepare-bulk-save! sys form))))
                    true)
     (listen-event! body sys "click" (fn [e]
-                                      (authoring-toggle! sys e)
                                       (let [^js target (.-target e)]
                                         (when-let [^js button (some-> target (.closest "[data-bulk-rotate]"))]
                                           (bulk-rotate! sys (keyword (.getAttribute button "data-axis"))
@@ -1664,7 +1652,7 @@
                   :orientation-scene orientation-scene
                   :orientation-camera orientation-camera
                   :controls controls :parts (atom {}) :status (atom {:state :idle})
-                  :current (atom nil) :authoring (atom nil) :authoring-enabled (atom false)
+                  :current (atom nil) :authoring (atom nil)
                   :preview (atom nil)
                   :assembly (atom assembly-scene/empty-state) :browse-generation (atom 0)
                   :interfaces (atom nil) :orientation-guide (atom nil)
@@ -1706,7 +1694,7 @@
       (reset! (:activation next) (.-activation detail))
       (set! (.-enabled (:controls next)) true)
       (set-mount-colors! next (.-colors detail))
-      (sync-authoring-button! next)
+      (sync-inspector-tool! next)
       (resize! next))))
 
 (defn start!

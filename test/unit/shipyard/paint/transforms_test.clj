@@ -83,3 +83,7 @@
         targets (t/targets database {:hull "hull" :assignments {}} {:scheme/layers {}})]
     (is (some #(= "layer/Trim" (:key %)) targets))
     (is (not-any? #(= "weapon" (:part-id %)) targets))))
+
+(deftest deleted-types-do-not-return-from-saved-palette-colors
+  (is (not-any? #(= "layer/Trim" (:key %))
+                (t/targets fixture/database draft {:scheme/layers {"Trim" m/neutral}}))))

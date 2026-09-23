@@ -10,9 +10,11 @@
   (let [empty (model/empty-regions mesh)
         added (:regions (model/change empty mesh 0 "add" nil "Trim" nil))
         painted (:regions (model/change added mesh 1 "assign" "Trim" nil [face]))
+        extended (:regions (model/change painted mesh 2 "add" nil "Running Lights" nil))
         renamed (:regions (model/change painted mesh 2 "rename" "Trim" "Engines" nil))]
     (is (= ["Primary" "Secondary" "Trim"] (:layers added)))
     (is (= "Trim" (get-in painted [:faces face])))
+    (is (= (:faces painted) (:faces extended)))
     (is (= "Engines" (get-in renamed [:faces face])))
     (is (empty? (:faces (:regions (model/change renamed mesh 3 "delete" "Engines" nil nil)))))
     (is (empty? (:faces (:regions (model/change painted mesh 2 "assign" "Primary" nil [face])))))
@@ -26,6 +28,14 @@
     (is (= "Secondary" (last (:layers (:regions (model/change painted mesh 2 "reset" nil nil nil))))))))
 (deftest region-preview-materials
   (is (= #{"Primary" "Secondary"} (set (keys (model/preview-materials (model/empty-regions mesh)))))))
+
+(deftest remove-shared-layer
+  (let [regions {:mesh-key mesh :revision 3 :layers ["Primary" "Secondary" "Trim"] :faces {face "Trim"}}]
+    (is (= {:mesh-key mesh :revision 4 :layers ["Primary" "Secondary"] :faces {}}
+           (model/without-layer regions "Trim")))
+    (doseq [name ["Primary" "Secondary" "Missing"]]
+      (is (= regions (model/without-layer regions name))))
+    (is (nil? (model/without-layer nil "Trim")))))
 
 (deftest assigning-a-shared-layer
   (let [empty (model/empty-regions mesh)

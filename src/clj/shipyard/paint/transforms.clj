@@ -3,8 +3,7 @@
   (:require [shipyard.catalog.db :as catalog]
             [shipyard.loadout.model :as loadout]
             [shipyard.scheme.material :as material]
-            [shipyard.scheme.transforms :as scheme]
-            [shipyard.regions.model :as regions]))
+            [shipyard.scheme.transforms :as scheme]))
 
 (defn targets
   ([database draft] (targets database draft nil))
@@ -16,7 +15,7 @@
                               :name (or (:part/name part) id)
                               :label (str (or (:part/name part) id) " · " (if (empty? path) "Hull" (pr-str path)))}))
                          (loadout/part-tree draft))]
-     (into (into (into instances (for [layer (when (or record (seq instances)) (distinct (concat regions/builtins (sort (keys (:scheme/layers record))) (catalog/region-layers database))))]
+     (into (into (into instances (for [layer (when (or record (seq instances)) (catalog/region-layers database))]
                                    {:key (str "layer/" layer) :layer-name layer :label layer})) (map (fn [g] {:key (str "group/" (:group/id g)) :group-id (:group/id g) :label (:group/name g)})
                                                                                                      (sort-by :group/order (:scheme/groups record))))
            (for [role (sort (set (keep :role instances)))]
