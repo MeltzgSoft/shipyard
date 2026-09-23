@@ -2400,6 +2400,10 @@ painting, and preserve the selected mode/material/layer for the next left stroke
 Region erasing submits Primary; freehand erasing uses the existing atomic erase
 operation and undo history. Alt-modified gestures retain camera control.
 
+Region colors expand the displayed mesh into nonindexed triangle vertices without
+changing triangle order. Mount highlights, frame-based facet recovery and authoring
+previews accept both indexed and nonindexed geometry, retaining saved facet IDs.
+
 Optional `:scheme/layers` maps exact shared names to validated full materials.
 Assembly payloads carry source-bound regions and layer materials unless an instance
 or group overrides them. These fields are material updates, excluded from mesh-fetch
