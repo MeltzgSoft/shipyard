@@ -100,7 +100,7 @@
     (htmx/fragment (views/detail-preparing part)
                    {:events {:status {:state :preparing
                                       :message "Restoring saved mount faces."}}})
-    (htmx/fragment (views/detail-ready part mesh-key)
+    (htmx/fragment (views/detail-ready part mesh-key {:region-layers (db/region-layers (db/snapshot! (:catalog deps)))})
                    {:headers {"HX-Trigger-After-Swap"
                               (htmx/trigger {:load-mesh {:url     (urls/mesh-url mesh-key 0)
                                                          :part-id (:part/id part)
@@ -279,7 +279,7 @@
    (let [part (db/part (db/snapshot! catalog) part-id)
          mesh-key (index/mesh-key! library part-id)]
      (if (and (:part/id part) mesh-key)
-       (htmx/fragment (views/detail-ready part mesh-key view-options)
+       (htmx/fragment (views/detail-ready part mesh-key (assoc view-options :region-layers (db/region-layers (db/snapshot! catalog))))
                       {:events (assoc events :interfaces {:part-id part-id
                                                           :mesh-key mesh-key
                                                           :mounts (catalog-part/durable-mounts

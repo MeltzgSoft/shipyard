@@ -26,3 +26,14 @@
     (is (= "Secondary" (last (:layers (:regions (model/change painted mesh 2 "reset" nil nil nil))))))))
 (deftest region-preview-materials
   (is (= #{"Primary" "Secondary"} (set (keys (model/preview-materials (model/empty-regions mesh)))))))
+
+(deftest assigning-a-shared-layer
+  (let [empty (model/empty-regions mesh)
+        result (:regions (model/change empty mesh 0 "assign" "Trim" nil [face] ["Trim" "Engines"]))]
+    (is (= ["Primary" "Secondary" "Trim"] (:layers result)))
+    (is (= {face "Trim"} (:faces result)))
+    (is (= 1 (:revision result)))
+    (is (model/valid? result))
+    (is (:error (model/change empty mesh 0 "assign" "Missing" nil [face] ["Trim"])))
+    (is (:error (model/change empty mesh 0 "delete" "Trim" nil nil ["Trim"])))
+    (is (:error (model/change empty mesh 1 "assign" "Trim" nil [face] ["Trim"])))))

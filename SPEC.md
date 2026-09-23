@@ -558,8 +558,14 @@ including the material's metalness and roughness.
 
 Parts may carry reusable, source-bound face regions authored in Part Browser's
 Regions tab. Primary and Secondary are permanent shared layer names; users can add,
-rename and delete any number of named detail layers. Every face belongs to one layer;
-unassigned faces belong to Primary. Assigning Primary erases an explicit assignment.
+rename and delete any number of named detail layers. Names defined on any library
+part are selectable on every other part without being re-created; assignment adopts
+the selected name on that part. Rename and delete remain part-local.
+Every face belongs to one layer;
+unassigned faces belong to Primary. Assigning Primary or right-dragging erases an
+explicit assignment. In both region and freehand painting, right-drag temporarily
+erases without changing the selected paint layer, material or mode; Alt retains
+camera controls. Freehand erase reveals the inherited material.
 Deleting a detail layer on a part returns its faces to Primary without deleting scheme
 colors. Regions use the same visible-only, whole-triangle brush selection as detail
 painting and persist with the library part. Changed source meshes retain old regions

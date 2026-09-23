@@ -1,5 +1,6 @@
 (ns shipyard.paint.transforms-test
   (:require [clojure.test :refer [deftest is testing]]
+            [datascript.core :as d]
             [shipyard.assembly.model-test :as fixture]
             [shipyard.paint.transforms :as t]
             [shipyard.scheme.material :as m]))
@@ -73,3 +74,12 @@
       (is (nil? (t/parse-detail (dissoc params "roughness"))))
       (doseq [bad ["NaN" "Infinity" "-0.1" "1.1" "" nil]]
         (is (nil? (t/parse-detail (assoc params "roughness" bad))))))))
+
+(deftest shared-layer-targets-without-an-instance
+  (let [database (d/db-with fixture/database
+                            [{:part/id "weapon"
+                              :part/paint-regions (pr-str {:mesh-key (apply str (repeat 64 "a"))
+                                                           :revision 1 :layers ["Primary" "Secondary" "Trim"] :faces {}})}])
+        targets (t/targets database {:hull "hull" :assignments {}} {:scheme/layers {}})]
+    (is (some #(= "layer/Trim" (:key %)) targets))
+    (is (not-any? #(= "weapon" (:part-id %)) targets))))

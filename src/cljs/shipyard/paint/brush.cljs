@@ -251,7 +251,7 @@
       (.appendChild (.-body js/document) cursor)
       (.addEventListener canvas "pointerdown"
                          (fn [^js e]
-                           (when (and (available?) (= 0 (.-button e)) (not (.-altKey e)))
+                           (when (and (available?) (#{0 2} (.-button e)) (not (.-altKey e)))
                              (.preventDefault e) (.stopImmediatePropagation e)
                              (try
                                (let [form (form!) target-key (value form "target")
@@ -271,7 +271,7 @@
                                                      :color {:base (rgb (value form "brush-color"))
                                                              :metalness (js/parseFloat (value form "brush-metalness"))
                                                              :roughness (js/parseFloat (value form "brush-roughness"))} :hex (value form "brush-color")
-                                                     :erase? (= "erase" (value form "mode")) :radius (js/parseFloat (value form "radius"))})
+                                                     :erase? (or (= 2 (.-button e)) (= "erase" (value form "mode"))) :radius (js/parseFloat (value form "radius"))})
                                      (lock!)
                                      (swap! stroke assoc :timer (js/setInterval #(flush! false) (js/Number (.getAttribute form "data-flush-interval"))))
                                      (sample! e))))
@@ -289,6 +289,7 @@
                                (set! (.. cursor -style -top) (str (.-clientY e) "px"))))
                            (when (:dragging? @stroke) (.preventDefault e) (.stopImmediatePropagation e) (sample! e))) true)
       (.addEventListener canvas "pointerup" finish! true)
+      (.addEventListener canvas "contextmenu" (fn [^js e] (when (or @stroke (available?)) (.preventDefault e) (.stopImmediatePropagation e))) true)
       (.addEventListener canvas "pointercancel" (fn [_] (cancel! "Stroke canceled. Nothing saved." false)) true)
       (.addEventListener canvas "pointerleave" (fn [_] (set! (.. cursor -style -display) "none")))
       (.addEventListener canvas "wheel" (fn [^js e] (when (:dragging? @stroke) (.preventDefault e) (.stopImmediatePropagation e))) #js {:capture true :passive false})

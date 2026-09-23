@@ -226,7 +226,7 @@
 
 (defn detail-ready
   ([part mesh-key] (detail-ready part mesh-key nil))
-  ([part mesh-key {:keys [error orientation-error preview repeat-values]}]
+  ([part mesh-key {:keys [error orientation-error preview repeat-values region-layers]}]
    (let [mount-active? (boolean (or preview error))]
      [:div.detail.detail--ready
       [:nav.detail__tabs {:role "tablist" :aria-label "Part inspector"}
@@ -252,7 +252,7 @@
        (part-metadata part)
        (part-orientation part orientation-error)]
       [:div.detail__tab-panel {:data-detail-panel "regions" :role "tabpanel" :hidden true}
-       (regions/panel (:part/id part) mesh-key (catalog/part-regions part) nil nil)]
+       (regions/panel (:part/id part) mesh-key (catalog/part-regions part) nil nil region-layers)]
       [:div.detail__tab-panel {:data-detail-panel "mounts" :role "tabpanel" :hidden (not mount-active?)}
        (interface-legend part)
        (mount-list part)

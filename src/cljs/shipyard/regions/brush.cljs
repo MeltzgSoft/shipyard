@@ -26,6 +26,8 @@
               (when-let [current @stroke]
                 (paint! (:object current) (:before current))
                 (unlock! current)
+                (when-let [form (form!)]
+                  (set! (.-value (field form "layer")) (:selected-layer current)))
                 (reset! stroke nil)
                 (set! (.. cursor -style -display) "none")
                 (status! message)))
@@ -48,7 +50,7 @@
       (.appendChild (.-body js/document) cursor)
       (.addEventListener canvas "pointerdown"
                          (fn [^js e]
-                           (when (and (available?) (= 0 (.-button e)) (not (.-altKey e)))
+                           (when (and (available?) (#{0 2} (.-button e)) (not (.-altKey e)))
                              (.preventDefault e) (.stopImmediatePropagation e)
                              (try
                                (let [form (form!) [slot ^js object] (first @parts)
@@ -58,7 +60,8 @@
                                                   (array-seq (.querySelectorAll js/document "#workspace-navigation button, #library button, #library select, #part-regions button, #part-regions input:not([type=hidden]), #part-regions select, [data-detail-tab], [data-mount-colors-toggle]")))]
                                  (when (= (:mesh-key before) (.. object -userData -meshKey))
                                    (reset! stroke {:form form :slot slot :object object :before before
-                                                   :layer (.-value (field form "layer"))
+                                                   :selected-layer (.-value (field form "layer"))
+                                                   :layer (if (= 2 (.-button e)) "Primary" (.-value (field form "layer")))
                                                    :radius (js/Number (.-value (field form "radius")))
                                                    :buffer (brush/visible-buffer sys slot) :keys #{} :locked locked})
                                    (set! (.-enabled controls) false)
@@ -88,8 +91,10 @@
                                    (swap! stroke assoc :saving? true)
                                    ;; The selected layer must be submitted while other controls stay locked.
                                    (set! (.-disabled (field form "layer")) false)
+                                   (set! (.-value (field form "layer")) (:layer current))
                                    (set! (.-value (field form "faces")) (pr-str (vec (:keys current))))
                                    (.requestSubmit form))))) true)
+      (.addEventListener canvas "contextmenu" (fn [^js e] (when (or @stroke (available?)) (.preventDefault e) (.stopImmediatePropagation e))) true)
       (.addEventListener canvas "pointercancel" (fn [_] (cancel! "Region stroke canceled.")) true)
       (.addEventListener canvas "click" (fn [^js e] (when (or @stroke (available?)) (.preventDefault e) (.stopImmediatePropagation e))) true)
       (.addEventListener js/document "change"
@@ -106,7 +111,8 @@
                                         (not (.querySelector js/document "#part-regions [role=alert]")))
                                  (do (unlock! current) (reset! stroke nil) (status! "Regions saved.")
                                      (when-let [form (form!)] (set! (.-checked (field form "enabled")) true)
-                                               (set! (.-value (field form "radius")) (:radius current))))
+                                               (set! (.-value (field form "radius")) (:radius current))
+                                               (set! (.-value (field form "layer")) (:selected-layer current))))
                                  (cancel! "Region save failed. Reopen this part or retry the stroke."))))))
       (.addEventListener js/document "htmx:beforeRequest"
                          (fn [^js e]
