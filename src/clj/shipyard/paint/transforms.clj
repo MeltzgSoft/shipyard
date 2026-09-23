@@ -16,14 +16,14 @@
                               :label (str (or (:part/name part) id) " · " (if (empty? path) "Hull" (pr-str path)))}))
                          (loadout/part-tree draft))]
      (into (into (into instances (for [layer (when (or record (seq instances)) (catalog/region-layers database))]
-                                   {:key (str "layer/" layer) :layer-name layer :label layer})) (map (fn [g] {:key (str "group/" (:group/id g)) :group-id (:group/id g) :label (:group/name g)})
-                                                                                                     (sort-by :group/order (:scheme/groups record))))
+                                   {:key (str "layer/" layer) :layer-id layer :label (get-in (catalog/region-registry database) [:layers layer :name] layer)})) (map (fn [g] {:key (str "group/" (:group/id g)) :group-id (:group/id g) :label (:group/name g)})
+                                                                                                                                                                     (sort-by :group/order (:scheme/groups record))))
            (for [role (sort (set (keep :role instances)))]
              {:key (str "role/" (name role)) :role role :label (str "Role default · " (name role))})))))
 
 (defn target-material [record target]
   (cond
-    (:layer-name target) (or (get-in record [:scheme/layers (:layer-name target)]) (get-in record [:scheme/layers "Primary"]) material/neutral)
+    (:layer-id target) (or (get-in record [:scheme/layers (:layer-id target)]) (get-in record [:scheme/layers "Primary"]) material/neutral)
     (:group-id target) (or (:group/material (first (filter #(= (:group-id target) (:group/id %)) (:scheme/groups record)))) material/neutral)
     (contains? target :path) (material/resolve-material record (:path target) (:part-id target) (:role target))
     :else (or (get-in record [:scheme/roles (:role target)]) material/neutral)))
@@ -36,7 +36,7 @@
                   (update record :scheme/groups (fn [groups] (mapv #(if (= (:group-id target) (:group/id %))
                                                                       (assoc % :group/material material/neutral) %) groups))) record)]
     (cond
-      (:layer-name target) (mapv :path (filter #(and (contains? % :path) (#{:role :layer} (first (material/material-source record (:path %) (:part-id %) (:role %))))) targets))
+      (:layer-id target) (mapv :path (filter #(and (contains? % :path) (#{:role :layer} (first (material/material-source record (:path %) (:part-id %) (:role %))))) targets))
       (contains? target :path) [(:path target)]
       :else
       (mapv :path (filter #(and (contains? % :path)
@@ -59,7 +59,7 @@
     (nil? target) {:error :missing-target}
     (and clear? (not (contains? target :path))) {:error :invalid-target}
     (and (not clear?) (not (scheme/material? value))) {:error :invalid-material}
-    (:layer-name target) {:scheme (assoc-in record [:scheme/layers (:layer-name target)] value)}
+    (:layer-id target) {:scheme (-> record (assoc :scheme/layer-ids? true) (assoc-in [:scheme/layers (:layer-id target)] value))}
     (:group-id target) {:scheme (update record :scheme/groups
                                         (fn [groups] (mapv #(if (= (:group-id target) (:group/id %)) (assoc % :group/material value) %) groups)))}
     clear? {:scheme (update record :scheme/instances #(dissoc (or % {}) (:path target)))}

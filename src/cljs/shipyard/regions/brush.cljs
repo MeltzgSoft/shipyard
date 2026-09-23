@@ -15,15 +15,17 @@
 (defn- select-mode! [mode]
   (when-let [form (.getElementById js/document "region-stroke")]
     (set! (.-value (.namedItem (.-elements form) "mode")) mode)
+    (set! (.-hidden (.getElementById js/document "region-angle-control")) (not= mode "faces"))
     (doseq [button (array-seq (.querySelectorAll js/document "[data-region-mode]"))]
       (.setAttribute button "aria-pressed" (str (= mode (.getAttribute button "data-region-mode")))))))
 
-(defn- surface-groups! [^js object]
-  (or (.. object -userData -regionSurfaces)
-      (let [geometry (.-geometry object)
-            groups (surfaces/groups (mapv #(render/triangle-points geometry %) (range (render/triangle-count geometry))))]
-        (set! (.. object -userData -regionSurfaces) groups)
-        groups)))
+(defn- surface-groups! [^js object angle]
+  (let [cached (.. object -userData -regionSurfaces)]
+    (if (= angle (:angle cached)) (:groups cached)
+        (let [geometry (.-geometry object)
+              groups (surfaces/groups (mapv #(render/triangle-points geometry %) (range (render/triangle-count geometry))) angle)]
+          (set! (.. object -userData -regionSurfaces) {:angle angle :groups groups})
+          groups))))
 
 (defn install! [sys apply-material!]
   (let [{:keys [^js canvas ^js controls active parts mount-colors-enabled]} sys
@@ -84,7 +86,8 @@
                                                    :layer (if (= 2 (.-button e)) "Primary" (.-value (field form "layer")))
                                                    :radius (js/Number (.-value (field form "radius")))
                                                    :mode (.-value (field form "mode"))
-                                                   :groups (when (= "faces" (.-value (field form "mode"))) (surface-groups! object))
+                                                   :angle (.-value (field form "angle"))
+                                                   :groups (when (= "faces" (.-value (field form "mode"))) (surface-groups! object (js/Number (.-value (field form "angle")))))
                                                    :buffer (brush/visible-buffer sys slot) :keys #{} :locked locked})
                                    (set! (.-enabled controls) false)
                                    (doseq [[el _] locked] (set! (.-disabled el) true))
@@ -113,6 +116,7 @@
                                    (swap! stroke assoc :saving? true)
                                    ;; The selected layer must be submitted while other controls stay locked.
                                    (set! (.-disabled (field form "layer")) false)
+                                   (set! (.-disabled (field form "angle")) false)
                                    (set! (.-value (field form "layer")) (:layer current))
                                    (set! (.-value (field form "faces")) (pr-str (vec (:keys current))))
                                    (.requestSubmit form))))) true)

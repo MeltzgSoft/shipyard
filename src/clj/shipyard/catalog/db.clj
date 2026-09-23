@@ -11,6 +11,9 @@
   (:require [clojure.tools.logging :as log]
             [clojure.edn :as edn]
             [shipyard.regions.model :as regions]
+            [shipyard.regions.migration :as migration]
+            [shipyard.regions.registry :as registry]
+            [shipyard.catalog.layers :as layers]
             [datascript.core :as d]
             [integrant.core :as ig]
             [shipyard.catalog.sidecar :as sidecar]
@@ -18,7 +21,9 @@
             [shipyard.part.orientation :as orientation]))
 
 (def schema
-  {:part/id          {:db/unique :db.unique/identity}
+  {:layer-registry/id {:db/unique :db.unique/identity}
+   :layer-registry/data {}
+   :part/id          {:db/unique :db.unique/identity}
    :part/bundle      {:db/index true}
    :part/class       {:db/index true}
    :part/role-hint   {:db/index true}     ; browsing only - never compatibility (§5.2)
@@ -86,7 +91,7 @@
                                                             :part/renderable :part/mesh-key :part/tris
                                                             :part/weapons? :part/turrets?
                                                             :part/accepts-turrets?]))
-      (regions/valid? (:part/paint-regions sidecar)) (assoc :part/paint-regions (pr-str (:part/paint-regions sidecar)))
+      (regions/valid? (:part/paint-regions sidecar)) (assoc :part/paint-regions (pr-str (migration/regions (:part/paint-regions sidecar))))
       (seq (:part/variants part)) (assoc :part/variants (vec (:part/variants part)))
       (seq (:mounts sidecar))     (assoc :part/mounts (vec (:mounts sidecar)))
       part-orientation            (assoc :part/orientation part-orientation))))
@@ -106,7 +111,9 @@
                                     nil))]
                          (conj acc (part->tx (apply-sidecar part sc) sc))))
                      [] parts)]
-    (d/transact! conn tx)
+    (let [shared (registry/discover (layers/read! root)
+                                    (keep #(some-> (:part/paint-regions %) (edn/read-string)) tx))]
+      (d/transact! conn (conj tx {:layer-registry/id "shared" :layer-registry/data (pr-str shared)})))
     conn))
 
 ;; --- queries ----------------------------------------------------------------
@@ -251,51 +258,72 @@
     {:state (atom {:conn (ingest! (or parts []) root) :root root})}))
 
 (defn part-regions [part]
-  (some-> (:part/paint-regions part) (edn/read-string)))
+  (some-> (:part/paint-regions part) (edn/read-string) (migration/regions)))
 
-(defn region-layers
-  "Shared layer names defined anywhere in this library, including unused layers."
-  [database]
-  (into regions/builtins
-        (sort (remove (set regions/builtins)
-                      (set (mapcat #(-> % edn/read-string :layers)
-                                   (d/q '[:find [?regions ...] :where [_ :part/paint-regions ?regions]] database)))))))
+(defn region-registry [database]
+  (or (some-> (d/pull database [:layer-registry/data] [:layer-registry/id "shared"])
+              :layer-registry/data (edn/read-string))
+      ;; Small pure fixtures may construct catalog records directly.
+      (registry/discover registry/empty-registry
+                         (map #(migration/regions (edn/read-string %))
+                              (d/q '[:find [?regions ...] :where [_ :part/paint-regions ?regions]] database)))))
 
-(defn save-regions! [{:keys [state]} part-id value]
-  (when-not (regions/valid? value) (throw (ex-info "Invalid part regions" {})))
-  (locking state
-    (let [{:keys [conn root]} @state]
-      (let [file (sidecar/sidecar-file root part-id)]
-        (when (and (.exists file) (not (.isFile file)))
-          (throw (ex-info "Part sidecar must be a regular file" {}))))
-      (sidecar/update-sidecar! root part-id assoc :part/paint-regions value)
-      (d/transact! conn [{:part/id part-id :part/paint-regions (pr-str value)}])
-      value)))
+(defn region-layers [database] (registry/ids (region-registry database)))
 
-(defn delete-region-layer!
-  "Delete one shared type from every part, including stale-source masks."
-  [{:keys [state]} part-id revision layer]
+(defn- registry-tx [value]
+  {:layer-registry/id "shared" :layer-registry/data (pr-str value)})
+
+(defn save-regions!
+  ([catalog part-id value] (save-regions! catalog part-id value nil))
+  ([{:keys [state]} part-id value expected-revision]
+   (when-not (regions/valid? value) (throw (ex-info "Invalid part regions" {})))
+   (locking state
+     (let [{:keys [conn root]} @state
+           normalized (migration/regions value)
+           shared (registry/discover (region-registry @conn) [normalized])
+           normalized (assoc normalized :layer-definitions
+                             (select-keys (:layers shared) (:layers normalized)))]
+       (when (and expected-revision
+                  (or (not= expected-revision (or (:revision (part-regions (part @conn part-id))) 0))
+                      (some (:deleted shared) (:layers normalized))))
+         (throw (ex-info "Regions or shared layers changed before saving. Reopen the part." {})))
+       (let [file (sidecar/sidecar-file root part-id)]
+         (when (and (.exists file) (not (.isFile file)))
+           (throw (ex-info "Part sidecar must be a regular file" {}))))
+       (sidecar/update-sidecar! root part-id assoc :part/paint-regions normalized)
+       (d/transact! conn [{:part/id part-id :part/paint-regions (pr-str normalized)} (registry-tx shared)])
+       normalized))))
+
+(defn edit-region-layer!
+  "Edit the shared entity regardless of selected-part usage. Deletion rolls back
+  sidecars if either a part write or the final registry write fails."
+  [{:keys [state]} part-id revision layer-revision action layer name]
   (locking state
     (let [{:keys [conn root]} @state
           database @conn
-          selected (part-regions (part database part-id))]
+          selected (part-regions (part database part-id))
+          result (registry/change (region-registry database) layer-revision action layer name
+                                  (when (= action "add") (str "layer:" (random-uuid))))]
       (cond
         (not= revision (or (:revision selected) 0))
         {:error "Regions changed. Reopen this part before retrying."}
-        (or (some #{layer} regions/builtins) (not (some #{layer} (region-layers database))))
-        {:error "Choose an existing detail layer. Primary and Secondary cannot be deleted."}
+        (:error result) result
         :else
-        (let [changes (into (sorted-map)
-                            (keep (fn [[id encoded]]
-                                    (let [before (edn/read-string encoded)
-                                          after (regions/without-layer before layer)]
-                                      (when (not= before after) [id {:before before :after after}]))))
-                            (d/q '[:find ?id ?regions :where [?p :part/id ?id] [?p :part/paint-regions ?regions]] database))]
+        (let [changes (if (= action "delete")
+                        (into (sorted-map)
+                              (keep (fn [[id encoded]]
+                                      (let [before (migration/regions (edn/read-string encoded))
+                                            after (regions/without-layer before layer)]
+                                        (when (not= before after) [id {:before before :after after}]))))
+                              (d/q '[:find ?id ?regions :where [?p :part/id ?id] [?p :part/paint-regions ?regions]] database))
+                        {})]
           (sidecar/update-sidecars!
            root (mapv (fn [[id {:keys [before after]}]]
                         [id (fn [data]
-                              (when-not (= before (:part/paint-regions data))
+                              (when-not (= before (migration/regions (:part/paint-regions data)))
                                 (throw (ex-info "Part regions changed on disk. Rescan before deleting this layer." {:part-id id})))
-                              (assoc data :part/paint-regions after))]) changes))
-          (d/transact! conn (mapv (fn [[id {:keys [after]}]] {:part/id id :part/paint-regions (pr-str after)}) changes))
-          {:regions (part-regions (part @conn part-id))})))))
+                              (assoc data :part/paint-regions after))]) changes)
+           #(layers/write! root (:registry result)))
+          (d/transact! conn (conj (mapv (fn [[id {:keys [after]}]] {:part/id id :part/paint-regions (pr-str after)}) changes)
+                                  (registry-tx (:registry result))))
+          {:regions (part-regions (part @conn part-id)) :selected (:selected result)})))))

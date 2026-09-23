@@ -5,6 +5,7 @@
             [clojure.java.io :as io]
             [integrant.core :as ig]
             [shipyard.scheme.transforms :as transforms]
+            [shipyard.regions.migration :as migration]
             [shipyard.system :as system])
   (:import [java.io PushbackReader]
            [java.nio.file Files CopyOption StandardCopyOption AtomicMoveNotSupportedException FileSystemException]))
@@ -21,7 +22,7 @@
                     (throw (ex-info (str "Cannot read schemes at " file ". Restore a valid backup before restarting; the file was not modified.")
                                     {:code :invalid-store :file (str file)} e))))
                 transforms/empty-store)]
-    {:file (fs/absolutize file) :state (atom value)}))
+    {:file (fs/absolutize file) :state (atom (update value :schemes #(into {} (map (fn [[id record]] [id (migration/scheme record)])) %)))}))
 
 (defmethod ig/init-key :shipyard.scheme/db [_ {:keys [data-home]}]
   (open! (fs/path (or data-home (system/data-home!)) "shipyard" "schemes.edn")))
@@ -60,5 +61,5 @@
             {:error :store-write-failed
              :message (str "Could not save schemes at " file ". Check the folder permissions and retry. " (ex-message e))}))))))
 
-(defn put! [store record mode] (transact! store transforms/put-record record mode))
+(defn put! [store record mode] (transact! store transforms/put-record (migration/scheme record) mode))
 (defn delete! [store id] (transact! store transforms/delete-record id))

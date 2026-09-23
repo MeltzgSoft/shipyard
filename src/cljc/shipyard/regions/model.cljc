@@ -1,14 +1,24 @@
 (ns shipyard.regions.model
-  "Reusable, source-bound part regions. Faces belong to one shared layer name."
+  "Reusable, source-bound part regions. Faces reference stable shared layers."
   (:require [clojure.string :as str]
             [shipyard.paint.faces :as faces]))
 
 (def builtins ["Primary" "Secondary"])
+(defn detail-id? [value]
+  (and (string? value) (boolean (re-matches #"layer:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}" value))))
 (defn name? [value]
   (and (string? value) (<= 1 (count value) 200) (= value (str/trim value))))
 (defn empty-regions [mesh-key] {:mesh-key mesh-key :revision 0 :layers builtins :faces {}})
 (defn valid? [value]
-  (and (map? value) (= #{:mesh-key :revision :layers :faces} (set (keys value)))
+  (and (map? value) (or (= #{:mesh-key :revision :layers :faces} (set (keys value)))
+                        (and (= 2 (:version value))
+                             (= #{:version :mesh-key :revision :layers :faces :layer-definitions} (set (keys value)))
+                             (map? (:layer-definitions value))
+                             (every? #(or (some #{%} builtins) (detail-id? %)) (:layers value))
+                             (every? (fn [[id entry]] (and (some #{id} (:layers value))
+                                                           (detail-id? id)
+                                                           (name? (:name entry)) (name? (:preview-name entry))))
+                                     (:layer-definitions value))))
        (string? (:mesh-key value)) (boolean (re-matches #"[0-9a-f]{64}" (:mesh-key value)))
        (nat-int? (:revision value)) (vector? (:layers value))
        (= builtins (vec (take 2 (:layers value))))
@@ -21,6 +31,7 @@
     (-> regions
         (update :layers #(filterv (complement #{layer}) %))
         (update :faces #(into {} (remove (fn [[_ name]] (= name layer))) %))
+        (cond-> (:layer-definitions regions) (update :layer-definitions dissoc layer))
         (update :revision inc))
     regions))
 
@@ -76,5 +87,5 @@
       (mapv #(+ 0.19 %) rgb))))
 
 (defn preview-materials [regions]
-  (into {} (map (fn [name] [name {:base (preview-color name)
+  (into {} (map (fn [name] [name {:base (preview-color (get-in regions [:layer-definitions name :preview-name] name))
                                   :metalness 0.05 :roughness 0.65}]) (:layers regions))))

@@ -81,9 +81,9 @@
                               :part/paint-regions (pr-str {:mesh-key (apply str (repeat 64 "a"))
                                                            :revision 1 :layers ["Primary" "Secondary" "Trim"] :faces {}})}])
         targets (t/targets database {:hull "hull" :assignments {}} {:scheme/layers {}})]
-    (is (some #(= "layer/Trim" (:key %)) targets))
+    (is (some #(= "Trim" (:label %)) targets))
     (is (not-any? #(= "weapon" (:part-id %)) targets))))
 
 (deftest deleted-types-do-not-return-from-saved-palette-colors
-  (is (not-any? #(= "layer/Trim" (:key %))
+  (is (not-any? #(= "Trim" (:label %))
                 (t/targets fixture/database draft {:scheme/layers {"Trim" m/neutral}}))))

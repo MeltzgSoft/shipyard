@@ -6,6 +6,7 @@
   `shipyard.http.routes` do the looking-up; this namespace only decides what a
   thing looks like."
   (:require [shipyard.regions.views :as regions]
+            [shipyard.regions.registry]
             [shipyard.catalog.db :as catalog]
             [clojure.string :as str]
             [shipyard.catalog.part :as catalog-part]
@@ -252,7 +253,7 @@
        (part-metadata part)
        (part-orientation part orientation-error)]
       [:div.detail__tab-panel {:data-detail-panel "regions" :role "tabpanel" :hidden true}
-       (regions/panel (:part/id part) mesh-key (catalog/part-regions part) nil nil region-layers)]
+       (regions/panel (:part/id part) mesh-key (catalog/part-regions part) nil nil (or region-layers shipyard.regions.registry/empty-registry))]
       [:div.detail__tab-panel {:data-detail-panel "mounts" :role "tabpanel" :hidden (not mount-active?)}
        (interface-legend part)
        (mount-list part)

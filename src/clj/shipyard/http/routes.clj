@@ -100,7 +100,7 @@
     (htmx/fragment (views/detail-preparing part)
                    {:events {:status {:state :preparing
                                       :message "Restoring saved mount faces."}}})
-    (htmx/fragment (views/detail-ready part mesh-key {:region-layers (db/region-layers (db/snapshot! (:catalog deps)))})
+    (htmx/fragment (views/detail-ready part mesh-key {:region-layers (db/region-registry (db/snapshot! (:catalog deps)))})
                    {:headers {"HX-Trigger-After-Swap"
                               (htmx/trigger {:load-mesh {:url     (urls/mesh-url mesh-key 0)
                                                          :part-id (:part/id part)
@@ -280,7 +280,7 @@
          mesh-key (index/mesh-key! library part-id)]
      (if (and (:part/id part) mesh-key)
        (htmx/fragment (views/detail-ready part mesh-key (assoc (merge {:mount-active? true} view-options)
-                                                               :region-layers (db/region-layers (db/snapshot! catalog))))
+                                                               :region-layers (db/region-registry (db/snapshot! catalog))))
                       {:events (assoc events :interfaces {:part-id part-id
                                                           :mesh-key mesh-key
                                                           :mounts (catalog-part/durable-mounts
@@ -557,6 +557,8 @@
                                                  [:layer {:optional true} string?] [:name {:optional true} string?]
                                                  [:confirmed {:optional true} [:enum "true"]]
                                                  [:mode {:optional true} [:enum "facets" "faces"]]
+                                                 [:layer-revision {:optional true} [:int {:min 0}]]
+                                                 [:angle {:optional true} [:int {:min 0 :max 90}]]
                                                  [:faces {:optional true} string?]]}
                              :responses contracts/html-responses}}]
    ["/parts/role" {:post {:handler (partial save-part-role! deps)

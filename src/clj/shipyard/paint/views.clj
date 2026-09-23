@@ -75,7 +75,7 @@
     [:div.paint-targets
      [:form#paint-target (merge selection-attrs {:hx-post "/paint/target"})
       [:h3 "Layer defaults"]
-      (for [entry targets :when (:layer-name entry)] (target-row record target entry nil members))
+      (for [entry targets :when (:layer-id entry)] (target-row record target entry nil members))
       [:h3 "Role fallbacks"]
       [:p.muted "Used when no layer default is set."]
       (for [entry targets :when (and (:role entry) (not (contains? entry :path)))]
@@ -144,7 +144,7 @@
    {:hx-post "/paint/material" :hx-target "#paint-status" :hx-swap "innerHTML"
     :hx-trigger "change, submit" :hx-sync "this:queue last" :hx-disabled-elt competing-controls
     :data-paint-slots (pr-str paths)
-    :data-paint-layer (:layer-name target)
+    :data-paint-layer (:layer-id target)
     :data-paint-override (str (boolean (or (contains? target :path) (:group-id target))))
     :hx-on:input "this.elements.sequence.value=Number(this.elements.sequence.value)+1;document.getElementById('paint-status').textContent='Preview not saved';document.getElementById('paint-header-status').textContent='Preview not saved';"
     :hx-on--config-request "var field=this.elements.sequence;field.value=Number(field.value)+1;event.detail.parameters.sequence=field.value;"
@@ -238,7 +238,7 @@
         [:p.detail__error (str "Could not load " id ". " (:message status))])
       (when ready?
         (list (when-not brush?
-                (list (when-not (:layer-name target) (write-targets record targets target anchor-key))
+                (list (when-not (:layer-id target) (write-targets record targets target anchor-key))
                       (group-controls record target)
                       (material-form record target value paths sequence)))
               (when model-ready? (brush-panel record target targets prepared state flush-interval value))))
