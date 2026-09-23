@@ -556,6 +556,7 @@
                                                  [:action [:enum "assign" "fill" "add" "rename" "delete" "reset"]]
                                                  [:layer {:optional true} string?] [:name {:optional true} string?]
                                                  [:confirmed {:optional true} [:enum "true"]]
+                                                 [:mode {:optional true} [:enum "facets" "faces"]]
                                                  [:faces {:optional true} string?]]}
                              :responses contracts/html-responses}}]
    ["/parts/role" {:post {:handler (partial save-part-role! deps)

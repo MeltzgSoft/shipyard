@@ -989,9 +989,27 @@ body:has(.paint-editor) .masthead__stats { display: none; }
 #part-regions label { display: grid; gap: 0.35rem; }
 #part-regions label:has(input[type=checkbox]) { display: flex; align-items: center; }
 #part-regions input:not([type=checkbox]), #part-regions select { min-width: 0; width: 100%; }
-.region-legend { display: flex; flex-wrap: wrap; gap: 0.4rem 0.9rem; }
-.region-legend p { display: flex; align-items: center; gap: 0.4rem; margin: 0; }
+.region-layers { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 6px; }
+.region-layer__row { display: flex; align-items: center; gap: 5px; }
+#part-regions .region-layer__select { display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0; text-align: left; min-height: 34px; }
+.region-layer__name { overflow-wrap: anywhere; }
+.region-layer__select .paint-swatch { flex-shrink: 0; }
+#part-regions .region-layer__select[aria-pressed=true] { border-color: var(--accent); background: #213541; }
+.region-layer__select[aria-pressed=true]::after { content: "✓"; margin-left: auto; color: var(--accent); }
+.region-layer__actions { display: flex; align-items: center; gap: 4px; }
+#part-regions .region-layer__actions button { display: grid; place-items: center; width: 30px; height: 30px; padding: 0; }
+#part-regions .region-layer__delete { display: block; margin: 0; }
+#part-regions .region-layer__delete button { font-size: 20px; }
+#part-regions .region-layer__delete button:hover { color: #ff9393; border-color: #ff9393; }
+#part-regions .region-layer__rename { margin: 6px 0 10px; padding: 10px; border: 1px solid var(--line); border-radius: 5px; }
+.region-layer__rename[hidden] { display: none !important; }
+.region-layer__rename-actions { display: flex; gap: 6px; }
+#part-regions #region-add { grid-template-columns: minmax(0, 1fr) auto; }
+.region-brush-mode { display: flex; align-items: center; gap: 5px; }
+.region-brush-mode > span { margin-right: auto; }
+#part-regions .region-brush-mode button[aria-pressed=true] { color: var(--accent); border-color: var(--accent); background: #213541; }
 #part-regions { font-size: 12px; }
+#part-regions p { margin: 8px 0; line-height: 1.45; }
 #part-regions input:not([type=range]):not([type=checkbox]), #part-regions select, #part-regions button {
   box-sizing: border-box; color: var(--ink); background: var(--bg); border: 1px solid var(--line);
   border-radius: 5px; padding: 6px 9px; font: inherit;

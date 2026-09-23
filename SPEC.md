@@ -564,7 +564,10 @@ the selected name on that part. Rename remains part-local. Deleting a detail typ
 requires confirmation, removes it from every part in the current library, and
 returns those regions to Primary. Primary and Secondary cannot be deleted.
 Layer preview colors depend on the exact name, so adding or removing another type
-does not recolor existing regions. The visible inspector tab selects the tool:
+does not recolor existing regions. A single selectable layer list combines the
+legend with pencil rename and confirmed delete actions. Selection drives both
+brushing and full-part assignment. Primary and Secondary remain protected.
+The visible inspector tab selects the tool:
 Regions enables brushing, Mounts enables face picking with a crosshair, and Part
 returns to navigation. Separate brush and face-picking toggles are unnecessary.
 Part Browser can display mount faces or layer types, remembering its own display
@@ -576,8 +579,10 @@ explicit assignment. In both region and freehand painting, right-drag temporaril
 erases without changing the selected paint layer, material or mode; Alt retains
 camera controls. Freehand erase reveals the inherited material.
 Deleting a detail type retains unused scheme colors for possible reuse, while
-removing the type from pickers and Paint defaults. Regions use the same visible-only, whole-triangle brush selection as detail
-painting and persist with the library part. Changed source meshes retain old regions
+removing the type from pickers and Paint defaults. Regions start with the same visible-triangle brush selection as detail painting.
+Facets mode assigns touched triangles; Faces mode expands to connected flat
+surfaces, including triangles beyond the brush or behind occluders. Erasing uses
+the same mode. Region assignments persist with the library part. Changed source meshes retain old regions
 but cannot display or extend them until the user confirms a reset.
 
 Optional `:scheme/layers` maps shared layer-name strings to complete materials.

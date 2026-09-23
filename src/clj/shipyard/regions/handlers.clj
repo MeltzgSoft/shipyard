@@ -9,7 +9,7 @@
             [shipyard.workspace.views :as workspace-views]))
 
 (defn save! [{:keys [catalog library workspace] :as deps} {:keys [params]}]
-  (let [{:strs [part-id mesh-key revision action layer name faces confirmed]} params
+  (let [{:strs [part-id mesh-key revision action layer name faces confirmed mode]} params
         database (catalog/snapshot! catalog)
         shared-layers (catalog/region-layers database)
         part (catalog/part database part-id)
@@ -39,7 +39,7 @@
     (when filled? (workspace/update-workspace! workspace :browse assoc :colors false))
     (htmx/fragment
      (list (views/panel part-id mesh-key saved (if (#{"add" "rename"} action) name layer) (:error result)
-                        (catalog/region-layers (catalog/snapshot! catalog)))
+                        (catalog/region-layers (catalog/snapshot! catalog)) (or mode "facets"))
            (when filled?
              (list (workspace-views/colors-toggle false :browse)
                    (workspace-views/context (workspace/active-context! workspace) false))))
