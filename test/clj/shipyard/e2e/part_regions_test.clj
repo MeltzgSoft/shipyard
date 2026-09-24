@@ -646,7 +646,8 @@
         (saved!)
         (is (empty? (:faces (regions)))))
       ;; A deliberately displaced plane must not paint a guessed counterpart.
-      (s/fill-and-blur! driver "#region-stroke input[name=mirror-offset]" "1000")
+      ;; The first stroke must use a typed offset even before blur fires change.
+      (editor/input! driver "#region-stroke input[name=mirror-offset]" "1000" "input")
       (apply brush/stroke! driver (point! 2))
       (saved!)
       (is (= 2 (count (:faces (regions)))))

@@ -49,7 +49,10 @@
      :begin! (fn [^js object]
                (when-let [form (form!)]
                  (when (ensure! form) (restore!))
-                 (let [{:keys [enabled axis offset]} @settings]
+                 (let [{:keys [enabled axis]} @settings
+                       offset (.-value (field form "mirror-offset"))]
+                   ;; Pointerdown precedes blur/change on a focused number input.
+                   (swap! settings assoc :offset offset)
                    (when enabled
                      (let [offset (when (seq offset) (math/parse-finite-double offset))]
                        (when (or (.. (field form "mirror-offset") -validity -badInput)
