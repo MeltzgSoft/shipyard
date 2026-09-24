@@ -26,6 +26,7 @@
             [shipyard.http.jobs :as jobs]
             [shipyard.http.settings :as settings]
             [shipyard.http.urls :as urls]
+            [shipyard.http.validation :as validation]
             [shipyard.http.views :as views]
             [shipyard.library.index :as index]
             [shipyard.mesh.cache :as cache]
@@ -557,13 +558,12 @@
    ["/parts/regions" {:post {:handler (partial regions/save! deps)
                              :parameters {:form [:map [:part-id string?] [:mesh-key string?]
                                                  [:revision [:and string? [:fn #(some? (parse-long %))]]]
-                                                 [:action [:enum "assign" "fill" "add" "rename" "delete" "reset"]]
+                                                 [:action [:enum "fill" "add" "rename" "delete" "reset"]]
                                                  [:layer {:optional true} string?] [:name {:optional true} string?]
                                                  [:confirmed {:optional true} [:enum "true"]]
                                                  [:mode {:optional true} [:enum "facets" "faces"]]
                                                  [:layer-revision {:optional true} [:int {:min 0}]]
-                                                 [:angle {:optional true} [:int {:min 0 :max 90}]]
-                                                 [:faces {:optional true} string?]]}
+                                                 [:angle {:optional true} [:int {:min 0 :max 90}]]]}
                              :responses contracts/html-responses}}]
    ["/parts/role" {:post {:handler (partial save-part-role! deps)
                           :parameters {:form contracts/role-form}
@@ -591,7 +591,7 @@
      {:data {:coercion malli-coercion/coercion
              :middleware [params/wrap-params
                           region-transport/wrap-body
-                          coercion/coerce-exceptions-middleware
+                          validation/wrap-errors
                           coercion/coerce-request-middleware
                           coercion/coerce-response-middleware]}})))
 

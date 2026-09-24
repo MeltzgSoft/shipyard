@@ -2,6 +2,7 @@
   "One application-owned Datalevin store. All writes and snapshot materialization
   share this boundary; domain functions never receive live database handles."
   (:require [babashka.fs :as fs]
+            [clojure.string :as str]
             [datalevin.core :as d]
             [integrant.core :as ig]
             [shipyard.store.schema :as schema]
@@ -31,7 +32,13 @@
 
 (defn open! [directory]
   (let [directory (str (fs/normalize (fs/absolutize directory)))
-        conn (d/get-conn directory schema/schema {:validate-data? true :closed-schema? true})
+        conn (try
+               (d/get-conn directory schema/schema {:validate-data? true :closed-schema? true})
+               (catch Exception e
+                 (if (str/includes? (or (ex-message e) "") "MDB_VERSION_MISMATCH")
+                   (throw (ex-info "Database native format requires offline migration. Stop Shipyard and follow README's :db-v1 export/import procedure; keep the original database as a backup."
+                                   {:type :native-format-mismatch :directory directory} e))
+                   (throw e))))
         store {:conn conn :lock conn :directory directory}]
     (try
       (let [version (:store/version (d/pull @conn '[*] [:store/key "shipyard"]))]

@@ -143,6 +143,27 @@ in user `config.edn`. Catalog, loadouts and schemes share this store; configure 
 location once. Run one Shipyard process per database. Stop the application before
 copying the entire database directory for backup or restore.
 
+Datalevin's native library is pinned to 1.1.5 to fix a compressed overflow-page
+deletion error (`MDB_PROBLEM`) that can prevent further painting. Its DLMDB format
+is v2. A database created with the former 0.19.4 native library must be exported
+using the old library and imported using the new one. Stop Shipyard, including
+any nREPL JVM that opened the database, then run these from the repository root
+with your actual database path and **new** destination paths:
+
+```sh
+clojure -M:db-v1 -m shipyard.store.migrate export /path/to/database /path/to/database-v1.nippy
+clojure -M -m shipyard.store.migrate import /path/to/database-v1.nippy /path/to/database-v2
+```
+
+The importer closes and reopens the new database and verifies all stored facts
+and its schema. Neither command replaces the original database; existing
+destinations are refused. Only after successful verification, rename the original
+directory to `database-v1-backup` and the new directory to `database`, or point
+`:shipyard.store/db :directory` at the verified new directory. Keep the backup and
+export. Start a fresh JVM without `:db-v1`; namespace reloads cannot replace a
+loaded native library. The export is a trusted local backup, not a file exchange
+format. New installations need no migration.
+
 Existing part/layer sidecars and sibling `loadouts.edn`/`schemes.edn` are imported once
 when the library is scanned. Existing per-store `:data-home` overrides are honored
 as import locations. Original files remain unchanged and are not used for later

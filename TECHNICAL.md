@@ -62,6 +62,13 @@ path is a new discovery; automatic detection of moved parts is not implemented.
 Copying an STL folder does not copy its current authored metadata. Back up the database
 as well as the source library. Stop Shipyard before copying its database directory.
 
+The native Datalevin binaries are pinned to 1.1.5 (DLMDB file format v2), including
+the compressed overflow-page deletion fix needed for dense paint masks. The offline
+`shipyard.store.migrate` utility exports entity/attribute/value facts and schema
+using the former 0.19.4 library (`:db-v1`) and imports them into a new directory
+using the current library. It verifies the reopened destination against the export
+and never replaces the source. See README for the upgrade and backup procedure.
+
 ---
 
 ## 2. Project layout
@@ -863,6 +870,11 @@ coercion middleware enforces those schemas at the Ring boundary, before form
 data reaches a handler and after a response leaves it. These schemas describe
 transport shape; domain decisions such as whether a mount id is valid remain
 in the pure mount and orientation functions.
+Coercion failures return rendered HTML with status 400 (request) or 500 (response),
+never raw Clojure maps. A `shipyard:request-error` notification lets region forms
+display the failure without replacing the inspector; failed strokes restore their
+saved preview and release the brush. Logs identify the route and invalid fields
+without dumping stroke payloads.
 
 The canvas is `hx-preserve` and never a swap target (SPEC §6.1). Small viewport
 notifications use `HX-Trigger`; Browse mesh metadata uses `HX-Trigger-After-Swap`
@@ -2299,7 +2311,9 @@ Legacy names normalize to deterministic IDs during import; palettes use the same
 conversion. Imported files stay unchanged. Tombstones prevent deleted layers from
 reappearing during later scans.
 
-`POST /parts/regions` accepts assign/fill/add/rename/delete/reset. Add and rename
+`POST /parts/regions` accepts fill/add/rename/delete/reset. Brush assignment is
+accepted only through the CBOR stroke endpoint; there is no EDN assignment fallback.
+Add and rename
 operate independently of selected-part usage. Confirmed deletion queries masks by
 layer ref and removes those masks, advances affected part/region revisions, releases
 the active name, and tombstones the layer in one transaction, including stale-source
