@@ -590,6 +590,14 @@ neighboring normals differ by at most the selected angle tolerance (0–90°, de
 1°), allowing painting around curves while stopping at larger creases. Expansion can
 include triangles outside the brush or behind occluders. Erasing uses the same
 mode and tolerance. These settings survive region saves and layer operations.
+Regions optionally mirror painting and erasing across a selected canonical part
+plane (YZ/X, XZ/Y or XY/Z). The plane defaults to the model's bounding midpoint;
+an explicit offset supports off-center parts. Reflected selections include hidden
+counterparts and save atomically with the original stroke. Matching uses surface
+overlap, so opposite sides may have different triangulation. Missing counterparts
+are left unchanged. Mirror controls survive saves and layer operations for the
+current part, and reset on part/source/orientation changes. This is a Regions
+brush option; the Paint workspace detail brush keeps its existing behavior.
 Changed source meshes retain old regions but cannot display or extend them until
 reset. Shared rename and delete remain available even for stale masks.
 

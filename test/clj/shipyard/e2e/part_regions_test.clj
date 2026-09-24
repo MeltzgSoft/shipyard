@@ -8,6 +8,7 @@
             [shipyard.catalog.db :as catalog]
             [shipyard.region-fixture :as rf]
             [shipyard.regions.transport :as transport]
+            [shipyard.paint.faces :as faces]
             [shipyard.catalog.sidecar :as sidecar]
             [shipyard.e2e.support :as s]
             [shipyard.e2e.workspace-test :as workspace]
@@ -60,7 +61,7 @@
       (s/await-part driver id)
       (s/click! driver "[data-detail-tab=regions]")
       (is (s/wait-until #(false? (:mount-colors-enabled (s/stats driver)))))
-      (is (zero? (s/count-els driver "#part-regions select, #part-regions details")))
+      (is (zero? (s/count-els driver "#part-regions select:not([name=mirror-axis]), #part-regions details")))
       (is (zero? (s/count-els driver "button[aria-label='Rename Primary'], button[aria-label='Delete Secondary']")))
       (s/click! driver "button[data-region-layer='Primary']")
       (is (= "Primary" (selected)))
@@ -603,6 +604,72 @@
           (is (= (inc (or (:revision saved) 0)) (:revision (regions))))))
       (finally (s/quit! driver) (fixture/stop! started)))))
 
+(deftest mirrored-region-painting-and-erasing
+  (s/assert-bundle!)
+  (let [started (fixture/start! true) sys (:system started) driver (s/make-driver)
+        cat (:shipyard.catalog/db sys) id (:weapon fixture/ids)
+        regions #(catalog/part-regions (catalog/part (catalog/snapshot! cat) id))
+        triangles (into {} (map (juxt faces/face-key identity)) (fixtures/cube 1.0))
+        point! (fn [axis]
+                 (let [_ (s/await-rendered-geometries driver)
+                       [left top] (s/js driver "() => {const r=document.querySelector('canvas').getBoundingClientRect();return [r.x,r.y];}")
+                       visible (filter :front? (:region-faces (s/stats driver)))
+                       ordinal (first (keep-indexed (fn [i face]
+                                                      (when (and (= 1 (count (set (map #(nth % axis) (get triangles (:key face))))))
+                                                                 (= "CANVAS" (s/js driver (str "() => document.elementFromPoint(" (+ left (:x face)) "," (+ top (:y face)) ")?.tagName")))) i)) visible))]
+                   (region-point driver ordinal)))
+        saved! #(is (s/wait-until (fn [] (= "Regions saved." (s/text driver "#region-status")))))]
+    (try
+      (s/resize! driver 1600 1000)
+      (s/go! driver (s/base-url sys))
+      (s/click! driver ".part__select:has(.part__name:text-is('weapon'))")
+      (s/await-part driver id)
+      (s/click! driver "[data-detail-tab=regions]")
+      (s/click! driver "button[data-region-mode=faces]")
+      (editor/input! driver "#region-stroke input[name=radius]" "2" "input")
+      (is (false? (s/js driver "() => document.querySelector('[name=mirror]').checked")))
+      (s/check! driver "#region-stroke input[name=mirror]")
+      (doseq [[axis name] [[0 "x"] [1 "y"] [2 "z"]]]
+        (s/select-option! driver "#region-stroke select[name=mirror-axis]" ({"x" "YZ plane (across X)" "y" "XZ plane (across Y)" "z" "XY plane (across Z)"} name))
+        (apply brush/stroke! driver (point! axis))
+        (saved!)
+        (is (= 4 (count (:faces (regions)))) "Paint includes both sides, including the hidden side")
+        (is (true? (s/js driver "() => document.querySelector('[name=mirror]').checked")))
+        (is (= name (s/js driver "() => document.querySelector('[name=mirror-axis]').value")))
+        (let [painted (:faces (regions))]
+          (is (= painted (:faces (:part/paint-regions (persisted/authored! cat id)))))
+          (let [colors (region-colors driver) painted-colors (set (map colors (keys painted)))
+                unpainted (first (remove (set (keys painted)) (keys colors)))]
+            (is (= 1 (count painted-colors)))
+            (is (not (contains? painted-colors (get colors unpainted))))))
+        (apply brush/right-stroke! driver (point! axis))
+        (saved!)
+        (is (empty? (:faces (regions)))))
+      ;; A deliberately displaced plane must not paint a guessed counterpart.
+      (s/fill-and-blur! driver "#region-stroke input[name=mirror-offset]" "1000")
+      (apply brush/stroke! driver (point! 2))
+      (saved!)
+      (is (= 2 (count (:faces (regions)))))
+      (is (= "1000" (s/js driver "() => document.querySelector('[name=mirror-offset]').value")))
+      (s/fill-and-blur! driver "#region-add input[name=name]" "Mirrored trim")
+      (s/click! driver "button:text-is('Add layer')")
+      (s/wait-visible! driver "button[aria-label='Rename Mirrored trim']")
+      (is (true? (s/js driver "() => document.querySelector('[name=mirror]').checked")))
+      (is (= "1000" (s/js driver "() => document.querySelector('[name=mirror-offset]').value")))
+      (s/screenshot-el! driver "#part-regions" (java.io.File. "/tmp/shipyard-mirror-regions.png"))
+      (s/click! driver "#region-stroke input[name=mirror]")
+      (apply brush/right-stroke! driver (point! 2))
+      (saved!)
+      (is (empty? (:faces (regions))))
+      (is (false? (s/js driver "() => document.querySelector('[name=mirror]').checked")))
+      (s/check! driver "#region-stroke input[name=mirror]")
+      (s/click! driver ".part__select:has(.part__name:text-is('weapon-alt'))")
+      (s/await-part driver (:weapon-alt fixture/ids))
+      (s/click! driver "[data-detail-tab=regions]")
+      (is (false? (s/js driver "() => document.querySelector('[name=mirror]').checked")))
+      (is (= "" (s/js driver "() => document.querySelector('[name=mirror-offset]').value")))
+      (finally (s/quit! driver) (fixture/stop! started)))))
+
 (deftest database-failure-restores-the-brush
   (s/assert-bundle!)
   (let [started (fixture/start! true) sys (:system started) driver (s/make-driver)
@@ -620,9 +687,9 @@
         (with-redefs [catalog/save-regions! (fn [& _] (throw (ex-info "MDB_PROBLEM: txn should abort" {})))]
           (apply brush/right-stroke! driver (region-point driver 0))
           (is (s/wait-until #(= "Could not save part regions to the database. See the server log for details."
-                               (s/text driver "#part-regions [role=alert]"))))
+                                (s/text driver "#part-regions [role=alert]"))))
           (is (s/wait-until #(= "Region save failed. Reopen this part or retry the stroke."
-                               (s/text driver "#region-status")))))
+                                (s/text driver "#region-status")))))
         (is (= saved (regions)))
         (is (= colors (region-colors driver)))
         (is (false? (s/js driver "() => document.querySelector('#region-stroke input[name=radius]').disabled")))
