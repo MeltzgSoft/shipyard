@@ -2,6 +2,7 @@
   "Part Browser region assignment reuses the visible-only Paint picking pass."
   (:require [cljs.reader :as reader]
             [shipyard.regions.dom :as dom]
+            [shipyard.regions.mirror :as mirror]
             [shipyard.regions.transport :as transport]
             [shipyard.paint.brush :as brush]
             [shipyard.paint.render :as render]
@@ -33,6 +34,7 @@
   (transport/install!)
   (let [{:keys [^js canvas ^js controls active parts mount-colors-enabled]} sys
         stroke (atom nil)
+        mirror-controls (mirror/install! sys)
         picking (atom nil)
         cursor (.createElement js/document "div")
         form! #(.getElementById js/document "region-stroke")
@@ -57,7 +59,7 @@
                 (set! (.. cursor -style -display) "none")
                 (status! message)))
             (sample! [^js e]
-              (when-let [{:keys [buffer radius slot ^js object before layer previous groups] :as current} @stroke]
+              (when-let [{:keys [buffer radius slot ^js object before layer previous groups mirror-selection] :as current} @stroke]
                 (when-not (:saving? current)
                   (let [bounds (.getBoundingClientRect canvas)
                         x (- (.-clientX e) (.-left bounds)) y (- (.-clientY e) (.-top bounds))
@@ -68,6 +70,7 @@
                                                                                    (+ ly (* (/ i steps) (- y ly))) radius slot false) slot)))
                         triangles (remove (:triangles current) triangles)
                         triangles (if groups (surfaces/expand groups triangles) (set triangles))
+                        triangles (if mirror-selection (mirror-selection triangles) triangles)
                         keys (into (:keys current) (map #(render/face-key (.-geometry object) %)) triangles)
                         changed (when (seq triangles)
                                   (model/change before (:mesh-key before) (:revision before) "assign" layer nil (vec keys)))]
@@ -92,13 +95,19 @@
                                                    :radius (js/Number (.-value (field form "radius")))
                                                    :mode (.-value (field form "mode"))
                                                    :angle (.-value (field form "angle"))
+                                                   :mirror-selection ((:begin! mirror-controls) object)
                                                    :groups (when (= "faces" (.-value (field form "mode"))) (surface-groups! object (js/Number (.-value (field form "angle")))))
                                                    :buffer (brush/cached-visible-buffer! picking sys slot) :keys #{} :triangles #{} :locked locked})
                                    (set! (.-enabled controls) false)
                                    (doseq [[el _] locked] (set! (.-disabled el) true))
                                    (.setPointerCapture canvas (.-pointerId e))
                                    (sample! e)))
-                               (catch :default _ (cancel! "Could not start region brush. Reopen this part and retry."))))) true)
+                               (catch :default error
+                                 (let [message (if (= :mirror-input (:type (ex-data error)))
+                                                 (ex-message error)
+                                                 "Could not start region brush. Reopen this part and retry.")]
+                                   (cancel! message)
+                                   (status! message)))))) true)
       (.addEventListener canvas "pointermove"
                          (fn [^js e]
                            (let [show? (or (available?) (and @stroke (not (:saving? @stroke))))]

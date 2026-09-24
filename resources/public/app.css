@@ -1006,6 +1006,8 @@ body:has(.paint-editor) .masthead__stats { display: none; }
 .region-layer__rename-actions { display: flex; gap: 6px; }
 #part-regions #region-add { grid-template-columns: minmax(0, 1fr) auto; }
 .region-brush-mode { display: flex; align-items: center; gap: 5px; }
+.region-mirror { display: grid; gap: 9px; min-width: 0; margin: 0; padding: 10px; border: 1px solid var(--line); border-radius: 5px; }
+.region-mirror legend { padding: 0 4px; }
 .region-brush-mode > span { margin-right: auto; }
 #part-regions .region-brush-mode button[aria-pressed=true] { color: var(--accent); border-color: var(--accent); background: #213541; }
 #part-regions { font-size: 12px; }

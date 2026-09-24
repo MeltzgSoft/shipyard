@@ -102,6 +102,17 @@
                                   :hx-on:input "this.closest('label').querySelector('output').value=this.value+'°'"}]]
            [:p.muted "Maximum angle between neighboring triangles. Increase to follow curves; larger creases stop painting."]]
           [:label "Region brush radius (screen pixels)" [:input {:type "range" :name "radius" :min 2 :max 100 :value 20}]]
+          [:fieldset.region-mirror
+           [:legend "Symmetry"]
+           [:label [:input {:type "checkbox" :name "mirror"}] " Mirror painting"]
+           [:label "Mirror plane"
+            [:select {:name "mirror-axis" :disabled true}
+             [:option {:value "x"} "YZ plane (across X)"]
+             [:option {:value "y"} "XZ plane (across Y)"]
+             [:option {:value "z"} "XY plane (across Z)"]]]
+           [:label "Mirror plane offset"
+            [:input {:type "number" :name "mirror-offset" :step "any" :placeholder "Model center" :disabled true}]]
+           [:p.muted "Planes follow the part axes. Blank offset uses the model center. Paint and erase also affect matching hidden faces."]]
           [:p.muted "Left-drag paints; right-drag erases. Alt+drag orbits."]
           [:p#region-status {:role "status"} "Release to save regions."]]
          [:form#region-fill (assoc attrs :hx-include "#region-stroke input[name=layer], #region-stroke input[name=mode], #region-stroke input[name=angle]")

@@ -2340,6 +2340,16 @@ selection, inline rename forms and confirmed delete actions. A hidden stroke-for
 layer value drives brushing and full-part assignment; selection and its visible
 pressed state are restored together after temporary right-button erasing.
 Transient stroke state submits the union of touched faces on release through
+the existing body transport. Optional Regions symmetry expands that union before
+preview and submission. A pure CLJC bounding-volume tree indexes tier-0 triangles
+in canonical part coordinates (saved part orientation, independent of camera).
+Reflected triangles select coplanar, equally facing triangles with positive-area
+overlap, supporting different tessellation without nearest-face guesses or edge-only
+matches. Tolerance is max(1e-6, model diagonal × 1e-6). The tree is cached per mesh
+object/orientation and correspondence results per active plane. Mirror controls
+are transient client brush settings scoped to the current part/source/orientation;
+server-rendered controls are restored after panel swaps. No new persistence fields
+or wire fallback are needed: original and mirrored ordinals commit together through
 `POST /parts/regions/stroke`, with an `application/cbor` body. The version-1 wire
 envelope is `[1, metadata, triangle-count, encoding, selection]`. Metadata contains
 string-valued `part-id`, `mesh-key`, `revision`, `layer-revision`, `action` (assign),
