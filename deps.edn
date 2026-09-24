@@ -6,9 +6,8 @@
   metosin/reitit-malli           {:mvn/version "0.7.2"}
   ring/ring-jetty-adapter        {:mvn/version "1.12.2"}
   hiccup/hiccup                  {:mvn/version "2.0.0-RC3"}
-  ;; One header needs JSON: htmx parses `HX-Trigger` itself and dispatches a
-  ;; key per event, so the envelope is not ours to choose (TECHNICAL.md §7.1).
-  ;; The payload inside it is EDN.
+  ;; HTMX event envelopes require JSON (TECHNICAL.md §7.1). Dense region face
+  ;; maps also use JSON for native browser decoding; event payloads remain EDN.
   org.clojure/data.json          {:mvn/version "2.5.1"}
   datalevin/datalevin            {:mvn/version "1.1.0"}
   integrant/integrant            {:mvn/version "1.0.1"}

@@ -14,6 +14,7 @@
   worse than the JavaScript."
   (:require [shipyard.regions.brush :as region-brush]
             [shipyard.regions.model :as regions]
+            [shipyard.regions.dom :as region-dom]
             ["three" :as three]
             ["three/examples/jsm/controls/OrbitControls.js" :refer [OrbitControls]]
             ["three/examples/jsm/environments/RoomEnvironment.js" :refer [RoomEnvironment]]
@@ -700,25 +701,25 @@
 (defn- draw-interfaces! [{:keys [^js scene parts current interfaces] :as sys}
                          {:keys [part-id mesh-key mounts orientation]}]
   (when (current-part? {:current current} part-id mesh-key)
-    (clear-interface-highlights! sys)
     (when-let [obj (get @parts part-id)]
-      (try
-        (let [{:keys [^js object items misses]} (interface-highlights obj mesh-key mounts)]
-          (orient-object! object (or orientation (:orientation @current)))
-          (set! (.-visible object) @(:mount-colors-enabled sys))
-          (when (seq items)
-            (.add scene object))
-          (reset! interfaces {:object object
-                              :part-id part-id
-                              :mesh-key mesh-key
-                              :items items
-                              :misses misses}))
-        (catch :default e
-          (js/console.error "shipyard: interface highlights failed" e)
-          (reset! interfaces {:part-id part-id
-                              :mesh-key mesh-key
-                              :items []
-                              :error (str e)}))))))
+      (let [orientation (or orientation (:orientation @current))
+            source [obj mesh-key mounts orientation]]
+        ;; Region-only panel swaps do not change mount geometry. Reuse the
+        ;; highlights even if painting converted the mesh to nonindexed vertices.
+        (when (not= source (:source @interfaces))
+          (clear-interface-highlights! sys)
+          (try
+            (let [{:keys [^js object items misses]} (interface-highlights obj mesh-key mounts)]
+              (orient-object! object orientation)
+              (set! (.-visible object) @(:mount-colors-enabled sys))
+              (when (seq items) (.add scene object))
+              (reset! interfaces {:object object :source source
+                                  :part-id part-id :mesh-key mesh-key
+                                  :items items :misses misses}))
+            (catch :default e
+              (js/console.error "shipyard: interface highlights failed" e)
+              (reset! interfaces {:part-id part-id :mesh-key mesh-key
+                                  :items [] :error (str e)}))))))))
 
 (defn- canvas-pointer! [^js pointer ^js canvas ^js e]
   (let [rect (.getBoundingClientRect canvas)
@@ -982,16 +983,10 @@
                 (activate-detail-tab! "mounts")
                 (post-facet! sys face-index)))))))))
 
-(defn- regions-from-dom [part-id mesh-key]
-  (when-let [panel (.getElementById js/document "part-regions")]
-    (when (and (= part-id (.getAttribute panel "data-part-id"))
-               (= mesh-key (.getAttribute panel "data-mesh-key")))
-      (edn/read-string (.getAttribute panel "data-regions")))))
-
 (defn- sync-regions-from-dom! [sys]
   (when (= :browse (:workspace sys))
     (doseq [[_ ^js object] @(:parts sys)]
-      (when-let [regions (regions-from-dom (.. object -userData -partId) (.. object -userData -meshKey))]
+      (when-let [regions (region-dom/regions! (.. object -userData -partId) (.. object -userData -meshKey))]
         (let [palette (regions/preview-materials regions)]
           (paint-render/set-regions! object regions palette)
           (apply-material! object (get palette "Primary") @(:mount-colors-enabled sys)))))))
@@ -1003,7 +998,7 @@
    {:keys [url part-id mesh-key frame mounts] :as payload}]
   (clear! sys)
   (let [generation @(:browse-generation sys)
-        regions (regions-from-dom part-id mesh-key)]
+        regions (region-dom/regions! part-id mesh-key)]
     (-> (js/fetch url)
         (.then (fn [^js res]
                  (if (.-ok res)
@@ -1316,7 +1311,7 @@
               :geometries (object-geometry-count object)})))
 
 (defn- interface-stats [{:keys [interfaces]}]
-  (when-let [{:keys [part-id mesh-key items misses error]} @interfaces]
+  (when-let [{:keys [^js object part-id mesh-key items misses error]} @interfaces]
     (let [item-stats (fn [{:keys [type mount-id triangles candidates split-lines split-centers]}]
                        {:type (name type)
                         :mount-id (name mount-id)
@@ -1326,6 +1321,7 @@
                         :split-centers split-centers})]
       (clj->js {:part-id part-id
                 :mesh-key mesh-key
+                :object-id (when object (.-uuid object))
                 :visible (boolean (some-> @interfaces :object .-visible))
                 :count (count items)
                 :misses (count misses)

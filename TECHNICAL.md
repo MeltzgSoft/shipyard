@@ -849,6 +849,15 @@ re-hash a 20 MB STL to name a URL it already knew.
 
 ### 7.1 htmx contract
 
+Mutation forms declare HTML `method="post"` and `action` matching their `hx-post`
+endpoint. Both native and HTMX submissions carry edit payloads in the request body;
+query strings carry read-only filters and resource selection. In particular, face
+keys and bulk orientation maps must never be serialized into navigation URLs.
+Viewport strokes initialize their source form and invoke the HTMX POST API directly;
+they must not rely on intercepting a native submit event. A replacement form can be
+visible before HTMX's delayed settle initializes it. Unavailable transport rolls back
+the preview and reports a retryable failure without navigating away.
+
 Every route declares a Malli request and response schema. Reitit's Malli
 coercion middleware enforces those schemas at the Ring boundary, before form
 data reaches a handler and after a response leaves it. These schemas describe
@@ -2316,9 +2325,14 @@ Its Regions tab is server-rendered. Selectable layer rows combine preview swatch
 selection, inline rename forms and confirmed delete actions. A hidden stroke-form
 layer value drives brushing and full-part assignment; selection and its visible
 pressed state are restored together after temporary right-button erasing.
-Transient stroke state captures one
-visible-ID buffer and submits the union of touched faces on release. It reuses the
-Paint brush's depth-tested picker and stable face keys. Facets mode retains sampled
+Transient stroke state submits the union of touched faces on release. Region brushing
+reuses one CPU visible-ID buffer until the source objects, their transforms, the camera
+or viewport size changes; radius, layer and mask changes do not affect visibility.
+Stable face keys are cached by source triangle and survive render-only deindexing.
+Each replacement panel carries small EDN metadata plus a JSON face-to-layer map,
+parsed once per panel. JSON keeps the large string-only mask off the EDN reader's
+per-character path. Unchanged mount-interface highlights survive region panel swaps.
+Region brushing reuses the Paint brush's depth-tested picker and stable face keys. Facets mode retains sampled
 triangles. Faces mode uses a cached partition by the angle between adjacent triangle
 normals, in degrees (0–90, default 1). There is no distance-to-seed-plane constraint:
 small neighboring bends can join a curved surface. Coordinate-shared edges connect

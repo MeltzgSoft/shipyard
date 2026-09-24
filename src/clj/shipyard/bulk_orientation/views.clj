@@ -32,7 +32,7 @@
    [:div#bulk-orient-results.bulk-orient__results
     [:p.results__count (format "%d match%s" (count parts) (if (= 1 (count parts)) "" "es"))]
     [:form.bulk-orient__table {:role "group" :aria-label "Parts available for bulk orientation"
-                               :hx-post "/orient/selection" :hx-trigger "change" :hx-target "#bulk-selection"
+                               :method "post" :action "/orient/selection" :hx-post "/orient/selection" :hx-trigger "change" :hx-target "#bulk-selection"
                                :hx-swap "outerHTML" :hx-sync "this:replace"
                                :hx-disabled-elt "[data-workspace-mode], [data-workspace-transition]"}
      [:input {:type "hidden" :name "visible" :value (pr-str (mapv :part/id parts))}]
@@ -46,7 +46,7 @@
 (defn selection-form [selection]
   (let [ids (bulk/selected-ids selection)]
     [:form#bulk-selection.bulk-orient__selection
-     (merge workspace-views/transition-attrs {:hx-post "/orient/render" :hx-target "#detail" :hx-swap "innerHTML settle:0ms"
+     (merge workspace-views/transition-attrs {:method "post" :action "/orient/render" :hx-post "/orient/render" :hx-target "#detail" :hx-swap "innerHTML settle:0ms"
                                               :data-bulk-render "true" :hx-include "#bulk-orient-filters"})
      [:input {:type "hidden" :name "part-ids" :value (or selection "[]") :data-bulk-ids "true"}]
      [:p [:strong {:data-bulk-count "true"} (str (count ids) " selected")]]
@@ -111,7 +111,7 @@
          [:p name]])]
      [:footer.bulk-grid__footer
       [:span#bulk-orient-status "Preview changes are not saved."]
-      [:form {:hx-post "/orient/save" :hx-target "#bulk-orient-status" :hx-swap "innerHTML"
+      [:form {:method "post" :action "/orient/save" :hx-post "/orient/save" :hx-target "#bulk-orient-status" :hx-swap "innerHTML"
               :data-bulk-save "true"}
        [:input {:type "hidden" :name "request" :value "0"}]
        [:input {:type "hidden" :name "orientations" :value "{}" :data-bulk-orientations "true"}]

@@ -18,7 +18,7 @@
             [shipyard.loadout.db :as loadouts]
             [shipyard.scheme.db :as schemes]
             [shipyard.scheme.material :as material])
-  (:import [com.microsoft.playwright Page Dialog]
+  (:import [com.microsoft.playwright Page Dialog Request]
            [java.util.function Consumer]))
 
 (defn region-point [driver ordinal]
@@ -341,8 +341,15 @@
                         root))
         sys (:system started) driver (s/make-driver)
         cat (:shipyard.catalog/db sys)
-        regions #(catalog/part-regions (catalog/part (catalog/snapshot! cat) id))]
+        regions #(catalog/part-regions (catalog/part (catalog/snapshot! cat) id))
+        requests (atom [])]
     (try
+      (.onRequest ^Page (:page driver)
+                  (reify Consumer
+                    (accept [_ value]
+                      (let [^Request request value]
+                        (when (= (str (s/base-url sys) "/parts/regions") (.url request))
+                          (swap! requests conj {:method (.method request) :body (.postData request)}))))))
       (s/go! driver (s/base-url sys))
       (s/click! driver ".part__select:has(.part__name:text-is('weapon'))")
       (s/wait-visible! driver ".detail--ready")
@@ -350,6 +357,8 @@
       (s/click! driver "[data-detail-tab=regions]")
 
       (is (s/wait-until #(false? (:mount-colors-enabled (s/stats driver)))))
+      (s/click! driver "button[data-region-mode=faces]")
+      (editor/input! driver "#region-angle" "31" "input")
       (editor/input! driver "#region-stroke input[name=radius]" "100" "input")
       (let [center (s/js driver "() => {const c=document.querySelector('canvas').getBoundingClientRect();return [c.x+c.width/2,c.y+c.height/2];}")]
         (apply brush/stroke! driver center)
@@ -357,6 +366,12 @@
         (when-not (s/wait-until #(= "Regions saved." (s/text driver "#region-status")))
           (throw (ex-info "Dense region save response failed" {:status (s/text driver "#region-status")})))
         (is (> (count (pr-str (regions))) 8192) "Region payload exceeds Jetty's response header budget")
+        (is (= "POST" (:method (first @requests))))
+        (is (> (count (:body (first @requests))) 200000) "The connected-surface stroke is in the request body")
+        (is (re-find #"mode=faces" (:body (first @requests))))
+        (is (re-find #"angle=31" (:body (first @requests))))
+        (is (re-find #"faces=%5B" (:body (first @requests))))
+        (is (= (str (s/base-url sys) "/") (.url ^Page (:page driver))) "Painting does not navigate")
         (apply brush/stroke! driver center)
         (is (s/wait-until #(= 2 (:revision (regions)))))
         (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status")))))
@@ -374,7 +389,24 @@
         (apply brush/stroke! driver (s/js driver "() => {const c=document.querySelector('canvas').getBoundingClientRect();return [c.x+c.width/2,c.y+c.height/2];}"))
         (is (s/wait-until #(= 3 (:revision (regions)))))
         (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
-        (is (every? #(= "Secondary" (get-in (regions) [:faces %])) (keys (:faces saved)))))
+        (let [assignments (:faces (regions))]
+          (is (every? #(= "Secondary" (get assignments %)) (keys (:faces saved)))))
+        ;; Canvas strokes must use explicit background POSTs even if the form's
+        ;; submit event is not intercepted by HTMX.
+        (s/click! driver "button[data-region-mode=faces]")
+        (editor/input! driver "#region-angle" "31" "input")
+        (s/js driver "() => document.querySelector('#region-stroke').addEventListener('submit', e => e.stopImmediatePropagation(), {capture:true, once:true})")
+        (editor/input! driver "#region-stroke input[name=radius]" "100" "input")
+        (apply brush/stroke! driver (s/js driver "() => {const c=document.querySelector('canvas').getBoundingClientRect();return [c.x+c.width/2,c.y+c.height/2];}"))
+        (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
+        (is (s/wait-until #(= 4 (:revision (regions)))))
+        (is (= (str (s/base-url sys) "/") (.url ^Page (:page driver))))
+        (is (= 4 (count @requests)))
+        (is (every? #(= "POST" (:method %)) @requests))
+        (is (> (count (:body (last @requests))) 200000))
+        (s/go! driver (s/base-url sys))
+        (s/await-part driver id)
+        (is (s/wait-until #(= {:faces (count (:faces (regions))) :vertex-colors true} (:region-preview (s/stats driver))))))
       (finally (s/quit! driver) (fixture/stop! started)))))
 
 (deftest whole-part-layer-and-display-toggle
@@ -481,4 +513,90 @@
       (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
       (is (< 0 (count (:faces (regions))) 48) "Lowering tolerance recomputes the cached surface groups")
       (s/screenshot-el! driver "body" (java.io.File. "/tmp/shipyard-angle-tolerance.png"))
+      (finally (s/quit! driver) (fixture/stop! started)))))
+
+(deftest strokes-before-htmx-settle-stay-in-the-workspace
+  (s/assert-bundle!)
+  (let [started (fixture/start! true) sys (:system started) driver (s/make-driver)
+        cat (:shipyard.catalog/db sys) id (:weapon fixture/ids)
+        regions #(catalog/part-regions (catalog/part (catalog/snapshot! cat) id))]
+    (try
+      (s/go! driver (s/base-url sys))
+      (s/click! driver ".part__select:has(.part__name:text-is('weapon'))")
+      (s/await-part driver id)
+      (s/click! driver "[data-detail-tab=regions]")
+      (editor/input! driver "#region-stroke input[name=radius]" "2" "input")
+      (let [point (region-point driver 0)]
+        ;; Widen HTMX's normal swap/initialization gap deterministically.
+        (s/js driver "() => { htmx.config.defaultSettleDelay = 10000; window.regionSettled = false; document.addEventListener('htmx:afterSettle', () => window.regionSettled = true, {once:true}); }")
+        (apply brush/stroke! driver point)
+        (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
+        (is (false? (s/js driver "() => window.regionSettled")))
+        (apply brush/stroke! driver point)
+        (is (s/wait-until #(do (s/js driver "() => document.readyState") (= 2 (:revision (regions))))))
+        (is (= (str (s/base-url sys) "/") (.url ^Page (:page driver))) "A second stroke during settle must never submit a document navigation")
+        (is (false? (s/js driver "() => window.regionSettled")))
+        (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
+        (let [saved (regions) colors (region-colors driver)]
+          (s/js driver "() => { window.savedHtmx = window.htmx; window.htmx = undefined; }")
+          (apply brush/right-stroke! driver point)
+          (is (= "Region save failed. Reopen this part or retry the stroke." (s/text driver "#region-status")))
+          (is (= saved (regions)))
+          (is (= colors (region-colors driver)) "Failed transport restores the saved preview")
+          (is (= (str (s/base-url sys) "/") (.url ^Page (:page driver))))
+          (s/js driver "() => { window.htmx = window.savedHtmx; }")
+          (apply brush/right-stroke! driver point)
+          (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
+          (is (= 3 (:revision (regions))))))
+      (finally (s/quit! driver) (fixture/stop! started)))))
+
+(deftest repeated-strokes-reuse-picking-but-view-changes-invalidate-it
+  (s/assert-bundle!)
+  (let [started (fixture/start! true) sys (:system started) driver (s/make-driver)
+        cat (:shipyard.catalog/db sys) id (:weapon fixture/ids)
+        regions #(catalog/part-regions (catalog/part (catalog/snapshot! cat) id))
+        captures #(s/js driver "() => window.regionReadbacks")
+        paint! (fn []
+                 (apply brush/stroke! driver (region-point driver 0))
+                 (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status")))))]
+    (try
+      (s/go! driver (s/base-url sys))
+      (s/click! driver ".part__select:has(.part__name:text-is('weapon'))")
+      (s/await-part driver id)
+      (s/click! driver "[data-detail-tab=regions]")
+      (editor/input! driver "#region-stroke input[name=radius]" "2" "input")
+      ;; Count real GPU reads without replacing the picker or its output.
+      (s/js driver "() => {const gl=document.querySelector('canvas').getContext('webgl2'); const read=gl.readPixels.bind(gl); window.regionReadbacks=0; gl.readPixels=(...args)=>{window.regionReadbacks++; return read(...args);};}")
+      (let [interfaces (:interfaces (s/stats driver))]
+        (paint!)
+        (is (= 1 (captures)))
+        (is (= interfaces (:interfaces (s/stats driver))) "Painting preserves existing mount highlight geometry")
+        (apply brush/right-stroke! driver (region-point driver 0))
+        (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
+        (is (empty? (:faces (regions))))
+        (is (= 1 (captures)) "Erasing after a save reuses picking despite nonindexed rendering")
+        (s/click! driver "button[data-region-mode=faces]")
+        (editor/input! driver "#region-stroke input[name=radius]" "3" "input")
+        (paint!)
+        (is (= 2 (count (:faces (regions)))))
+        (is (= 1 (captures)) "Mode and radius changes sample the existing view")
+        (is (= interfaces (:interfaces (s/stats driver)))))
+      (let [[x y] (region-point driver 0) camera (:camera (s/stats driver))
+            keyboard (.keyboard ^Page (:page driver))]
+        (.down keyboard "Alt")
+        (s/drag! driver [x y] [(+ x 70) (+ y 30)])
+        (.up keyboard "Alt")
+        (is (s/wait-until #(not= camera (:camera (s/stats driver)))))
+        (paint!)
+        (is (= 2 (captures)) "Orbiting requires a new visibility capture"))
+      (s/resize! driver 1180 800)
+      (s/await-rendered-geometries driver)
+      (paint!)
+      (is (= 3 (captures)) "Resizing invalidates the screen-space buffer")
+      (s/click! driver ".part__select:has(.part__name:text-is('weapon-alt'))")
+      (s/await-part driver (:weapon-alt fixture/ids))
+      (s/click! driver "[data-detail-tab=regions]")
+      (paint!)
+      (is (= 4 (captures)) "A different source mesh cannot reuse another part's picking data")
+      (is (seq (:faces (catalog/part-regions (catalog/part (catalog/snapshot! cat) (:weapon-alt fixture/ids))))))
       (finally (s/quit! driver) (fixture/stop! started)))))

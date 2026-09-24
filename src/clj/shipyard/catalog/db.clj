@@ -21,6 +21,22 @@
 (defn snapshot! [{:keys [store state]}]
   (store/read! store #(store/catalog-value % (:library @state))))
 
+(defn region-registry! [{:keys [store state]}]
+  (store/read! store #(store/registry-value % (:library @state))))
+
+(defn part-context!
+  "Read one present part and its shared layer registry from the same store snapshot.
+  Unrelated parts and their masks are not materialized."
+  [{:keys [store state]} part-id]
+  (store/read! store
+               (fn [db]
+                 (let [library (:library @state)
+                       shared (store/registry-value db library)
+                       entity (d/pull db store/part-pattern [:part/key [library part-id]])]
+                   {:registry shared
+                    :part (when (and (:part/id entity) (not (false? (:part/present? entity))))
+                            (t/part-value entity shared))}))))
+
 (defn region-registry [database] (or (:registry database) registry/empty-registry))
 (defn region-layers [database] (registry/ids (region-registry database)))
 (defn part-regions [part] (:part/paint-regions part))

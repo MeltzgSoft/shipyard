@@ -15,8 +15,13 @@
             (let [offset (+ (* triangle 3) corner) vertex (if index (.getX index offset) offset)]
               [(.getX position vertex) (.getY position vertex) (.getZ position vertex)])) (range 3))))
 
-(defn face-key [geometry triangle]
-  (faces/face-key (triangle-points geometry triangle)))
+(defn face-key [^js geometry triangle]
+  (let [keys (or (.. geometry -userData -paintFaceKeys)
+                 (let [keys (js/Array. (triangle-count geometry))]
+                   (set! (.. geometry -userData -paintFaceKeys) keys)
+                   keys))]
+    (or (aget keys triangle)
+        (aset keys triangle (faces/face-key (triangle-points geometry triangle))))))
 
 (defn set-details! [^js object layer]
   (let [valid? (and (= (:part-id layer) (.. object -userData -partId))
@@ -102,6 +107,8 @@
       (when (.. object -geometry -index)
         (let [old (.-geometry object)]
           (set! (.-geometry object) (.toNonIndexed old))
+          ;; Deindexing preserves triangle order and source-space coordinates.
+          (set! (.. object -geometry -userData -paintFaceKeys) (.. old -userData -paintFaceKeys))
           (.dispose old)))
       (let [geometry (.-geometry object)
             index (face-index! object)

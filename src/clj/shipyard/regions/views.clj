@@ -1,11 +1,12 @@
 (ns shipyard.regions.views
   (:require [clojure.string :as str]
+            [clojure.data.json :as json]
             [shipyard.regions.model :as model]
             [shipyard.regions.migration :as migration]
             [shipyard.regions.registry :as registry]
             [shipyard.workspace.views :as workspace]))
 
-(def attrs (merge workspace/transition-attrs {:hx-post "/parts/regions" :hx-target "#part-regions" :hx-swap "outerHTML"
+(def attrs (merge workspace/transition-attrs {:method "post" :action "/parts/regions" :hx-post "/parts/regions" :hx-target "#part-regions" :hx-swap "outerHTML"
                                               :hx-include "#region-stroke input[name=mode], #region-stroke input[name=angle]"
                                               :hx-disabled-elt "#part-regions input, #part-regions select, #part-regions button, #workspace-navigation button, #library button"}))
 (defn fields [part-id mesh-key regions]
@@ -69,7 +70,9 @@
          preview (assoc regions :layers available)
          selected (if (some #{selected} available) selected "Secondary")
          stale? (not= mesh-key (:mesh-key regions))]
-     [:section#part-regions {:data-regions (pr-str preview) :data-mesh-key mesh-key :data-part-id part-id}
+     [:section#part-regions {:data-regions (pr-str (dissoc preview :faces))
+                             :data-region-faces (json/write-str (:faces preview))
+                             :data-mesh-key mesh-key :data-part-id part-id}
       [:h3 "Paint regions"]
       [:p.muted "Select a layer to paint. Schemes supply the final colors."]
       (when error [:p.detail__error {:role "alert"} error])

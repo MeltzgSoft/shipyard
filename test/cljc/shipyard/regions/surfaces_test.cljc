@@ -36,3 +36,10 @@
         "Neighbor-relative growth follows gradual curves but stops at the larger crease")
     (is (= (set (range 8)) (first (surfaces/groups triangles 30))))
     (is (= (set (range 8)) (first (surfaces/groups triangles 90))))))
+
+(deftest many-seeds-on-shared-surfaces
+  (let [a (set (range 4096)) b #{4096 4097}
+        groups (into (vec (repeat 4096 a)) [b b])]
+    (is (= a (surfaces/expand groups (range 2048))))
+    (is (= (conj a 4096 4097 5000)
+           (surfaces/expand groups (concat (range 2048) [4096 4097 5000]))))))
