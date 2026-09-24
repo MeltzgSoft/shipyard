@@ -177,3 +177,55 @@
         (catalog/reingest! cat (index/parts! (:shipyard.library/index sys)) root)
         (is (= ["Primary" "Secondary"] (rf/names cat))))
       (finally (fixture/stop! started)))))
+
+(deftest cbor-strokes-validate-before-persisting
+  (let [started (fixture/start!) sys (:system started) handler (:handler started)
+        id (:weapon fixture/ids) library (:shipyard.library/index sys) cat (:shipyard.catalog/db sys)
+        deps {:cache (:shipyard.mesh/cache sys) :paint (:shipyard.paint/db sys)}
+        read! #(catalog/part-regions (catalog/part (catalog/snapshot! cat) id))
+        request (fn [bytes]
+                  (-> (mock/request :post "/parts/regions/stroke")
+                      (mock/content-type "application/cbor")
+                      (assoc :body (java.io.ByteArrayInputStream. bytes))))]
+    (try
+      (jobs/submit! (:shipyard.http/jobs sys) id (index/fresh-source-file! library id))
+      (loop [attempt 0]
+        (when (and (< attempt 200) (not (index/mesh-key! library id))) (Thread/sleep 25) (recur (inc attempt))))
+      (workspace/update-workspace! (:shipyard.workspace/db sys) :browse assoc :selection id)
+      (let [mesh (index/mesh-key! library id) ordered (strokes/ordered-face-keys! deps mesh)
+            metadata {:part-id id :mesh-key mesh :revision "0" :layer-revision "0"
+                      :action "assign" :layer "Secondary" :mode "facets" :angle "1"}
+            body #(rf/cbor-stroke %1 %2 %3 %4)
+            valid (body metadata 12 "indices" (rf/uint32-bytes [0 2]))]
+        (is (= 405 (:status (handler (mock/request :get "/parts/regions/stroke")))))
+        (is (= 415 (:status (handler (mock/request :post "/parts/regions/stroke" metadata)))))
+        (doseq [invalid [(byte-array [0])
+                         (byte-array (concat valid [0]))
+                         (body metadata 12 "indices" (rf/uint32-bytes [12]))
+                         (body metadata 12 "indices" (rf/uint32-bytes [4294967295]))
+                         (body metadata 12 "indices" (byte-array []))
+                         (body metadata 12 "bitset" (byte-array [0 16]))
+                         (body metadata 12 "bitset" (byte-array [1]))
+                         (rf/cbor-stroke metadata 12 "indices" (rf/uint32-bytes [0]) {:version 2})
+                         (body (assoc metadata :action "reset") 12 "indices" (rf/uint32-bytes [0]))]]
+          (is (= 400 (:status (handler (request invalid)))))
+          (is (nil? (read!))))
+        (is (str/includes? (:body (handler (request (body metadata 13 "indices" (rf/uint32-bytes [0]))))) "Invalid region faces"))
+        (is (nil? (read!)))
+        (is (= 204 (:status (handler (assoc-in (assoc-in (request valid) [:headers "x-shipyard-workspace"] "browse")
+                                               [:headers "x-shipyard-activation"] "999")))))
+        (is (nil? (read!)))
+        (is (= 200 (:status (handler (request valid)))))
+        (is (= {(nth ordered 0) "Secondary" (nth ordered 2) "Secondary"} (:faces (read!))))
+        (let [before (read!)]
+          (is (str/includes? (:body (handler (request valid))) "Regions changed"))
+          (is (str/includes? (:body (handler (request (body (assoc metadata :mesh-key (apply str (repeat 64 "b"))) 12 "indices" (rf/uint32-bytes [0]))))) "Source changed"))
+          (workspace/update-workspace! (:shipyard.workspace/db sys) :browse assoc :selection (:hull fixture/ids))
+          (is (str/includes? (:body (handler (request valid))) "Part selection changed"))
+          (workspace/update-workspace! (:shipyard.workspace/db sys) :browse assoc :selection id)
+          (is (= before (read!))))
+        (is (= 200 (:status (handler (request (body (assoc metadata :revision "1" :layer "Primary") 12 "bitset" (byte-array [5 0])))))))
+        (is (empty? (:faces (read!))))
+        (is (= 2 (:revision (read!))))
+        (is (= (read!) (:part/paint-regions (persisted/authored! cat id)))))
+      (finally (fixture/stop! started)))))

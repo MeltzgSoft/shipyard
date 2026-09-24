@@ -52,3 +52,13 @@
     (is (= 100001 (count (get-in next [:layers [] :faces]))))
     (is (= [0 1 0] (get-in next [:layers [] :faces (first keys)])))
     (is (= [1 0 0] (get-in next [:layers [] :faces (second keys)])))))
+
+(deftest selected-face-keys
+  (let [ordered [key-b key-a key-b]]
+    (is (= [key-b key-b] (strokes/selected-face-keys ordered {:triangle-count 3 :indices [2 0]})))
+    (is (nil? (strokes/selected-face-keys ordered {:triangle-count 2 :indices [0]})))
+    (is (nil? (strokes/selected-face-keys ordered {:triangle-count 3 :indices [3]})))
+    (is (nil? (strokes/selected-face-keys ordered {:triangle-count 3 :indices []}))))
+  (is (= [key-b key-a]
+         (strokes/mesh-face-keys {:positions (float-array [0 0 1 1 0 1 0 1 1 0 0 0 1 0 0 0 1 0])
+                                  :indices (int-array [0 1 2 3 4 5])}))))

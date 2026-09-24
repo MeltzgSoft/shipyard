@@ -9,13 +9,15 @@
             [shipyard.workspace.db :as workspace]
             [shipyard.workspace.views :as workspace-views]))
 
-(defn save! [{:keys [catalog library workspace] :as deps} {:keys [params]}]
+(defn save! [{:keys [catalog library workspace] :as deps} {:keys [params region-selection]}]
   (let [{:strs [part-id mesh-key revision action layer name faces confirmed mode angle layer-revision]} params
         database (catalog/part-context! catalog part-id)
         shared-layers (catalog/region-layers database)
         part (:part database)
         before (catalog/part-regions part)
-        keys (strokes/parse-faces faces)
+        keys (delay (if region-selection
+                      (strokes/selected-face-keys (strokes/ordered-face-keys! deps mesh-key) region-selection)
+                      (strokes/parse-faces faces)))
         result (cond
                  (or (nil? (:part/id part)) (not= part-id (:selection (workspace/workspace! workspace :browse))))
                  {:error "Part selection changed. Reopen the part before retrying."}
@@ -27,11 +29,14 @@
                         (catch Exception _ {:error "Could not update this layer. Check the library folder permissions, rescan and retry."})))
                  (or (not (index/fresh-source-file! library part-id)) (not= mesh-key (index/mesh-key! library part-id)))
                  {:error "Source changed. Rescan and reopen this part before editing regions."}
-                 (and (= action "assign") (or (nil? keys) (not-every? (strokes/known-faces! deps mesh-key) keys)))
+                 (and (= action "assign")
+                      (or (nil? @keys)
+                          (and (nil? region-selection)
+                               (not-every? (strokes/known-faces! deps mesh-key) @keys))))
                  {:error "Invalid region faces. Nothing saved."}
                  :else (model/change (or before (migration/regions (model/empty-regions mesh-key))) mesh-key (parse-long revision)
                                      (if (= action "fill") "assign" action) layer name
-                                     (if (= action "fill") (vec (strokes/known-faces! deps mesh-key)) keys)
+                                     (if (= action "fill") (vec (strokes/known-faces! deps mesh-key)) @keys)
                                      shared-layers))
         result (if (or (:error result) (#{"add" "rename" "delete"} action)) result
                    (try (assoc result :regions (catalog/save-regions! catalog part-id (:regions result) (parse-long revision)))
@@ -46,3 +51,8 @@
              (list (workspace-views/colors-toggle false :browse)
                    (workspace-views/context (workspace/active-context! workspace) false))))
      (when filled? {:events {:display {:colors false}}}))))
+
+(defn save-stroke! [deps request]
+  (let [body (get-in request [:parameters :body])]
+    (save! deps (assoc request :params (:metadata body)
+                       :region-selection (select-keys body [:triangle-count :indices])))))

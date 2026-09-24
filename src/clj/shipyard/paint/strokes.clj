@@ -23,8 +23,8 @@
   (let [value (parse-vector text)]
     (when (and (seq value) (every? faces/key? value)) value)))
 
-(defn mesh-faces [{:keys [positions indices]}]
-  (into #{}
+(defn mesh-face-keys [{:keys [positions indices]}]
+  (into []
         (map (fn [triangle]
                (faces/face-key
                 (mapv (fn [corner]
@@ -33,12 +33,28 @@
                       (range 3)))))
         (range (quot (count indices) 3))))
 
-(defn known-faces! [{:keys [cache paint]} mesh-key]
-  (let [file (cache/tier-file cache mesh-key 0) signature [mesh-key (fs/size file)]]
+(defn mesh-faces [mesh] (set (mesh-face-keys mesh)))
+
+(defn ordered-face-keys! [{:keys [cache paint]} mesh-key]
+  (let [file (cache/tier-file cache mesh-key 0) signature [mesh-key (fs/size file) :ordered]]
     (or (get @(:face-cache paint) signature)
-        (let [keys (mesh-faces (wire/decode (Files/readAllBytes (fs/path file))))]
+        (let [keys (mesh-face-keys (wire/decode (Files/readAllBytes (fs/path file))))]
           (swap! (:face-cache paint) assoc signature keys)
           keys))))
+
+(defn known-faces! [{:keys [cache paint] :as deps} mesh-key]
+  (let [file (cache/tier-file cache mesh-key 0) signature [mesh-key (fs/size file)]]
+    (or (get @(:face-cache paint) signature)
+        (let [keys (set (ordered-face-keys! deps mesh-key))]
+          (swap! (:face-cache paint) assoc signature keys)
+          keys))))
+
+(defn selected-face-keys
+  "Resolve tier-0 ordinals, retaining geometric identity for duplicate triangles."
+  [ordered {:keys [triangle-count indices]}]
+  (when (and (= triangle-count (count ordered)) (seq indices)
+             (every? #(and (integer? %) (<= 0 % (dec triangle-count))) indices))
+    (mapv #(nth ordered %) indices)))
 
 (defn apply-part
   "Incrementally extend validated layers; never persist a partial drag."

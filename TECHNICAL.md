@@ -2325,8 +2325,31 @@ Its Regions tab is server-rendered. Selectable layer rows combine preview swatch
 selection, inline rename forms and confirmed delete actions. A hidden stroke-form
 layer value drives brushing and full-part assignment; selection and its visible
 pressed state are restored together after temporary right-button erasing.
-Transient stroke state submits the union of touched faces on release. Region brushing
-reuses one CPU visible-ID buffer until the source objects, their transforms, the camera
+Transient stroke state submits the union of touched faces on release through
+`POST /parts/regions/stroke`, with an `application/cbor` body. The version-1 wire
+envelope is `[1, metadata, triangle-count, encoding, selection]`. Metadata contains
+string-valued `part-id`, `mesh-key`, `revision`, `layer-revision`, `action` (assign),
+`layer`, `mode` and `angle`; revisions stay decimal strings to avoid JavaScript
+integer precision loss. Encoding `indices` carries an RFC 8746 tag-70 little-endian
+uint32 array of tier-0 triangle ordinals. Encoding `bitset` carries an untagged byte
+string, least-significant bit first, with zero padding after the final triangle.
+The browser chooses a bitset only when `ceil(triangle-count / 8)` is smaller than
+four times the selected triangle count. No face list or command metadata is placed
+in the URL. HTMX's encoding extension sends the binary body through the existing
+background POST, workspace headers, swap admission and completion/error lifecycle.
+
+The Ring boundary caps stroke bodies at 16 MiB and rejects malformed/trailing CBOR,
+unknown versions, invalid fields, wrong typed-array tags, out-of-range indices and
+incorrect mask length/padding. The handler checks the selected part and fresh source
+before resolving indices against the exact decoded tier-0 `.symesh` order (§12).
+Its claimed triangle count must match that mesh. The ordered stable face keys are
+cached alongside the existing known-face set; duplicate geometric faces retain their
+shared durable identity. Persistence still receives stable face keys and uses the
+existing atomic revision/layer guards. Failed saves restore the prior preview.
+Responses remain server-rendered HTML panels, with body-carried region masks;
+layer management and whole-part fill/reset continue to use ordinary form POSTs.
+
+Region brushing reuses one CPU visible-ID buffer until the source objects, their transforms, the camera
 or viewport size changes; radius, layer and mask changes do not affect visibility.
 Stable face keys are cached by source triangle and survive render-only deindexing.
 Each replacement panel carries small EDN metadata plus a JSON face-to-layer map,

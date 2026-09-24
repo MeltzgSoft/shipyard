@@ -20,6 +20,7 @@
             [shipyard.catalog.db :as db]
             [shipyard.catalog.part :as catalog-part]
             [shipyard.regions.handlers :as regions]
+            [shipyard.regions.transport :as region-transport]
             [shipyard.http.contracts :as contracts]
             [shipyard.http.htmx :as htmx]
             [shipyard.http.jobs :as jobs]
@@ -550,6 +551,9 @@
    ["/mounts/delete" {:post {:handler (partial delete-mount! deps)
                              :parameters {:form contracts/mount-id-form}
                              :responses contracts/html-responses}}]
+   ["/parts/regions/stroke" {:post {:handler (partial regions/save-stroke! deps)
+                                    :parameters {:body region-transport/schema}
+                                    :responses contracts/html-responses}}]
    ["/parts/regions" {:post {:handler (partial regions/save! deps)
                              :parameters {:form [:map [:part-id string?] [:mesh-key string?]
                                                  [:revision [:and string? [:fn #(some? (parse-long %))]]]
@@ -586,6 +590,7 @@
                      (workspace-routes/routes deps))))
      {:data {:coercion malli-coercion/coercion
              :middleware [params/wrap-params
+                          region-transport/wrap-body
                           coercion/coerce-exceptions-middleware
                           coercion/coerce-request-middleware
                           coercion/coerce-response-middleware]}})))
