@@ -3,6 +3,7 @@
   Ordered fetches buffer face deltas; HTMX confirms the final atomic commit."
   (:require ["three" :as three]
             [cljs.reader :as edn]
+            [shipyard.http.forms :as forms]
             [shipyard.paint.faces :as faces]
             [shipyard.paint.render :as render]))
 
@@ -68,6 +69,25 @@
         (doseq [^js mesh @objects] (.dispose (.-geometry mesh)))
         (.dispose surface)
         (.dispose target-buffer)))))
+
+(defn cached-visible-buffer!
+  "Reuse one CPU picking buffer while source meshes, transforms and view are unchanged.
+  Painting may deindex geometry but preserves source triangle order."
+  [cache {:keys [^js camera ^js canvas parts] :as sys} target]
+  (.updateMatrixWorld camera true)
+  (let [signature [target (.-clientWidth canvas) (.-clientHeight canvas)
+                   ;; Copy Three.js's mutable arrays; vec can retain their backing storage.
+                   (mapv identity (.. camera -matrixWorld -elements))
+                   (mapv identity (.. camera -projectionMatrix -elements))
+                   (mapv (fn [[slot ^js object]]
+                           (.updateWorldMatrix object true false)
+                           [slot object (.. object -userData -meshKey)
+                            (render/triangle-count (.-geometry object))
+                            (mapv identity (.. object -matrixWorld -elements))]) @parts)]]
+    (if (= signature (:signature @cache)) (:buffer @cache)
+        (let [buffer (visible-buffer sys target)]
+          (reset! cache {:signature signature :buffer buffer})
+          buffer))))
 
 (defn visible-triangles [{:keys [pixels width height start end]} x y radius]
   (if-not start #{}
@@ -192,7 +212,7 @@
                                              (if final?
                                                (do (doseq [[k v] params] (set-field! (:form current) k v))
                                                    (swap! stroke assoc :submitting? true)
-                                                   (.requestSubmit (:form current)))
+                                                   (forms/post! (:form current)))
                                                (send-part! current params)))))]
                     (swap! stroke assoc :pending {} :part (inc (:part current))
                            :chain (.catch task (fn [_]

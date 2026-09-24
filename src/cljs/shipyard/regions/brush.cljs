@@ -1,6 +1,6 @@
 (ns shipyard.regions.brush
   "Part Browser region assignment reuses the visible-only Paint picking pass."
-  (:require [cljs.reader :as edn]
+  (:require [shipyard.regions.dom :as dom]
             [shipyard.http.forms :as forms]
             [shipyard.paint.brush :as brush]
             [shipyard.paint.render :as render]
@@ -31,6 +31,7 @@
 (defn install! [sys apply-material!]
   (let [{:keys [^js canvas ^js controls active parts mount-colors-enabled]} sys
         stroke (atom nil)
+        picking (atom nil)
         cursor (.createElement js/document "div")
         form! #(.getElementById js/document "region-stroke")
         field (fn [^js form name] (.namedItem (.-elements form) name))
@@ -63,10 +64,12 @@
                         triangles (reduce into #{} (for [i (range 1 (inc steps))]
                                                      (get (brush/sampled-instances buffer (+ lx (* (/ i steps) (- x lx)))
                                                                                    (+ ly (* (/ i steps) (- y ly))) radius slot false) slot)))
-                        triangles (if groups (surfaces/expand groups triangles) triangles)
+                        triangles (remove (:triangles current) triangles)
+                        triangles (if groups (surfaces/expand groups triangles) (set triangles))
                         keys (into (:keys current) (map #(render/face-key (.-geometry object) %)) triangles)
-                        changed (model/change before (:mesh-key before) (:revision before) "assign" layer nil (vec keys))]
-                    (swap! stroke assoc :keys keys :previous [x y])
+                        changed (when (seq triangles)
+                                  (model/change before (:mesh-key before) (:revision before) "assign" layer nil (vec keys)))]
+                    (swap! stroke assoc :keys keys :triangles (into (:triangles current) triangles) :previous [x y])
                     (when-let [regions (:regions changed)] (paint! object regions))
                     (status! (str (count keys) " faces · release to save"))))))]
       (set! (.-className cursor) "paint-brush-cursor")
@@ -77,8 +80,7 @@
                              (.preventDefault e) (.stopImmediatePropagation e)
                              (try
                                (let [form (form!) [slot ^js object] (first @parts)
-                                     container (.getElementById js/document "part-regions")
-                                     before (edn/read-string (.getAttribute container "data-regions"))
+                                     before (dom/regions! (.. object -userData -partId) (.. object -userData -meshKey))
                                      locked (mapv (fn [el] [el (.-disabled el)])
                                                   (array-seq (.querySelectorAll js/document "#workspace-navigation button, #library button, #library select, #part-regions button, #part-regions input:not([type=hidden]), #part-regions select, [data-detail-tab], [data-mount-colors-toggle]")))]
                                  (when (= (:mesh-key before) (.. object -userData -meshKey))
@@ -89,7 +91,7 @@
                                                    :mode (.-value (field form "mode"))
                                                    :angle (.-value (field form "angle"))
                                                    :groups (when (= "faces" (.-value (field form "mode"))) (surface-groups! object (js/Number (.-value (field form "angle")))))
-                                                   :buffer (brush/visible-buffer sys slot) :keys #{} :locked locked})
+                                                   :buffer (brush/cached-visible-buffer! picking sys slot) :keys #{} :triangles #{} :locked locked})
                                    (set! (.-enabled controls) false)
                                    (doseq [[el _] locked] (set! (.-disabled el) true))
                                    (.setPointerCapture canvas (.-pointerId e))

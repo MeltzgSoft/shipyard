@@ -1,5 +1,6 @@
 (ns shipyard.regions.views
   (:require [clojure.string :as str]
+            [clojure.data.json :as json]
             [shipyard.regions.model :as model]
             [shipyard.regions.migration :as migration]
             [shipyard.regions.registry :as registry]
@@ -69,7 +70,9 @@
          preview (assoc regions :layers available)
          selected (if (some #{selected} available) selected "Secondary")
          stale? (not= mesh-key (:mesh-key regions))]
-     [:section#part-regions {:data-regions (pr-str preview) :data-mesh-key mesh-key :data-part-id part-id}
+     [:section#part-regions {:data-regions (pr-str (dissoc preview :faces))
+                             :data-region-faces (json/write-str (:faces preview))
+                             :data-mesh-key mesh-key :data-part-id part-id}
       [:h3 "Paint regions"]
       [:p.muted "Select a layer to paint. Schemes supply the final colors."]
       (when error [:p.detail__error {:role "alert"} error])

@@ -39,5 +39,10 @@
                      (reduce #(assoc %1 %2 members) assigned members))))
              (vec (repeat (count triangles) nil)) (range (count triangles))))))
 
-(defn expand [groups seeds]
-  (into #{} (mapcat #(get groups % #{%})) seeds))
+(defn expand
+  "Expand each connected component only once, even when many seeds hit it."
+  [groups seeds]
+  (reduce (fn [selected seed]
+            (if (contains? selected seed) selected
+                (into selected (get groups seed #{seed}))))
+          #{} seeds))

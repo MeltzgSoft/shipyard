@@ -6,6 +6,7 @@
             [shipyard.catalog.db :as catalog]
             [shipyard.library.index :as index]
             [shipyard.persistence-fixture :as persisted]
+            [shipyard.regions.model :as regions]
             [shipyard.store.db :as store]))
 
 (deftest authored-data-survives-scan-and-durable-reopen
@@ -41,7 +42,22 @@
     (try
       (catalog/reingest! cat [] (str (:root started)))
       (is (nil? (catalog/part (catalog/snapshot! cat) id)))
+      (is (nil? (:part (catalog/part-context! cat id))))
       (is (= (:part/uid before) (get-in (persisted/catalog! cat) [:parts id :part/uid])))
       (catalog/reingest! cat (index/parts! (:shipyard.library/index sys)) (str (:root started)))
       (is (= (:part/mounts before) (:part/mounts (catalog/part (catalog/snapshot! cat) id))))
+      (finally (fixture/stop! started)))))
+
+(deftest selected-part-context-includes-durable-regions-and-shared-layers
+  (let [started (fixture/start!) cat (:shipyard.catalog/db (:system started))
+        id (:weapon fixture/ids)]
+    (try
+      (catalog/save-regions! cat id (assoc (regions/empty-regions (apply str (repeat 64 "b")))
+                                           :revision 1 :faces {(apply str (repeat 72 "a")) "Secondary"}))
+      (let [snapshot (catalog/snapshot! cat) context (catalog/part-context! cat id)]
+        (is (= (catalog/part snapshot id) (:part context)))
+        (is (= (catalog/region-registry snapshot) (:registry context)))
+        (is (= (:registry context) (catalog/region-registry! cat)))
+        (is (seq (get-in context [:part :part/paint-regions :faces])))
+        (is (nil? (:part (catalog/part-context! cat "missing")))))
       (finally (fixture/stop! started)))))

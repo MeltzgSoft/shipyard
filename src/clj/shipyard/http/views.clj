@@ -125,14 +125,14 @@
                                            (name (or (:mount/origin mount) :picked)))]]
            [:div.mounts__actions
             [:form.mounts__action
-             {:hx-post   "/mounts/edit"
+             {:method "post" :action "/mounts/edit" :hx-post "/mounts/edit"
               :hx-target "#detail"
               :hx-swap   "innerHTML"}
              [:input {:type "hidden" :name "part-id" :value part-id}]
              [:input {:type "hidden" :name "mount-id" :value (name (:mount/id mount))}]
              [:button {:type "submit"} (if (:mount/mirror-id mount) "Edit pair" "Edit")]]
             [:form.mounts__action
-             {:hx-post   "/mounts/delete"
+             {:method "post" :action "/mounts/delete" :hx-post "/mounts/delete"
               :hx-target "#detail"
               :hx-swap   "innerHTML"}
              [:input {:type "hidden" :name "part-id" :value part-id}]
@@ -168,7 +168,7 @@
   [:section.part-metadata
    [:h3.part-metadata__title "Part metadata"]
    [:form.part-metadata__form
-    {:hx-post   "/parts/role"
+    {:method "post" :action "/parts/role" :hx-post "/parts/role"
      :hx-target "#detail"
      :hx-swap   "innerHTML"}
     [:input {:type "hidden" :name "part-id" :value id}]
@@ -199,7 +199,7 @@
     [:section.part-orientation
      [:h3.part-orientation__title "Part orientation"]
      [:form.part-orientation__form
-      {:hx-post   "/parts/orientation"
+      {:method "post" :action "/parts/orientation" :hx-post "/parts/orientation"
        :hx-target "#detail"
        :hx-swap   "innerHTML"
        :data-orientation-yaw yaw
@@ -324,7 +324,7 @@
         mirror-offset (or (:mirror-offset values) 0)
         edit? (= :edit mode)]
     [:form.mount-wizard__form
-     {:hx-post   "/mounts"
+     {:method "post" :action "/mounts" :hx-post "/mounts"
       :hx-target "#detail"
       :hx-swap   "innerHTML"}
      [:input {:type "hidden" :name "part-id" :value (:part/id part)}]
@@ -441,7 +441,7 @@
   [{:keys [id root error]}]
   [:form.settings__form
    {:id        id
-    :hx-post   "/settings"
+    :method "post" :action "/settings" :hx-post "/settings"
     :hx-target (str "#" id "-message")
     :hx-swap   "innerHTML"}
    [:label.settings__field {:for (str id "-root")} "Library folder"

@@ -14,7 +14,7 @@
     [:form (merge (if transition? workspace-views/transition-attrs
                       {:hx-sync "#detail:replace" :hx-disabled-elt "find button"})
                   {:class (if select? "ship-card__select" "ship-card__action")
-                   :hx-post (str "/ships/" action) :hx-target "#detail" :hx-swap "innerHTML settle:0ms"})
+                   :method "post" :action (str "/ships/" action) :hx-post (str "/ships/" action) :hx-target "#detail" :hx-swap "innerHTML settle:0ms"})
      [:input {:type "hidden" :name "id" :value (str id)}]
      (if select?
        [:h3 [:button.ship-card__load {:type "submit" :aria-label (str "Load " label)} label]]

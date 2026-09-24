@@ -11,7 +11,7 @@
   "#workspace-navigation button, #paint-select select, #paint-target button, #paint-create button, #paint-rename button, #paint-delete button, button[form=paint-default], .paint-write button, .paint-write select, .paint-group-controls button, #mount-colors-toggle")
 
 (defn transfer-button [source label]
-  [:form (merge selection-attrs {:novalidate true :hx-post (str "/" source "/paint")
+  [:form (merge selection-attrs {:novalidate true :method "post" :action (str "/" source "/paint") :hx-post (str "/" source "/paint")
                                  :hx-include ".assembly__save input[name=name]"})
    [:button {:type "submit" :data-workspace-transition "true"} label]])
 
@@ -40,24 +40,24 @@
 
 (defn scheme-controls [records draft record]
   [:div.paint-scheme
-   [:form#paint-select (merge selection-attrs {:hx-post "/paint/select" :hx-trigger "change"})
+   [:form#paint-select (merge selection-attrs {:method "post" :action "/paint/select" :hx-post "/paint/select" :hx-trigger "change"})
     [:label "Scheme" [:select {:name "id"}
                       [:option {:value ""} "No scheme"]
                       (for [r (sort-by :scheme/name records)]
                         [:option {:value (str (:scheme/id r)) :selected (= (:scheme/id r) (:scheme draft))} (:scheme/name r)])]]]
    [:div.paint-scheme-actions
     [:details [:summary "New"]
-     [:form#paint-create (merge selection-attrs {:hx-post "/paint/create"})
+     [:form#paint-create (merge selection-attrs {:method "post" :action "/paint/create" :hx-post "/paint/create"})
       [:label "New scheme name" [:input {:name "name" :required true :maxlength 200}]]
       [:button {:type "submit"} "Create scheme"]]]
     (when record
       [:details [:summary "Rename"]
-       [:form#paint-rename (merge selection-attrs {:hx-post "/paint/rename"})
+       [:form#paint-rename (merge selection-attrs {:method "post" :action "/paint/rename" :hx-post "/paint/rename"})
         [:label "Scheme name" [:input {:name "name" :value (:scheme/name record) :required true :maxlength 200}]]
         [:button {:type "submit"} "Rename scheme"]]])]
    (when record
      [:form#paint-delete (merge selection-attrs
-                                {:hx-post "/paint/delete"
+                                {:method "post" :action "/paint/delete" :hx-post "/paint/delete"
                                  :hx-confirm (str "Delete scheme “" (:scheme/name record) "”? "
                                                   (when (seq (:referenced-ships record))
                                                     (str "Used by: " (str/join ", " (:referenced-ships record)) ". These ships will keep their references and show a missing-scheme warning. "))
@@ -73,7 +73,7 @@
   (let [instances (filter #(contains? % :path) targets)
         members (set (:group/members (group-record record target)))]
     [:div.paint-targets
-     [:form#paint-target (merge selection-attrs {:hx-post "/paint/target"})
+     [:form#paint-target (merge selection-attrs {:method "post" :action "/paint/target" :hx-post "/paint/target"})
       [:h3 "Layer defaults"]
       (for [entry targets :when (:layer-id entry)] (target-row record target entry nil members))
       [:h3 "Role fallbacks"]
@@ -87,25 +87,25 @@
       (for [entry instances] (target-row record target entry nil members))]
      (when record
        [:details#paint-group-disclosure.paint-group-controls [:summary "Group selection"]
-        [:form#paint-group-create (merge selection-attrs {:hx-post "/paint/group/create"})
+        [:form#paint-group-create (merge selection-attrs {:method "post" :action "/paint/group/create" :hx-post "/paint/group/create"})
          [:label "Group name" [:input {:name "name" :required true :maxlength 200}]]
          [:button {:type "submit"} "Create group"]]])]))
 
 (defn group-controls [record target]
   (when-let [group (group-record record target)]
     [:details.paint-group-controls {:open true} [:summary "Manage group"]
-     [:form (merge selection-attrs {:hx-post "/paint/group/rename"})
+     [:form (merge selection-attrs {:method "post" :action "/paint/group/rename" :hx-post "/paint/group/rename"})
       [:input {:type "hidden" :name "group" :value (str (:group/id group))}]
       [:label "Group name" [:input {:name "name" :value (:group/name group) :required true :maxlength 200}]]
       [:button {:type "submit"} "Rename group"]]
-     [:form (merge selection-attrs {:hx-post "/paint/group/members" :hx-include "#paint-target input[name=members]"})
+     [:form (merge selection-attrs {:method "post" :action "/paint/group/members" :hx-post "/paint/group/members" :hx-include "#paint-target input[name=members]"})
       [:input {:type "hidden" :name "group" :value (str (:group/id group))}]
       [:button {:type "submit"} "Use checked members"]]
-     [:form (merge selection-attrs {:hx-post "/paint/group/order"})
+     [:form (merge selection-attrs {:method "post" :action "/paint/group/order" :hx-post "/paint/group/order"})
       [:input {:type "hidden" :name "group" :value (str (:group/id group))}]
       [:button {:type "submit" :name "direction" :value "up" :disabled (zero? (:group/order group))} "Move up"]
       [:button {:type "submit" :name "direction" :value "down" :disabled (= (:group/order group) (dec (count (:scheme/groups record))))} "Move down"]]
-     [:form (merge selection-attrs {:hx-post "/paint/group/delete" :hx-confirm "Delete this group? Instance materials and face details are preserved."})
+     [:form (merge selection-attrs {:method "post" :action "/paint/group/delete" :hx-post "/paint/group/delete" :hx-confirm "Delete this group? Instance materials and face details are preserved."})
       [:input {:type "hidden" :name "group" :value (str (:group/id group))}]
       [:button {:type "submit"} "Delete group"]]]))
 
@@ -122,14 +122,14 @@
         group (or (group-record record target) (first groups))]
     [:div.paint-write
      [:h3 "Write to"]
-     [:form.paint-segmented (merge selection-attrs {:hx-post "/paint/target"})
+     [:form.paint-segmented (merge selection-attrs {:method "post" :action "/paint/target" :hx-post "/paint/target"})
       (for [[label key selected?] [["Instance" (:key anchor) (contains? target :path)]
                                    ["Role" (when (:role anchor) (str "role/" (name (:role anchor))))
                                     (and (:role target) (not (contains? target :path)))]
                                    ["Group" (when group (str "group/" (:group/id group))) (some? (:group-id target))]]]
         [:button {:type "submit" :name "target" :value key :disabled (nil? key) :aria-pressed (str selected?)} label])]
      (when (and (:group-id target) (> (count groups) 1))
-       [:form (merge selection-attrs {:hx-post "/paint/target" :hx-trigger "change"})
+       [:form (merge selection-attrs {:method "post" :action "/paint/target" :hx-post "/paint/target" :hx-trigger "change"})
         [:label "Material group" [:select {:name "target"}
                                   (for [g groups] [:option {:value (str "group/" (:group/id g)) :selected (= (:group-id target) (:group/id g))} (:group/name g)])]]])]))
 
@@ -141,7 +141,7 @@
 
 (defn material-form [record target value paths sequence]
   [:form#paint-material
-   {:hx-post "/paint/material" :hx-target "#paint-status" :hx-swap "innerHTML"
+   {:method "post" :action "/paint/material" :hx-post "/paint/material" :hx-target "#paint-status" :hx-swap "innerHTML"
     :hx-trigger "change, submit" :hx-sync "this:queue last" :hx-disabled-elt competing-controls
     :data-paint-slots (pr-str paths)
     :data-paint-layer (:layer-id target)
@@ -171,7 +171,7 @@
                     :when (and layer (or (not= (:part-id layer) (:part-id instance))
                                          (not= (:mesh-key layer) (get-in prepared [(:part-id instance) :mesh-key]))))] (:path instance))]
     [:form#paint-brush
-     {:hidden (not brush?) :hx-post "/paint/stroke" :hx-target (if brush? "#brush-status" "#paint-status")
+     {:hidden (not brush?) :method "post" :action "/paint/stroke" :hx-post "/paint/stroke" :hx-target (if brush? "#brush-status" "#paint-status")
       :hx-swap "innerHTML" :hx-sync "this:queue all"
       :hx-disabled-elt (str competing-controls ", #paint-brush input:not([type=hidden]), #paint-brush select, #paint-brush button, .paint-tools button, button[form=paint-brush]")
       :data-flush-interval flush-interval :data-stale-targets (pr-str (vec stale))
@@ -243,9 +243,9 @@
                       (material-form record target value paths sequence)))
               (when model-ready? (brush-panel record target targets prepared state flush-interval value))))
       (when (and record target (contains? target :path))
-        [:form#paint-default (merge selection-attrs {:hx-post "/paint/default"})])]
+        [:form#paint-default (merge selection-attrs {:method "post" :action "/paint/default" :hx-post "/paint/default"})])]
      (when (and record (:hull draft)) [:div.paint-tools
-                                       [:form.paint-segmented (merge selection-attrs {:hx-post "/paint/tool"})
+                                       [:form.paint-segmented (merge selection-attrs {:method "post" :action "/paint/tool" :hx-post "/paint/tool"})
                                         [:button {:type "submit" :name "tool" :data-workspace-transition "true" :value "select" :aria-pressed (str (not brush?))} "Select"]
                                         [:button {:type "submit" :name "tool" :data-workspace-transition "true" :value "brush" :aria-pressed (str brush?) :disabled (not model-ready?)} "Brush"]]
                                        (when brush? [:span "Orbit Alt+drag"])])
