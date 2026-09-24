@@ -85,10 +85,10 @@
           [:input {:type "hidden" :name "action" :value "add"}]
           [:input {:name "name" :aria-label "New detail layer" :placeholder "New detail layer" :required true :maxlength 200}]
           [:button {:type "submit"} "Add layer"]]
-         [:form#region-stroke (assoc attrs :hx-sync "this:drop")
+         [:form#region-stroke (assoc attrs :hx-sync "this:drop" :hx-ext "region-cbor"
+                                     :action "/parts/regions/stroke" :hx-post "/parts/regions/stroke")
           (fields part-id mesh-key regions)
           [:input {:type "hidden" :name "action" :value "assign"}]
-          [:input {:type "hidden" :name "faces" :value "[]"}]
           [:input {:type "hidden" :name "layer" :value selected}]
           [:input {:type "hidden" :name "mode" :value mode}]
           [:div.region-brush-mode {:role "group" :aria-label "Paint by"}

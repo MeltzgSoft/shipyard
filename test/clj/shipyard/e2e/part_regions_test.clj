@@ -7,6 +7,7 @@
             [shipyard.assembly-fixture :as fixture]
             [shipyard.catalog.db :as catalog]
             [shipyard.region-fixture :as rf]
+            [shipyard.regions.transport :as transport]
             [shipyard.catalog.sidecar :as sidecar]
             [shipyard.e2e.support :as s]
             [shipyard.e2e.workspace-test :as workspace]
@@ -348,8 +349,9 @@
                   (reify Consumer
                     (accept [_ value]
                       (let [^Request request value]
-                        (when (= (str (s/base-url sys) "/parts/regions") (.url request))
-                          (swap! requests conj {:method (.method request) :body (.postData request)}))))))
+                        (when (= (str (s/base-url sys) "/parts/regions/stroke") (.url request))
+                          (swap! requests conj {:method (.method request) :content-type (.headerValue request "content-type")
+                                                :body (.postDataBuffer request)}))))))
       (s/go! driver (s/base-url sys))
       (s/click! driver ".part__select:has(.part__name:text-is('weapon'))")
       (s/wait-visible! driver ".detail--ready")
@@ -367,10 +369,13 @@
           (throw (ex-info "Dense region save response failed" {:status (s/text driver "#region-status")})))
         (is (> (count (pr-str (regions))) 8192) "Region payload exceeds Jetty's response header budget")
         (is (= "POST" (:method (first @requests))))
-        (is (> (count (:body (first @requests))) 200000) "The connected-surface stroke is in the request body")
-        (is (re-find #"mode=faces" (:body (first @requests))))
-        (is (re-find #"angle=31" (:body (first @requests))))
-        (is (re-find #"faces=%5B" (:body (first @requests))))
+        (is (= "application/cbor" (:content-type (first @requests))))
+        (is (< (count (:body (first @requests))) 4096) "Dense strokes send a compact binary mask")
+        (let [decoded (transport/decode (:body (first @requests)))]
+          (is (= "bitset" (:encoding decoded)))
+          (is (= "faces" (get-in decoded [:metadata "mode"])))
+          (is (= "31" (get-in decoded [:metadata "angle"])))
+          (is (> (count (:indices decoded)) 100)))
         (is (= (str (s/base-url sys) "/") (.url ^Page (:page driver))) "Painting does not navigate")
         (apply brush/stroke! driver center)
         (is (s/wait-until #(= 2 (:revision (regions)))))
@@ -403,7 +408,13 @@
         (is (= (str (s/base-url sys) "/") (.url ^Page (:page driver))))
         (is (= 4 (count @requests)))
         (is (every? #(= "POST" (:method %)) @requests))
-        (is (> (count (:body (last @requests))) 200000))
+        (is (< (count (:body (last @requests))) 4096))
+        (s/click! driver "button[data-region-mode=facets]")
+        (editor/input! driver "#region-stroke input[name=radius]" "2" "input")
+        (apply brush/stroke! driver (s/js driver "() => {const c=document.querySelector('canvas').getBoundingClientRect();return [c.x+c.width/2,c.y+c.height/2];}"))
+        (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
+        (is (= 5 (:revision (regions))))
+        (is (= "indices" (:encoding (transport/decode (:body (last @requests))))))
         (s/go! driver (s/base-url sys))
         (s/await-part driver id)
         (is (s/wait-until #(= {:faces (count (:faces (regions))) :vertex-colors true} (:region-preview (s/stats driver))))))

@@ -1,7 +1,7 @@
 (ns shipyard.regions.brush
   "Part Browser region assignment reuses the visible-only Paint picking pass."
   (:require [shipyard.regions.dom :as dom]
-            [shipyard.http.forms :as forms]
+            [shipyard.regions.transport :as transport]
             [shipyard.paint.brush :as brush]
             [shipyard.paint.render :as render]
             [shipyard.regions.model :as model]
@@ -29,6 +29,7 @@
           groups))))
 
 (defn install! [sys apply-material!]
+  (transport/install!)
   (let [{:keys [^js canvas ^js controls active parts mount-colors-enabled]} sys
         stroke (atom nil)
         picking (atom nil)
@@ -115,17 +116,16 @@
                            (when-let [current @stroke]
                              (.preventDefault e) (.stopImmediatePropagation e)
                              (if (empty? (:keys current)) (cancel! "No visible faces selected.")
-                                 (let [form (:form current)]
+                                 (let [form (:form current) ^js object (:object current)]
                                    (swap! stroke assoc :saving? true)
                                    ;; The selected layer must be submitted while other controls stay locked.
                                    (set! (.-disabled (field form "layer")) false)
                                    (set! (.-disabled (field form "angle")) false)
                                    (set! (.-value (field form "layer")) (:layer current))
-                                   (set! (.-value (field form "faces")) (pr-str (vec (:keys current))))
                                    (let [failed! (fn [_]
                                                    (when (identical? form (:form @stroke))
                                                      (cancel! "Region save failed. Reopen this part or retry the stroke.")))]
-                                     (try (-> (forms/post! form) (.catch failed!))
+                                     (try (-> (transport/post! form (render/triangle-count (.-geometry object)) (:triangles current)) (.catch failed!))
                                           (catch :default error (failed! error)))))))) true)
       (.addEventListener canvas "contextmenu" (fn [^js e] (when (or @stroke (available?)) (.preventDefault e) (.stopImmediatePropagation e))) true)
       (.addEventListener canvas "pointercancel" (fn [_] (cancel! "Region stroke canceled.")) true)

@@ -1,6 +1,12 @@
 {
   "name": "shipyard",
   "private": true,
-  "devDependencies": { "shadow-cljs": "3.4.12" },
-  "dependencies": { "three": "0.185.1", "htmx.org": "2.0.10" }
+  "devDependencies": {
+    "shadow-cljs": "3.4.12"
+  },
+  "dependencies": {
+    "cbor-x": "1.6.6",
+    "htmx.org": "2.0.10",
+    "three": "0.185.1"
+  }
 }
