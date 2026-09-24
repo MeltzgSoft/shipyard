@@ -561,6 +561,77 @@
           (is (= 3 (:revision (regions))))))
       (finally (s/quit! driver) (fixture/stop! started)))))
 
+(deftest rejected-region-requests-restore-the-brush
+  (s/assert-bundle!)
+  (let [started (fixture/start! true) sys (:system started) driver (s/make-driver)
+        cat (:shipyard.catalog/db sys) id (:weapon fixture/ids)
+        regions #(catalog/part-regions (catalog/part (catalog/snapshot! cat) id))
+        open! (fn []
+                (s/click! driver ".part__select:has(.part__name:text-is('weapon'))")
+                (s/await-part driver id)
+                (s/click! driver "[data-detail-tab=regions]")
+                (editor/input! driver "#region-stroke input[name=radius]" "2" "input"))]
+    (try
+      (s/go! driver (s/base-url sys))
+      (open!)
+      (apply brush/stroke! driver (region-point driver 0))
+      (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
+      (s/js driver "() => document.addEventListener('htmx:afterRequest', e => {if(e.detail.xhr.status === 400) window.rejectedRegionResponse = {status:e.detail.xhr.status, body:e.detail.xhr.responseText};})")
+      (doseq [[kind message] [[:wrong-endpoint "Invalid request (action, mesh-key, part-id, revision)"]
+                              [:form "Invalid request (revision)"]
+                              [:stroke "Invalid request (metadata)"]]]
+        (let [saved (regions) colors (region-colors driver)]
+          (s/js driver "() => {window.rejectedRegionResponse = null;}")
+          (case kind
+            :wrong-endpoint (s/js driver "() => {const form=document.querySelector('#region-stroke'); form.setAttribute('hx-post','/parts/regions'); form.setAttribute('action','/parts/regions');}")
+            :form (s/js driver "() => {document.querySelector('#region-fill input[name=revision]').value='invalid';}")
+            :stroke (s/js driver "() => {document.querySelector('#region-stroke input[name=revision]').value='invalid';}"))
+          (if (= kind :form)
+            (s/click! driver "#region-fill button")
+            (apply brush/right-stroke! driver (region-point driver 0)))
+          (is (s/wait-until #(= 400 (:status (s/js driver "() => window.rejectedRegionResponse")))))
+          (is (.contains (s/text driver "#region-status") message))
+          (is (.contains ^String (:body (s/js driver "() => window.rejectedRegionResponse")) message))
+          (is (= saved (regions)))
+          (is (= colors (region-colors driver)) "Rejected strokes restore the saved preview")
+          (is (false? (s/js driver "() => document.querySelector('#region-stroke input[name=radius]').disabled")))
+          (is (= (str (s/base-url sys) "/") (.url ^Page (:page driver))))
+          ;; Fetch a fresh form through the supported UI, then paint again.
+          (open!)
+          (apply brush/stroke! driver (region-point driver 0))
+          (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
+          (is (= (inc (or (:revision saved) 0)) (:revision (regions))))))
+      (finally (s/quit! driver) (fixture/stop! started)))))
+
+(deftest database-failure-restores-the-brush
+  (s/assert-bundle!)
+  (let [started (fixture/start! true) sys (:system started) driver (s/make-driver)
+        cat (:shipyard.catalog/db sys) id (:weapon fixture/ids)
+        regions #(catalog/part-regions (catalog/part (catalog/snapshot! cat) id))]
+    (try
+      (s/go! driver (s/base-url sys))
+      (s/click! driver ".part__select:has(.part__name:text-is('weapon'))")
+      (s/await-part driver id)
+      (s/click! driver "[data-detail-tab=regions]")
+      (editor/input! driver "#region-stroke input[name=radius]" "2" "input")
+      (apply brush/stroke! driver (region-point driver 0))
+      (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
+      (let [saved (regions) colors (region-colors driver)]
+        (with-redefs [catalog/save-regions! (fn [& _] (throw (ex-info "MDB_PROBLEM: txn should abort" {})))]
+          (apply brush/right-stroke! driver (region-point driver 0))
+          (is (s/wait-until #(= "Could not save part regions to the database. See the server log for details."
+                               (s/text driver "#part-regions [role=alert]"))))
+          (is (s/wait-until #(= "Region save failed. Reopen this part or retry the stroke."
+                               (s/text driver "#region-status")))))
+        (is (= saved (regions)))
+        (is (= colors (region-colors driver)))
+        (is (false? (s/js driver "() => document.querySelector('#region-stroke input[name=radius]').disabled")))
+        (apply brush/right-stroke! driver (region-point driver 0))
+        (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
+        (is (= (inc (:revision saved)) (:revision (regions))))
+        (is (empty? (:faces (regions)))))
+      (finally (s/quit! driver) (fixture/stop! started)))))
+
 (deftest repeated-strokes-reuse-picking-but-view-changes-invalidate-it
   (s/assert-bundle!)
   (let [started (fixture/start! true) sys (:system started) driver (s/make-driver)

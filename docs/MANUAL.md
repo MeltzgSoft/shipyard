@@ -319,6 +319,11 @@ Open **Regions**, click a colored layer row, and brush visible faces. The select
 row is highlighted and marked with a check. The brush is
 active whenever this tab is visible; no extra toggle is needed. Release saves one complete stroke to the part’s regions in the database. Large
 strokes are sent in the save request body without changing the page URL. The brush
+restores the saved preview if a request is rejected and identifies the rejected
+fields beneath the brush controls. A database save failure also restores the saved
+preview and leaves the brush available; the message directs you to the server log,
+which records the underlying exception.
+The brush
 starts from visible triangles. **Facets** paints the triangles touched by the brush;
 **Faces** follows connected surfaces. Its **Angle tolerance** slider (0–90°, default
 1°) sets the largest bend between neighboring triangles that the brush can cross.

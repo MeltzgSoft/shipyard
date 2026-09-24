@@ -1,6 +1,7 @@
 (ns shipyard.regions.brush
   "Part Browser region assignment reuses the visible-only Paint picking pass."
-  (:require [shipyard.regions.dom :as dom]
+  (:require [cljs.reader :as reader]
+            [shipyard.regions.dom :as dom]
             [shipyard.regions.transport :as transport]
             [shipyard.paint.brush :as brush]
             [shipyard.paint.render :as render]
@@ -141,6 +142,12 @@
                                  (select-mode! (.getAttribute button "data-region-mode")))))))
       (.addEventListener js/document "shipyard:inspector-tab"
                          (fn [_] (set! (.. cursor -style -display) "none")))
+      (.addEventListener js/document "shipyard:request-error"
+                         (fn [^js e]
+                           (when (.closest (.-target e) "#part-regions")
+                             (let [message (:message (reader/read-string (.. e -detail -value)))]
+                               (cancel! message)
+                               (status! message)))))
       (.addEventListener js/document "htmx:afterRequest"
                          (fn [^js e]
                            (when-let [current @stroke]

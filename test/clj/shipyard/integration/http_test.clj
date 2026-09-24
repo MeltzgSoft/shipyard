@@ -701,12 +701,14 @@
   (testing "missing or malformed fields"
     (let [r (POST (handler (system (library-tree))) "/facet" {})]
       (is (= 400 (:status r)))
-      (is (= :reitit.coercion/request-coercion (:type (:body r))))))
+      (is (str/includes? (:body r) "Invalid request"))
+      (is (str/includes? (:body r) "part-id"))))
 
   (testing "non-decimal triangle index"
     (let [r (facet-post (handler (system (library-tree))) hull-id (apply str (repeat 64 "1")) "1e3")]
       (is (= 400 (:status r)))
-      (is (= :reitit.coercion/request-coercion (:type (:body r))))))
+      (is (str/includes? (:body r) "Invalid request"))
+      (is (str/includes? (:body r) "triangle-index"))))
 
   (testing "part absent from the current catalog"
     (let [r (facet-post (handler (system (library-tree))) "No/Such/Part" (apply str (repeat 64 "1")) 0)]
