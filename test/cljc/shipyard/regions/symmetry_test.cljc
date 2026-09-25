@@ -51,3 +51,16 @@
       ;; The center-plane surface's normal reverses under this reflection, so it
       ;; remains in the original selection instead of gaining another face.
       (is (= #{} (symmetry/counterparts index :y 0 2))))))
+
+(deftest plane-guide
+  (let [bounds [[2 4 6] [4 8 12]]]
+    (doseq [[axis normal size] [[:x [1 0 0] [7.2 4.8]]
+                                [:y [0 1 0] [2.4 7.2]]
+                                [:z [0 0 1] [2.4 4.8]]]]
+      (let [guide (symmetry/plane-guide bounds axis nil)]
+        (is (= [3.0 6.0 9.0] (:position guide)))
+        (is (= normal (:normal guide)))
+        (is (every? #(< (abs %) 1e-9) (map - size (:size guide))))))
+    (is (= [3.0 -5 9.0] (:position (symmetry/plane-guide bounds :y -5))))
+    (is (= [3.0 6.0 0] (:position (symmetry/plane-guide bounds :z 0)))))
+  (is (every? pos? (:size (symmetry/plane-guide [[0 0 0] [0 0 0]] :x nil)))))

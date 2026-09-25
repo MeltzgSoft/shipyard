@@ -115,3 +115,15 @@
               (candidates tree (bounds reflected) epsilon))
         #{}))
     #{}))
+
+(defn plane-guide
+  "Position and extent of a canonical mirror plane, using the same midpoint as painting."
+  [[lo hi] axis offset]
+  (let [coordinate ({:x 0 :y 1 :z 2} axis)
+        center (mapv #(/ (+ %1 %2) 2.0) lo hi)
+        spans (math/subtract hi lo)
+        minimum (max 1e-6 (* 0.05 (math/length spans)))
+        [u v] (case axis :x [2 1] :y [0 2] :z [0 1])]
+    {:position (assoc center coordinate (or offset (nth center coordinate)))
+     :normal (assoc [0 0 0] coordinate 1)
+     :size (mapv #(* 1.2 (max minimum (nth spans %))) [u v])}))

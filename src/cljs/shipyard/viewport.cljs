@@ -13,6 +13,7 @@
   in per-frame matrix math, where `(set! (.-x (.-position o)) 1.0)` is plainly
   worse than the JavaScript."
   (:require [shipyard.regions.brush :as region-brush]
+            [shipyard.regions.mirror-guide :as mirror-guide]
             [shipyard.regions.model :as regions]
             [shipyard.regions.dom :as region-dom]
             ["three" :as three]
@@ -60,6 +61,8 @@
   [{:axis :x :direction [1.0 0.0 0.0] :color 0xff5c5c :color-css "#ff5c5c"}
    {:axis :y :direction [0.0 1.0 0.0] :color 0x5ce080 :color-css "#5ce080"}
    {:axis :z :direction [0.0 0.0 1.0] :color 0x57a7ff :color-css "#57a7ff"}])
+
+(def ^:private axis-colors (into {} (map (juxt :axis :color)) canonical-axes))
 
 (def ^:private orientation-guide-size 156.0)
 (def ^:private orientation-guide-padding 12.0)
@@ -1368,6 +1371,7 @@
          :render-frame (.. renderer -info -render -frame)
          :target    (let [t (.-target controls)] #js [(.-x t) (.-y t) (.-z t)])
          :camera    (let [p (.-position camera)] #js [(.-x p) (.-y p) (.-z p)])
+         :region-mirror-guide (clj->js (mirror-guide/stats sys))
          :region-preview (clj->js (when-let [^js object (first objs)]
                                     {:faces (count (.. object -userData -regionMask))
                                      :vertex-colors (.. object -material -vertexColors)}))
@@ -1487,6 +1491,7 @@
            ^js orientation-scene ^js orientation-camera orientation-guide bulk] :as sys}]
   (let [w (max 1 (.-clientWidth canvas))
         h (max 1 (.-clientHeight canvas))]
+    (when (= :browse (:workspace sys)) (mirror-guide/update! sys axis-colors))
     (when (.-enabled controls) (.update controls))
     (.setScissorTest renderer false)
     (.setViewport renderer 0 0 w h)
@@ -1651,7 +1656,7 @@
                   :current (atom nil) :authoring (atom nil)
                   :preview (atom nil)
                   :assembly (atom assembly-scene/empty-state) :browse-generation (atom 0)
-                  :interfaces (atom nil) :orientation-guide (atom nil)
+                  :interfaces (atom nil) :orientation-guide (atom nil) :region-mirror-guide (atom nil)
                   :mount-markers (atom {}) :mount-colors-enabled (atom true)
                   :bulk (atom {}) :bulk-refresh? (atom false) :bulk-saves (atom {:sequence 0 :pending {}}) :bulk-step (atom 90.0)
                   :repeat (atom nil)
