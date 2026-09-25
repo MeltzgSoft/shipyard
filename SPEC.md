@@ -595,11 +595,13 @@ plane (YZ/X, XZ/Y or XY/Z). The plane defaults to the model's bounding midpoint;
 an explicit offset supports off-center parts. While Regions mirroring is enabled,
 a translucent plane marks that location in the normal axis color (X red, Y green,
 Z blue); it follows offset edits immediately and never intercepts painting.
-Reflected selections include hidden
-counterparts and save atomically with the original stroke. Matching uses surface
-overlap, so opposite sides may have different triangulation. Missing counterparts
-are left unchanged. Mirror controls survive saves and layer operations for the
-current part, and reset on part/source/orientation changes. This is a Regions
+The brush's picking rays and footprint are reflected across the plane; each side
+independently selects its frontmost surfaces, tolerating different triangulation
+and small shape differences. Mirrored selections can be hidden from the original
+view and save atomically with the original stroke. Faces mode expands each side's
+hits independently using the same angle tolerance. Rays that miss the model select
+nothing; Facets mode does not paint through the first surface hit. Mirror controls
+survive saves and layer operations for the current part, and reset on part/source/orientation changes. This is a Regions
 brush option; the Paint workspace detail brush keeps its existing behavior.
 Changed source meshes retain old regions but cannot display or extend them until
 reset. Shared rename and delete remain available even for stale masks.

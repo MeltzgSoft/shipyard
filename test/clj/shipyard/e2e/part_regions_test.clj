@@ -9,6 +9,7 @@
             [shipyard.region-fixture :as rf]
             [shipyard.regions.transport :as transport]
             [shipyard.paint.faces :as faces]
+            [shipyard.part.orientation :as orientation]
             [shipyard.catalog.sidecar :as sidecar]
             [shipyard.e2e.support :as s]
             [shipyard.e2e.workspace-test :as workspace]
@@ -688,6 +689,102 @@
       (is (false? (s/js driver "() => document.querySelector('[name=mirror]').checked")))
       (is (= "" (s/js driver "() => document.querySelector('[name=mirror-offset]').value")))
       (is (s/wait-until #(nil? (:region-mirror-guide (s/stats driver)))))
+      (finally (s/quit! driver) (fixture/stop! started)))))
+
+(deftest mirrored-brush-on-asymmetric-surfaces
+  (s/assert-bundle!)
+  (let [cube (fixtures/cube 1.0)
+        left? (fn [triangle] (every? #(= -0.5 (first %)) triangle))
+        midpoint (fn [a b] (mapv #(/ (+ %1 %2) 2.0) a b))
+        subdivide (fn [[a b c]]
+                    (let [ab (midpoint a b) bc (midpoint b c) ca (midpoint c a)]
+                      [[a ab ca] [ab b bc] [ca bc c] [ab bc ca]]))
+        ;; Tilt and displace the opposite wall, and give it four times as many
+        ;; triangles. An extra internal wall proves mirrored depth occlusion.
+        deform (fn [[x y z]] [(+ 3 (if (= x -0.5) (+ -0.55 (* 0.08 y)) x)) y z])
+        ;; Subdivide the adjacent walls too so the near shell has no raster cracks
+        ;; at T-junctions; retain the coarse source wall to test different tessellation.
+        outer (mapv #(mapv deform %)
+                    (mapcat #(if (every? (fn [[x _ _]] (= x 0.5)) %) [%] (subdivide %)) cube))
+        ;; Keep the inner sheet clear of the outer walls: shared boundary pixels
+        ;; otherwise have equal depth and may legitimately belong to either face.
+        inner (mapv #(mapv (fn [[_ y z]] [2.6 (* 0.7 y) (* 0.7 z)]) %) (filter left? cube))
+        source (filter #(every? (fn [[x _ _]] (= x 3.5)) %) outer)
+        opposite (filter #(every? (fn [[x _ _]] (< x 2.5)) %) outer)
+        source-keys (set (map faces/face-key source))
+        opposite-keys (set (map faces/face-key opposite))
+        inner-keys (set (map faces/face-key inner))
+        id (:weapon fixture/ids)
+        started (fixture/start! true
+                                (fn [root]
+                                  (fixture/library! root)
+                                  (with-open [out (io/output-stream (fs/file root id "unsupported.stl"))]
+                                    (.write out ^bytes (fixtures/->binary-stl (into outer inner))))
+                                  ;; The source X plane becomes canonical Y after saved orientation.
+                                  (sidecar/write-sidecar! (str root) id
+                                                          {:part/role :weapon :mounts []
+                                                           :part/orientation (orientation/rotate-around-world-axis nil :z 90)})
+                                  root))
+        sys (:system started) cat (:shipyard.catalog/db sys) driver (s/make-driver)
+        regions #(catalog/part-regions (catalog/part (catalog/snapshot! cat) id))
+        painted #(set (keys (:faces (regions))))
+        point! (fn [n]
+                 (s/await-rendered-geometries driver)
+                 (let [visible (filter :front? (:region-faces (s/stats driver)))
+                       ordinal (nth (keep-indexed #(when (source-keys (:key %2)) %1) visible) n)]
+                   (region-point driver ordinal)))
+        saved! #(is (s/wait-until (fn [] (= "Regions saved." (s/text driver "#region-status")))))]
+    (try
+      (s/resize! driver 1600 1000)
+      (s/go! driver (s/base-url sys))
+      (s/click! driver ".part__select:has(.part__name:text-is('weapon'))")
+      (s/await-part driver id)
+      (s/click! driver "[data-detail-tab=regions]")
+      (s/click! driver "button[data-region-mode=facets]")
+      (editor/input! driver "#region-stroke input[name=radius]" "2" "input")
+      (s/check! driver "#region-stroke input[name=mirror]")
+      (s/select-option! driver "#region-stroke select[name=mirror-axis]" "XZ plane (across Y)")
+      (editor/input! driver "#region-stroke input[name=mirror-offset]" "3" "input")
+      (apply brush/stroke! driver (point! 0))
+      (saved!)
+      (is (= 1 (count (filter source-keys (painted)))))
+      (is (< 0 (count (filter opposite-keys (painted))) 4)
+          "The small reflected brush hits the tilted wall without copying the whole source triangle")
+      (is (not-any? inner-keys (painted)) "The first opposite surface occludes the inner wall")
+      (is (every? (into source-keys opposite-keys) (painted)))
+      (is (= (:faces (regions)) (:faces (:part/paint-regions (persisted/authored! cat id)))))
+      (apply brush/right-stroke! driver (point! 0))
+      (saved!)
+      (is (empty? (painted)))
+      (editor/input! driver "#region-stroke input[name=radius]" "70" "input")
+      (apply brush/stroke! driver (point! 0))
+      (saved!)
+      (is (> (count (filter opposite-keys (painted))) 1) "Increasing radius widens the mirrored footprint")
+      (is (not-any? inner-keys (painted)))
+      (apply brush/right-stroke! driver (point! 0))
+      (saved!)
+      (is (empty? (painted)))
+      (editor/input! driver "#region-stroke input[name=radius]" "2" "input")
+      (let [[x y] (point! 0) [end-x end-y] (point! 1)
+            mouse (.mouse ^Page (:page driver))]
+        (.move mouse x y)
+        (.down mouse)
+        (.move mouse end-x end-y)
+        (.up mouse))
+      (saved!)
+      (is (= source-keys (set (filter source-keys (painted)))))
+      (is (> (count (filter opposite-keys (painted))) 1) "The reflected brush follows the interpolated drag")
+      (is (not-any? inner-keys (painted)))
+      (s/click! driver "button[data-region-mode=faces]")
+      (apply brush/stroke! driver (point! 0))
+      (saved!)
+      (is (= (into source-keys opposite-keys) (painted))
+          "Faces expands both independently hit surfaces, despite their differing normals and tessellation")
+      (let [colors (region-colors driver)]
+        (is (= 1 (count (set (map colors (painted)))))))
+      (apply brush/right-stroke! driver (point! 0))
+      (saved!)
+      (is (empty? (painted)))
       (finally (s/quit! driver) (fixture/stop! started)))))
 
 (deftest database-failure-restores-the-brush

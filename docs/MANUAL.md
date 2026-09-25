@@ -329,8 +329,12 @@ using the part's canonical axes, independent of camera orbit. Leave **Mirror
 plane offset** blank to use the model center, or enter its coordinate for an
 off-center plane. A translucent guide shows the plane: red for X, green for Y,
 blue for Z. It follows offset edits immediately and disappears when mirroring is
-off or you leave Regions. You can paint through the guide. Mirrored faces can be hidden. Different triangulation is handled
-by overlapping surfaces; geometry without a matching reflected surface is skipped.
+off or you leave Regions. You can paint through the guide. The brush's position, radius and path are
+mirrored, selecting the first surface hit from the opposite viewpoint. This works
+across different triangulation and small shape differences; the two sides need
+not match exactly. Mirrored faces can be hidden from your current view. Rays that
+miss the model leave it unchanged, and Facets mode does not paint through the
+first surface it hits. Faces mode follows connected surfaces independently on each side.
 The settings survive saves and layer edits, and reset when changing part, source
 or orientation. Symmetry currently applies to Regions only.
 
