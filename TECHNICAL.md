@@ -2348,7 +2348,12 @@ overlap, supporting different tessellation without nearest-face guesses or edge-
 matches. Tolerance is max(1e-6, model diagonal × 1e-6). The tree is cached per mesh
 object/orientation and correspondence results per active plane. Mirror controls
 are transient client brush settings scoped to the current part/source/orientation;
-server-rendered controls are restored after panel swaps. No new persistence fields
+server-rendered controls are restored after panel swaps. A translucent, double-sided
+plane with an axis-colored outline is kept in the Browse scene, outside the part
+map used for picking. Precise oriented mesh bounds are cached; the guide updates
+its transform for live offset/axis changes without building the correspondence tree.
+It uses the orientation gizmo palette, does not write depth, and disposes its GPU
+resources when disabled or outside the Regions tab. No new persistence fields
 or wire fallback are needed: original and mirrored ordinals commit together through
 `POST /parts/regions/stroke`, with an `application/cbor` body. The version-1 wire
 envelope is `[1, metadata, triangle-count, encoding, selection]`. Metadata contains

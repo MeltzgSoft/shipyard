@@ -327,7 +327,9 @@ Enable **Mirror painting** to paint or erase the matching opposite side in the
 same stroke. Choose **Mirror plane** (YZ across X, XZ across Y, or XY across Z)
 using the part's canonical axes, independent of camera orbit. Leave **Mirror
 plane offset** blank to use the model center, or enter its coordinate for an
-off-center plane. Mirrored faces can be hidden. Different triangulation is handled
+off-center plane. A translucent guide shows the plane: red for X, green for Y,
+blue for Z. It follows offset edits immediately and disappears when mirroring is
+off or you leave Regions. You can paint through the guide. Mirrored faces can be hidden. Different triangulation is handled
 by overlapping surfaces; geometry without a matching reflected surface is skipped.
 The settings survive saves and layer edits, and reset when changing part, source
 or orientation. Symmetry currently applies to Regions only.

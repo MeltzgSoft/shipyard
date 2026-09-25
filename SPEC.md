@@ -592,7 +592,10 @@ include triangles outside the brush or behind occluders. Erasing uses the same
 mode and tolerance. These settings survive region saves and layer operations.
 Regions optionally mirror painting and erasing across a selected canonical part
 plane (YZ/X, XZ/Y or XY/Z). The plane defaults to the model's bounding midpoint;
-an explicit offset supports off-center parts. Reflected selections include hidden
+an explicit offset supports off-center parts. While Regions mirroring is enabled,
+a translucent plane marks that location in the normal axis color (X red, Y green,
+Z blue); it follows offset edits immediately and never intercepts painting.
+Reflected selections include hidden
 counterparts and save atomically with the original stroke. Matching uses surface
 overlap, so opposite sides may have different triangulation. Missing counterparts
 are left unchanged. Mirror controls survive saves and layer operations for the
