@@ -2,16 +2,8 @@
   "A non-pickable, world-space guide for the active Regions mirror plane."
   (:require ["three" :as three]
             [shipyard.math :as math]
+            [shipyard.regions.mirror :as mirror]
             [shipyard.regions.symmetry :as symmetry]))
-
-(defn- bounds! [^js object orientation]
-  (let [cached (.. object -userData -regionMirrorBounds)]
-    (if (and cached (= orientation (:orientation cached))) (:bounds cached)
-        (let [_ (.updateMatrixWorld object true)
-              box (.setFromObject (three/Box3.) object true)
-              bounds [(vec (.toArray (.-min box))) (vec (.toArray (.-max box)))]]
-          (set! (.. object -userData -regionMirrorBounds) {:orientation orientation :bounds bounds})
-          bounds))))
 
 (defn- clear! [{:keys [^js scene region-mirror-guide]}]
   (when-let [{:keys [^js object]} @region-mirror-guide]
@@ -56,7 +48,7 @@
              (or (empty? raw) (some? offset)))
       (let [key [object orientation axis offset]]
         (when (not= key (:key @region-mirror-guide))
-          (let [{:keys [position size normal]} (symmetry/plane-guide (bounds! object orientation) axis offset)
+          (let [{:keys [position size normal]} (symmetry/plane-guide (mirror/bounds! object orientation) axis offset)
                 color (get axis-colors axis)
                 ^js plane (or (:object @region-mirror-guide) (create! scene color))]
             (.fromArray (.-position plane) (to-array position))

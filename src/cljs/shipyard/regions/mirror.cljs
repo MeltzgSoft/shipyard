@@ -1,23 +1,24 @@
 (ns shipyard.regions.mirror
-  "Transient, part-scoped mirror controls and cached geometric correspondence."
-  (:require [shipyard.math :as math]
-            [shipyard.paint.render :as render]
+  "Transient, part-scoped mirror controls and reflected brush picking."
+  (:require ["three" :as three]
+            [shipyard.math :as math]
+            [shipyard.paint.brush :as brush]
             [shipyard.regions.symmetry :as symmetry]))
 
 (defn- field [^js form name] (.namedItem (.-elements form) name))
 
-(defn- index! [^js object quaternion]
-  (let [cached (.. object -userData -regionMirror)]
-    (if (and cached (= quaternion (:orientation cached))) cached
-        (let [geometry (.-geometry object)
-              value {:orientation quaternion
-                     :index (symmetry/index (mapv #(render/triangle-points geometry %) (range (render/triangle-count geometry))) quaternion)
-                     :matches (atom {})}]
-          (set! (.. object -userData -regionMirror) value)
-          value))))
+(defn bounds! [^js object orientation]
+  (let [cached (.. object -userData -regionMirrorBounds)]
+    (if (and cached (= orientation (:orientation cached))) (:bounds cached)
+        (let [_ (.updateWorldMatrix object true false)
+              box (.setFromObject (three/Box3.) object true)
+              bounds [(vec (.toArray (.-min box))) (vec (.toArray (.-max box)))]]
+          (set! (.. object -userData -regionMirrorBounds) {:orientation orientation :bounds bounds})
+          bounds))))
 
-(defn install! [{:keys [current]}]
+(defn install! [{:keys [current] :as sys}]
   (let [settings (atom nil)
+        picking (atom nil)
         form! #(.getElementById js/document "region-stroke")
         ensure! (fn [form]
                   (let [key [(.-value (field form "part-id")) (.-value (field form "mesh-key")) (:orientation @current)]]
@@ -46,7 +47,7 @@
                                                 (.-value (field form "mirror-offset"))))
                              (restore!)))))
     {:restore! restore!
-     :begin! (fn [^js object]
+     :begin! (fn [slot ^js object]
                (when-let [form (form!)]
                  (when (ensure! form) (restore!))
                  (let [{:keys [enabled axis]} @settings
@@ -58,15 +59,5 @@
                        (when (or (.. (field form "mirror-offset") -validity -badInput)
                                  (and (seq (:offset @settings)) (nil? offset)))
                          (throw (ex-info "Enter a finite mirror plane offset." {:type :mirror-input})))
-                       (let [{:keys [index matches]} (index! object (:orientation @current))
-                             plane [axis offset]]
-                         ;; Keep only the active plane's query cache.
-                         (when (not= plane (:plane @matches)) (reset! matches {:plane plane :faces {}}))
-                         (fn [triangles]
-                           (reduce (fn [selected triangle]
-                                     (let [mirrored (or (get-in @matches [:faces triangle])
-                                                        (let [value (symmetry/counterparts index axis offset triangle)]
-                                                          (swap! matches assoc-in [:faces triangle] value)
-                                                          value))]
-                                       (into selected mirrored)))
-                                   (set triangles) triangles))))))))}))
+                       (let [transform (symmetry/reflection-matrix (bounds! object (:orientation @current)) axis offset)]
+                         (brush/cached-visible-buffer! picking (assoc sys :picking-transform transform) slot)))))))}))

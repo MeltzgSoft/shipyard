@@ -2340,18 +2340,21 @@ selection, inline rename forms and confirmed delete actions. A hidden stroke-for
 layer value drives brushing and full-part assignment; selection and its visible
 pressed state are restored together after temporary right-button erasing.
 Transient stroke state submits the union of touched faces on release through
-the existing body transport. Optional Regions symmetry expands that union before
-preview and submission. A pure CLJC bounding-volume tree indexes tier-0 triangles
-in canonical part coordinates (saved part orientation, independent of camera).
-Reflected triangles select coplanar, equally facing triangles with positive-area
-overlap, supporting different tessellation without nearest-face guesses or edge-only
-matches. Tolerance is max(1e-6, model diagonal × 1e-6). The tree is cached per mesh
-object/orientation and correspondence results per active plane. Mirror controls
-are transient client brush settings scoped to the current part/source/orientation;
-server-rendered controls are restored after panel swaps. A translucent, double-sided
+the existing body transport. Optional Regions symmetry samples a second ID/depth
+buffer with the same screen-space brush disk and interpolated path. That pass
+premultiplies each part's world matrix by reflection in the canonical plane,
+mathematically equivalent to reflecting the camera's picking rays. Three.js adjusts
+front-face winding for the negative determinant. Depth testing selects the first
+surface from the reflected viewpoint, without coplanarity or triangle correspondence
+requirements. Union both sets of brush hits before connected-surface expansion,
+preview and submission, so Faces mode expands independently on each side.
+CPU picking buffers are cached by viewport size, camera/projection, source mesh,
+world transforms and reflection matrix. Temporary GPU resources are disposed after
+readback. Mirror controls are transient client brush settings scoped to the current
+part/source/orientation; server-rendered controls are restored after panel swaps. A translucent, double-sided
 plane with an axis-colored outline is kept in the Browse scene, outside the part
 map used for picking. Precise oriented mesh bounds are cached; the guide updates
-its transform for live offset/axis changes without building the correspondence tree.
+its transform for live offset/axis changes without preparing a picking buffer.
 It uses the orientation gizmo palette, does not write depth, and disposes its GPU
 resources when disabled or outside the Regions tab. No new persistence fields
 or wire fallback are needed: original and mirrored ordinals commit together through

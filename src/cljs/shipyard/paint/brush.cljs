@@ -30,10 +30,11 @@
     geometry))
 
 (defn visible-buffer
-  "One ID/depth render per stroke; ranges retain every instance for visible-only sampling.
-  Temporary GPU resources are disposed even when readback fails."
-  [{:keys [^js renderer ^js camera ^js canvas parts]} target]
+  "Depth-tested face IDs, optionally reflecting world geometry for mirrored rays.
+  Ranges retain every instance; temporary GPU resources are disposed after readback."
+  [{:keys [^js renderer ^js camera ^js canvas parts picking-transform]} target]
   (let [width (max 1 (.-clientWidth canvas)) height (max 1 (.-clientHeight canvas))
+        transform (when picking-transform (.fromArray (three/Matrix4.) (to-array picking-transform)))
         scene (three/Scene.) surface (three/ShaderMaterial.
                                       #js {:vertexShader "attribute vec3 faceId; varying vec3 id; void main(){ id=faceId; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }"
                                            :fragmentShader "varying vec3 id; void main(){ gl_FragColor=vec4(id,1.0); }"
@@ -51,6 +52,9 @@
               (swap! objects conj mesh)
               (set! (.-matrixAutoUpdate mesh) false)
               (.copy (.-matrix mesh) (.-matrixWorld object))
+              ;; Reflecting world geometry is equivalent to reflecting every camera ray.
+              ;; Three.js reverses front-face winding for the negative determinant.
+              (when transform (.premultiply (.-matrix mesh) transform))
               (.add scene mesh)
               (swap! ranges assoc slot {:start start :end end :object object})
               (when (= slot target) (reset! selected {:start start :end end :object object})))
@@ -73,9 +77,9 @@
 (defn cached-visible-buffer!
   "Reuse one CPU picking buffer while source meshes, transforms and view are unchanged.
   Painting may deindex geometry but preserves source triangle order."
-  [cache {:keys [^js camera ^js canvas parts] :as sys} target]
+  [cache {:keys [^js camera ^js canvas parts picking-transform] :as sys} target]
   (.updateMatrixWorld camera true)
-  (let [signature [target (.-clientWidth canvas) (.-clientHeight canvas)
+  (let [signature [target picking-transform (.-clientWidth canvas) (.-clientHeight canvas)
                    ;; Copy Three.js's mutable arrays; vec can retain their backing storage.
                    (mapv identity (.. camera -matrixWorld -elements))
                    (mapv identity (.. camera -projectionMatrix -elements))

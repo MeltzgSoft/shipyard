@@ -59,18 +59,19 @@
                 (set! (.. cursor -style -display) "none")
                 (status! message)))
             (sample! [^js e]
-              (when-let [{:keys [buffer radius slot ^js object before layer previous groups mirror-selection] :as current} @stroke]
+              (when-let [{:keys [buffer radius ^js object before layer previous groups mirror-buffer] :as current} @stroke]
                 (when-not (:saving? current)
                   (let [bounds (.getBoundingClientRect canvas)
                         x (- (.-clientX e) (.-left bounds)) y (- (.-clientY e) (.-top bounds))
                         [lx ly] (or previous [x y])
                         steps (max 1 (js/Math.ceil (/ (js/Math.hypot (- x lx) (- y ly)) (max 1 (/ radius 2)))))
-                        triangles (reduce into #{} (for [i (range 1 (inc steps))]
-                                                     (get (brush/sampled-instances buffer (+ lx (* (/ i steps) (- x lx)))
-                                                                                   (+ ly (* (/ i steps) (- y ly))) radius slot false) slot)))
+                        triangles (reduce into #{} (for [i (range 1 (inc steps))
+                                                         picking-buffer (cond-> [buffer] mirror-buffer (conj mirror-buffer))]
+                                                     (brush/visible-triangles picking-buffer
+                                                                              (+ lx (* (/ i steps) (- x lx)))
+                                                                              (+ ly (* (/ i steps) (- y ly))) radius)))
                         triangles (remove (:triangles current) triangles)
                         triangles (if groups (surfaces/expand groups triangles) (set triangles))
-                        triangles (if mirror-selection (mirror-selection triangles) triangles)
                         keys (into (:keys current) (map #(render/face-key (.-geometry object) %)) triangles)
                         changed (when (seq triangles)
                                   (model/change before (:mesh-key before) (:revision before) "assign" layer nil (vec keys)))]
@@ -95,7 +96,7 @@
                                                    :radius (js/Number (.-value (field form "radius")))
                                                    :mode (.-value (field form "mode"))
                                                    :angle (.-value (field form "angle"))
-                                                   :mirror-selection ((:begin! mirror-controls) object)
+                                                   :mirror-buffer ((:begin! mirror-controls) slot object)
                                                    :groups (when (= "faces" (.-value (field form "mode"))) (surface-groups! object (js/Number (.-value (field form "angle")))))
                                                    :buffer (brush/cached-visible-buffer! picking sys slot) :keys #{} :triangles #{} :locked locked})
                                    (set! (.-enabled controls) false)
