@@ -147,7 +147,7 @@
           (.append element row))))))
 
 (def lock-selector
-  "#workspace-navigation button, #paint-select select, #paint-target button, #paint-create button, #paint-rename button, #mount-colors-toggle, .paint-tools button, .paint-editor input:not([type=hidden]), .paint-editor select, .paint-editor button, .paint-rail button")
+  ".ship-inspector > nav button, .ship-card button, #workspace-navigation button, #paint-select select, #paint-target button, #paint-create button, #paint-rename button, #mount-colors-toggle, .paint-tools button, .paint-editor input:not([type=hidden]), .paint-editor select, .paint-editor button, .paint-rail button")
 
 (defn listen! [{:keys [^js canvas ^js controls ^js camera active mount-colors-enabled] :as sys} apply-material!]
   (let [stroke (atom nil) last-stroke (atom nil) locked (atom [])
@@ -197,13 +197,13 @@
                "stroke-id" (str (:id current)) "part" (str part) "final" (str final?)
                "entries" (pr-str (entries current pending))
                "color" (:hex current) "metalness" (str (get-in current [:color :metalness]))
-               "roughness" (str (get-in current [:color :roughness])) "operation" (if (:erase? current) "erase" "paint")})
+               "roughness" (str (get-in current [:color :roughness])) "glow" (str (get-in current [:color :glow] 0)) "operation" (if (:erase? current) "erase" "paint")})
             (send-part! [current params]
               (let [form (:form current) n (inc (js/Number (value form "sequence")))
                     body (js/URLSearchParams.) headers (js/Object.assign #js {"Content-Type" "application/x-www-form-urlencoded"} (:headers current))]
                 (set-field! form "sequence" n)
                 (doseq [[k v] (assoc params "sequence" (str n))] (.append body k v))
-                (-> (js/fetch "/paint/stroke" #js {:method "POST" :headers headers :body (.toString body)})
+                (-> (js/fetch "/ships/paint/stroke" #js {:method "POST" :headers headers :body (.toString body)})
                     (.then (fn [^js response]
                              (when-not (and (.-ok response) (= "buffered" (.get (.-headers response) "X-Shipyard-Brush")))
                                (throw (js/Error. "Stroke part was not accepted."))))))))
@@ -294,7 +294,8 @@
                                                      :stale (set (edn/read-string (.getAttribute form "data-stale-targets")))
                                                      :color {:base (rgb (value form "brush-color"))
                                                              :metalness (js/parseFloat (value form "brush-metalness"))
-                                                             :roughness (js/parseFloat (value form "brush-roughness"))} :hex (value form "brush-color")
+                                                             :roughness (js/parseFloat (value form "brush-roughness"))
+                                                             :glow (js/parseFloat (value form "brush-glow"))} :hex (value form "brush-color")
                                                      :erase? (or (= 2 (.-button e)) (= "erase" (value form "mode"))) :radius (js/parseFloat (value form "radius"))})
                                      (lock!)
                                      (swap! stroke assoc :timer (js/setInterval #(flush! false) (js/Number (.getAttribute form "data-flush-interval"))))

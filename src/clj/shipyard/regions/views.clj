@@ -62,7 +62,7 @@
   ([part-id mesh-key saved selected error] (panel part-id mesh-key saved selected error registry/empty-registry))
   ([part-id mesh-key saved selected error shared]
    (panel part-id mesh-key saved selected error shared {}))
-  ([part-id mesh-key saved selected error shared {:keys [mode angle] :or {mode "facets" angle 1}}]
+  ([part-id mesh-key saved selected error shared {:keys [mode angle face-delta] :or {mode "facets" angle 1}}]
    (let [available (registry/ids shared)
          regions (assoc (or saved (migration/regions (model/empty-regions mesh-key)))
                         :layer-revision (:revision shared)
@@ -70,9 +70,12 @@
          preview (assoc regions :layers available)
          selected (if (some #{selected} available) selected "Secondary")
          stale? (not= mesh-key (:mesh-key regions))]
-     [:section#part-regions {:data-regions (pr-str (dissoc preview :faces))
-                             :data-region-faces (json/write-str (:faces preview))
-                             :data-mesh-key mesh-key :data-part-id part-id}
+     [:section#part-regions (cond-> {:hx-sync "this:queue last"
+                                     :data-regions (pr-str (dissoc preview :faces))
+                                     :data-mesh-key mesh-key :data-part-id part-id}
+                              face-delta (assoc :data-region-delta (pr-str face-delta))
+                              (nil? face-delta) (assoc :data-region-faces (json/write-str (:faces preview))))
+      [:span#region-snapshot (cond-> {:hidden true} face-delta (assoc :hx-preserve "true"))]
       [:h3 "Paint regions"]
       [:p.muted "Select a layer to paint. Schemes supply the final colors."]
       (when error [:p.detail__error {:role "alert"} error])
@@ -111,8 +114,8 @@
              [:option {:value "y"} "XZ plane (across Y)"]
              [:option {:value "z"} "XY plane (across Z)"]]]
            [:label "Mirror plane offset"
-            [:input {:type "number" :name "mirror-offset" :step "any" :placeholder "Model center" :disabled true}]]
-           [:p.muted "Planes follow the part axes. Blank offset uses the model center. Paint and erase also affect matching hidden faces."]]
+            [:input {:type "number" :name "mirror-offset" :step "any" :placeholder "Automatic center" :disabled true}]]
+           [:p.muted "Planes follow the part axes. Blank offset estimates the center from opposing surfaces. Paint and erase also affect matching hidden faces."]]
           [:p.muted "Left-drag paints; right-drag erases. Alt+drag orbits."]
           [:p#region-status {:role "status"} "Release to save regions."]]
          [:form#region-fill (assoc attrs :hx-include "#region-stroke input[name=layer], #region-stroke input[name=mode], #region-stroke input[name=angle]")

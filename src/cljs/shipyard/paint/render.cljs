@@ -16,9 +16,10 @@
               [(.getX position vertex) (.getY position vertex) (.getZ position vertex)])) (range 3))))
 
 (defn face-key [^js geometry triangle]
-  (let [keys (or (.. geometry -userData -paintFaceKeys)
+  (let [owner (or (.. geometry -userData -paintTopology) (.-userData geometry))
+        keys (or (.-paintFaceKeys owner)
                  (let [keys (js/Array. (triangle-count geometry))]
-                   (set! (.. geometry -userData -paintFaceKeys) keys)
+                   (set! (.-paintFaceKeys owner) keys)
                    keys))]
     (or (aget keys triangle)
         (aset keys triangle (faces/face-key (triangle-points geometry triangle))))))
@@ -49,15 +50,16 @@
             (range (triangle-count geometry))))))
 
 (defn- face-index! [^js object]
-  (or (.. object -userData -faceIndex)
-      (let [geometry (.-geometry object) index (js/Map.)]
-        (dotimes [triangle (triangle-count geometry)]
-          (let [key (face-key geometry triangle) previous (.get index key)]
-            (.set index key (cond (nil? previous) triangle
-                                  (number? previous) #js [previous triangle]
-                                  :else (do (.push previous triangle) previous)))))
-        (set! (.. object -userData -faceIndex) index)
-        index)))
+  (let [owner (or (.. object -geometry -userData -paintTopology) (.-userData object))]
+    (or (.-faceIndex owner)
+        (let [geometry (.-geometry object) index (js/Map.)]
+          (dotimes [triangle (triangle-count geometry)]
+            (let [key (face-key geometry triangle) previous (.get index key)]
+              (.set index key (cond (nil? previous) triangle
+                                    (number? previous) #js [previous triangle]
+                                    :else (do (.push previous triangle) previous)))))
+          (set! (.-faceIndex owner) index)
+          index))))
 
 (defn- install-finish! [^js surface]
   (or (.. surface -userData -finishEnabled)
@@ -70,7 +72,7 @@
                   (set! (.-vertexShader program) vertex)
                   (set! (.-fragmentShader program) fragment)
                   (set! (.. surface -userData -finishCompiled) true))))
-        (set! (.-customProgramCacheKey surface) (fn [] "shipyard-face-finish-v1"))
+        (set! (.-customProgramCacheKey surface) (fn [] "shipyard-face-finish-v2"))
         (set! (.-needsUpdate surface) true)
         enabled)))
 
@@ -94,7 +96,7 @@
                (or base {}) (or (:faces (.. object -userData -paintDetails)) {}))))
 
 (defn apply-details! [^js object inherited colors?]
-  (let [inherited (select-keys inherited [:base :metalness :roughness])
+  (let [inherited (select-keys inherited [:base :metalness :roughness :glow])
         mask (projected-mask! object inherited)
         ^js surface (.-material object)
         enabled? (and (not colors?) (seq mask))]
@@ -109,6 +111,7 @@
           (set! (.-geometry object) (.toNonIndexed old))
           ;; Deindexing preserves triangle order and source-space coordinates.
           (set! (.. object -geometry -userData -paintFaceKeys) (.. old -userData -paintFaceKeys))
+          (set! (.. object -geometry -userData -paintTopology) (.. old -userData -paintTopology))
           (.dispose old)))
       (let [geometry (.-geometry object)
             index (face-index! object)
@@ -116,7 +119,7 @@
                           (let [value (three/BufferAttribute. (js/Float32Array. (* 9 (triangle-count geometry))) 3)]
                             (.setAttribute geometry "color" value) value))
             finish (or (.getAttribute geometry "shipyardFinish")
-                       (let [value (three/BufferAttribute. (js/Float32Array. (* 6 (triangle-count geometry))) 2)]
+                       (let [value (three/BufferAttribute. (js/Float32Array. (* 9 (triangle-count geometry))) 3)]
                          (.setAttribute geometry "shipyardFinish" value) value))
             uniform (install-finish! surface)
             signature [inherited mask]
@@ -128,19 +131,19 @@
             (let [[r g b] (mapv material/srgb->linear (:base inherited))]
               (dotimes [vertex (.-count attribute)]
                 (.setXYZ attribute vertex r g b)
-                (.setXY finish vertex (:metalness inherited) (:roughness inherited)))))
+                (.setXYZ finish vertex (:metalness inherited) (:roughness inherited) (get inherited :glow 0)))))
           (doseq [key (if (and (= inherited old-inherited) (.. object -userData -paintDirtyFaces))
                         (.. object -userData -paintDirtyFaces)
                         (keys (if (= inherited old-inherited) (merge old-mask mask) mask)))
                   :when (or (not= inherited old-inherited) (not= (get old-mask key) (get mask key)))]
             (let [entry (.get index key)
-                  {:keys [base metalness roughness]} (faces/resolve-material inherited (get mask key))
+                  {:keys [base metalness roughness glow] :or {glow 0}} (faces/resolve-material inherited (get mask key))
                   [r g b] (mapv material/srgb->linear base)]
               (doseq [triangle (if (number? entry) [entry] (array-seq entry))]
                 (dotimes [corner 3]
                   (let [vertex (+ (* triangle 3) corner)]
                     (.setXYZ attribute vertex r g b)
-                    (.setXY finish vertex metalness roughness))))))
+                    (.setXYZ finish vertex metalness roughness glow))))))
           (set! (.-needsUpdate attribute) true)
           (set! (.-needsUpdate finish) true)
           (set! (.. object -userData -detailSignature) signature))

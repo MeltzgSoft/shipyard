@@ -1703,12 +1703,12 @@ triangle indices as derived render data, in the same database transaction (§1.2
 
 #### 12.6.1 Bulk orientation
 
-The **Orient** workspace implements SPEC §9.4. Its server boundary is
+The **Part Browser** orientation grid implements SPEC §9.4. Its server boundary is
 `shipyard.bulk-orientation.{routes,handlers,transforms,views}`. The workspace registry
 owns selection and filters; interactive pose editing and card rendering live in
 `src/cljs/shipyard/viewport.cljs`. Shared quaternion math
 lives in `src/cljc/shipyard/part/orientation.cljc` and runs on both runtimes. This section
-describes the Orient workflow and its workspace contract.
+describes the Part Browser grid workflow and its workspace contract.
 
 **Authority and selection.** The server owns catalog queries, preview eligibility, mesh
 preparation and durable writes. Table filters reuse catalog bundle/class/role/name
@@ -1731,7 +1731,7 @@ The nested EDN values have separate shape and domain validation.
 
 | Route | Inputs | HTML result |
 |---|---|---|
-| GET /workspace/orient | optional filters, `table=1` to end the grid session | Workspace context, selector, filters and retained grid or table |
+| GET /workspace/browse | optional filters, `part-id` to open the editor, `table=1` to return to the table | Workspace context, selector, filters and retained grid or table |
 | POST /orient/selection | `visible`: EDN vector; optional checked `selected` ids | Updated server selection, count and Render controls |
 | GET /orient/parts | optional bundle, class, role, q, orientation | Filtered rows in `#bulk-orient-results` |
 | POST /orient/render | `part-ids`: EDN vector of string ids | Preview grid inside `#bulk-orient`, or 422 selection error |
@@ -1782,7 +1782,7 @@ marks the session as table mode and renders the current filters. Rows, angles, c
 and filter membership come from the catalog after Save, including partial successes;
 the server-owned selection survives the swap. A subsequent Render selection
 starts from the catalog's saved poses. This explicit action is distinct from changing
-workspaces, which must preserve Orient's logical session under §14. Preparation polls replace only the cards and editing controls; the Back button stays
+workspaces, which must preserve Part Browser's logical session under §14. Preparation polls replace only the cards and editing controls; the Back button stays
 in place so polling cannot remove or move it during a click.
 
 **Persistence and partial failure.** In the capture phase of form submission, serialize
@@ -1807,7 +1807,7 @@ to reject responses from finished grids. On workspace restoration, current catal
 baselines are reconciled while dirty working poses remain intact. No orientation map or accumulated session state is carried
 in response headers.
 
-**Workspace restoration.** Preserve Orient's filters, selected
+**Workspace restoration.** Preserve Part Browser's filters, selected
 ids, table/grid mode, step, working poses, baselines, dirty flags and display settings
 across workspace switches, reconstruct its own preview and synchronize the selector.
 Resource disposal may release GPU objects while retaining this logical state. Delayed
@@ -2017,8 +2017,13 @@ M3 draft and viewport protocol in §13. Product requirements are in SPEC §9.2�
 
 Model transient application state by workspace identity. Each workspace owns its
 selected part or loadout, filters, working state and mount-color setting. In particular,
-Ship Browser's selected saved assembly and Assemble's editable draft are separate
-server-side state. Part Browser and Orient likewise have independent part selections.
+Ship Browser owns its class table and Assemble editor. The assembly draft and named-ship paint
+projection remain distinct model cells within this workspace, so palette preview cannot overwrite
+class edits or custom paint. Table filters are separate from assembly hull filters. Part Browser owns a `:view` (`:table`, `:part`, or `:grid`), an
+individual `:selection` and a separate `:bulk-selection`. Its table filters and scroll
+position survive opening an individual part and returning. `/orient/*` routes are
+owned by `:browse`; `/workspace/orient` is a legacy entry into that same workspace,
+not an independent owner or client runtime.
 Client display state must have the same workspace ownership. A single shared renderer
 and canvas may be reused without sharing the logical selection or display settings.
 
@@ -2032,7 +2037,51 @@ Implement ownership at the state and operation boundaries. Refactor shared mutab
 selection/toggle state and callers that violate this contract; hiding panels, adding
 workspace-specific reset callbacks, or restoring only the visible checkbox does not
 establish independent state. Workspace switching itself must preserve each workspace's
-working state. Explicit Edit and Duplicate are defined transfers into Assemble (§14.3).
+working state. Opening a class and Duplicate explicitly load the assembly model (§14.3).
+
+Catalog table queries use `catalog/listing!`, a metadata-only projection that excludes
+mount geometry and dense region masks. Compact mount kind/acceptance/capacity fields
+produce row summaries; mask reference existence supplies the saved-regions boolean
+without loading face chunks. Bulk label edits write dedicated name/bundle/class
+and role override attributes in one Datalevin transaction; scan observations remain
+separate. Source identity and downstream references do not change. Thumbnails use
+lazy intersection-triggered HTMX requests, existing preparation jobs and the lowest
+cached mesh LOD, except part regions require tier 0 for stable face identities.
+Part thumbnail requests load only their own region map and use persisted region-type
+preview colors before applying the saved pose. Incompatible source masks are ignored.
+A small software renderer produces shaded PNGs from saved poses;
+there is no per-row WebGL context or new durable thumbnail entity. Ship previews
+compose saved class placements independently of workspace model cells. Named-ship
+previews resolve the current scheme and compatible paint against each source mesh.
+Use tier 0 when projecting source-bound face masks, otherwise the lowest cached tier;
+repeated instances share decoded geometry within the request. Thumbnail requests are
+read-only and do not take the workspace transition lock. They resolve durable values
+on each table render rather than persisting stale images.
+
+Control responses must not grow with unrelated mesh or paint data. Assembly validation
+and table metadata use attachment-only catalog projections; painted scenes load region
+masks only for their installed parts. Scene envelopes omit unchanged geometry and masks, use `:paint`
+commands for appearance fields, and carry shared source masks once in
+`:region-data`, referenced by `:region-ref`. Appearance patches preserve geometry tokens
+and explicitly send nil to clear a prior mask. Compact material and layer values are
+reasserted on responses to replace any unsaved local color preview. Polling must still send newly ready meshes. The browser echoes its last applied scene
+sequence in `X-Shipyard-Scene-Sequence`; a mismatch forces a full snapshot so canceled
+or missed responses cannot strand incremental state.
+Paint detail changes use source-bound `:detail-delta` patches (sets/removals or a smaller
+replacement); the acknowledged scene sequence establishes their baseline. Initial scene
+loads and sequence recovery still include authoritative full details. Scheme selectors
+pull ID/name summaries, and palette previews pull only layer bindings, excluding legacy
+instance details and groups.
+Tables render at most 50 rows per page. Part selection remains server-owned across pages;
+filter changes reset the page, while returning from an editor restores it. Named hulls
+load on expansion through `/ships/hulls/:id` and have independent pages. Table and hull
+responses never embed named-ship paint maps.
+Variable-size viewport events exceeding 2 KiB are carried in escaped
+`data-viewport-events` body nodes instead of HX-Trigger headers. The viewport consumes
+and removes these nodes after an admitted swap, preserving existing event payloads.
+Mount/role/orientation responses preserve the existing region-editor DOM island.
+HTMX's default settle delay is zero so new forms are enhanced before the next queued
+user action can submit them as ordinary document navigation.
 
 ### 14.2 Workspace transition contract
 
@@ -2046,86 +2095,43 @@ owning workspace. Extend the revision/sequence and request-token guards in §13.
 workspace identity and activation generation so late responses from a previous
 activation cannot replace the active scene, panels, selector or settings. Returning to
 the same workspace must also reject responses from its earlier activation. Reuse the
-assembly placement and snapshot logic for saved-ship previews without mutating the
-Assemble draft. Preserve the canvas and dispose superseded scene resources as in §13.3.
+assembly placement and snapshot logic across editor tabs while keeping class drafts
+separate from named-ship paint projections. Preserve the canvas and dispose superseded scene resources as in §13.3.
 
-### 14.3 Saved-ship operations and UI
+### 14.3 Ship table and editor
 
-- Rename the visible Browse workspace to **Part Browser**. Add **Ship Browser**
-  immediately after **Assemble** in the selector.
-- List saved ships as cards and filter them by the root hull's catalog bundle/faction
-  and class. Use existing catalog identities and classification; filters belong to
-  Ship Browser. Do not discard missing or stale loadouts silently during listing.
-  Show an `N empty mount(s)` tag when the backend-derived empty-mount count is positive;
-  omit it for complete ships or invalid trees whose count cannot be determined. Partial
-  configurations use the same preview, Edit and Duplicate paths as complete ships.
-- A native submit button covers the card; pointer and keyboard activation validate
-  and load a read-only assembly snapshot into Ship Browser. Edit and Duplicate remain
-  separate sibling controls alongside Delete; there is no separate Preview button.
-  It does not navigate to Assemble or replace its draft or editing identity.
-- A floating inspector renders that snapshot's part tree and color legend. Identify
-  instances by full slot path so repeated and nested occurrences remain distinct;
-  tree, legend and viewport must describe the same selected assembly. Order the tree
-  with its hull first, followed by depth-first slot subtrees and numeric sibling
-  ordinals. Ship Browser exposes its own server-owned mount-color toggle, initially
-  off; transitions restore its value independently of Assemble.
-- Edit validates the selected saved loadout and explicitly transfers it into Assemble,
-  retaining its loadout id and name. Saving updates that id through the atomic store
-  boundary; selecting Edit alone makes no durable write.
-- Duplicate validates and transfers the same hull, full assignment tree and optional
-  scheme override into an independent Assemble draft. Pre-populate the editable name
-  with exactly `<original name> - Copy`. Clear the source's editing identity; saving
-  allocates a new UUID and cannot update the source record. Duplicate alone does not
-  persist a new record. New drafts use create semantics; edited drafts use update
-  semantics, decided by explicit identity rather than name matching.
-- Delete confirms the saved ship name through HTMX and uses the same database transaction
-  mutation boundary as Save. It does not validate library availability or delete
-  catalog parts. After the durable commit, clear a matching Ship Browser draft and
-  emit scene removals; detach a matching Assemble draft from its deleted identity,
-  preserving content and advancing its revision. Keep other selections and filters.
-  On failure, preserve both workspace models and report a recoverable error.
-- Before Edit, Duplicate or Start assembly replaces Assemble, compare the backend
-  draft's hull, assignments, name and scheme with its durable record. A nonempty new
-  draft or changed content produces a server-rendered discard/cancel form without
-  changing the scene or active workspace. Carry the current draft revision in the
-  confirmation and check it again under the assembly lock; a newer draft requires
-  confirmation again. Start assembly includes the current name field so an unsaved
-  rename is protected before navigation. Cancel refreshes the current workspace.
-- Revalidate authoritative catalog facts for preview, edit, duplicate and save. A
-  failed operation preserves the previous usable draft/preview and reports a
-  structured, actionable error. Apply an Edit/Duplicate transfer only after validation
-  succeeds. Names, assignments and loadout identity must change together.
+Ship Browser owns `:view` (`:table` or `:editor`), `:inspector-tab`, table `:filters`,
+`:assembly-filters`, drawer state and display settings. Table filters include scroll
+and comma-separated expanded class UUIDs. Native details render named ships under
+their class; double-click and Enter submit an ordinary server-rendered form outside
+the replaceable results. Edit, Duplicate and Delete remain explicit row actions.
 
-Fleet ordering, fleet default schemes and thumbnails remain outside M4.
+`/assembly/*`, `/ships/*` and their asynchronous responses belong to `:ships`.
+`/workspace/assembly` is a legacy entry to its Assembly editor, not an independent
+workspace. The client retains only `:browse` and `:ships` viewport runtimes. A shared
+workspace scene baseline and sequence order assembly, scheme and paint projections;
+model cells keep distinct drafts. Reusing a baseline allows material/tab changes to
+retain geometry and camera while diffing removals and additions correctly. Activation
+guards reject responses from a previous tab, model or workspace.
 
-### 14.4 Required E2E acceptance scenarios
+The floating editor wraps the existing assembly, scheme and paint forms. Assembly
+controls render inside that inspector; there is no class-list sidebar in the editor.
+The table replaces the workspace width. Back restores table state without clearing
+the editable draft. New class resets the draft only after the existing revision-bound
+discard confirmation. Opening another class and duplicating use the same protection.
+Opening the current class resumes its working copy. All durable class, scheme and
+named-ship edits retain their existing store operations and identity contracts.
 
-Behavior changes include E2E tests in the same PR (§10.3). Use the fixture library,
-real HTTP/server operations and the existing viewport introspection hook; assertions
-must inspect rendered scene facts as well as the visible controls. Do not establish
-the behavior by calling internal transition handlers directly from the test.
-
-| Scenario | Required assertions |
-|---|---|
-| Workspace naming/order | Part Browser replaces Browse; Ship Browser immediately follows Assemble in the selector |
-| Selection isolation | Select different models in Part Browser and Orient, keep draft A in Assemble and preview saved ship B in Ship Browser; leave and return to each and verify its own server selection and viewport model |
-| Display isolation | Give workspaces different mount-color values; switching restores both each toggle and its actual rendered effect without changing other workspaces |
-| Empty destination | Enter a workspace with no selection; it shows its own empty state and none of the previous model |
-| Delayed responses | Switch while model loading/polling is pending, including away and back to the same workspace; old responses cannot change the active model, panels, selector or settings |
-| Saved-ship browsing | Save a complete named assembly; its card appears; bundle/faction and class filters narrow the results correctly and survive workspace switches |
-| Ship preview and inspector | Select a saved card containing nested and repeated parts; viewport and floating inspector show the exact tree and matching color legend while Assemble's draft remains unchanged |
-| Edit | Card Edit opens Assemble and synchronizes the selector; selected ship, name and identity load; saving edits updates that ship and survives a store reload |
-| Duplicate | Card Duplicate opens Assemble and synchronizes the selector; exact Copy name is pre-populated and editable; store contents and saved-ship count remain unchanged before Save; saving produces a different id, survives reload and leaves the source name, assignments and scheme unchanged |
-| Failure preservation | Missing/stale/incompatible saved ships and invalid saves show actionable errors while preserving the prior usable draft/preview and consistent selector |
-
-Use fixtures with distinct workspace selections, at least two bundle/class combinations,
-and repeated and nested slot paths so state leakage and incorrect filtering are observable.
+Browser coverage exercises table filters and expansion, class and named-ship opening,
+keyboard access, Back restoration, assembly/scheme/paint transitions, class save and
+duplication, dirty-draft confirmation, deletion, independent Part Browser state and
+late-response rejection. Core navigation and forms work without the viewport bundle.
 
 ### 14.5 Workspace implementation
 
 `shipyard.workspace.db` owns the active workspace, monotonically increasing activation
-and per-workspace selection, filters, drawer disclosure and display settings. Assemble
-and Ship Browser reference separate assembly model cells. Only the server advances an
+and per-workspace selection, filters, drawer disclosure and display settings. Ship Browser
+owns distinct assembly and paint model cells within its editor. Only the server advances an
 activation; request headers echo previously rendered context and cannot select a
 workspace or mint a generation. The workspace middleware serializes admission,
 transitions and mutations and rejects stale or mismatched requests before effects.
@@ -2135,7 +2141,7 @@ handler. It renders the destination panels, selector, mount-color control and co
 in one HTMX response. HTMX disables transition controls until that response arrives;
 a later click cannot abort an accepted transition and strand the old context.
 Ordinary navigation never transfers models. Filters and unsaved
-draft names accompany navigation using `hx-include`; Orient checkbox changes and drawer
+draft names accompany navigation using `hx-include`; Part Browser checkbox changes and drawer
 disclosure use ordinary HTTP operations. Mount-color changes are server operations.
 Reloading the page reconstructs the active workspace from server state. The initial
 restore request uses the same navigation synchronization and disabled controls as
@@ -2152,91 +2158,101 @@ selection and settings remain functional with the viewport bundle unavailable.
 One renderer and shared studio environment serve independently retained viewport runtimes.
 Their local state is confined to cameras, render resources, interactive unsaved poses
 and mesh request tokens. Pending mesh loads carry server activation and request tokens;
-leaving invalidates those loads while retaining installed objects and unsaved Orient
+leaving invalidates those loads while retaining installed objects and unsaved orientation-grid
 poses. Superseded geometry is disposed when that workspace replaces it. Reloading loses
 unsaved viewport poses, while selections and settings remain in the running server.
 
-## 15. Paint schemes and individual instances
+## 15. Fleet schemes and named-ship paint
 
-`:shipyard.scheme/db` is a facade over the same transactional store. Its immutable
-projection is `{:version 1 :schemes {uuid record}}`. Role and layer bindings, instance
-targets, ordered groups and detail masks are normalized entities (§4). Full target
-paths include `[]` for the hull and refer to stable part entities. They belong to
-the scheme, not to a particular saved ship. No workspace selection or uncommitted
-preview is persisted. Library refs preserve the scope used to resolve shared layers
-and parts when a record is updated.
+`:shipyard.scheme/db` projects `{:version 1 :schemes {uuid record}}` from the shared
+Datalevin store. New scheme authoring changes only name and shared layer materials.
+Legacy roles, targets, groups and details remain readable for recovery and migration.
+`:shipyard.ship/db` projects `{:version 1 :ships {uuid record}}`. Each named ship has a
+stable `:ship/class` ref to a loadout, optional `:ship/scheme` ref and an owned
+`:ship/paint` component. Paint role/layer bindings, instance targets, group memberships
+and face chunks are normalized entities; only dense masks use data values. Group IDs
+are local to the paint graph, so migrating or copying a group cannot merge siblings.
+All writes, graph replacement and one-time migration use the shared transaction lock.
 
-Material resolution is pure: matching instance path and part identity, then the first
-matching group with a material in rail order, then shared region-layer defaults, authoritative catalog role and neutral. A loadout override selects the scheme before any fleet
-default; a dangling override warns and uses neutral, without silently selecting a
-different scheme or removing its UUID. Fleet assignment is an M6 integration.
-RGB values are stored in sRGB; convert explicitly at the three.js boundary. Reuse
-MeshStandardMaterial and the shared PMREM environment. Mount colors replace base
-colour only and never overwrite the saved effective material.
+Migration creates one named vessel per legacy scheme-assigned class, using a stable
+UUID derived from its class ID. It copies legacy custom roles, groups, instances and
+details while preserving class and scheme records. A durable store marker makes this
+idempotent, including after a migrated ship is deleted. Reopening preserves all refs.
 
-Paint owns a separate assembly model, selected scheme and mount-color setting in
-the server workspace component. Explicit transfers validate a source draft before
-copying its hull/assignments. No transfer writes loadouts or schemes. The common
-transition contract restores Paint and synchronizes selector, panels and viewport.
-Snapshots carry resolved materials per full slot path, including the hull. Mesh
-completion reads the current material, so a late load cannot restore older paint.
+Ship Browser owns one preview cell and one workspace context. `:shipyard.paint/db`
+shares `:shipyard.loadout.operations/preview`'s state atom and adds face-cache and
+brush-flush configuration only. Target selection, scheme-preview selection and tool
+state live in the `:ships` workspace. Class table rows contain native expandable lists of
+named ships. Hiccup renders Assembly, Schemes and Paint in the same floating inspector.
+Tab and ship selection transitions advance the shared activation; endpoints live
+under `/ships/paint/*` and `/ships/schemes/*`, with Ship Browser admission guards.
+Scheme layer swatches submit the selected stable layer ID through the existing
+layer endpoint. The server marks the active row and renders its shared material
+controls; client input previews update the swatches alongside the viewport.
+Layer and material responses replace only `.scheme-editor`, reading the shared
+registry without materializing the part catalog. Material responses carry an
+activation-scoped palette in the response body; both scene projections retain their
+geometry and face masks. Layer selection sends no scene event. HSV gestures stay
+local until release and use the existing material form, sequence guards and save
+path. Successful saves retain the submitted HSV coordinates in transient Ship Browser
+state scoped to the scheme and layer, provided they still produce the saved hex color.
+This preserves hue for gray and hue/saturation for black through form replacement;
+the durable material remains RGB. Local gestures do not round-trip through hex.
+Shared presets are unique normalized `:color-preset/hex` entities in Datalevin;
+their add/remove endpoints return only the saved-color grid.
+Material `:glow` is an optional finite scalar in `[0,1]`, stored as `:material/glow`
+in Datalevin; absence means zero. The viewport uses linearized base color as
+MeshStandardMaterial emission and glow as its intensity. While visible paint emits,
+a half-resolution emission-only pass (including black depth occluders) feeds selective
+bloom; the halo is composed over the normally lit scene. Non-emissive highlights do
+not bloom. Up to eight area-weighted surface patches supply colored, unshadowed point
+lights with model-scaled intensity and falloff. Emission patches are cached by material
+and vertex-buffer versions; camera frames do not rescan triangles. Zero glow bypasses
+postprocessing. Render targets resize with the canvas and are disposed on workspace
+exit or scene reset; emission materials are disposed with their mesh.
+Presets change only base color. Mount identification temporarily suppresses emission.
+The Assembly tab stores reusable class configurations; scheme preview uses its current draft without changing it.
 
-Paint controls are Hiccup/HTMX. Local input updates only viewport material resources;
-change submits the complete selected material through the workspace admission
-boundary. Serialize accepted commits and use request correlation for responses.
-An acknowledgement must not overwrite a later local input; selection changes and
-navigation invalidate old responses through the server activation. During an active
-commit, disable navigation/selection until its response settles. Failed commits do
-not advance durable state and expose retry; navigation restores committed values.
-Scheme edits are shared durable facts, resolved again when a consumer resumes.
+Before rendering a named ship, resolve its current class. Saving custom paint checks
+that the class hull/slots still match the admitted preview. Instance and group paint
+matches path plus part identity; details additionally match source hash. Retain
+incompatible data and report source mismatches rather than applying them silently.
+A missing class blocks authoring. Scheme selection persists on the named vessel and
+preserves custom paint. Reset replaces only the owned paint graph after confirmation.
 
-The Paint implementation uses `:shipyard.paint/db` for its independent assembly
-cell. Workspace state holds the selected target and last admitted edit sequence.
-An HTMX form queues the latest change while a commit is active; its request sequence
-advances at serialization, including retries. Responses update status only, leaving
-newer input and viewport previews intact. Selection changes advance the shared
-workspace activation. Live material previews update the current slot payload as well
-as installed objects, so pending meshes receive the newest value. No client store
-owns model selection, scheme identity or navigation.
+`paint.job/editor-record` adapts a sparse ship job to shared material operations;
+`:scheme/base` carries its fleet palette for resolution only. `from-profile` selects
+only custom fields before persistence, never freezing inherited palette materials.
+Material resolution is detail, instance, first matching material group, custom layer,
+fleet layer, Primary, legacy role, then neutral. RGB is sRGB and is converted at the
+three.js boundary. Mount colors change display only. Missing schemes keep their refs.
 
-`POST /assembly/scheme` validates the current draft revision and explicit scheme UUID,
-then changes only the ephemeral draft and increments its revision. Clearing removes
-the override. The existing loadout Save commits it; Edit and Duplicate preserve the
-reference and the existing discard comparison includes it. Ship Browser resolves
-materials again on resume and projects the same base colors into its inspector legend.
-Dangling references produce a warning and neutral materials without altering the store.
+Inputs preview viewport resources locally; change commits a complete material.
+Paint responses update status without overwriting newer input. Monotonic edit and
+brush sequences, activation guards, source identity and transaction boundaries reject
+stale work. Scheme preview resolves only the fleet palette even when a named ship
+was selected. Late mesh completion reads current slot payload materials. There is no
+client store for class, ship, scheme or navigation ownership.
 
-Tests cover two identical weapons at different paths with different paint, nested
-instances, hull-only and sparse ships, role fallback after replacement, mount-color
-round trips, shared-scheme updates, live input without disk writes, commit/reload,
-failed persistence and delayed work across selections and activations. Each behavior
-PR includes real-browser coverage and updates the supported user manual (§10.3).
+### 15.1 Material groups and inspector layout
 
-### 15.1 Material groups and Paint layout
-
-Optional `:scheme/groups` is a vector of records with `:group/id` UUID, `:group/name`,
-`:group/order` nonnegative integer, `:group/members` vector of `{:path path :part-id id}`,
-and optional `:group/material`. IDs and order values are unique within a scheme;
-normalized rail order is contiguous after reordering or deletion. Group membership
-is identity-bound like instance overrides. Older schemes remain valid without groups.
-
-The Paint rail contains scheme forms, role/group/instance target buttons, and native
-checkboxes for group membership. Selection remains a server workspace operation;
-material input previews only paths whose effective material depends on that target.
-Group writes and ordering use the existing atomic scheme store. The inspector floats
-over the viewport, with independently scrolling controls and fixed actions. Tool
-controls and legends wrap within the viewport area outside the inspector. Preserve
-all workspace modes and the synchronized transition contract. Native colour/range
-inputs and existing application tokens provide the controls and styling.
+`:paint/groups` is a vector with UUID `:group/id`, `:group/name`, contiguous nonnegative
+`:group/order`, `:group/members` (`{:path path :part-id id}`), and optional material.
+IDs and order are unique within one paint job. Groups may overlap; the first group
+with a material wins beneath an instance override. Replacing parts retains unmatched
+members. Native checkboxes select members; all mutations use the ship transaction.
+The floating inspector contains creation, target, material and brush controls and
+scrolls within the viewport. Back to ships replaces the editor with the full-width class table.
 
 ### 15.2 Visible detail brush
 
-Optional `:scheme/details` maps each full instance path to
+Optional `:paint/details` maps each full instance path to
 `{:part-id string :mesh-key source-sha256 :faces {face-key detail}}`.
-New details are `{:base [sRGB r g b] :metalness number :roughness number}`, with
+New details are `{:base [sRGB r g b] :metalness number :roughness number :glow number}`, with
 finite channels in `[0,1]`. Legacy RGB vectors remain valid, inheriting current
-instance metalness/roughness; no eager migration or startup write occurs. The HTTP
-endpoint accepts legacy requests with neither finish field, but rejects incomplete
+instance metalness/roughness/glow. Old full materials lacking glow default to zero;
+no eager migration or startup write occurs. The HTTP
+endpoint accepts legacy requests with no finish fields, but rejects incomplete
 or invalid supplied finishes. Retry reuses the material captured at stroke start.
 A face key is the concatenation of the nine lower-case, eight-digit Float32 hex
 coordinates of the lexicographically smallest cyclic rotation of its three
@@ -2254,22 +2270,26 @@ colour conversion. Readback is sampled at pixel centres inside the circular brus
 pointer segments are sampled at intervals of at most half the radius. Camera updates
 pause during a stroke. Temporary ID geometries, material and render target are
 disposed immediately after readback. A painted instance uses a nonindexed tier-0
-geometry with linear vertex colours and a two-channel `shipyardFinish` attribute,
+geometry with linear vertex colours and a three-channel `shipyardFinish` attribute,
 not materials/draws per face. A narrowly scoped MeshStandardMaterial `onBeforeCompile`
 extension substitutes face metalness/roughness at the pinned Three.js shader's PBR
-input chunks. An explicit program cache key and per-material enable uniform prevent
+input chunks, and face color multiplied by glow at its emission chunk. An explicit program cache key and per-material enable uniform prevent
 program collisions and restore base finish when all details are removed. All three
 vertices of each triangle receive the same finish; unpainted and legacy-colour faces
-use inherited finish. Mount colours disable vertex colour only, leaving finish intact.
+use inherited finish. Mount colours disable vertex colour and emission, leaving metalness/roughness intact.
 Base material changes refresh inherited buffer values while explicit detail materials
 stay fixed. This preserves normals, studio lighting and placement; erase restores
 the complete underlying material. Tests check the pinned shader insertion points,
 actual browser compilation and rendered finish buffers.
+Source triangle keys and the face-to-triangle index are shared by repeated instances
+of the same immutable mesh URL within the viewport runtime. Mutable color/finish
+buffers remain instance-owned. Scene reset clears the source cache. Browser key encoding
+uses one Float32 scratch buffer per triangle, preserving the existing wire identity.
 
-`POST /paint/stroke` uses workspace/activation admission, a separate monotonic brush
-sequence and selected scheme/target guards. It validates face keys against the
+`POST /ships/paint/stroke` uses workspace/activation admission, a separate monotonic brush
+sequence and selected named-ship/target guards. It validates face keys against the
 current tier-0 source geometry, caching membership sets per mesh in the Paint component.
-It commits through the same atomic scheme boundary; no partial strokes. Undo/redo
+It commits through the same atomic named-ship boundary; no partial strokes. Undo/redo
 history is bounded to 20 snapshots in server workspace state, with before/after guards;
 only successful commits change history. Navigation restores committed masks. Strokes
 and material saves disable competing controls until acknowledgement. Success emits
@@ -2285,7 +2305,7 @@ cancel the active drag. Competing controls are disabled from pointerdown through
 acknowledgement. Intermediate requests return 204 with `X-Shipyard-Brush: buffered`.
 
 The workspace buffers one drag, incrementally extending validated per-instance layers.
-Parts must have a matching UUID, next part number, target, scheme and captured material.
+Parts must have a matching UUID, next part number, target, named ship and captured material.
 Finalization rechecks all touched source identities and the pre-stroke details before
 one database transaction. Undo/redo records the complete before/after details map once;
 final UUID acknowledgements are idempotent. Failure or cancellation never persists a
@@ -2303,6 +2323,15 @@ Layers are shared, library-scoped entities. Detail IDs are `layer:<UUID>` string
 the protected builtins use stable IDs `"Primary"` and `"Secondary"`. Active names
 are unique within a library. Adding an unused layer persists it independently of
 parts. Renaming changes one entity's name and preserves identity and preview color.
+
+`:layer/preview-color` stores the chosen RGB triple as a small mathematical value.
+Allocation maximizes the minimum OKLab distance from all assigned library colors
+and both builtin colors over a bounded-brightness RGB grid. The grid grows with
+the number of types. Registry discovery assigns missing colors in deterministic
+name/ID order during the library transaction; subsequent scans retain them. Browser
+geometry and server legends use the same stored values, including on parts that
+use only a subset of the types. Name hashing remains only a legacy projection
+fallback before import; it does not allocate new registry colors.
 
 `:part/paint-regions` is an immutable compatibility projection containing version,
 source hash, revision, builtins and used layer IDs, face assignments, and shared layer
@@ -2333,7 +2362,11 @@ successful fill switches Browse to layer display using the same workspace contex
 and display event as the toggle. Failed fills preserve the display setting.
 Part Browser owns the selection. Region masks travel in the server-rendered panel body, never in HTTP
 headers. The mesh-load event fires after the swap and snapshots the matching panel
-mask before fetching geometry; later panel swaps update the matching Browse mesh.
+mask before fetching geometry. Successful region mutations carry face-map deltas with
+the prior revision and source mesh key. A preserved DOM snapshot holds the authoritative
+baseline separately from optimistic brush state. Later panel swaps apply a delta only
+when that baseline matches; otherwise `/parts/regions/snapshot` restores the selected
+part's full saved mask. Errors and source changes retain full snapshot behavior.
 Workspace admission still rejects stale responses before either events or swaps.
 Its Regions tab is server-rendered. Selectable layer rows combine preview swatches,
 selection, inline rename forms and confirmed delete actions. A hidden stroke-form
@@ -2353,7 +2386,12 @@ world transforms and reflection matrix. Temporary GPU resources are disposed aft
 readback. Mirror controls are transient client brush settings scoped to the current
 part/source/orientation; server-rendered controls are restored after panel swaps. A translucent, double-sided
 plane with an axis-colored outline is kept in the Browse scene, outside the part
-map used for picking. Precise oriented mesh bounds are cached; the guide updates
+map used for picking. Precise oriented mesh bounds are cached. A blank offset uses the median
+midpoint of outer intersections on a uniform 64×64 ray grid along the chosen axis.
+This resists small asymmetric details and avoids triangle-density bias; missing
+opposing intersections fall back to the bounding midpoint. The estimate is cached
+per object/source/orientation/axis and shared by guide and picking; explicit offsets
+take precedence. The guide updates
 its transform for live offset/axis changes without preparing a picking buffer.
 It uses the orientation gizmo palette, does not write depth, and disposes its GPU
 resources when disabled or outside the Regions tab. No new persistence fields
@@ -2423,4 +2461,4 @@ installed objects so asynchronous geometry completion uses the latest palette.
 Scheme deletion uses the same serialized database transaction boundary as scheme updates.
 The UI confirms deletion and lists referencing saved ships. Their UUID references
 remain untouched; consumers resume with the existing missing-scheme warning. Only a
-successful deletion clears Paint's selected scheme.
+successful deletion clears the Schemes inspector's palette selection.

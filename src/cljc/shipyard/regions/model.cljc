@@ -1,6 +1,7 @@
 (ns shipyard.regions.model
   "Reusable, source-bound part regions. Faces reference stable shared layers."
   (:require [clojure.string :as str]
+            [shipyard.regions.colors :as colors]
             [shipyard.paint.faces :as faces]))
 
 (def builtins ["Primary" "Secondary"])
@@ -17,7 +18,8 @@
                              (every? #(or (some #{%} builtins) (detail-id? %)) (:layers value))
                              (every? (fn [[id entry]] (and (some #{id} (:layers value))
                                                            (detail-id? id)
-                                                           (name? (:name entry)) (name? (:preview-name entry))))
+                                                           (name? (:name entry)) (name? (:preview-name entry))
+                                                           (or (not (contains? entry :preview-color)) (colors/valid? (:preview-color entry)))))
                                      (:layer-definitions value))))
        (string? (:mesh-key value)) (boolean (re-matches #"[0-9a-f]{64}" (:mesh-key value)))
        (nat-int? (:revision value)) (vector? (:layers value))
@@ -87,5 +89,6 @@
       (mapv #(+ 0.19 %) rgb))))
 
 (defn preview-materials [regions]
-  (into {} (map (fn [name] [name {:base (preview-color (get-in regions [:layer-definitions name :preview-name] name))
+  (into {} (map (fn [name] [name {:base (or (get-in regions [:layer-definitions name :preview-color])
+                                            (preview-color (get-in regions [:layer-definitions name :preview-name] name)))
                                   :metalness 0.05 :roughness 0.65}]) (:layers regions))))

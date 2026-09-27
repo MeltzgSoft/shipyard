@@ -1,7 +1,8 @@
 (ns shipyard.loadout-fixture
   (:require [babashka.fs :as fs]
             [shipyard.assembly-fixture :as fixture]
-            [shipyard.catalog.sidecar :as sidecar]))
+            [shipyard.catalog.sidecar :as sidecar]
+            [shipyard.loadout.db :as loadouts]))
 
 (def assignments
   (into {} (map (fn [[path role]] [path (fixture/ids role)]))
@@ -45,3 +46,12 @@
         (fs/create-dirs (fs/parent (fs/path root new-id)))
         (fs/move (fs/path root old-id) (fs/path root new-id)))))
   root)
+
+(defn save-class! [sys]
+  (let [state (:state (:shipyard.assembly/db sys))
+        draft (:draft @state)
+        id (or (:loadout-id draft) (random-uuid))
+        draft (assoc draft :loadout-id id :name "Fixture class")]
+    (loadouts/put! (:shipyard.loadout/db sys) {:loadout/id id :loadout/name "Fixture class" :loadout/hull (:hull draft) :loadout/slots (:assignments draft)} :create)
+    (swap! state assoc :draft draft)
+    id))

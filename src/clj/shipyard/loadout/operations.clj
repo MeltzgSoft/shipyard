@@ -12,7 +12,7 @@
   {:state (atom {:draft assembly/empty-draft :sequence 0 :root nil :scene {}})})
 
 (defn- validate! [{:keys [catalog library]} draft]
-  (model/validate (catalog/snapshot! catalog) draft
+  (model/validate (catalog/assembly-snapshot! catalog) draft
                   (set (filter #(index/fresh-source-file! library %)
                                (cons (:hull draft) (vals (:assignments draft)))))))
 
@@ -47,7 +47,7 @@
         {:error :missing-loadout}))))
 
 (defn list! [{:keys [catalog loadouts]} filters]
-  (model/listing (catalog/snapshot! catalog) (:loadouts (store/snapshot! loadouts)) filters))
+  (model/listing (catalog/assembly-snapshot! catalog) (:loadouts (store/snapshot! loadouts)) filters))
 
 (defn delete!
   "Commit deletion before changing either workspace. Match Save's assembly/store lock order."

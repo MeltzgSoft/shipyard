@@ -72,29 +72,38 @@ render without showing pits or print scaffolding.
 
 ## 3. Browsing your library
 
-Use **Orient**, **Part Browser**, **Assemble**, and **Ship Browser** in the masthead
+Use **Part Browser** and **Ship Browser** in the masthead
 to switch workspaces. Each keeps its own selection, filters, and mount-color setting
 while Shipyard is running. Reloading restores the active workspace, selection and
 mount-color setting; unsaved viewport pose edits still require Save before reloading.
 Workspace buttons are briefly disabled while the page restores the active workspace
 or completes a workspace switch.
-Switching away and returning restores the model, including unsaved Orient poses and
+Switching away and returning restores the model, including unsaved orientation-grid poses and
 the editable assembly draft. Workspace navigation, filters and selection remain
 available if the 3D view cannot load.
 
-Part Browser lists every part Shipyard found; filter by bundle, hull class, or role, or search
-by name. Selecting a part opens a floating inspector with separate **Part** and **Mounts**
-tabs, while the viewport remains in place.
+Part Browser opens as a table with part thumbnails showing saved region colors.
+Mount summary lists plugs and socket capacity by accepted role. Regions shows Yes
+when a part has saved non-Primary face assignments; clearing them returns it to No.
+Returning from the part editor refreshes its thumbnail and these columns. Tables show 50 rows per page; use Previous and Next to navigate. Selected parts stay selected across pages, and changing a filter returns to the first page. Filter by bundle/faction, class,
+role, name or orientation status. Check rows to select them; selection remains when
+filters hide rows. Choose a field, enter a value and click **Apply to selected** to
+edit bundle/faction, class, role or name. For names, choose find-and-replace, prefix,
+suffix or set-name. These labels survive rescans and do not rename source files.
 
-**About the role labels.** Shipyard guesses a part's role from its folder name, and shows
-that guess in a lighter style because it is only a guess. Roughly one part in ten is
+Double-click a row, or focus it and press Enter, to open the individual editor with
+its floating inspector. **Back to table** restores filters, selection and scroll position.
+The individual editor has no listing sidebar.
+
+**About the role labels.** Shipyard guesses a part's role from its folder name.
+The individual editor shows whether the role is inferred or manual. Roughly one part in ten is
 labelled *unknown*, and some labels are simply wrong - a designer may sell a complete
 escort in a folder named "Cyanide Prow Rapier", which reads as a prow but is a whole
 ship. Treat roles as a browsing aid. Nothing important depends on them.
 
 ## 4. Viewing a part
 
-Select a part to load it.
+Double-click a part row to load it.
 
 | action | control |
 |---|---|
@@ -183,9 +192,9 @@ An empty angle field means `0` degrees; invalid or non-finite values are rejecte
 Invalid orientation data in a bulk save is rejected before any part is written;
 previous saved poses remain unchanged.
 
-For a set of parts, switch to **Orient** in the workspace header. Filter by bundle,
+For a set of parts, open the **Part Browser** table. Filter by bundle,
 class, role, name, or whether an orientation has already been saved, then select the
-parts to edit and choose **Render selection**. Shipyard lays the selected models out in
+parts to edit and choose **Orient selection**. Shipyard lays the selected models out in
 a grid. Each card shows its loading status. If a preview cannot download or decode,
 choose **Retry preview** on that card; other loaded models keep their unsaved poses.
 Choose a 1°, 15°, or 90° step; the toolbar's Pitch, Yaw, and Roll buttons turn
@@ -219,8 +228,8 @@ if you reorganise or move your library.
 
 ## Assembly draft
 
-Choose **Assemble** in the header, then select a bundle, class, and hull and choose
-**Start assembly**. The left rail lists every mount as a collapsible drawer, with only
+Open **Ship Browser → New class**, then select a bundle, class, and hull in the
+Assembly tab and choose **Start assembly**. The inspector lists every mount as a collapsible drawer, with only
 the compatible parts for that mount. Select a part to assign it immediately; numbered
 positions are separate assignments, so you can use the same printable part more than
 once. Assigning a component with sockets reveals its nested drawers, such as turrets on
@@ -245,59 +254,47 @@ and nested turrets remain separate objects. Replacing or clearing a part removes
 object and everything beneath it before the new scene is shown. Switching workspaces shows the destination’s own model or empty state; returning to
 Assemble restores the current in-memory draft.
 
-Choose a hull, enter a **Ship name**, and choose **Save ship** to keep a named
-assembly. Subsequent **Save changes** updates that ship, including when you rename it.
-Starting a new hull clears the saved identity so its next save creates a separate ship.
-If Assemble contains an unsaved ship or changes, **Start assembly** first asks whether
+Choose a hull, enter a **Class name**, and choose **Save class** to keep a named
+assembly. Subsequent **Save changes** updates that class, including when you rename it.
+Starting a new hull clears the saved identity so its next save creates a separate class.
+If Assemble contains an unsaved class or changes, **Start assembly** first asks whether
 to discard them. Choose **Cancel** to keep working, or **Discard and start assembly**
 to replace the draft with the chosen hull.
 You can save a hull alone or a partially filled assembly and finish it later. Empty
-mounts also work when previewing, editing or duplicating a saved ship. Unavailable or
+mounts also work when previewing, editing or duplicating a saved class. Unavailable or
 incompatible assigned parts still need correcting before saving; the draft stays
 available to correct and retry. Unsaved changes are lost when Shipyard stops.
 
-Parts, shared layers, saved ships and schemes live in `$XDG_DATA_HOME/shipyard/database`
+Parts, shared layers, ship classes, named ships and schemes live in `$XDG_DATA_HOME/shipyard/database`
 (normally `~/.local/share/shipyard/database`). Stop Shipyard and back up the whole
 directory to keep your authored work. Keep a separate backup of the source STLs.
-The viewport honors paint schemes referenced by saved ships, including ordered material
-groups and individual instance overrides. See Paint below for creating and editing
-schemes. Thumbnails are not yet available.
+The viewport combines fleet palettes with each named ship’s custom materials and details. Use the Schemes inspector tab to create and edit fleet palettes. Thumbnails are not yet available.
 
-## Saved ships
+## Ship classes and named ships
 
-Open **Ship Browser** to find saved assemblies. Filter by the root hull’s bundle /
-faction and class. Click a ship card, or focus its name and press Enter or Space, to
-load the ship without changing your Assemble draft. There is no separate Preview
-button. The floating inspector lists the hull first, then each component followed by
-its nested parts. Repeated parts remain separate entries.
+Open **Ship Browser** for a table of reusable ship classes. Use Previous and Next for large libraries. Expanding a class loads its named ships, with separate page controls when needed. Row thumbnails show the
+saved assembly; expanding a class loads previews of its named ships with their scheme
+and custom colors. Previews use simplified lighting; open Assemble to inspect finishes. Filter by bundle/faction,
+class, or a class or ship name. Double-click a class row (or focus it and press Enter)
+to open **Assemble**. Expand **named ships** beneath a class to open one of its custom
+painted hulls. The editor has **Assembly**, **Schemes**, and **Paint** tabs.
 
-Incomplete ships can be loaded, edited and duplicated. A card tag such as **3 empty
-mounts** counts unfilled mounts on the hull and attached parts, including nested mounts.
-Mounts on parts you have not attached do not count. The tag disappears when you fill
-all reachable mounts and save. A hull-only ship is valid too.
+**Back to ships** restores the table's filters, scroll and expanded rows. **New class**
+starts a fresh assembly; **Resume assembly** returns to your working draft. Assembly
+controls now live in the floating inspector alongside scheme and paint controls.
+**Mount colors** starts off and is shared by all three editor tabs.
 
-**Mount colors** starts off in Ship Browser. Turn it on to color the ship and its
-part-tree legend by mount. This setting belongs to Ship Browser and is restored when
-you return; changing it does not affect Assemble. Missing parts remain visible as a
-recoverable error.
+Incomplete classes can be opened, edited and duplicated. **3 empty mounts** counts
+unfilled mounts on the hull and attached parts; a hull-only class is valid too.
+**Duplicate** opens an unsaved class named `<original name> - Copy`; saving creates a
+separate identity and does not copy named ships. Opening another class or creating a
+new draft asks before discarding unsaved changes. Reopening the current class resumes
+its edits, and Back retains them.
 
-**Edit** opens the saved ship in Assemble, preserving its name and identity.
-**Duplicate** opens an independent draft named `<original name> - Copy`; change that
-name as needed. Neither action writes the store. Save the duplicate to create a new
-ship while keeping the original unchanged. A failed transfer keeps the current preview
-and draft available.
-
-If Assemble already contains an unsaved ship or changes (including a changed name),
-**Edit** and **Duplicate** first ask for confirmation. Choose **Cancel** to keep your
-assembly, or **Discard and edit** / **Discard and duplicate** to replace it. An
-unchanged saved assembly can be replaced without a prompt.
-
-**Delete** on a card asks you to confirm the ship’s name, then permanently removes
-that saved ship. Library parts and other saved ships are kept. Deleting the displayed
-ship clears its preview. If you were editing it in Assemble, the draft stays available
-as an unsaved copy; **Save ship** gives it a new identity. Deletion also works for ships
-whose library parts are missing. A failed write keeps the saved ship and your work
-available so you can correct the problem and retry.
+**Delete** on a class row asks for confirmation and removes that class. Library parts
+and other classes remain. Its named ships retain their custom paint but need the
+original class restored before painting can continue. A draft editing that class
+remains available as an unsaved copy; saving creates a new class identity.
 
 ## Reusable part paint regions
 
@@ -308,7 +305,7 @@ tab. Every face starts
 as **Primary**. Choose **Secondary**, or enter a **New detail layer** name and
 choose **Add layer**. The name immediately appears in the selectable layer list on
 every other library part; choose it there without creating it again. Layers are shared library-wide: choose the same layer on multiple parts and set its
-scheme material once in Paint. A layer remains available even when no part uses it.
+scheme material once in Ship Browser’s Schemes tab. A layer remains available even when no part uses it.
 
 Select a layer in the list and click **Apply layer to entire part** to replace every
 face assignment, including hidden/back faces, with that layer. The display switches
@@ -326,7 +323,7 @@ which records the underlying exception.
 Enable **Mirror painting** to paint or erase the matching opposite side in the
 same stroke. Choose **Mirror plane** (YZ across X, XZ across Y, or XY across Z)
 using the part's canonical axes, independent of camera orbit. Leave **Mirror
-plane offset** blank to use the model center, or enter its coordinate for an
+plane offset** blank to estimate the center from opposing surfaces, or enter its coordinate for an
 off-center plane. A translucent guide shows the plane: red for X, green for Y,
 blue for Z. It follows offset edits immediately and disappears when mirroring is
 off or you leave Regions. You can paint through the guide. The brush's position, radius and path are
@@ -344,8 +341,10 @@ starts from visible triangles. **Facets** paints the triangles touched by the br
 1°) sets the largest bend between neighboring triangles that the brush can cross.
 Raise it to follow curved surfaces; larger creases and disconnected surfaces stop
 the stroke. Expansion can include triangles outside the brush or behind other geometry. Right-drag erasing follows the same mode. Adjust its screen-space
-radius; use Alt+drag to orbit. Region preview colors identify assignments and stay stable when other layer types
-are added or deleted; schemes supply their final colors and finishes. Opening Regions
+radius; use Alt+drag to orbit. Region preview colors are chosen for separation from
+the other types in your library, then stored so they stay stable when types are
+renamed, added or deleted. Existing types receive new separated colors once when
+upgrading from name-based colors. Schemes supply their final colors and finishes. Opening Regions
 switches to Layer types. The display toggle can still show Mount faces independently.
 Right-drag to erase assignments back to Primary without changing the selected layer;
 the next left-drag uses that layer again. Choosing Primary also removes assignments.
@@ -368,67 +367,68 @@ and rescan. If the source mesh changes, old regions are retained but do not appl
 open Regions and explicitly reset before authoring the replacement. A failed save
 keeps the previous durable assignments and reports the error.
 
-## Paint
+## Schemes and custom paint
 
-Choose **Paint assembly** in Assemble or **Paint ship** in the selected ship's inspector
-to copy its configuration into the independent Paint workspace. Partial ships and a
-hull alone are supported. Returning through the **Paint** selector restores that preview;
-painting does not change Assemble's model or save a ship.
+Save a reusable **class** in the Assembly tab with **Save class**. Ship Browser’s class
+rows expand to show named ships made from that class. Edit and Duplicate operate on
+the reusable class.
 
-Choose a scheme, or open **New**, enter a name and select **Create scheme**.
-Until a scheme exists, material and group controls are hidden. Selecting a group
-opens **Manage group**, where you can rename it, change its checked members,
-reorder it, or delete it.
+Open **Schemes** in the floating inspector to create a fleet palette. Choose a scheme
+or enter a name under **New scheme**. The layer list shows each layer’s current color.
+Click a layer swatch to select it. Choose a hue, then drag in the spectrum to adjust
+saturation and brightness, or type a six-digit **Hex color** such as `#d4af37`.
+The spectrum also supports arrow keys (Shift makes larger steps).
+The selected hue stays in place after saving even when the current color is gray or black.
+**Save current color** adds it to **Saved colors**, shared across all schemes.
+Click a saved swatch to reuse it, or its × button to remove it. Presets change only
+color; **Metalness**, **Roughness**, **Glow** and optional **Paint name** remain separate controls.
+Glow runs from 0 (off) to 1 and makes the selected color self-lit with a soft halo
+and colored light on nearby parts. Nearby lighting is an approximation without cast shadows.
+It is available for scheme layers, custom ship materials, and the detail brush as **Detail glow**.
+Turning on **Mount colors** temporarily hides glow. Changes preview while dragging
+and save on release. Select another class and choose Schemes to preview the same palette there. Preview
+never creates a named ship or assigns a scheme to a class. Palette editing also works
+without selecting a class. Turn off **Mount colors** to see paint.
 
-**Layer defaults** sets shared Primary, Secondary and named detail materials. Select
-a layer, then choose Base colour, Metalness, Roughness and an optional Paint name.
-Changes preview immediately and save on release. A new scheme reuses the part regions
-with its own palette. Unconfigured layers fall back to Primary, then the part's role
-material and neutral material. Instance and group materials override every layer on
-those instances; freehand detail strokes override individual faces. **Use inherited
-material** restores the layer palette beneath an instance override; erasing a detail
-stroke reveals its region material.
+Save any assembly changes, then open **Paint** for the selected class, enter a ship name, choose a fleet scheme and
+click **Create ship**. This creates a named ship beneath that class’s row. A class
+may have many named ships, each with its own scheme and custom paint. Select a named
+ship from the expanded row to resume editing. The Ship Browser camera and controls
+are shared across inspector tabs; there is no separate Paint workspace.
 
-**Delete scheme** asks for confirmation, naming saved ships that reference it.
-Cancel preserves the scheme. Confirm deletes it; those ships retain the reference
-and display the missing-scheme warning until you assign another scheme and save.
+Use instance rows, custom layer overrides, groups and the detail brush to customize
+this ship. Materials preview locally and save on release; **Save material** retries a
+failed save. Custom paint affects only this named ship. Instance materials override
+its layer palette; face details override individual faces. **Use inherited material**
+removes the selected instance, group or layer override. Check instance rows and use
+**Group selection** to create a group; **Manage group** changes name, membership,
+priority or deletes the group. The first matching group with a material wins, beneath
+an instance override. Repeated copies of one weapon can have different materials.
 
-Select a role, group or individual instance in the left rail. The floating inspector
-shows its full slot path and material. **Write to** switches between the instance,
-its shared role material and a group; a group picker appears for overlapping groups.
-Repeated copies of the same weapon can have different colors. Use **Base colour**,
-**Metalness**, **Roughness** and optional **Paint name** to edit it. Color and finish
-preview while dragging and save when released. **Save material** retries a
-failed write; check the status before leaving. Returning to Paint restores committed
-values rather than uncommitted scrubbing.
+Changing **Fleet scheme** keeps the ship’s custom paint. Palette edits in Schemes
+appear beneath that paint on all ships using the palette. **Manage ship → Reset
+custom paint** explicitly clears all custom layers, groups, instance materials and
+details after confirmation, keeping the ship’s name, class and scheme. Rename and
+Delete ship affect the named ship only. Deleting a scheme keeps ship references and
+custom paint and shows a missing-scheme warning until another scheme is selected.
 
-**Use inherited material** removes the selected instance override, revealing the
-highest-priority matching group material, or its layer/role defaults. Replacing a part also
-uses those defaults unless the new part matches that instance override's identity.
-Check instance rows, open **Group selection**, name the group and choose **Create
-group**. A new group inherits until you save its material. Instances may belong to
-several groups; the highest group in the rail with a material wins. An instance's
-own material takes precedence. Select a group and open **Manage group** to rename,
-move up/down, replace its membership from checked rows, or delete it. Deletion keeps
-individual overrides. Membership matches both path and part identity; replacing a
-part does not transfer the old part's membership. Instance rows name the inherited
-group, **layer defaults**, or **role default**.
+Named ships follow later class assembly changes. Custom paint stays attached to
+matching part instances; replaced parts use the selected palette. Source-bound
+details for a changed mesh remain saved but do not render until the original source
+is restored or those details are cleared. Deleting a class retains its named ships’
+paint, but restore that class before continuing to paint them.
 
-**Mount colors** temporarily replaces base colors; turning it off restores paint.
-Schemes are shared: editing one changes every ship using it when that ship is next
-loaded. Scheme creation does not automatically assign it to a saved ship. In Assemble,
-choose **Paint scheme override**, then **Save ship** or **Save changes**. Selecting
-**No override** clears the assignment when saved. Edit keeps the selected scheme;
-Duplicate copies its reference without changing the source ship or writing before Save.
-A missing scheme displays neutral paint and a warning while retaining its reference.
-Fleet-default assignment is not yet available.
+Existing scheme-assigned saved assemblies migrate once to named ships of their
+original class, preserving custom paint. Original class and scheme data are retained;
+unassigned legacy scheme custom paint remains archived in its original record.
+Fleet ordering and fleet-default assignment are not yet available.
 
 ### Painting details
 
-Turn off **Mount colors**, then choose **Brush** over the viewport. Pick a detail
+Turn off **Mount colors**, then choose **Brush** in the Paint inspector. Pick a detail
 colour, metalness, roughness and radius (2–100 screen pixels). **Cross instances** is on by default: one
 drag can touch several parts. Turn it off to paint only the instance selected in
-**Select** mode. The left rail lists touched parts and face counts for the live drag;
+**Select** mode. The inspector lists touched parts and face counts for the live drag;
 parts identified behind the brush are skipped.
 
 Left-drag to fill whole visible triangles under the circle. Hidden and back-facing
@@ -450,7 +450,7 @@ you release. The whole drag is one undo step, including when it crosses parts.
 **Undo** / **Redo** keep the last 20 strokes for the current target selection. Changing
 target or scheme resets that history. **Clear instance details** removes the selected
 instance's entire layer after confirmation and can also be undone. Choose an instance
-in Select mode to clear it. Shared schemes share these details.
+in Select mode to clear it. Details belong only to the selected named ship.
 
 Check **Details saved.** after release. If saving fails, every touched part returns to
 its pre-stroke appearance; **Retry last stroke** retries the captured stroke. Leaving

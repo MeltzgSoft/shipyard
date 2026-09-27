@@ -48,7 +48,8 @@
              (or (empty? raw) (some? offset)))
       (let [key [object orientation axis offset]]
         (when (not= key (:key @region-mirror-guide))
-          (let [{:keys [position size normal]} (symmetry/plane-guide (mirror/bounds! object orientation) axis offset)
+          (let [{:keys [position size normal]} (symmetry/plane-guide (mirror/bounds! object orientation) axis
+                                                                     (mirror/offset! object orientation axis offset))
                 color (get axis-colors axis)
                 ^js plane (or (:object @region-mirror-guide) (create! scene color))]
             (.fromArray (.-position plane) (to-array position))

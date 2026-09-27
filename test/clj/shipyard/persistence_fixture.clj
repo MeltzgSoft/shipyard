@@ -42,3 +42,11 @@
                         before (:scheme/revision (d/pull @conn [:scheme/revision] ref))]
                     (d/transact! conn [{:db/id ref :scheme/revision revision}])
                     before))))
+
+(defn ship-revision! [facade id revision]
+  (store/write! (:store facade)
+                (fn [conn]
+                  (let [ref [:ship/id id]
+                        before (:ship/revision (d/pull @conn [:ship/revision] ref))]
+                    (d/transact! conn [{:db/id ref :ship/revision revision}])
+                    before))))

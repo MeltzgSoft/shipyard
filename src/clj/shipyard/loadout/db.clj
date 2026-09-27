@@ -8,6 +8,9 @@
 (defn snapshot! [{:keys [store]}]
   (store/read! store #(store/records-value % :loadouts)))
 
+(defn record! [{:keys [store]} id]
+  (store/read! store #(store/record-value % :loadouts id)))
+
 (defn put! [{:keys [store catalog]} record mode]
   (store/put-record! store (:library @(:state catalog)) :loadouts record mode))
 

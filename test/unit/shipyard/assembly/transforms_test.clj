@@ -74,3 +74,30 @@
       (is (= :set (:op (second commands))))
       (is (= "hull" (:part-id (second commands))))
       (is (= [{:op :reset}] (transforms/commands before {} {} true))))))
+
+(deftest incremental-appearance-does-not-repeat-masks
+  (let [mask {:mesh-key "key" :faces {"face" "Secondary"}}
+        placement {:part-id "hull" :mesh-key "key" :matrix geom/identity-matrix
+                   :regions mask :material {:base [1 0 0]}}
+        before {[] placement}]
+    (is (= [{:op :paint :slot [] :changes {:material {:base [1 0 0]} :layers nil}}]
+           (transforms/commands before before {"hull" "key"} false)))
+    (is (= [{:op :paint :slot [] :changes {:material {:base [0 1 0]} :layers nil}}]
+           (transforms/commands before {[] (assoc placement :material {:base [0 1 0]})} {"hull" "key"} false)))
+    (is (= [{:op :paint :slot [] :changes {:material {:base [1 0 0]} :layers nil :regions nil}}]
+           (transforms/commands before {[] (assoc placement :regions nil)} {"hull" "key"} false)))
+    (let [after (assoc before [[:copy 0]] placement)
+          event (transforms/pack-regions {:commands (transforms/commands {} after {"hull" "key"} true)} after)]
+      (is (= {"hull" mask} (:region-data event)))
+      (is (= ["hull" "hull"] (mapv :region-ref (rest (:commands event)))))
+      (is (every? #(nil? (:regions %)) (:commands event))))))
+
+(deftest paint-strokes-send-sparse-detail-changes
+  (let [faces (zipmap (map str (range 10000)) (repeat [1 0 0]))
+        placement {:part-id "hull" :mesh-key "hash" :matrix geom/identity-matrix
+                   :details {:part-id "hull" :mesh-key "hash" :faces faces}}
+        before {[] placement} after (assoc-in before [[] :details :faces "0"] [0 1 0])
+        commands (transforms/commands before after {"hull" "hash"} false)]
+    (is (= {:set {"0" [0 1 0]} :remove []} (get-in commands [0 :changes :detail-delta :patch])))
+    (is (< (count (pr-str commands)) 500))
+    (is (= faces (get-in (transforms/commands {} before {"hull" "hash"} true) [1 :details :faces])))))

@@ -466,7 +466,7 @@ plugs/sockets joining its sections; filenames never imply those attachments.
 The draft has no name or disk persistence. M4 adds the named loadout below and uses
 the same path identity, rather than a flat mount-id map that loses repeated/nested slots.
 
-A named ship. Slot assignments plus an optional scheme override.
+A reusable ship class: a named hull and slot configuration. Named painted ships reference this class rather than copying its assembly.
 
 ```clojure
 {:loadout/id      #uuid "…"
@@ -476,7 +476,6 @@ A named ship. Slot assignments plus an optional scheme override.
                    [[:bridge 0]] "human-navy/cruiser/bridge"
                    [[:port-1 0]] "human-navy/cruiser/lance-battery"
                    [[:port-1 1]] "human-navy/cruiser/weapon-battery"}
- :loadout/scheme  #uuid "…"              ; inherited from fleet unless overridden
  :loadout/thumb   "thumbs/….png"}
 ```
 
@@ -487,78 +486,75 @@ mounts; stale assignment paths and malformed catalog data remain errors.
 
 ### 8.4 Fleet
 
-An ordered list of loadouts with a default scheme. **Rendered as a list, one ship
+An ordered list of named ships with a default scheme. **Rendered as a list, one ship
 displayed at a time** - selecting an entry loads it into the viewport. Not a simultaneous
 scene. Thumbnails per entry are desirable but lower priority (M6).
 
 ### 8.5 Paint scheme
 
-**v1 supports individual part instances**, with role defaults for convenient reuse.
-Two copies of the same weapon may have different materials. Instance identity is the
-full assembly slot path (the root hull uses `[]`), paired with the assigned part id.
-An instance override applies only while that same part occupies that path; replacing
-the part uses its role default. Unmatched overrides remain in the scheme for reuse.
-A scheme maps roles and optional individual instances to materials:
+Schemes describe a fleet palette, independently of ship classes. A scheme maps
+shared region/layer IDs to materials (`:base` sRGB, `:metalness`, `:roughness`, `:glow`, and
+optional free-text `:paint` name). Channels and finishes must be finite numbers in
+`[0,1]`. Glow is self-lighting in the base color, with zero as the default for older
+materials. Glowing surfaces produce a soft halo and approximate colored illumination
+on nearby parts. Local lighting uses a bounded set of unshadowed lights, rather than
+global illumination. UV/texture painting is outside v1.
 
 ```clojure
-{:scheme/id    #uuid "…"
- :scheme/name  "Gothic Sector, 2nd Fleet"
- :scheme/roles {:hull   {:base [0.12 0.18 0.32] :metalness 0.3 :roughness 0.6
-                         :paint "Kantor Blue"}
-                :prow   {:base [0.55 0.45 0.15] :metalness 0.8 :roughness 0.35
-                         :paint "Retributor Armour"}
-                :weapon {:base [0.20 0.20 0.22] :metalness 0.6 :roughness 0.5}}}
+{:scheme/id #uuid "…" :scheme/name "Gothic Sector, 2nd Fleet"
+ :scheme/roles {} ; compatibility with legacy records
+ :scheme/layers {"Primary" {:base [0.12 0.18 0.32] :metalness 0.3 :roughness 0.6}
+                 "Secondary" {:base [0.55 0.45 0.15] :metalness 0.8 :roughness 0.35}}}
 ```
 
-`:paint` is an optional free-text range name so a scheme can double as a shopping list.
-Mapping to actual manufacturer ranges is not attempted in v1.
+The Ship Browser floating inspector has **Assembly**, **Schemes**, and **Paint** tabs.
+Schemes creates, edits and previews palettes against any selected class, without
+assigning the palette to that class or creating a named ship. Palette authoring also
+works without a preview model. Region layers appear as a named color-swatch list;
+selecting a swatch makes that layer the target of the shared color, metalness,
+roughness and glow controls. The active layer is visibly marked. There is no separate Paint workspace.
+The shared color control offers a two-dimensional saturation/brightness spectrum,
+a hue slider and a hex input. Users can save and remove color presets shared across
+schemes; choosing a preset changes color without changing metalness, roughness or glow.
+Layer selection updates only editor controls. Palette edits reuse loaded geometry
+and region assignments rather than retransmitting the ship's face masks.
 
-An optional `:scheme/instances` map holds entries such as
-`{[[:port-1 0]] {:part-id "human-navy/cruiser/lance-battery"
-                 :material {:base [0.8 0.1 0.1] :metalness 0.2 :roughness 0.6}}}`.
-Instance material wins over group material, then the shared layer palette, role material and neutral studio material. Unmapped
-roles are valid. All RGB channels, metalness and roughness are finite numbers in
-`[0,1]`; stored RGB uses sRGB, as do the editor's colour swatches. Paint names are
-optional free text. A detail brush adds per-face colour, metalness and roughness
-overrides. UV/texture painting is outside v1.
+Paint creates a named ship of the selected class and edits its own custom paint:
 
-Groups are named, ordered sets of instance identities within a scheme. Instances may
-belong to multiple groups; the first group in rail order with a material wins. Group
-membership matches both full slot path and part id, so replacing a part does not
-silently reuse the old membership. Retain unmatched members for reuse. Users create
-groups from checked instance rows, rename/delete groups, edit membership and move
-groups up/down. Instance rows identify their effective group or role inheritance.
-Group creation does not copy a material; a group without a material leaves inheritance
-unchanged. Deleting a group preserves instance materials and face details.
+```clojure
+{:ship/id #uuid "…" :ship/name "Resolute" :ship/class #uuid "…"
+ :ship/scheme #uuid "…" :ship/paint {:paint/instances {} :paint/groups [] :paint/details {}}}
+```
 
-A fleet carries a default scheme; individual loadouts may override it for squadron
-markings. Named schemes and loadout overrides belong to M5; fleet-default assignment
-and the fleet workflow belong to M6. A loadout override takes precedence over a fleet
-default; without either the ship uses neutral materials. An unavailable referenced
-scheme displays a recoverable warning and neutral materials, preserving its UUID.
+Named ships follow the latest class hull and assignments. Custom instance materials
+and group members match the full slot path (hull `[]`) and assigned part identity.
+Details additionally match the source mesh hash. Incompatible paint remains stored
+but is not applied to replacement parts or changed meshes. A missing class blocks
+painting with a recoverable error. Selecting another scheme preserves custom paint;
+**Reset custom paint** explicitly clears the named ship's overrides after confirmation.
+It preserves the name, class and selected scheme. Scheme changes are live beneath
+custom overrides and are never copied into the custom paint record.
 
-The **Paint** workspace follows §9.2. **Paint assembly** explicitly copies Assemble's
-current hull and assignments into an independent preview; **Paint ship** does the
-same for a selected saved ship. Complete, partial and hull-only assemblies are valid.
-Ordinary workspace navigation restores the last paint selection without copying a
-different workspace's model. Paint appears after Ship Browser in the selector.
+Resolution is detail face, instance, first matching material group, custom layer,
+fleet layer, Primary fallback, legacy role fallback, then neutral. Groups are named,
+ordered sets of instance identities belonging to one named ship. They may overlap;
+the first group with a material wins. Group creation leaves inheritance intact until
+a material is saved. Deleting a group preserves instance materials and details.
+**Use inherited material** clears a selected instance, group or custom layer material.
+An unavailable scheme retains its reference and warns; custom paint remains usable.
 
-Choose an existing scheme or enter a name and choose **Create scheme** to allocate
-its UUID and persist an empty scheme. Creation does not assign it to a loadout.
-The left rail offers role defaults, ordered groups and individual populated instances,
-identified by their full paths. Selecting a row edits one target in a floating material
-inspector over the full-height viewport. **Write to** selects Instance, Role or Group;
-Role edits the shared role material and Group offers the selected instance's groups.
-**Use inherited material** removes an instance override, revealing its group or role default. Changes to a
-shared scheme affect every ship referencing it; explain this beside the controls.
-Explicitly choose a scheme in Assemble and Save ship to persist that ship's override.
+Legacy class scheme assignments migrate once to named ships referencing those
+classes and palettes, with the old role/instance/group/detail paint copied into each
+ship's independently owned paint graph. Original records remain intact for recovery.
+Unassigned legacy scheme custom paint remains archived in the original record.
+Fleet ordering and fleet-default assignment remain M6 work.
 
 Material controls preview locally on input, and commit on change/release. A failed
 commit reports an error and retains the last durable value; controls remain available
 for retry. Leaving Paint restores committed values on return, discarding uncommitted
 scrubbing. Pending responses cannot change another selection or activation. Mount
-colors temporarily override base colour only; turning them off restores paint,
-including the material's metalness and roughness.
+colors temporarily override base colour and suppress glow; turning them off restores
+paint. Metalness and roughness remain visible in both modes.
 
 Parts may carry reusable, source-bound face regions authored in Part Browser's
 Regions tab. Primary and Secondary are permanent layer identities with fixed labels.
@@ -568,6 +564,12 @@ deleted from any selected part, including parts that do not use it. Renaming cha
 only its shared label, preserving face assignments, scheme colors and preview colors.
 Existing name-based masks and palettes migrate to matching IDs without losing their
 assignments. Duplicate active names are rejected.
+
+Region preview colors are allocated across the library for visual separation,
+including separation from Primary and Secondary. Each chosen color is stored with
+its layer and remains stable across parts, rename, add/delete, restart and rescan.
+Existing layers without a stored color receive new separated colors once. These
+identification colors are independent of scheme materials.
 
 A single selectable layer list combines preview colors with pencil rename and
 confirmed delete actions. Selection drives both brushing and full-part assignment.
@@ -591,8 +593,9 @@ neighboring normals differ by at most the selected angle tolerance (0–90°, de
 include triangles outside the brush or behind occluders. Erasing uses the same
 mode and tolerance. These settings survive region saves and layer operations.
 Regions optionally mirror painting and erasing across a selected canonical part
-plane (YZ/X, XZ/Y or XY/Z). The plane defaults to the model's bounding midpoint;
-an explicit offset supports off-center parts. While Regions mirroring is enabled,
+plane (YZ/X, XZ/Y or XY/Z). The plane defaults to a center estimated from opposing
+outer surfaces, resisting small asymmetric details. Geometry without opposing
+surfaces falls back to the bounding midpoint. An explicit offset supports off-center parts. While Regions mirroring is enabled,
 a translucent plane marks that location in the normal axis color (X red, Y green,
 Z blue); it follows offset edits immediately and never intercepts painting.
 The brush's picking rays and footprint are reflected across the plane; each side
@@ -602,7 +605,7 @@ view and save atomically with the original stroke. Faces mode expands each side'
 hits independently using the same angle tolerance. Rays that miss the model select
 nothing; Facets mode does not paint through the first surface hit. Mirror controls
 survive saves and layer operations for the current part, and reset on part/source/orientation changes. This is a Regions
-brush option; the Paint workspace detail brush keeps its existing behavior.
+brush option; the Ship Browser Paint tab detail brush keeps its existing behavior.
 Changed source meshes retain old regions but cannot display or extend them until
 reset. Shared rename and delete remain available even for stale masks.
 
@@ -613,14 +616,13 @@ Per-face resolution is freehand detail, matching instance material, winning grou
 material, assigned layer material, Primary material, role material, then neutral.
 Legacy color-only detail strokes inherit the resolved region's finish. Layer identities
 are shared across parts. Scheme defaults are reusable without a preview model;
-instance/group and brush tools still require one. Before a scheme is selected or
-created, hide unavailable editing controls and explain how to create a named scheme.
+instance/group and brush tools require a named ship. Before creation, explain how
+to name a ship of the selected class and hide unavailable editing controls.
 
-Schemes can be deleted after confirmation that identifies referencing saved ships.
-Deletion preserves those references and the existing missing-scheme warning. A failed
-write keeps the scheme and selection intact. Confirmed deletion clears Paint's selected
-scheme. Group management opens when selecting a group and includes rename, membership,
-ordering and deletion.
+Schemes can be deleted after confirmation explaining the effect on referencing
+named ships. Deletion preserves those references and custom paint. A failed write
+keeps the scheme and selection intact. Successful deletion clears the Schemes tab's
+selected palette. Group management includes rename, membership, ordering and deletion.
 
 The **Detail brush** paints across instances by default. Turn **Cross instances** off
 to confine it to the selected individual instance. **Select** and **Brush** choose the
@@ -632,11 +634,11 @@ footprint boundary. Occluded and back-facing triangles are excluded; there is no
 paint-through volume. Drag samples overlap along the pointer path. Left-drag paints
 in Brush mode; Alt+drag or Select permits ordinary orbiting. Face deltas flush
 periodically during a drag; release commits atomically as one undo step across all
-touched instances. **Detail colour**, **Detail metalness** and **Detail roughness**
+touched instances. **Detail colour**, **Detail metalness**, **Detail roughness** and **Detail glow**
 are captured together for each stroke. Finish controls initially use the selected
 target's effective material; changing controls alone does not repaint details.
-**Erase to base** removes all three face overrides. Mount colors replaces displayed
-colour but preserves face finish without changing saved details. Older colour-only
+**Erase to base** removes all face material overrides. Mount colors replaces displayed
+colour and suppresses glow, preserving metalness and roughness without changing saved details. Older colour-only
 strokes remain compatible and inherit their instance's current finish.
 
 Detail masks are shared scheme data, scoped to full slot path, part id and source
@@ -656,32 +658,40 @@ Undo is unavailable until the current drag has finished.
 
 All server-rendered hiccup driven by htmx, except the viewport.
 
-- **Orient** - select library parts and edit their source-to-canonical poses together
-  in a preview grid before authoring mounts or assembling ships. See §9.4.
-- **Part Browser** - browse individual library parts; filter by bundle, class, role.
-  Search by name. This is the user-facing name of the former Browse workspace.
+- **Part Browser** — a full-width table of library parts, with row thumbnails and
+  filters by bundle/faction, class, role, name and saved-orientation status. Select
+  rows to edit metadata or open the orientation grid (§9.4). Double-click a row (or
+  press Enter on it) to open the individual editor. Back to table restores filters,
+  selected rows and scroll position; the individual editor has no listing sidebar.
 - **Assembly view** - the viewport plus a slot panel. Each slot lists compatible parts,
   filtered by the socket's `:mount/accepts`. Selecting one issues the `HX-Trigger` event
   that swaps geometry in the scene.
 - **Mount wizard** (§5.4) - pick a face in the viewport, review the computed frame,
   adjust roll, name it, save. Offers symmetry mirroring on hulls. Surfaces
   `:mount/origin` so mirrored and seeded mounts can be confirmed.
-- **Paint editor** - role defaults, individual part materials and visible-face detail brushing against the live model.
+- **Paint inspector tab** - named ships, custom layer/instance/group materials and visible-face detail brushing in Ship Browser.
 - **Fleet roster** - list of loadouts, select to load into the viewport.
-- **Ship Browser** - a separate workspace immediately after Assemble in the workspace
-  selector, for viewing saved assembled ships. See §9.3.
+- **Ship Browser** - a table of saved classes and named ships that opens the Assemble editor. See §9.3.
 
 ### 9.1 Thumbnails
 
-Generated by capturing the live viewport with `canvas.toDataURL()` and POSTing the result
-back to be stored against the loadout. This avoids a headless GL renderer on the JVM
-entirely, which would otherwise be the most annoying part of the feature. The cost is
-that a loadout has no thumbnail until it has been viewed once - acceptable, and the
-capture can be triggered automatically on save.
+Part-table thumbnails are lazy, shaded PNG previews with saved orientation and the
+same region-type colors as the Regions tab. Use the original mesh for compatible face
+assignments and the lowest cached LOD otherwise. Stale source-bound assignments are
+retained but omitted from the preview. They require neither a browser WebGL context per row
+nor preprocessing the entire library on entry.
+
+Ship-table thumbnails are lazy software-rendered PNGs of the saved class assembly,
+including all reachable installed parts and their saved orientations. Expanded named
+ships show their scheme and compatible custom paint. Previews require no prior visit
+to the editor and never change a workspace draft. Use the lowest cached mesh tier
+except where source-bound region or detail colors require the original tier. Lighting
+is simplified; the editor remains the reference for metallic and roughness finishes.
+Missing sources show an unavailable placeholder.
 
 ### 9.2 Independent workspace state
 
-Every workspace, including Part Browser, Orient, Assemble and Ship Browser, owns its
+Each workspace, Part Browser and Ship Browser, owns its
 own selection, transient working state, filters and viewport display settings.
 Switching workspaces restores the destination's state on both the server and in the
 viewport. A workspace with no selection shows its own empty state. Returning to a
@@ -698,72 +708,79 @@ Loading or previewing a model in one workspace does not implicitly replace anoth
 workspace's model or assembly draft. Transfers such as Edit and Duplicate are explicit
 actions with defined destinations.
 
-### 9.3 Ship Browser and editing saved ships
+### 9.3 Ship Browser, classes and named ships
 
-Ship Browser lists saved loadouts as selectable cards, with browsing and filtering
-similar to Part Browser. Filters are by bundle/faction and class, derived from the
-saved assembly's root hull. Clicking a card or activating it with the keyboard
-displays that saved assembly in Ship Browser, including repeated parts and nested
-slots, and preserves the Assemble
-workspace's draft. A floating inspector shows the selected assembly's part tree and
-color legend, with the hull first and each parent followed by its descendants. The
-Ship Browser has its own mount-color toggle, off by default; its setting and rendered
-colors are restored when returning to this workspace.
+Ship Browser opens as a full-width table of reusable classes (saved loadouts), filtered
+by the root hull's bundle/faction, class and class or named-ship name. Each class row
+shows its name, classification and reachable empty-mount count. Missing hulls remain
+listed with an error. Class tables show 50 rows per page. Expand a row to load its
+named custom painted ships, with separate pages of up to 50 hulls.
 
-Incomplete saved ships load normally. Their cards show a tag with the number of empty
-mounts reachable on the hull and attached parts, including nested and capacity-expanded
-mounts. Do not count hypothetical mounts on unassigned parts. Complete ships have no
-empty-mount tag; a malformed tree has no reliable count.
+Double-click a class row, press Enter on it, or choose Edit to open the Assemble
+editor. A named-ship row opens the same editor on Paint. Back to ships restores table
+filters, class page, scroll and expanded rows. New class starts an empty assembly; Resume assembly
+returns to the retained draft. The main workspace selector contains Part Browser and
+Ship Browser; Assemble is a view within Ship Browser.
 
-Each card provides three separate actions:
+The editor's floating inspector contains Assembly, Schemes and Paint tabs. Assembly
+edits the reusable class's hull and nested mount assignments. Schemes edits shared
+fleet layer palettes and previews them on the current assembly, including an unsaved
+draft. Paint creates or edits a named ship of the saved class. Save assembly changes
+before entering Paint through its tab. Named ships retain compatible custom paint
+when their class changes. All editor tabs share one camera and mount-color setting,
+initially off, independent of Part Browser. Tab transitions use the same admission and
+activation contract as workspace transitions.
 
-- **Edit** opens Assemble, updates the workspace selector, and loads the selected
-  saved ship for editing. Its saved identity is retained so saving edits updates that
-  ship; entering Edit alone does not write changes to disk.
-- **Duplicate** opens Assemble, updates the workspace selector, and loads an
-  independent draft with the same hull, assignments and optional scheme override.
-  The name is pre-populated with exactly `<original name> - Copy` and remains editable.
-  Duplicate only pre-populates Assemble; it creates no saved entity. Saving creates
-  a new loadout identity and cannot overwrite the source ship.
-- **Delete** asks for confirmation naming the saved ship, then removes only that saved
-  identity. Library parts and other saved ships remain unchanged. Deleting the displayed
-  ship clears its preview and inspector. If Assemble edits that ship, retain its work
-  as an unsaved draft whose next Save creates a new identity. Missing library parts do
-  not prevent deletion; a failed write preserves the record and both workspaces.
+Opening a saved class retains its saved identity; Save changes updates it. Reopening
+the class already being edited resumes its unsaved work. Opening another class,
+Duplicate, New class and Start assembly ask to discard a dirty draft or cancel before
+replacing it. Confirmation applies to the current draft revision. Returning to the
+table or Part Browser retains that draft and its name.
 
-Edit, Duplicate and Start assembly ask to discard an existing unsaved assembly or
-cancel before replacing it. Unsaved means a new or duplicate draft with a hull, or
-content (including name and scheme) differing from its saved record. An unchanged
-saved assembly and an empty workspace need no prompt. Cancel preserves the draft,
-workspace and viewport; confirmation applies to the current draft revision.
+Duplicate opens an independent draft named `<original name> - Copy`; only saving
+creates a new identity. It copies the assembly, not the source class's named ships.
+Delete confirms the class name, removes that identity, and leaves library parts and
+other classes unchanged. Named ships retain paint but require their missing class to
+be restored. A draft editing a deleted class is detached from that identity, retaining
+its contents so its next Save creates a new class. Failed writes preserve state.
 
-Invalid or unavailable saved data produces an actionable error without destroying
-the existing draft or preview. Merely returning to Assemble resumes its own draft;
-only an explicit Edit or Duplicate action replaces it with the selected saved ship.
-Ship Browser does not require fleet ordering, fleet default schemes or thumbnails;
-those remain in M6.
+Missing or invalid saved data produces an actionable error without replacing the
+usable draft. Hull-only and partly populated classes can be opened, edited and
+saved. Empty-mount counts include reachable nested and capacity-expanded mounts,
+not hypothetical mounts on absent parts. Class and named-ship rows include thumbnails
+(§9.1). Fleet ordering remains outside this workflow.
 
-### 9.4 Orient workspace
+### 9.4 Part Browser table and orientation grid
 
-Orient provides bulk part-orientation authoring. It establishes which way a source
+Part Browser provides bulk part-orientation authoring. It establishes which way a source
 mesh faces in Shipyard's canonical coordinates (§8.1): `+Y` up, `+Z` forward and `+X`
 starboard/right. It edits reusable part metadata, so saved poses apply wherever those
 parts are subsequently viewed or assembled. Source STL files and existing mount
-records remain unchanged. Orient appears before Part Browser in the workspace selector.
+records remain unchanged. Table, grid and individual editor are views within one workspace.
 
 **Select.** A table fills the workspace and supports filters by bundle, class, role,
-name and saved-orientation status (any, unset or saved). Each row shows the part name,
-role, class, saved yaw/pitch/roll and orientation status. An explicitly saved identity
+name and saved-orientation status (any, unset or saved). Each row shows a thumbnail,
+part name, bundle/faction, role, class, mount summary, whether saved regions exist,
+saved yaw/pitch/roll and orientation status. Mount summary counts plugs and socket
+capacity grouped by accepted roles. Regions is Yes when any non-Primary face assignments
+are saved, and No when assignments are empty. An explicitly saved identity
 pose counts as Saved; a part without saved orientation is Unset. Parts that cannot be
-previewed remain visible as No preview, with selection disabled. No matches produces
-an explicit empty state.
+previewed remain visible as No preview and can still be selected for metadata edits. No matches produces
+an explicit empty state. Tables show 50 rows per page. Selections persist across pages;
+changing filters returns to the first page, and Back from an editor restores the page.
 
 Selection persists across filter changes, including selected parts hidden by the
-current filters. The selected count describes the whole selection. **Render selection**
+current filters. The selected count describes the whole selection. **Orient selection**
 is enabled only for a nonempty selection and replaces the table with a workspace-width
 grid. Each selected previewable part has its own named preview card, independently
 framed from a common viewing direction. Preparing or failed meshes show their status;
 scrolling and resizing must keep each model within its own card.
+
+**Bulk fields.** Apply bundle/faction, class or role to selected rows, including rows
+hidden by filters. Names support setting a value, literal find/replace, prefix and
+suffix. An edit is atomic and rejects missing parts or blank resulting labels.
+Authored values survive library rescans and preserve part identity, source paths,
+mounts, regions and references. Orientation edits remain in the preview grid.
 
 **Preview.** One toolbar applies to every loaded model in the selection:
 
@@ -787,7 +804,7 @@ part metadata and mount records. **Back to table** ends the grid preview, discar
 unsaved changes and releases its rendering resources while preserving the selected ids.
 
 **Workspace ownership.** Merely switching to another workspace is not Back to table
-or Reset. Under §9.2, Orient must retain its filters, selection, table/grid mode,
+or Reset. Under §9.2, Part Browser must retain its filters, selection, table/grid mode,
 rotation step, current poses, saved baselines, dirty state and display
 settings. Returning restores that session and synchronizes the selector. Unsaved poses
 must not change another workspace's model or the durable catalog.

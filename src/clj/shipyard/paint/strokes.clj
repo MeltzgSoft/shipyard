@@ -7,7 +7,7 @@
             [shipyard.mesh.cache :as cache]
             [shipyard.paint.faces :as faces]
             [shipyard.paint.transforms :as transforms]
-            [shipyard.scheme.db :as schemes]
+            [shipyard.paint.db :as db]
             [shipyard.wire :as wire]
             [shipyard.workspace.db :as workspace])
   (:import [java.nio.file Files]))
@@ -98,33 +98,33 @@
                   :else (update result :entries conj (assoc (select-keys selected [:path :part-id]) :mesh-key mesh-key :keys faces)))))
             {:entries []} entries)))
 
-(defn- commit! [{:keys [workspace schemes]} record state details history]
-  (let [saved (schemes/put! schemes (assoc record :scheme/details details) :update)]
+(defn- commit! [{:keys [workspace] :as deps} record state details history]
+  (let [saved (db/save! deps (assoc record :scheme/details details))]
     (when-not (:error saved)
-      (workspace/update-workspace! workspace :paint assoc :brush-history
+      (workspace/update-workspace! workspace :ships assoc :brush-history
                                    (or history (commit-history (:brush-history state) (or (:scheme/details record) {}) details))))
     saved))
 
-(defn stroke! [{:keys [paint workspace schemes catalog] {scheme-lock :lock} :schemes :as deps}
+(defn stroke! [{:keys [paint workspace catalog] {ship-lock :lock} :named-ships :as deps}
                {:strs [id target sequence mesh-key operation history stroke-id part final] :as params}]
   (try
-    (let [draft (:draft @(:state paint)) state (workspace/workspace! workspace :paint)
+    (let [draft (:draft @(:state paint)) state (workspace/workspace! workspace :ships)
           n (when (string? sequence) (parse-long sequence))
           operation (or history operation)]
       (if (or (nil? n) (<= n (or (:brush-sequence state) 0))
-              (not= id (str (:scheme draft))) (not= target (:target state)))
+              (not= id (str (:ship-id draft))) (not= target (:target state)))
         {:error :stale-stroke}
-        (locking scheme-lock
-          (workspace/update-workspace! workspace :paint assoc :brush-sequence n)
-          (if-let [record (get-in (schemes/snapshot! schemes) [:schemes (:scheme draft)])]
-            (let [targets (transforms/targets (catalog/snapshot! catalog) draft record)
+        (locking ship-lock
+          (workspace/update-workspace! workspace :ships assoc :brush-sequence n)
+          (if-let [record (db/record! deps)]
+            (let [targets (transforms/targets (catalog/assembly-snapshot! catalog) draft record)
                   selected (first (filter #(= target (:key %)) targets))
                   details (or (:scheme/details record) {})]
               (cond
                 (nil? selected) {:error :stale-stroke}
                 (= "cancel" operation)
                 (do (when (= (some-> stroke-id (parse-uuid)) (get-in state [:brush-pending :id]))
-                      (workspace/update-workspace! workspace :paint dissoc :brush-pending))
+                      (workspace/update-workspace! workspace :ships dissoc :brush-pending))
                     {:canceled true})
                 (#{"undo" "redo" "clear"} operation)
                 (if (or (:brush-pending state) (and (= "clear" operation) (not (contains? selected :path))))
@@ -143,17 +143,17 @@
                       checked (validate-entries! deps targets raw)
                       start (if (= 0 part)
                               {:id sid :next-part 0 :before details :layers details :operation operation
-                               :paint paint-value :sources {} :target target :scheme (:scheme draft)} pending)
+                               :paint paint-value :sources {} :target target :ship (:ship-id draft)} pending)
                       invalid (cond (nil? sid) :stale-stroke
                                     (and sid (= sid (:brush-committed-id state))) nil
                                     (or (nil? start) (not= sid (:id start)) (not= part (:next-part start))
-                                        (not= target (:target start)) (not= (:scheme draft) (:scheme start))
+                                        (not= target (:target start)) (not= (:ship-id draft) (:ship start))
                                         (not= operation (:operation start)) (not= paint-value (:paint start))) :stale-stroke
                                     (nil? paint-value) :invalid-material
                                     (:error checked) (:error checked))]
                   (cond
                     (and sid (= sid (:brush-committed-id state))) {:scheme record}
-                    invalid (do (workspace/update-workspace! workspace :paint dissoc :brush-pending) {:error invalid})
+                    invalid (do (workspace/update-workspace! workspace :ships dissoc :brush-pending) {:error invalid})
                     :else
                     (let [result (apply-part start (:entries checked) paint-value (= operation "erase"))
                           result (update result :sources into (map (juxt :part-id :mesh-key) (:entries checked)))
@@ -161,18 +161,18 @@
                                                             (and (index/fresh-source-file! (:library deps) part-id)
                                                                  (= key (index/mesh-key! (:library deps) part-id)))) (:sources result)))]
                       (cond
-                        (:error result) (do (workspace/update-workspace! workspace :paint dissoc :brush-pending) result)
-                        (not final?) (do (workspace/update-workspace! workspace :paint assoc :brush-pending (update result :next-part inc))
+                        (:error result) (do (workspace/update-workspace! workspace :ships dissoc :brush-pending) result)
+                        (not final?) (do (workspace/update-workspace! workspace :ships assoc :brush-pending (update result :next-part inc))
                                          {:buffered true})
                         :else
-                        (do (workspace/update-workspace! workspace :paint dissoc :brush-pending)
+                        (do (workspace/update-workspace! workspace :ships dissoc :brush-pending)
                             (cond (not= details (:before start)) {:error :stale-stroke}
                                   (not (sources-current?)) {:error :changed-source}
                                   :else (let [saved (commit! deps record state (:layers result) nil)]
                                           (when-not (:error saved)
-                                            (workspace/update-workspace! workspace :paint assoc :brush-committed-id sid))
+                                            (workspace/update-workspace! workspace :ships assoc :brush-committed-id sid))
                                           saved)))))))))
-            {:error :missing-scheme}))))
+            {:error :missing-ship}))))
     (catch Exception _
-      (workspace/update-workspace! workspace :paint dissoc :brush-pending)
+      (workspace/update-workspace! workspace :ships dissoc :brush-pending)
       {:error :brush-unavailable})))

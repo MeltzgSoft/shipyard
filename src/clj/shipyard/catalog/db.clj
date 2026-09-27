@@ -4,6 +4,7 @@
             [integrant.core :as ig]
             [shipyard.store.db :as store]
             [shipyard.store.transforms :as t]
+            [shipyard.catalog.part :as part]
             [shipyard.regions.model :as regions]
             [shipyard.regions.migration :as migration]
             [shipyard.regions.registry :as registry]
@@ -171,3 +172,69 @@
                         {:selected (:selected result)
                          :regions (t/region (:part/regions (d/pull @conn store/part-pattern [:part/key [library part-id]]))
                                             (:registry result))}))))))
+
+(def summary-pattern
+  [:part/id :part/uid :part/name :part/bundle :part/class :part/role-hint :part/role-source
+   :part/name-override :part/bundle-override :part/class-override :part/role-override
+   :part/orientation :part/present? :part/renderable :part/variants :part/revision])
+
+(defn listing! [{:keys [store state]}]
+  (store/read! store
+               (fn [db]
+                 (let [library (:library @state)
+                       ;; Only attachment labels and mask references: never face chunks or mount geometry.
+                       pattern (conj summary-pattern
+                                     {:part/mounts [:mount/kind :mount/accepts :mount/capacity]
+                                      :part/regions [{:region/masks [:db/id]}]})]
+                   {:parts (into {}
+                                 (map (fn [entity]
+                                        [(:part/id entity)
+                                         (assoc (dissoc (t/part-value (dissoc entity :part/regions :part/mounts) nil) :part/mounts)
+                                                :part/mount-summary (part/mount-summary (:part/mounts entity))
+                                                :part/has-regions? (boolean (seq (get-in entity [:part/regions :region/masks]))))]))
+                                 (when library (d/q '[:find [(pull ?part pattern) ...] :in $ ?library pattern
+                                                      :where [?lib :library/id ?library] [?part :part/library ?lib]]
+                                                    db library pattern)))}))))
+
+(defn scene-snapshot!
+  "Attachment catalog with dense region masks only for the requested scene parts."
+  [{:keys [store state]} region-part-ids]
+  (store/read! store
+               (fn [db]
+                 (let [library (:library @state)
+                       shared (store/registry-value db library)
+                       pattern (conj summary-pattern :part/source :part/accepts-turrets? {:part/mounts '[*]})
+                       parts (into {} (map (fn [entity] [(:part/id entity) (t/part-value entity shared)]))
+                                   (when library (d/q '[:find [(pull ?part pattern) ...] :in $ ?library pattern
+                                                        :where [?lib :library/id ?library] [?part :part/library ?lib]]
+                                                      db library pattern)))]
+                   {:registry shared
+                    :parts (reduce (fn [parts id]
+                                     (if (contains? parts id)
+                                       (assoc parts id (t/part-value (d/pull db store/part-pattern [:part/key [library id]]) shared))
+                                       parts)) parts region-part-ids)}))))
+
+(defn assembly-snapshot!
+  "Catalog labels and attachment frames, without dense face masks."
+  [catalog]
+  (scene-snapshot! catalog []))
+
+(defn summary! [{:keys [store state]} id]
+  (store/read! store
+               (fn [db]
+                 (let [entity (d/pull db summary-pattern [:part/key [(:library @state) id]])]
+                   (when (:part/present? entity) (t/part-value entity nil))))))
+
+(defn save-metadata!
+  "Apply one validated bulk edit atomically. Missing parts abort the whole edit."
+  [{:keys [store state]} changes]
+  (store/write! store
+                (fn [conn]
+                  (let [library (:library @state)
+                        tx (mapv (fn [{:keys [id attribute value]}]
+                                   (let [ref [:part/key [library id]]
+                                         part (d/pull @conn [:part/present? :part/revision] ref)]
+                                     (when-not (:part/present? part)
+                                       (throw (ex-info "A selected part is unavailable. Refresh the table and retry." {})))
+                                     {:db/id ref attribute value :part/revision (inc (or (:part/revision part) 0))})) changes)]
+                    (d/transact! conn tx)))))

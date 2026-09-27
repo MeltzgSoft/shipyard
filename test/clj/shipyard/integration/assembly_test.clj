@@ -61,8 +61,9 @@
   (testing "background readiness provides server matrices without changing draft revision"
     (is (= 200 (:status (post! "/assembly/hull" {:revision "7" :part-id (:hull fixture/ids)}))))
     (let [deadline (+ (System/currentTimeMillis) 30000)
+          ;; A fresh snapshot requests a reset; incremental polls omit already delivered slots.
           ready (loop []
-                  (let [response ((:handler *fixture*) (mock/request :get "/assembly?poll=1"))
+                  (let [response ((:handler *fixture*) (mock/request :get "/assembly"))
                         event (envelope response)]
                     (if (or (some #(= :set (:op %)) (:commands event))
                             (> (System/currentTimeMillis) deadline))

@@ -10,6 +10,8 @@
   (testing "legacy colours and complete finite materials are supported"
     (is (faces/paint? [1 0 0]))
     (is (faces/paint? metal))
+    (doseq [glow [0 0.5 1]] (is (faces/paint? (assoc metal :glow glow))))
+    (doseq [glow [nil "1" -0.1 1.1 ##NaN ##Inf]] (is (not (faces/paint? (assoc metal :glow glow)))))
     (doseq [value [nil {} [] (dissoc metal :roughness) (assoc metal :extra 1)
                    (assoc metal :base [1 2 3]) (assoc metal :metalness ##NaN)
                    (assoc metal :roughness ##Inf) (assoc metal :roughness -0.1)
@@ -21,6 +23,8 @@
     (is (= inherited (faces/resolve-material inherited nil)))
     (is (= (assoc inherited :base [1 0 0]) (faces/resolve-material inherited [1 0 0])))
     (is (= metal (faces/resolve-material inherited metal)))
+    (is (= metal (faces/resolve-material (assoc inherited :glow 1) metal)) "Legacy full materials default to no glow")
+    (is (= 1 (:glow (faces/resolve-material (assoc inherited :glow 1) [1 0 0]))) "Color-only details inherit glow")
     (is (= metal (faces/resolve-material (assoc inherited :roughness 0.3) metal)))))
 
 (deftest mixed-layer-stroke-test

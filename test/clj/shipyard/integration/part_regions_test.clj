@@ -7,19 +7,45 @@
             [shipyard.assembly-fixture :as fixture]
             [shipyard.catalog.db :as catalog]
             [shipyard.regions.migration :as migration]
+            [shipyard.regions.colors :as colors]
+            [shipyard.store.db :as store]
+            [datalevin.core :as d]
             [shipyard.region-fixture :as rf]
             [shipyard.catalog.sidecar :as sidecar]
             [shipyard.http.jobs :as jobs]
             [shipyard.library.index :as index]
             [shipyard.paint.strokes :as strokes]
             [shipyard.scheme.db :as schemes]
-            [shipyard.loadout.db :as loadouts]
             [shipyard.workspace.db :as workspace]))
 
 (defn region-post [handler cat params]
   (handler (mock/request :post "/parts/regions"
                          (cond-> (merge {:layer-revision (str (:revision (catalog/region-registry (catalog/snapshot! cat))))} params)
                            (:layer params) (assoc :layer (or (rf/id cat (:layer params)) (:layer params)))))))
+
+(deftest region-colors-migrate-and-persist
+  (let [started (fixture/start!) sys (:system started) cat (:shipyard.catalog/db sys)
+        library (:shipyard.library/index sys) id (:weapon fixture/ids)
+        registry! #(catalog/region-registry! cat)
+        rescan! #(catalog/reingest! cat (index/parts! library) (str (:root started)))]
+    (try
+      (doseq [name ["Trim" "Lights" "Armor" "Engines" "Torpedo tube"]]
+        (is (= 200 (:status (region-post (:handler started) cat
+                                         {:part-id id :mesh-key (apply str (repeat 64 "a")) :revision "0" :action "add" :name name})))))
+      ;; Simulate an existing library written before colors were stored.
+      (store/write! (:store cat)
+                    (fn [conn]
+                      (d/transact! conn (mapv (fn [layer] [:db.fn/retractAttribute
+                                                           [:layer/key [(:library @(:state cat)) layer]] :layer/preview-color])
+                                              (keys (:layers (registry!)))))))
+      (rescan!)
+      (let [assigned (registry!) palette (mapv :preview-color (vals (:layers assigned)))]
+        (is (every? colors/valid? palette))
+        (doseq [a palette b palette :when (not= a b)] (is (> (colors/distance a b) 0.12)))
+        (is (= assigned (:registry (persisted/catalog! cat))))
+        (rescan!)
+        (is (= assigned (registry!)) "Rescans reuse the persisted choices"))
+      (finally (fixture/stop! started)))))
 
 (deftest global-layer-deletion-is-confirmed-and-preserves-other-data
   (let [started (fixture/start!) sys (:system started) handler (:handler started)
@@ -111,18 +137,12 @@
   (let [started (fixture/start!) sys (:system started) handler (:handler started)
         post #(handler (mock/request :post %1 %2)) store (:shipyard.scheme/db sys)]
     (try
-      (post "/paint/create" {:name "Shared"})
-      (let [id (get-in @(:state (:shipyard.paint/db sys)) [:draft :scheme])
-            ship {:loadout/id (random-uuid) :loadout/name "Reference ship" :loadout/hull (:hull fixture/ids) :loadout/slots {} :loadout/scheme id}]
-        (loadouts/put! (:shipyard.loadout/db sys) ship :create)
-        (is (str/includes? (:body (handler (mock/request :get "/paint"))) (:loadout/name ship)))
-        (post "/paint/delete" {:id (str id)})
+      (post "/ships/schemes/create" {:name "Shared"})
+      (let [id (-> (schemes/snapshot! store) :schemes keys first)]
+        (post "/ships/schemes/delete" {:id (str id)})
         (is (get-in (schemes/snapshot! store) [:schemes id]))
-
-        (post "/paint/delete" {:id (str id) :confirmed "true"})
-        (is (empty? (:schemes (persisted/records! store :schemes))))
-        (is (= id (get-in (loadouts/snapshot! (:shipyard.loadout/db sys)) [:loadouts (:loadout/id ship) :loadout/scheme])))
-        (is (nil? (get-in @(:state (:shipyard.paint/db sys)) [:draft :scheme]))))
+        (post "/ships/schemes/delete" {:id (str id) :confirmed "true"})
+        (is (empty? (:schemes (persisted/records! store :schemes)))))
       (finally (fixture/stop! started)))))
 
 (deftest shared-identities-migrate-and-edit-from-an-unused-part

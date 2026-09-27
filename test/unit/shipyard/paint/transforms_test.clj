@@ -36,7 +36,10 @@
   (testing "finite and bounded input"
     (let [input {"base" "#ff0080" "metalness" "0.5" "roughness" "0.6"}]
       (is (= [1.0 0.0 (/ 128.0 255)] (:base (t/parse-material input))))
-      (doseq [[k v] [["base" "bad"] ["metalness" "NaN"] ["roughness" "1.5"] ["metalness" nil]]]
+      (is (= 0.7 (:glow (t/parse-material (assoc input "glow" "0.7")))))
+      (is (not (contains? (t/parse-material input) :glow)) "Legacy material submissions retain their representation")
+      (doseq [[k v] [["base" "bad"] ["metalness" "NaN"] ["roughness" "1.5"] ["metalness" nil]
+                     ["glow" "NaN"] ["glow" "Infinity"] ["glow" "-0.1"] ["glow" "1.1"] ["glow" ""] ["glow" nil]]]
         (is (nil? (t/parse-material (assoc input k v))))))))
 
 (deftest edit-record-test
@@ -70,6 +73,8 @@
     (is (= [1.0 0.0 0.0] (t/parse-detail {"color" "#ff0000"})))
     (let [params {"color" "#ff0000" "metalness" "1" "roughness" "0.15"}]
       (is (= {:base [1.0 0.0 0.0] :metalness 1.0 :roughness 0.15} (t/parse-detail params)))
+      (is (= 0.8 (:glow (t/parse-detail (assoc params "glow" "0.8")))))
+      (is (nil? (t/parse-detail {"color" "#ff0000" "glow" "0.8"})))
       (is (nil? (t/parse-detail (dissoc params "roughness"))))
       (doseq [bad ["NaN" "Infinity" "-0.1" "1.1" "" nil]]
         (is (nil? (t/parse-detail (assoc params "roughness" bad))))))))

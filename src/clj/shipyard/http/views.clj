@@ -11,6 +11,7 @@
             [clojure.string :as str]
             [shipyard.catalog.part :as catalog-part]
             [shipyard.http.urls :as urls]
+            [shipyard.http.pagination :as pagination]
             [shipyard.interface-colors :as interface-colors]
             [shipyard.mount.wizard :as wizard]
             [shipyard.part.orientation :as orientation]
@@ -68,23 +69,32 @@
   Carries no `hx-trigger` of its own on purpose: the shell's copy of this id has
   a `load` trigger, and repeating it here would make the panel refetch itself
   forever."
-  [parts]
-  [:div#library-results.results
-   [:p.results__count
-    (case (count parts)
-      0 "No parts match."
-      1 "1 part"
-      (format "%,d parts" (count parts)))]
-   (when (seq parts)
-     [:ul.parts (map part-card parts)])])
+  ([parts] (library-results parts nil))
+  ([parts page]
+   (let [window (pagination/window parts page)]
+     [:div#library-results.results
+      [:p.results__count (case (:total window)
+                           0 "No parts match."
+                           1 "1 part"
+                           (format "%,d parts" (:total window)))]
+      (pagination/controls window "/library" "#library-results" "#filters")
+      (when (seq parts) [:ul.parts (map part-card (:items window))])])))
 
 ;; --- part detail ------------------------------------------------------------
 
-(defn- detail-head [{:part/keys [id bundle class] :as part}]
-  [:header.detail__head
-   [:h2.detail__name (:part/name part)]
-   [:p.detail__crumbs (str/join " › " (remove nil? [bundle class]))]
-   [:p.detail__id id]])
+(defn- part-back []
+  [:button (merge workspace-views/transition-attrs
+                  {:type "button" :data-part-back "true" :data-workspace-transition "true"
+                   :hx-get "/workspace/browse?table=1" :hx-target "#detail"}) "← Back to table"])
+
+(defn- detail-head
+  ([part] (detail-head part true))
+  ([{:part/keys [id bundle class] :as part} back?]
+   [:header.detail__head
+    (when back? (part-back))
+    [:h2.detail__name (:part/name part)]
+    [:p.detail__crumbs (str/join " › " (remove nil? [bundle class]))]
+    [:p.detail__id id]]))
 
 (def ^:private detail-tab-activation
   "Switch inspector tabs without replacing the detail fragment or viewport."
@@ -169,6 +179,7 @@
    [:h3.part-metadata__title "Part metadata"]
    [:form.part-metadata__form
     {:method "post" :action "/parts/role" :hx-post "/parts/role"
+     :hx-sync "this:drop" :hx-disabled-elt "find button"
      :hx-target "#detail"
      :hx-swap   "innerHTML"}
     [:input {:type "hidden" :name "part-id" :value id}]
@@ -227,9 +238,10 @@
 
 (defn detail-ready
   ([part mesh-key] (detail-ready part mesh-key nil))
-  ([part mesh-key {:keys [error orientation-error preview repeat-values region-layers mount-active?]}]
+  ([part mesh-key {:keys [error orientation-error preview repeat-values region-layers mount-active? preserve-regions?]}]
    (let [mount-active? (if (some? mount-active?) mount-active? (boolean (or preview error)))]
      [:div.detail.detail--ready
+      (part-back)
       [:nav.detail__tabs {:role "tablist" :aria-label "Part inspector"}
        [:button.detail__tab
         {:type "button" :role "tab" :aria-selected (str (not mount-active?))
@@ -242,18 +254,20 @@
        [:button.detail__tab {:type "button" :role "tab" :aria-selected "false" :data-detail-tab "regions"
                              :hx-on:click detail-tab-activation} "Regions"]]
       [:div.detail__summary {:data-detail-panel "part" :role "tabpanel" :hidden mount-active?}
-       (detail-head part)
+       (detail-head part false)
        [:p.detail__status "Loaded."]
        (when (#{:hull :hull-section} (:part/role-hint part))
          [:button (merge workspace-views/transition-attrs {:type "button"
                                                            :hx-get (str "/workspace/assembly?part-id=" (urls/encode-id (:part/id part)))
                                                            :hx-target "#detail"
                                                            :hx-include workspace-views/navigation-include :hx-swap "innerHTML settle:0ms"
-                                                           :data-workspace-mode "assembly" :data-hull (:part/id part)}) "Assemble this hull"])
+                                                           :data-workspace-mode "ships" :data-hull (:part/id part)}) "Assemble this hull"])
        (part-metadata part)
        (part-orientation part orientation-error)]
       [:div.detail__tab-panel {:data-detail-panel "regions" :role "tabpanel" :hidden true}
-       (regions/panel (:part/id part) mesh-key (catalog/part-regions part) nil nil (or region-layers shipyard.regions.registry/empty-registry))]
+       (if preserve-regions?
+         [:section#part-regions {:hx-preserve "true"}]
+         (regions/panel (:part/id part) mesh-key (catalog/part-regions part) nil nil (or region-layers shipyard.regions.registry/empty-registry)))]
       [:div.detail__tab-panel {:data-detail-panel "mounts" :role "tabpanel" :hidden (not mount-active?)}
        (interface-legend part)
        (mount-list part)
@@ -504,7 +518,7 @@
      [:meta {:charset "utf-8"}]
      [:meta {:name "viewport" :content "width=device-width, initial-scale=1"}]
      [:meta {:name "htmx-config"
-             :content "{\"responseHandling\":[{\"code\":\"204\",\"swap\":false},{\"code\":\"[23]..\",\"swap\":true},{\"code\":\"409|422\",\"swap\":true},{\"code\":\"[45]..\",\"swap\":false,\"error\":true}]}"}]
+             :content "{\"defaultSettleDelay\":0,\"responseHandling\":[{\"code\":\"204\",\"swap\":false},{\"code\":\"[23]..\",\"swap\":true},{\"code\":\"409|422\",\"swap\":true},{\"code\":\"[45]..\",\"swap\":false,\"error\":true}]}"}]
      [:title "Shipyard"]
      [:link {:rel "stylesheet" :href "/app.css"}]
     ;; htmx is a separate file from the viewport bundle so a broken viewport
@@ -517,7 +531,6 @@
       [:h1 "Shipyard"]
       (workspace-views/navigation (:workspace context))
       [:div.masthead__spacer]
-      [:span#paint-header]
       [:p.masthead__stats "Library ready · select a part to begin"]]
      [:main.layout
       (if (pos? (:activation context))

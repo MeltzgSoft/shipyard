@@ -20,7 +20,7 @@
   (let [groups (ordered record) existing (first (filter #(= id (:group/id %)) groups))
         index (first (keep-indexed #(when (= id (:group/id %2)) %1) groups))]
     (cond
-      (nil? record) {:error "Choose a scheme first."}
+      (nil? record) {:error "Choose a named ship first."}
       (and (not= operation :create) (nil? existing)) {:error "That group is no longer available."}
       (and (#{:create :rename} operation) (not (loadout/name? name))) {:error "Enter a group name between 1 and 200 characters."}
       (and (#{:create :members} operation) (or (nil? selected) (not-every? scheme/member? selected)))

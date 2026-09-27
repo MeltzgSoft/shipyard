@@ -27,11 +27,10 @@
 (defn- assert-visible-assembly! [driver]
   (is (s/wait-until #(= (:hull fixture/ids) (get-in (slots driver) [[] :part-id])))
       "the resumed hull should load without issuing a test-only assembly request")
-  (let [rail (s/bounds driver "#library")
-        viewport (s/bounds driver "#viewport")]
-    (is (<= (+ (:x rail) (:width rail)) (inc (:x viewport)))
-        (str "the rail must sit beside the viewport, not cover it: " {:rail rail :viewport viewport}))
-    (is (> (:width viewport) 500) "assembly should retain usable viewport space"))
+  (let [inspector (s/bounds driver ".ship-inspector") viewport (s/bounds driver "#viewport")]
+    (is (> (:x inspector) (+ (:x viewport) (/ (:width viewport) 2)))
+        "the floating inspector leaves the model center exposed")
+    (is (> (:width viewport) 500)))
   (is (true? (s/js driver "() => { const canvas = document.querySelector('#viewport'); const r = canvas.getBoundingClientRect(); return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === canvas; }"))
       "the rendered canvas must be exposed to the user, not hidden under another panel"))
 
@@ -39,21 +38,21 @@
   (let [started (fixture/start! true) driver (s/make-driver)]
     (try
       (s/go! driver (s/base-url (:system started)))
-      (s/wait-visible! driver "#library-results .part")
-      (s/click! driver ".masthead__mode:has-text('Assemble')")
+      (s/wait-visible! driver "#bulk-orient-results .bulk-orient__row")
+      (s/open-assembly! driver)
       (s/wait-visible! driver ".assembly__hull")
       (s/select-option! driver ".assembly__hull select[name=part-id]" "hull")
       (s/click! driver ".assembly__hull button")
       (assert-visible-assembly! driver)
       (doseq [render-grid? [false true]]
         (testing (if render-grid? "return from Orient previews" "return from the Orient table")
-          (s/click! driver ".masthead__mode:has-text('Orient')")
+          (s/click! driver ".masthead__mode:has-text('Part Browser')")
           (s/wait-visible! driver "[data-bulk-select]")
           (when render-grid?
             (s/check! driver (str "[data-bulk-select][value='" (:hull fixture/ids) "']"))
             (s/click! driver "[data-bulk-render-button]")
             (is (s/wait-until #(= 1 (get-in (s/stats driver) [:bulk :count])))))
-          (s/click! driver ".masthead__mode:has-text('Assemble')")
+          (s/open-assembly! driver)
           (s/wait-visible! driver ".assembly__hull")
           (assert-visible-assembly! driver)
           (is (zero? (s/count-els driver "[data-bulk-grid]")))
@@ -75,7 +74,7 @@
       (try
         (s/go! driver (s/base-url (:system started)))
         (is (s/wait-until #(s/stats driver)))
-        (s/click! driver ".masthead [data-workspace-mode='assembly']")
+        (s/open-assembly! driver)
         (s/wait-visible! driver ".assembly__hull")
         (s/js driver "() => { window.assemblyResponses = []; document.body.addEventListener('htmx:afterRequest', e => { const xhr = e.detail.xhr; const doc = new DOMParser().parseFromString(xhr.responseText, 'text/html'); const field = doc.querySelector('[data-assembly-event]'); if (field) window.assemblyResponses.push({status:xhr.status, headers:xhr.getAllResponseHeaders().length, trigger:xhr.getResponseHeader('HX-Trigger'), size:field.getAttribute('data-assembly-event').length}); }); }")
         (is (= 200 (request! driver "/assembly/hull"
@@ -117,8 +116,8 @@
 
 (deftest mount-drawers-keep-disclosure-state-across-updates
   (let [started (fixture/start! true) driver (s/make-driver)
-        drawer (fn [path] (str "#library details[data-slot='" (pr-str path) "']"))
-        wrapper (fn [path] (str "#library .assembly__slot-wrap:has(> details[data-slot='" (pr-str path) "'])"))
+        drawer (fn [path] (str "#assembly-rail details[data-slot='" (pr-str path) "']"))
+        wrapper (fn [path] (str "#assembly-rail .assembly__slot-wrap:has(> details[data-slot='" (pr-str path) "'])"))
         open? (fn [path]
                 (s/js driver (str "() => document.querySelector(" (json/write-str (drawer path)) ").open")))
         choose! (fn [path part]
@@ -126,7 +125,7 @@
     (try
       (s/go! driver (s/base-url (:system started)))
       (is (s/wait-until #(s/stats driver)))
-      (s/click! driver ".masthead [data-workspace-mode='assembly']")
+      (s/open-assembly! driver)
       (s/wait-visible! driver ".assembly__hull")
       (request! driver "/assembly/hull" {"revision" "0" "part-id" (:hull fixture/ids)})
       (is (await-count! driver 1))
@@ -183,7 +182,7 @@
     (try
       (s/go! driver (s/base-url (:system started)))
       (s/wait-until #(s/stats driver))
-      (s/click! driver ".masthead [data-workspace-mode='assembly']")
+      (s/open-assembly! driver)
       (s/wait-visible! driver ".assembly__hull")
       (testing "a hull and duplicate weapons occupy distinct transforms"
         (is (= 200 (request! driver "/assembly/hull" {"revision" "0" "part-id" (:hull fixture/ids)})))
@@ -194,8 +193,9 @@
         (let [by-slot (slots driver)]
           (is (not= (get-in by-slot [[[:weapon 0]] :matrix]) (get-in by-slot [[[:weapon 1]] :matrix])))
           (is (= (get-in by-slot [[[:weapon 0]] :part-id]) (get-in by-slot [[[:weapon 1]] :part-id]))))
+        (s/click! driver "[data-mount-colors-toggle]")
         (testing "mount colors can be hidden and restored without changing the assembly"
-          (is (true? (:mount-colors-enabled (s/stats driver))))
+          (is (s/wait-until #(true? (:mount-colors-enabled (s/stats driver)))))
           (is (> (count (set (:materials (s/stats driver)))) 1))
           (is (pos? (:visible-mount-markers (s/stats driver))))
           (s/click! driver "[data-mount-colors-toggle]")
@@ -223,11 +223,11 @@
         (is (not (contains? (slots driver) [[:weapon 0]]))))
       (testing "browsing restores its own model and resuming restores the current draft"
         (s/click! driver ".masthead [data-workspace-mode='browse']")
-        (s/wait-visible! driver "#library-results .part")
+        (s/wait-visible! driver "#bulk-orient-results .bulk-orient__row")
         (request! driver (urls/part-url (:prow fixture/ids)) nil)
         (s/await-part driver (:prow fixture/ids))
         (is (= [(:prow fixture/ids)] (:parts (s/stats driver))))
-        (s/click! driver ".masthead [data-workspace-mode='assembly']")
+        (s/open-assembly! driver)
         (s/wait-visible! driver ".assembly__hull")
         (is (await-count! driver 2))
         (let [before (s/await-rendered-geometries driver)]

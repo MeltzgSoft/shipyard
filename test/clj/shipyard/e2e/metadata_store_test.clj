@@ -22,7 +22,7 @@
       (is (= (str (:root started)) (index/root! (:shipyard.library/index sys))))
       (is (= before (catalog/snapshot! (:shipyard.catalog/db sys))))
       (s/go! driver (s/base-url sys))
-      (s/click! driver ".part__select:has(.part__name:text-is('weapon'))")
+      (s/open-part! driver "weapon")
       (s/await-part driver id)
       (is (some #{id} (s/loaded-parts driver)))
       (finally (s/quit! driver) (fixture/stop! started)))))

@@ -1,58 +1,38 @@
 (ns shipyard.e2e.loadout-paint-test
-  (:require [shipyard.persistence-fixture :as persisted]
-            [clojure.test :refer [deftest is]]
+  (:require [clojure.test :refer [deftest is]]
             [shipyard.assembly-fixture :as fixture]
             [shipyard.e2e.support :as s]
             [shipyard.e2e.workspace-test :as workspace]
+            [shipyard.e2e.named-ship-test :as named]
             [shipyard.e2e.paint-material-test :as material-test]
             [shipyard.loadout.db :as loadouts]
+            [shipyard.ship.db :as ships]
             [shipyard.scheme.db :as schemes]))
 
-(deftest override-save-copy-clear-and-dangling-reference
+(deftest class-preview-is-independent-and-missing-scheme-keeps-custom-paint
   (s/assert-bundle!)
   (let [started (fixture/start! true) sys (:system started) driver (s/make-driver)
-        store (:shipyard.loadout/db sys) scheme-store (:shipyard.scheme/db sys)
-        state (:state (:shipyard.assembly/db sys))
-        red-id (random-uuid) blue-id (random-uuid) ship-id (random-uuid)
-        source {:loadout/id ship-id :loadout/name "Original" :loadout/hull (:hull fixture/ids)
-                :loadout/slots {} :loadout/scheme red-id}
-        card (str ".ship-card[data-loadout-id='" ship-id "']")]
+        class-id (random-uuid) scheme-id (random-uuid) ship-id (random-uuid)
+        class {:loadout/id class-id :loadout/name "Cruiser" :loadout/hull (:hull fixture/ids) :loadout/slots {}}
+        vessel {:ship/id ship-id :ship/name "Resolute" :ship/class class-id :ship/scheme scheme-id
+                :ship/paint {:paint/instances {[] {:part-id (:hull fixture/ids) :material material-test/red}}}}]
     (try
-      (doseq [[id name material] [[red-id "Red" material-test/red] [blue-id "Blue" material-test/blue]]]
-        (schemes/put! scheme-store {:scheme/id id :scheme/name name :scheme/roles {:hull material}} :create))
-      (loadouts/put! store source :create)
+      (loadouts/put! (:shipyard.loadout/db sys) class :create)
+      (schemes/put! (:shipyard.scheme/db sys) {:scheme/id scheme-id :scheme/name "Blue" :scheme/roles {} :scheme/layers {"Primary" material-test/blue}} :create)
+      (ships/put! (:shipyard.ship/db sys) vessel :create)
       (s/go! driver (s/base-url sys))
       (workspace/switch! driver "ships")
-      (s/click! driver (str card " button:text-is('Edit')"))
-      (s/wait-visible! driver ".assembly__scheme")
-      (s/click! driver "[data-mount-colors-toggle]")
-      (is (s/wait-until #(= "ff0000" (:color (material-test/slot driver [])))))
-      (let [before (schemes/snapshot! store)]
-        (s/select-option! driver ".assembly__scheme select" "Blue")
-        (is (s/wait-until #(= blue-id (get-in @state [:draft :scheme]))))
-        (is (s/wait-until #(= "0000ff" (:color (material-test/slot driver [])))))
-        (is (= before (schemes/snapshot! store)))
-        (s/click! driver ".assembly__save button")
-        (is (s/wait-until #(= blue-id (get-in (loadouts/snapshot! store) [:loadouts ship-id :loadout/scheme])))))
-      (workspace/switch! driver "ships")
-      (s/click! driver (str card " .ship-card__load"))
-      (is (s/wait-until #(= "0000ff" (:color (material-test/slot driver [])))))
-      (is (= "rgb(0, 0, 255)" (s/js driver "() => getComputedStyle(document.querySelector('.ship-tree__color')).backgroundColor")))
-      (let [before (schemes/snapshot! store)]
-        (s/click! driver (str card " button:text-is('Duplicate')"))
-        (s/wait-visible! driver ".assembly__save")
-        (is (= blue-id (get-in @state [:draft :scheme])))
-        (is (= before (schemes/snapshot! store)))
-        (s/select-option! driver ".assembly__scheme select" "No override")
-        (is (s/wait-until #(nil? (get-in @state [:draft :scheme]))))
-        (s/click! driver ".assembly__save button")
-        (is (s/wait-until #(= 2 (count (:loadouts (loadouts/snapshot! store))))))
-        (let [records (:loadouts (persisted/records! store :loadouts))]
-          (is (= (assoc source :loadout/scheme blue-id) (get records ship-id)))
-          (is (nil? (:loadout/scheme (get records (get-in @state [:draft :loadout-id])))))))
-      (loadouts/put! store (assoc source :loadout/scheme (random-uuid)) :update)
-      (workspace/switch! driver "ships")
-      (s/click! driver (str card " .ship-card__load"))
-      (s/wait-visible! driver ".ship-inspector [role=alert]")
+      (s/open-class! driver "Cruiser")
       (is (s/wait-until #(= "9aa4af" (:color (material-test/slot driver [])))))
+      (s/open-named-ship! driver ship-id)
+      (is (s/wait-until #(= "ff0000" (:color (material-test/slot driver [])))))
+      (schemes/delete! (:shipyard.scheme/db sys) scheme-id)
+      (workspace/switch! driver "assembly")
+      (named/tab! driver "Paint")
+      (is (s/wait-until #(re-find #"Scheme unavailable" (s/text driver "#detail"))))
+      (is (s/wait-until #(= "ff0000" (:color (material-test/slot driver [])))))
+      (is (= vessel (get-in (ships/snapshot! (:shipyard.ship/db sys)) [:ships ship-id])))
+      (named/tab! driver "Assembly")
+      (is (s/wait-until #(= "9aa4af" (:color (material-test/slot driver [])))))
+      (is (= class (get-in (loadouts/snapshot! (:shipyard.loadout/db sys)) [:loadouts class-id])))
       (finally (s/quit! driver) (fixture/stop! started)))))

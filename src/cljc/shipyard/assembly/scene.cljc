@@ -1,5 +1,6 @@
 (ns shipyard.assembly.scene
-  "Pure scene identity and stale-completion decisions; no compatibility or attachment math.")
+  "Pure scene identity and stale-completion decisions; no compatibility or attachment math."
+  (:require [shipyard.paint.delta :as delta]))
 
 (def empty-state {:mode :browse :sequence -1 :generation 0 :slots {}})
 
@@ -42,7 +43,7 @@
 
 (defn accept-event
   "Apply ordered commands only from newer server responses. Stable identical sets retain tokens."
-  [state {:keys [sequence revision commands]}]
+  [state {:keys [sequence revision commands region-data]}]
   (if (or (not (number? sequence)) (<= sequence (:sequence state))
           (and (not= :assembly (:mode state)) (not-any? #(= :reset (:op %)) commands)))
     state
@@ -51,6 +52,14 @@
        (case op
          :reset (-> state (assoc :slots {} :mode :assembly) (update :generation inc))
          :remove (update state :slots dissoc slot)
+         :paint (if (get-in state [:slots slot])
+                  (update-in state [:slots slot :payload]
+                             (fn [payload]
+                               (let [changes (:changes command) patch (:detail-delta changes)]
+                                 (cond-> (merge payload (dissoc changes :detail-delta))
+                                   patch (assoc :details (assoc (dissoc patch :patch) :faces
+                                                                (delta/apply-patch (get-in payload [:details :faces]) (:patch patch))))))))
+                  state)
          :set (let [payload (dissoc command :op)]
                 (if (= (dissoc payload :material :details :regions :layers) (dissoc (get-in state [:slots slot :payload]) :material :details :regions :layers))
                   (assoc-in state [:slots slot :payload] payload)
@@ -58,7 +67,12 @@
                             {:payload payload :token [(:generation state) sequence index]})))
          state))
      (assoc state :sequence sequence :revision revision)
-     (map-indexed vector commands))))
+     (map-indexed vector
+                  (map (fn [command]
+                         (let [expand (fn [value] (if (contains? value :region-ref)
+                                                    (-> value (dissoc :region-ref) (assoc :regions (get region-data (:region-ref value))))
+                                                    value))]
+                           (if (= :paint (:op command)) (update command :changes expand) (expand command)))) commands)))))
 
 (defn current?
   "True only while the slot still owns this fetch token in assembly mode."

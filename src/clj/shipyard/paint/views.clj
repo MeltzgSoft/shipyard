@@ -1,14 +1,14 @@
 (ns shipyard.paint.views
-  (:require [clojure.string :as str]
-            [shipyard.paint.transforms :as transforms]
+  (:require [shipyard.paint.transforms :as transforms]
             [shipyard.scheme.material :as material]
             [shipyard.workspace.views :as workspace]))
 
 (def selection-attrs
-  (merge workspace/transition-attrs {:hx-target "#detail" :hx-swap "innerHTML settle:0ms"}))
+  (merge workspace/transition-attrs {:hx-target "#detail" :hx-swap "innerHTML settle:0ms"
+                                     :hx-disabled-elt "[data-workspace-mode], [data-workspace-transition], .ship-inspector button, .ship-inspector input, .ship-inspector select"}))
 
 (def competing-controls
-  "#workspace-navigation button, #paint-select select, #paint-target button, #paint-create button, #paint-rename button, #paint-delete button, button[form=paint-default], .paint-write button, .paint-write select, .paint-group-controls button, #mount-colors-toggle")
+  ".ship-inspector > nav button, .ship-card button, #workspace-navigation button, #paint-select select, #paint-scheme select, #paint-reset button, #paint-target button, #paint-create button, #paint-rename button, #paint-delete button, button[form=paint-default], .paint-write button, .paint-write select, .paint-group-controls button, #mount-colors-toggle")
 
 (defn transfer-button [source label]
   [:form (merge selection-attrs {:novalidate true :method "post" :action (str "/" source "/paint") :hx-post (str "/" source "/paint")
@@ -38,46 +38,51 @@
                                     (case (first source) :instance "instance material" :group (:group/name inherited) :layer "layer defaults" "role default"))])]
       (when count [:small (str count " instances")])]]))
 
-(defn scheme-controls [records draft record]
+(defn scheme-options [records selected]
+  (list [:option {:value ""} "No scheme"]
+        (for [r (sort-by :scheme/name records)]
+          [:option {:value (str (:scheme/id r)) :selected (= (:scheme/id r) selected)} (:scheme/name r)])))
+
+(defn ship-controls [{:keys [schemes]} draft record]
   [:div.paint-scheme
-   [:form#paint-select (merge selection-attrs {:method "post" :action "/paint/select" :hx-post "/paint/select" :hx-trigger "change"})
-    [:label "Scheme" [:select {:name "id"}
-                      [:option {:value ""} "No scheme"]
-                      (for [r (sort-by :scheme/name records)]
-                        [:option {:value (str (:scheme/id r)) :selected (= (:scheme/id r) (:scheme draft))} (:scheme/name r)])]]]
-   [:div.paint-scheme-actions
-    [:details [:summary "New"]
-     [:form#paint-create (merge selection-attrs {:method "post" :action "/paint/create" :hx-post "/paint/create"})
-      [:label "New scheme name" [:input {:name "name" :required true :maxlength 200}]]
-      [:button {:type "submit"} "Create scheme"]]]
-    (when record
-      [:details [:summary "Rename"]
-       [:form#paint-rename (merge selection-attrs {:method "post" :action "/paint/rename" :hx-post "/paint/rename"})
-        [:label "Scheme name" [:input {:name "name" :value (:scheme/name record) :required true :maxlength 200}]]
-        [:button {:type "submit"} "Rename scheme"]]])]
+   [:h2 (if record (:name draft) "New named ship")]
+   [:details {:open (nil? record)} [:summary "New named ship"]
+    [:form#paint-create (merge selection-attrs {:method "post" :action "/ships/paint/create" :hx-post "/ships/paint/create"})
+     [:p (if (:class-id draft) (str (:class-name draft) " class") "Select a ship class first.")]
+     [:input {:type "hidden" :name "class" :value (str (:class-id draft))}]
+     [:label "Ship name" [:input {:name "name" :required true :maxlength 200}]]
+     [:label "Fleet scheme" [:select {:name "scheme"} (scheme-options schemes (:scheme draft))]]
+     [:button {:type "submit" :disabled (nil? (:class-id draft))} "Create ship"]]]
    (when record
-     [:form#paint-delete (merge selection-attrs
-                                {:method "post" :action "/paint/delete" :hx-post "/paint/delete"
-                                 :hx-confirm (str "Delete scheme “" (:scheme/name record) "”? "
-                                                  (when (seq (:referenced-ships record))
-                                                    (str "Used by: " (str/join ", " (:referenced-ships record)) ". These ships will keep their references and show a missing-scheme warning. "))
-                                                  "This cannot be undone.")})
-      [:input {:type "hidden" :name "id" :value (str (:scheme/id record))}]
-      [:input {:type "hidden" :name "confirmed" :value "true"}]
-      [:button {:type "submit"} "Delete scheme"]])
-   (if record
-     [:p "Edits affect every saved ship using this scheme."]
-     [:p.paint-empty "Choose a scheme, or open New and name a scheme to start painting."])])
+     (list
+      [:p (str (:name draft) " · " (:class-name draft) " class")]
+      [:form#paint-scheme (merge selection-attrs {:method "post" :action "/ships/paint/select" :hx-post "/ships/paint/select" :hx-trigger "change"})
+       [:label "Fleet scheme" [:select {:name "scheme"} (scheme-options schemes (:scheme draft))]]]
+      [:p.muted "Custom paint stays on this ship when its scheme changes."]
+      [:details [:summary "Manage ship"]
+       [:form#paint-rename (merge selection-attrs {:method "post" :action "/ships/paint/rename" :hx-post "/ships/paint/rename"})
+        [:label "Ship name" [:input {:name "name" :value (:name draft) :required true :maxlength 200}]]
+        [:button {:type "submit"} "Rename ship"]]
+       [:form#paint-reset (merge selection-attrs {:method "post" :action "/ships/paint/reset" :hx-post "/ships/paint/reset"
+                                                  :hx-confirm "Reset all custom paint on this named ship? Its fleet scheme will be kept."})
+        [:input {:type "hidden" :name "id" :value (str (:ship-id draft))}]
+        [:input {:type "hidden" :name "confirmed" :value "true"}]
+        [:button {:type "submit"} "Reset custom paint"]]
+       [:form#paint-delete (merge selection-attrs {:method "post" :action "/ships/paint/delete" :hx-post "/ships/paint/delete"
+                                                   :hx-confirm (str "Delete named ship “" (:name draft) "” and its custom paint? Its class and scheme will be kept.")})
+        [:input {:type "hidden" :name "id" :value (str (:ship-id draft))}]
+        [:input {:type "hidden" :name "confirmed" :value "true"}]
+        [:button {:type "submit"} "Delete ship"]]]))
+   [:p.muted "Use the Schemes tab to edit fleet palettes."]])
 
 (defn target-tree [record targets target]
   (let [instances (filter #(contains? % :path) targets)
         members (set (:group/members (group-record record target)))]
     [:div.paint-targets
-     [:form#paint-target (merge selection-attrs {:method "post" :action "/paint/target" :hx-post "/paint/target"})
-      [:h3 "Layer defaults"]
+     [:form#paint-target (merge selection-attrs {:method "post" :action "/ships/paint/target" :hx-post "/ships/paint/target"})
+      [:h3 "Ship layer overrides"]
       (for [entry targets :when (:layer-id entry)] (target-row record target entry nil members))
-      [:h3 "Role fallbacks"]
-      [:p.muted "Used when no layer default is set."]
+      (when-not (:paint/ship-id record) [:h3 "Role fallbacks"])
       (for [entry targets :when (and (:role entry) (not (contains? entry :path)))]
         (target-row record target entry (count (filter #(= (:role entry) (:role %)) instances)) members))
       [:h3 "Groups" [:button.paint-group-link {:type "button" :onclick "var d=document.getElementById('paint-group-disclosure');if(d){d.open=true;d.scrollIntoView({block:'nearest'});}"} "Group selection"]]
@@ -87,25 +92,25 @@
       (for [entry instances] (target-row record target entry nil members))]
      (when record
        [:details#paint-group-disclosure.paint-group-controls [:summary "Group selection"]
-        [:form#paint-group-create (merge selection-attrs {:method "post" :action "/paint/group/create" :hx-post "/paint/group/create"})
+        [:form#paint-group-create (merge selection-attrs {:method "post" :action "/ships/paint/group/create" :hx-post "/ships/paint/group/create"})
          [:label "Group name" [:input {:name "name" :required true :maxlength 200}]]
          [:button {:type "submit"} "Create group"]]])]))
 
 (defn group-controls [record target]
   (when-let [group (group-record record target)]
     [:details.paint-group-controls {:open true} [:summary "Manage group"]
-     [:form (merge selection-attrs {:method "post" :action "/paint/group/rename" :hx-post "/paint/group/rename"})
+     [:form (merge selection-attrs {:method "post" :action "/ships/paint/group/rename" :hx-post "/ships/paint/group/rename"})
       [:input {:type "hidden" :name "group" :value (str (:group/id group))}]
       [:label "Group name" [:input {:name "name" :value (:group/name group) :required true :maxlength 200}]]
       [:button {:type "submit"} "Rename group"]]
-     [:form (merge selection-attrs {:method "post" :action "/paint/group/members" :hx-post "/paint/group/members" :hx-include "#paint-target input[name=members]"})
+     [:form (merge selection-attrs {:method "post" :action "/ships/paint/group/members" :hx-post "/ships/paint/group/members" :hx-include "#paint-target input[name=members]"})
       [:input {:type "hidden" :name "group" :value (str (:group/id group))}]
       [:button {:type "submit"} "Use checked members"]]
-     [:form (merge selection-attrs {:method "post" :action "/paint/group/order" :hx-post "/paint/group/order"})
+     [:form (merge selection-attrs {:method "post" :action "/ships/paint/group/order" :hx-post "/ships/paint/group/order"})
       [:input {:type "hidden" :name "group" :value (str (:group/id group))}]
       [:button {:type "submit" :name "direction" :value "up" :disabled (zero? (:group/order group))} "Move up"]
       [:button {:type "submit" :name "direction" :value "down" :disabled (= (:group/order group) (dec (count (:scheme/groups record))))} "Move down"]]
-     [:form (merge selection-attrs {:method "post" :action "/paint/group/delete" :hx-post "/paint/group/delete" :hx-confirm "Delete this group? Instance materials and face details are preserved."})
+     [:form (merge selection-attrs {:method "post" :action "/ships/paint/group/delete" :hx-post "/ships/paint/group/delete" :hx-confirm "Delete this group? Instance materials and face details are preserved."})
       [:input {:type "hidden" :name "group" :value (str (:group/id group))}]
       [:button {:type "submit"} "Delete group"]]]))
 
@@ -122,14 +127,13 @@
         group (or (group-record record target) (first groups))]
     [:div.paint-write
      [:h3 "Write to"]
-     [:form.paint-segmented (merge selection-attrs {:method "post" :action "/paint/target" :hx-post "/paint/target"})
+     [:form.paint-segmented (merge selection-attrs {:method "post" :action "/ships/paint/target" :hx-post "/ships/paint/target"})
       (for [[label key selected?] [["Instance" (:key anchor) (contains? target :path)]
-                                   ["Role" (when (:role anchor) (str "role/" (name (:role anchor))))
-                                    (and (:role target) (not (contains? target :path)))]
+                                   ["Layer" (when anchor "layer/Primary") (some? (:layer-id target))]
                                    ["Group" (when group (str "group/" (:group/id group))) (some? (:group-id target))]]]
         [:button {:type "submit" :name "target" :value key :disabled (nil? key) :aria-pressed (str selected?)} label])]
      (when (and (:group-id target) (> (count groups) 1))
-       [:form (merge selection-attrs {:method "post" :action "/paint/target" :hx-post "/paint/target" :hx-trigger "change"})
+       [:form (merge selection-attrs {:method "post" :action "/ships/paint/target" :hx-post "/ships/paint/target" :hx-trigger "change"})
         [:label "Material group" [:select {:name "target"}
                                   (for [g groups] [:option {:value (str "group/" (:group/id g)) :selected (= (:group-id target) (:group/id g))} (:group/name g)])]]])]))
 
@@ -141,7 +145,7 @@
 
 (defn material-form [record target value paths sequence]
   [:form#paint-material
-   {:method "post" :action "/paint/material" :hx-post "/paint/material" :hx-target "#paint-status" :hx-swap "innerHTML"
+   {:method "post" :action "/ships/paint/material" :hx-post "/ships/paint/material" :hx-target "#paint-status" :hx-swap "innerHTML"
     :hx-trigger "change, submit" :hx-sync "this:queue last" :hx-disabled-elt competing-controls
     :data-paint-slots (pr-str paths)
     :data-paint-layer (:layer-id target)
@@ -157,10 +161,11 @@
     (material-control "Base colour" "base" "color" (transforms/color-hex (:base value)))
     (material-control "Metalness" "metalness" "range" (:metalness value))
     (material-control "Roughness" "roughness" "range" (:roughness value))
+    (material-control "Glow" "glow" "range" (get value :glow 0))
     [:label "Paint name" [:input {:name "paint" :maxlength 200 :value (or (:paint value) "")}]]]
    [:footer.paint-actions
     [:button.paint-primary {:type "submit"} "Save material"]
-    (when (contains? target :path)
+    (when (or (contains? target :path) (:layer-id target) (:group-id target))
       [:button {:type "submit" :form "paint-default"} "Use inherited material"])
     [:p#paint-status {:role "status"} "Saved values"]]])
 
@@ -171,7 +176,7 @@
                     :when (and layer (or (not= (:part-id layer) (:part-id instance))
                                          (not= (:mesh-key layer) (get-in prepared [(:part-id instance) :mesh-key]))))] (:path instance))]
     [:form#paint-brush
-     {:hidden (not brush?) :method "post" :action "/paint/stroke" :hx-post "/paint/stroke" :hx-target (if brush? "#brush-status" "#paint-status")
+     {:hidden (not brush?) :method "post" :action "/ships/paint/stroke" :hx-post "/ships/paint/stroke" :hx-target (if brush? "#brush-status" "#paint-status")
       :hx-swap "innerHTML" :hx-sync "this:queue all"
       :hx-disabled-elt (str competing-controls ", #paint-brush input:not([type=hidden]), #paint-brush select, #paint-brush button, .paint-tools button, button[form=paint-brush]")
       :data-flush-interval flush-interval :data-stale-targets (pr-str (vec stale))
@@ -180,7 +185,7 @@
       :hx-on--after-request "if(document.contains(this)&&!event.detail.successful){document.getElementById('paint-header-status').textContent='Save not confirmed';}"}
      (for [[name value] {"id" (str (:scheme/id record)) "target" (:key target) "sequence" (or (:brush-sequence state) 0)
                          "mesh-key" (get-in prepared [(:part-id target) :mesh-key]) "faces" "[]" "color" "#ff0000"
-                         "metalness" (:metalness material) "roughness" (:roughness material)
+                         "metalness" (:metalness material) "roughness" (:roughness material) "glow" (get material :glow 0)
                          "entries" "[]" "stroke-id" "" "part" "0" "final" "true" "enabled" (str brush?) "operation" "paint"}]
        [:input {:type "hidden" :name name :value value}])
      [:div.paint-form-body
@@ -194,6 +199,7 @@
       (material-control "Detail colour" "brush-color" "color" "#ff0000")
       (material-control "Detail metalness" "brush-metalness" "range" (:metalness material))
       (material-control "Detail roughness" "brush-roughness" "range" (:roughness material))
+      (material-control "Detail glow" "brush-glow" "range" (get material :glow 0))
       [:p.muted "Left-drag paints; right-drag erases to the inherited material. Turn off Mount colors to paint. Alt+drag to orbit."]]
      [:footer.paint-actions
       [:button {:type "submit" :name "history" :value "undo" :aria-label "Undo detail stroke"} "Undo"]
@@ -206,11 +212,16 @@
         ready? (and target record (every? #(= :ready (:state %)) (vals prepared)))
         model-ready? (and ready? (:hull draft))]
     (list
-     [:span#paint-header {:hx-swap-oob "outerHTML"}
+     [:span#paint-header
       [:code (or (:hull draft) "No model")]
       [:span#paint-header-status {:role "status"} "Saved values"]]
-     [:section#library.panel.paint-rail {:hx-swap-oob "outerHTML"}
-      (scheme-controls records draft record)
+     (when (and record (:hull draft)) [:div.paint-tools
+                                       [:form.paint-segmented (merge selection-attrs {:method "post" :action "/ships/paint/tool" :hx-post "/ships/paint/tool"})
+                                        [:button {:type "submit" :name "tool" :data-workspace-transition "true" :value "select" :aria-pressed (str (not brush?))} "Select"]
+                                        [:button {:type "submit" :name "tool" :data-workspace-transition "true" :value "brush" :aria-pressed (str brush?) :disabled (not model-ready?)} "Brush"]]
+                                       (when brush? [:span "Orbit Alt+drag"])])
+     [:section.paint-rail
+      (ship-controls records draft record)
       (if brush?
         [:section.paint-stroke-summary
          [:h3 "This stroke" [:span#paint-stroke-count "0 faces"]]
@@ -224,16 +235,16 @@
                               :onclick "return window.confirm('Clear all details on this instance?')"} "Clear instance details"]])]
      [:section.paint-editor
       [:header.paint-inspector-header
-       [:div [:h2 (cond (nil? record) "Choose a scheme" brush? "Detail brush" :else (or (:name target) (:label target) "Paint preview"))]
+       [:div [:h2 (cond (nil? record) "Create a named ship" brush? "Detail brush" :else (or (:name target) (:label target) "Paint preview"))]
         [:p (if brush? "Whole visible triangles, nearest surface only"
                 (when (and record target) (str (if (contains? target :path) (pr-str (:path target)) (:key target))
                                                (when (:role target) (str " · role " (name (:role target)))))))]]
        (when (and record value) (swatch value))]
-      (when-not record [:p "Choose a scheme from the left rail, or open New and enter a name. Material and group controls appear after you create it."])
+      (when-not record [:p "Name a ship of this class and choose its fleet scheme. Custom paint belongs to that named ship."])
       (when error [:p.detail__error {:role "alert"} error])
-      (when-not (:hull draft) [:p "No paint model selected. Use Paint assembly or Paint ship to copy a model here."])
+      (when-not (:hull draft) [:p "Save a ship class in Assemble, then create a named ship here or from Ship Browser."])
       (when (some #(= :running (:state %)) (vals prepared))
-        [:p {:hx-get "/paint?poll=1" :hx-trigger "load delay:400ms" :hx-target "#detail"} "Preparing paint preview…"])
+        [:p {:hx-get "/ships?poll=1" :hx-trigger "load delay:400ms" :hx-target "#detail"} "Preparing paint preview…"])
       (for [[id status] prepared :when (= :failed (:state status))]
         [:p.detail__error (str "Could not load " id ". " (:message status))])
       (when ready?
@@ -242,13 +253,8 @@
                       (group-controls record target)
                       (material-form record target value paths sequence)))
               (when model-ready? (brush-panel record target targets prepared state flush-interval value))))
-      (when (and record target (contains? target :path))
-        [:form#paint-default (merge selection-attrs {:method "post" :action "/paint/default" :hx-post "/paint/default"})])]
-     (when (and record (:hull draft)) [:div.paint-tools
-                                       [:form.paint-segmented (merge selection-attrs {:method "post" :action "/paint/tool" :hx-post "/paint/tool"})
-                                        [:button {:type "submit" :name "tool" :data-workspace-transition "true" :value "select" :aria-pressed (str (not brush?))} "Select"]
-                                        [:button {:type "submit" :name "tool" :data-workspace-transition "true" :value "brush" :aria-pressed (str brush?) :disabled (not model-ready?)} "Brush"]]
-                                       (when brush? [:span "Orbit Alt+drag"])])
+      (when (and record target)
+        [:form#paint-default (merge selection-attrs {:method "post" :action "/ships/paint/default" :hx-post "/ships/paint/default"})])]
      (when record [:div.paint-legend
                    (if brush? (list [:span "Brush radius (screen px)"] [:span "Painted this stroke"] [:span "Occluded — skipped"])
-                       (list [:span "Selected target"] [:span "Role default"] [:span "Group material"] [:span "Instance material"]))]))))
+                       (list [:span "Selected target"] [:span "Fleet scheme"] [:span "Group material"] [:span "Instance material"]))]))))

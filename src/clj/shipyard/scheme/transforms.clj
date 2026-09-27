@@ -1,6 +1,6 @@
 (ns shipyard.scheme.transforms
   "Pure scheme representation and explicit identity-based updates."
-  (:require [shipyard.loadout.transforms :as loadout]
+  (:require [shipyard.loadout.identity :as loadout]
             [shipyard.paint.faces :as faces]
             [shipyard.regions.model :as regions]))
 
@@ -11,10 +11,11 @@
 
 (defn material? [value]
   (and (map? value)
-       (every? #{:base :metalness :roughness :paint} (keys value))
+       (every? #{:base :metalness :roughness :glow :paint} (keys value))
        (vector? (:base value)) (= 3 (count (:base value)))
        (every? unit-number? (:base value))
        (unit-number? (:metalness value)) (unit-number? (:roughness value))
+       (or (not (contains? value :glow)) (unit-number? (:glow value)))
        (or (not (contains? value :paint))
            (and (string? (:paint value)) (<= (count (:paint value)) 200)))))
 

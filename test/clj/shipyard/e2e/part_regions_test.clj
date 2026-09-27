@@ -19,6 +19,8 @@
             [shipyard.e2e.metallic-details-test :as metallic]
             [shipyard.loadout-fixture :as lf]
             [shipyard.loadout.db :as loadouts]
+            [shipyard.ship.db :as ships]
+            [shipyard.e2e.named-ship-test :as named]
             [shipyard.scheme.db :as schemes]
             [shipyard.scheme.material :as material])
   (:import [com.microsoft.playwright Page Dialog Request]
@@ -36,18 +38,49 @@
     [x y]))
 
 (defn set-layer! [driver layer color metal]
-  (s/click! driver (str "#paint-target button:has(.paint-target-name:text-is('" layer "'))"))
-  (is (s/wait-until #(= layer (s/text driver "#paint-target button[aria-pressed=true] .paint-target-name"))))
-  (editor/input! driver "#paint-material input[name=base]" color "input")
-  (editor/input! driver "#paint-material input[name=metalness]" metal "input")
-  (s/click! driver "#paint-material button.paint-primary")
-  (is (s/wait-until #(= "Material saved." (s/text driver "#paint-status")))))
+  (named/scheme-layer! driver layer)
+  (editor/input! driver "#scheme-material input[name=base]" color "input")
+  (editor/input! driver "#scheme-material input[name=metalness]" metal "input")
+  (let [before (s/js driver "() => document.querySelector('#scheme-status').dataset.sequence")]
+    (s/click! driver "#scheme-material button")
+    (is (s/wait-until #(not= before (s/js driver "() => document.querySelector('#scheme-status').dataset.sequence"))))))
 
 (defn face [driver slot key]
   (first (filter #(= key (:key %)) (:face-finishes (materials/slot driver slot)))))
 
 (defn region-colors [driver]
   (into {} (map (juxt :key :base)) (:region-faces (s/stats driver))))
+
+(deftest five-custom-types-have-distinct-preview-colors
+  (s/assert-bundle!)
+  (let [started (fixture/start! true) sys (:system started) driver (s/make-driver)
+        cat (:shipyard.catalog/db sys) id (:weapon fixture/ids)
+        swatches #(s/js driver "() => [...document.querySelectorAll('[data-region-layer] .paint-swatch')].map(e => e.style.background)")]
+    (try
+      (s/go! driver (s/base-url sys))
+      (s/open-part! driver "weapon")
+      (s/await-part driver id)
+      (s/click! driver "[data-detail-tab=regions]")
+      (doseq [name ["Trim" "Lights" "Armor" "Engines" "Torpedo tube"]]
+        (s/fill-and-blur! driver "#region-add input[name=name]" name)
+        (s/click! driver "button:text-is('Add layer')")
+        (is (s/wait-until #(= name (s/text driver "[data-region-layer][aria-pressed=true] .region-layer__name"))))
+        (is (rf/id cat name)))
+      (is (= 7 (count (set (swatches)))))
+      (s/click! driver "button:text-is('Apply layer to entire part')")
+      (is (s/wait-until #(= 12 (count (:faces (catalog/part-regions (catalog/part (catalog/snapshot! cat) id)))))))
+      (s/click! driver "button[aria-label='Paint Trim']")
+      (editor/input! driver "#region-stroke input[name=radius]" "2" "input")
+      (apply brush/stroke! driver (region-point driver 0))
+      (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
+      (is (s/wait-until #(= 2 (count (set (vals (region-colors driver)))))))
+      (let [[a b] (vec (set (vals (region-colors driver)))) before (swatches)]
+        (is (> (reduce + (map #(abs (- %1 %2)) a b)) 0.5) "Trim and Torpedo tube are visibly separated on the mesh")
+        (s/click! driver "[data-detail-tab=part]")
+        (s/click! driver "[data-detail-tab=regions]")
+        (is (= before (swatches))))
+      (s/screenshot-el! driver "body" (java.io.File. "/tmp/shipyard-distinct-regions.png"))
+      (finally (s/quit! driver) (fixture/stop! started)))))
 
 (deftest selectable-layers-and-face-brush
   (s/assert-bundle!)
@@ -58,7 +91,7 @@
         mode #(s/js driver "() => document.querySelector('[data-region-mode][aria-pressed=true]').dataset.regionMode")]
     (try
       (s/go! driver (s/base-url sys))
-      (s/click! driver ".part__select:has(.part__name:text-is('weapon'))")
+      (s/open-part! driver "weapon")
       (s/await-part driver id)
       (s/click! driver "[data-detail-tab=regions]")
       (is (s/wait-until #(false? (:mount-colors-enabled (s/stats driver)))))
@@ -107,7 +140,7 @@
         regions #(catalog/part-regions (catalog/part (catalog/snapshot! cat) %))]
     (try
       (s/go! driver (s/base-url sys))
-      (s/click! driver ".part__select:has(.part__name:text-is('weapon'))")
+      (s/open-part! driver "weapon")
       (s/await-part driver id)
       (s/click! driver "[data-detail-tab=regions]")
       (is (s/wait-until #(false? (:mount-colors-enabled (s/stats driver)))))
@@ -141,14 +174,14 @@
         (apply s/click-point! driver (region-point driver 0))
         (is (= before (assoc (regions id) :layers (:layers before) :revision (:revision before))))
         (is (nil? (:preview (s/stats driver)))))
-      (s/click! driver ".part__select:has(.part__name:text-is('weapon-alt'))")
+      (s/open-part! driver "weapon-alt")
       (s/await-part driver other)
       (s/click! driver "[data-detail-tab=regions]")
       (s/click! driver "button[aria-label='Paint Trim']")
       (s/click! driver "button:text-is('Apply layer to entire part')")
       (is (s/wait-until #(= 12 (count (:faces (regions other))))))
       ;; A shared type can be deleted from a part that never adopted it.
-      (s/click! driver ".part__select:has(.part__name:text-is('hull'))")
+      (s/open-part! driver "hull")
       (s/await-part driver (:hull fixture/ids))
       (s/click! driver "[data-detail-tab=regions]")
       (let [layer (rf/id cat "Trim") before (mapv regions [id other])]
@@ -159,7 +192,7 @@
         (is (= (mapv #(dissoc % :layer-definitions) before)
                (mapv #(dissoc (regions %) :layer-definitions) [id other])))
         (doseq [part-id [id other]]
-          (is (= {:name "Accent" :preview-name "Trim"}
+          (is (= (assoc (get-in (first before) [:layer-definitions layer]) :name "Accent")
                  (get-in (regions part-id) [:layer-definitions layer]))))
         (is (nil? (catalog/part-regions (catalog/part (catalog/snapshot! cat) (:hull fixture/ids))))))
       (let [before (mapv regions [id other]) confirmation (atom nil)]
@@ -189,7 +222,7 @@
     (try
       (swap! (:state (:shipyard.assembly/db sys)) assoc :draft lf/draft :root (str (:root started)))
       (s/go! driver (s/base-url sys))
-      (s/click! driver ".part__select:has(.part__name:text-is('weapon'))")
+      (s/open-part! driver "weapon")
       (s/wait-visible! driver ".detail--ready")
       (is (s/wait-until #(seq (:region-faces (s/stats driver)))))
       (s/click! driver "[data-detail-tab=regions]")
@@ -222,7 +255,7 @@
             (is (= (rf/id cat "Trim") (s/js driver "() => document.querySelector('#region-stroke input[name=layer]').value")))
             (apply brush/stroke! driver (region-point driver 1))
             (is (s/wait-until #(= (rf/id cat "Trim") (get-in (regions) [:faces trim])))))
-          (s/click! driver ".part__select:has(.part__name:text-is('hull'))")
+          (s/open-part! driver "hull")
           (s/wait-visible! driver ".detail--ready")
           (s/await-part driver (:hull fixture/ids))
           (s/click! driver "[data-detail-tab=regions]")
@@ -235,11 +268,14 @@
           (is (some #{(rf/id cat "Trim")} (vals (:faces (catalog/part-regions (catalog/part (catalog/snapshot! cat) (:hull fixture/ids)))))))
           (s/screenshot-el! driver "body" (java.io.File. "/tmp/shipyard-part-regions.png"))
           (workspace/switch! driver "assembly") (workspace/await-ship! driver)
-          (s/click! driver "button:text-is('Paint assembly')")
-          (s/click! driver ".paint-scheme-actions summary:text-is('New')")
-          (s/fill-and-blur! driver "#paint-create input" "Region palette")
-          (s/click! driver "#paint-create button")
-          (s/wait-visible! driver "#paint-material") (workspace/await-ship! driver)
+          (s/fill-and-blur! driver ".assembly__save input[name=name]" "Region class")
+          (s/click! driver ".assembly__save button")
+          (s/wait-visible! driver "button:text-is('Create named ship')")
+          (s/click! driver "button:text-is('Create named ship')")
+          (named/tab! driver "Schemes")
+          (s/fill-and-blur! driver "#scheme-create input[name=name]" "Region palette")
+          (s/click! driver "#scheme-create button")
+          (s/wait-visible! driver "#scheme-material") (workspace/await-ship! driver)
           (set-layer! driver "Primary" "#0000ff" "0")
           (set-layer! driver "Secondary" "#00ff00" "0.3")
           (set-layer! driver "Trim" "#d4af37" "1")
@@ -251,6 +287,9 @@
             (is (metallic/near? 0.3 (:metalness (face driver slot secondary))))
             (is (every? true? (map metallic/near? (map material/srgb->linear [0 1 0]) (:base (face driver slot secondary))))))
           (s/screenshot-el! driver "body" (java.io.File. "/tmp/shipyard-region-palette.png"))
+          (named/tab! driver "Paint")
+          (s/select-option! driver "#paint-create select[name=scheme]" "Region palette")
+          (named/create! driver "Region ship")
           (s/click! driver "#paint-target button[data-paint-target='[[:weapon 0]]']")
           (is (s/wait-until #(= "[[:weapon 0]]" (s/js driver "() => document.querySelector('#paint-material')?.elements.target.value"))))
           (editor/input! driver "#paint-material input[name=base]" "#ff0000" "input")
@@ -261,12 +300,13 @@
           (is (metallic/near? 1 (:metalness (face driver [["weapon" 1]] trim))))
           (s/click! driver "button:text-is('Use inherited material')")
           (is (s/wait-until #(metallic/near? 1 (:metalness (face driver [["weapon" 0]] trim)))))
-          (workspace/switch! driver "assembly") (workspace/switch! driver "paint") (workspace/await-ship! driver)
+          (workspace/switch! driver "assembly") (named/tab! driver "Paint") (workspace/await-ship! driver)
           (is (metallic/near? 1 (:metalness (face driver [["weapon" 1]] trim))))
-          (s/click! driver ".paint-scheme-actions summary:text-is('New')")
-          (s/fill-and-blur! driver "#paint-create input" "Another palette")
-          (s/click! driver "#paint-create button")
-          (s/wait-visible! driver "#paint-material")
+          (named/tab! driver "Schemes")
+          (s/click! driver ".scheme-editor summary:text-is('New scheme')")
+          (s/fill-and-blur! driver "#scheme-create input[name=name]" "Another palette")
+          (s/click! driver "#scheme-create button")
+          (s/wait-visible! driver "#scheme-material")
           (set-layer! driver "Trim" "#ffffff" "0.1")
           (is (s/wait-until #(metallic/near? 0.1 (:metalness (face driver [["weapon" 1]] trim)))))
           (is (= 2 (count (:schemes (schemes/snapshot! store)))))
@@ -277,23 +317,27 @@
   (s/assert-bundle!)
   (let [started (fixture/start! true) sys (:system started) driver (s/make-driver) store (:shipyard.scheme/db sys)
         id (random-uuid) ship {:loadout/id (random-uuid) :loadout/name "Flagship" :loadout/hull (:hull fixture/ids) :loadout/slots {} :loadout/scheme id}
-        confirmation (atom nil)]
+        vessel-id (random-uuid) confirmation (atom nil)]
     (try
       (schemes/put! store {:scheme/id id :scheme/name "Shared palette" :scheme/roles {}} :create)
       (loadouts/put! (:shipyard.loadout/db sys) ship :create)
-      (swap! (:state (:shipyard.paint/db sys)) assoc :draft {:revision 1 :hull (:hull fixture/ids) :assignments {} :scheme id} :root (str (:root started)))
-      (s/go! driver (s/base-url sys)) (workspace/switch! driver "paint")
-      (s/wait-visible! driver "#paint-delete")
+      (ships/put! (:shipyard.ship/db sys) {:ship/id vessel-id :ship/name "Flagship vessel" :ship/class (:loadout/id ship) :ship/scheme id :ship/paint {}} :create)
+      (s/go! driver (s/base-url sys)) (workspace/switch! driver "ships")
+      (s/open-class! driver "Flagship")
+      (named/tab! driver "Schemes")
+      (s/select-option! driver "#scheme-select select" "Shared palette")
+      (s/wait-visible! driver "#scheme-material")
+      (s/click! driver ".scheme-editor summary:text-is('Manage scheme')")
       (.onceDialog ^Page (:page driver) (reify Consumer (accept [_ d] (reset! confirmation (.message ^Dialog d)) (.dismiss ^Dialog d))))
       (s/click! driver "button:text-is('Delete scheme')")
-      (is (re-find #"Flagship" @confirmation))
+      (is (re-find #"Named ships keep their custom paint" @confirmation))
       (is (get-in (schemes/snapshot! store) [:schemes id]))
       (.onceDialog ^Page (:page driver) (reify Consumer (accept [_ d] (.accept ^Dialog d))))
       (s/click! driver "button:text-is('Delete scheme')")
       (is (s/wait-until #(empty? (:schemes (schemes/snapshot! store)))))
       (is (= id (get-in (loadouts/snapshot! (:shipyard.loadout/db sys)) [:loadouts (:loadout/id ship) :loadout/scheme])))
       (workspace/switch! driver "ships")
-      (s/click! driver "button:text-is('Flagship')")
+      (s/open-named-ship! driver vessel-id)
       (is (s/wait-until #(re-find #"(?i)unavailable|missing" (s/text driver "#detail"))))
       (finally (s/quit! driver) (fixture/stop! started)))))
 
@@ -304,7 +348,7 @@
         regions #(catalog/part-regions (catalog/part (catalog/snapshot! cat) id))]
     (try
       (s/go! driver (s/base-url sys))
-      (s/click! driver ".part__select:has(.part__name:text-is('weapon'))")
+      (s/open-part! driver "weapon")
       (s/wait-visible! driver ".detail--ready")
       (is (s/wait-until #(seq (:region-faces (s/stats driver)))))
       (s/click! driver "[data-detail-tab=regions]")
@@ -355,7 +399,7 @@
                           (swap! requests conj {:method (.method request) :content-type (.headerValue request "content-type")
                                                 :body (.postDataBuffer request)}))))))
       (s/go! driver (s/base-url sys))
-      (s/click! driver ".part__select:has(.part__name:text-is('weapon'))")
+      (s/open-part! driver "weapon")
       (s/wait-visible! driver ".detail--ready")
       (is (s/wait-until #(= "loaded" (:status (s/stats driver)))))
       (s/click! driver "[data-detail-tab=regions]")
@@ -429,7 +473,7 @@
         regions #(catalog/part-regions (catalog/part (catalog/snapshot! cat) id))]
     (try
       (s/go! driver (s/base-url sys))
-      (s/click! driver ".part__select:has(.part__name:text-is('weapon'))")
+      (s/open-part! driver "weapon")
       (s/wait-visible! driver ".detail--ready")
       (s/await-part driver id)
       (is (= "View: Mount faces" (s/text driver "#mount-colors-toggle")))
@@ -494,7 +538,7 @@
         regions #(catalog/part-regions (catalog/part (catalog/snapshot! cat) id))]
     (try
       (s/go! driver (s/base-url sys))
-      (s/click! driver ".part__select:has(.part__name:text-is('weapon'))")
+      (s/open-part! driver "weapon")
       (s/await-part driver id)
       (s/click! driver "[data-detail-tab=regions]")
       (is (s/wait-until #(false? (:mount-colors-enabled (s/stats driver)))))
@@ -535,7 +579,7 @@
         regions #(catalog/part-regions (catalog/part (catalog/snapshot! cat) id))]
     (try
       (s/go! driver (s/base-url sys))
-      (s/click! driver ".part__select:has(.part__name:text-is('weapon'))")
+      (s/open-part! driver "weapon")
       (s/await-part driver id)
       (s/click! driver "[data-detail-tab=regions]")
       (editor/input! driver "#region-stroke input[name=radius]" "2" "input")
@@ -569,7 +613,7 @@
         cat (:shipyard.catalog/db sys) id (:weapon fixture/ids)
         regions #(catalog/part-regions (catalog/part (catalog/snapshot! cat) id))
         open! (fn []
-                (s/click! driver ".part__select:has(.part__name:text-is('weapon'))")
+                (s/open-part! driver "weapon")
                 (s/await-part driver id)
                 (s/click! driver "[data-detail-tab=regions]")
                 (editor/input! driver "#region-stroke input[name=radius]" "2" "input"))]
@@ -623,7 +667,7 @@
     (try
       (s/resize! driver 1600 1000)
       (s/go! driver (s/base-url sys))
-      (s/click! driver ".part__select:has(.part__name:text-is('weapon'))")
+      (s/open-part! driver "weapon")
       (s/await-part driver id)
       (s/click! driver "[data-detail-tab=regions]")
       (s/click! driver "button[data-region-mode=faces]")
@@ -683,7 +727,7 @@
       (is (empty? (:faces (regions))))
       (is (false? (s/js driver "() => document.querySelector('[name=mirror]').checked")))
       (s/check! driver "#region-stroke input[name=mirror]")
-      (s/click! driver ".part__select:has(.part__name:text-is('weapon-alt'))")
+      (s/open-part! driver "weapon-alt")
       (s/await-part driver (:weapon-alt fixture/ids))
       (s/click! driver "[data-detail-tab=regions]")
       (is (false? (s/js driver "() => document.querySelector('[name=mirror]').checked")))
@@ -737,7 +781,7 @@
     (try
       (s/resize! driver 1600 1000)
       (s/go! driver (s/base-url sys))
-      (s/click! driver ".part__select:has(.part__name:text-is('weapon'))")
+      (s/open-part! driver "weapon")
       (s/await-part driver id)
       (s/click! driver "[data-detail-tab=regions]")
       (s/click! driver "button[data-region-mode=facets]")
@@ -787,6 +831,54 @@
       (is (empty? (painted)))
       (finally (s/quit! driver) (fixture/stop! started)))))
 
+(deftest automatic-mirror-center-ignores-asymmetric-detail
+  (s/assert-bundle!)
+  (let [shift (fn [dx dy dz triangles]
+                (mapv #(mapv (fn [[x y z]] [(+ dx x) (+ dy y) (+ dz z)]) %) triangles))
+        hull (shift 3 0 0 (fixtures/cube 1.0))
+        detail (shift 4.2 0.4 0.4 (fixtures/cube 0.1))
+        side? (fn [triangle] (or (every? #(= 2.5 (first %)) triangle)
+                                 (every? #(= 3.5 (first %)) triangle)))
+        side-keys (set (map faces/face-key (filter side? hull)))
+        id (:weapon fixture/ids)
+        started (fixture/start! true
+                                (fn [root]
+                                  (fixture/library! root)
+                                  (with-open [out (io/output-stream (fs/file root id "unsupported.stl"))]
+                                    (.write out ^bytes (fixtures/->binary-stl (into hull detail))))
+                                  (sidecar/write-sidecar! (str root) id
+                                                          {:part/role :weapon :mounts []
+                                                           :part/orientation (orientation/rotate-around-world-axis nil :z 90)})
+                                  root))
+        sys (:system started) cat (:shipyard.catalog/db sys) driver (s/make-driver)
+        regions #(catalog/part-regions (catalog/part (catalog/snapshot! cat) id))]
+    (try
+      (s/resize! driver 1600 1000)
+      (s/go! driver (s/base-url sys))
+      (s/open-part! driver "weapon")
+      (s/await-part driver id)
+      (s/click! driver "[data-detail-tab=regions]")
+      (s/click! driver "button[data-region-mode=faces]")
+      (editor/input! driver "#region-stroke input[name=angle]" "23" "input")
+      (editor/input! driver "#region-stroke input[name=radius]" "2" "input")
+      (s/check! driver "#region-stroke input[name=mirror]")
+      (s/select-option! driver "#region-stroke select[name=mirror-axis]" "XZ plane (across Y)")
+      (is (s/wait-until #(when-let [y (get-in (s/stats driver) [:region-mirror-guide :position 1])]
+                           (< (abs (- y 3)) 1e-6))))
+      (is (= "" (s/js driver "() => document.querySelector('[name=mirror-offset]').value")))
+      (let [visible (filter :front? (:region-faces (s/stats driver)))
+            ordinal (first (keep-indexed #(when (side-keys (:key %2)) %1) visible))
+            point (region-point driver ordinal)]
+        (apply brush/stroke! driver point)
+        (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
+        (is (= side-keys (set (keys (:faces (regions)))))
+            "A 2px brush at 23 degrees paints only the corresponding hull sides")
+        (is (= (:faces (regions)) (:faces (:part/paint-regions (persisted/authored! cat id)))))
+        (apply brush/right-stroke! driver point)
+        (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
+        (is (empty? (:faces (regions)))))
+      (finally (s/quit! driver) (fixture/stop! started)))))
+
 (deftest database-failure-restores-the-brush
   (s/assert-bundle!)
   (let [started (fixture/start! true) sys (:system started) driver (s/make-driver)
@@ -794,7 +886,7 @@
         regions #(catalog/part-regions (catalog/part (catalog/snapshot! cat) id))]
     (try
       (s/go! driver (s/base-url sys))
-      (s/click! driver ".part__select:has(.part__name:text-is('weapon'))")
+      (s/open-part! driver "weapon")
       (s/await-part driver id)
       (s/click! driver "[data-detail-tab=regions]")
       (editor/input! driver "#region-stroke input[name=radius]" "2" "input")
@@ -827,12 +919,15 @@
                  (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status")))))]
     (try
       (s/go! driver (s/base-url sys))
-      (s/click! driver ".part__select:has(.part__name:text-is('weapon'))")
+      (s/open-part! driver "weapon")
       (s/await-part driver id)
       (s/click! driver "[data-detail-tab=regions]")
       (editor/input! driver "#region-stroke input[name=radius]" "2" "input")
       ;; Count real GPU reads without replacing the picker or its output.
       (s/js driver "() => {const gl=document.querySelector('canvas').getContext('webgl2'); const read=gl.readPixels.bind(gl); window.regionReadbacks=0; gl.readPixels=(...args)=>{window.regionReadbacks++; return read(...args);};}")
+      ;; Opening Regions asynchronously switches from mount faces to layer types.
+      ;; Compare the settled view before/after strokes, not that pending transition.
+      (is (s/wait-until #(false? (:mount-colors-enabled (s/stats driver)))))
       (let [interfaces (:interfaces (s/stats driver))]
         (paint!)
         (is (= 1 (captures)))
@@ -859,7 +954,7 @@
       (s/await-rendered-geometries driver)
       (paint!)
       (is (= 3 (captures)) "Resizing invalidates the screen-space buffer")
-      (s/click! driver ".part__select:has(.part__name:text-is('weapon-alt'))")
+      (s/open-part! driver "weapon-alt")
       (s/await-part driver (:weapon-alt fixture/ids))
       (s/click! driver "[data-detail-tab=regions]")
       (paint!)
