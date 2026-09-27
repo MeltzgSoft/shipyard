@@ -63,7 +63,7 @@
         (s/wait-visible! driver "button:text-is('Rename group')")
         (assert-post-forms! driver ["/ships/paint/group/rename" "/ships/paint/group/members" "/ships/paint/group/order" "/ships/paint/group/delete"]))
       (testing "Ship Browser actions"
-        (workspace/switch! driver "ships")
+        (s/ship-table! driver)
         (s/wait-visible! driver ".ship-card")
-        (assert-post-forms! driver ["/ships/preview" "/ships/edit" "/ships/duplicate" "/ships/delete"]))
+        (assert-post-forms! driver ["/ships/open" "/ships/edit" "/ships/duplicate" "/ships/delete"]))
       (finally (s/quit! driver) (fixture/stop! started)))))

@@ -91,6 +91,11 @@
                              [[[:mirrored-weapon 1] [:turret 0]] :turret]]]
           (assign path part))
         (is (await-count! driver 13))
+        ;; Incremental responses omit unchanged slots. Force a real recovery
+        ;; snapshot to exercise the full scene above the old header ceiling.
+        (s/js driver "() => {document.documentElement.dataset.shipyardSceneSequence = '-1';}")
+        (is (= 200 (request! driver "/assembly?poll=1" nil)))
+        (is (await-count! driver 13))
         (testing "repeated replacements still render after exceeding the old header limit"
           (doseq [part (take 6 (cycle [:prow-alt :prow]))]
             (assign [[:prow 0]] part)

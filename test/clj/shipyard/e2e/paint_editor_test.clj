@@ -60,6 +60,10 @@
             (.fulfill route (doto (Route$FulfillOptions.) (.setResponse response))))
           (is (s/wait-until #(= "Newer preview not saved" (s/text driver "#paint-status"))))
           (is (= "ff0000" (:color (materials/slot driver [["weapon" 0]]))))
+          (is (= "#ff0000" (s/js driver "() => document.querySelector('#paint-material').elements.base.value")))
+          (is (= [0.0 1.0 0.0] (get-in (persisted/records! store :ships)
+                                       [:ships id :ship/paint :paint/instances [[:weapon 0]] :material :base]))
+              "The delayed save committed green while the newer red preview stays local")
           (s/click! driver "#paint-material button.paint-primary")
           (is (s/wait-until #(= "Material saved." (s/text driver "#paint-status")))))
         (testing "A finish edit persists through a separate database connection"
