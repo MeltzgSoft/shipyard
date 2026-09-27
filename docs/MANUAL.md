@@ -398,7 +398,8 @@ are shared across inspector tabs; there is no separate Paint workspace.
 
 Use instance rows, custom layer overrides, groups and the detail brush to customize
 this ship. Materials preview locally and save on release; **Save material** retries a
-failed save. Custom paint affects only this named ship. Instance materials override
+failed save. If you change a material while a save is pending, its response keeps
+your newer preview on screen until you save it. Custom paint affects only this named ship. Instance materials override
 its layer palette; face details override individual faces. **Use inherited material**
 removes the selected instance, group or layer override. Check instance rows and use
 **Group selection** to create a group; **Manage group** changes name, membership,

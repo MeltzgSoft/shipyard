@@ -1573,10 +1573,9 @@
                      (fn [e] (when @(:active sys) (handler e)))
                      (boolean capture?)))
 
-(defn- preview-paint! [sys ^js event]
-  (when (and (#{:ships} (:workspace sys)) (some-> (.-target event) (.hasAttribute "data-paint-input")))
-    (when-let [^js form (let [form (.closest (.-target event) "#paint-material, #scheme-material")]
-                          (when (and form (scheme-color/valid-hex? (.-value (.namedItem (.-elements form) "base")))) form))]
+(defn- preview-paint-form! [sys ^js form]
+  (when (= :ships (:workspace sys))
+    (when (and form (scheme-color/valid-hex? (.-value (.namedItem (.-elements form) "base"))))
       (let [value (fn [name] (.-value (.namedItem (.-elements form) name)))
             hex (value "base")
             material {:base (mapv #(/ (js/parseInt (subs hex % (+ % 2)) 16) 255) [1 3 5])
@@ -1601,6 +1600,19 @@
             (let [payload (get-in @(:assembly sys) [:slots path :payload])]
               (paint-render/set-regions! object (:regions payload) (:layers payload))
               (apply-material! object (:material payload) @(:mount-colors-enabled sys)))))))))
+
+(defn- preview-paint! [sys ^js event]
+  (when (some-> (.-target event) (.hasAttribute "data-paint-input"))
+    (preview-paint-form! sys (.closest (.-target event) "#paint-material, #scheme-material"))))
+
+(defn- restore-newer-paint-preview! [sys ^js event]
+  (let [form (.. event -detail -elt)
+        sent (.. event -detail -requestConfig -parameters -sequence)]
+    ;; Apply the acknowledged scene first, then restore only this form's newer
+    ;; local preview. Detached forms must never repaint a different selection.
+    (when (and form (some? sent) (identical? form (.getElementById js/document "paint-material"))
+               (not= (str sent) (.-value (.namedItem (.-elements form) "sequence"))))
+      (preview-paint-form! sys form))))
 
 (defn- listen! [sys]
   (let [body (.-body js/document)
@@ -1640,6 +1652,7 @@
                                                (sync-socket-fields-from-dom!)
                                                (sync-interfaces-from-dom! sys)
                                                (refresh-preview-after-swap! sys)))
+    (listen-event! body sys "htmx:afterRequest" #(restore-newer-paint-preview! sys %))
     (listen-event! body sys "input" (fn [e]
                                       (preview-paint! sys e)
                                       (when-let [form (event-form e)]

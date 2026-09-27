@@ -3,7 +3,6 @@
             [clojure.test :refer [deftest is testing]]
             [shipyard.assembly-fixture :as fixture]
             [shipyard.e2e.support :as s]
-            [shipyard.e2e.workspace-test :as workspace]
             [shipyard.loadout-fixture :as lf]
             [shipyard.loadout.db :as store])
   (:import [com.microsoft.playwright Page]))
@@ -25,14 +24,15 @@
       ;; Existing sparse records must load as well as new partial saves.
       (doseq [record [original hull-only]] (store/put! store record :create))
       (s/go! driver (s/base-url (:system started)))
-      (workspace/switch! driver "ships")
+      (s/ship-table! driver)
       (s/wait-visible! driver (card id))
       (is (= "1 empty mount" (s/text driver (str (card id) " .ship-card__empty-mounts"))))
       (is (= "8 empty mounts" (s/text driver (str (card (:loadout/id hull-only)) " .ship-card__empty-mounts"))))
-      (s/click! driver (card id))
+      (s/open-class! driver "Almost finished")
       (await-count! driver 12)
-      (is (= 12 (s/count-els driver "[data-ship-slot]")))
-      (is (nil? (get-in @state [:draft :hull])))
+      (is (= assignments (get-in @state [:draft :assignments])))
+      (is (= id (get-in @state [:draft :loadout-id])))
+      (s/ship-table! driver)
       (testing "duplicate preserves the partial configuration and writes only on Save"
         (let [bytes (store/snapshot! (:loadouts deps))]
           (s/click! driver (str (card id) " button:text-is('Duplicate')"))
@@ -48,7 +48,7 @@
           (is (not= id copy-id))
           (is (= original (get records id)))
           (is (= assignments (:loadout/slots (get records copy-id))))))
-      (workspace/switch! driver "ships")
+      (s/ship-table! driver)
       (s/wait-visible! driver (card id))
       (s/click! driver (str (card id) " button:text-is('Edit')"))
       (s/wait-visible! driver ".assembly__save")
@@ -60,7 +60,7 @@
         (await-count! driver 13)
         (s/click! driver ".assembly__save button")
         (is (s/wait-until #(= lf/assignments (get-in (store/snapshot! store) [:loadouts id :loadout/slots]))))
-        (workspace/switch! driver "ships")
+        (s/ship-table! driver)
         (s/wait-visible! driver (card id))
         (is (zero? (s/count-els driver (str (card id) " .ship-card__empty-mounts")))))
       (testing "clearing a parent counts its empty mount, not its removed descendants"
@@ -71,16 +71,17 @@
         (await-count! driver 11)
         (s/click! driver ".assembly__save button")
         (is (s/wait-until #(= 10 (count (get-in (store/snapshot! store) [:loadouts id :loadout/slots])))))
-        (workspace/switch! driver "ships")
+        (s/ship-table! driver)
         (s/wait-visible! driver (card id))
         (is (= "1 empty mount" (s/text driver (str (card id) " .ship-card__empty-mounts")))))
       (testing "a hull-only saved ship reloads with its plural tag and one viewport part"
-        (s/click! driver (card (:loadout/id hull-only)))
+        (s/open-class! driver "Hull only")
         (await-count! driver 1)
         (.reload ^Page (:page driver))
-        (s/wait-visible! driver (card (:loadout/id hull-only)))
+        (s/wait-visible! driver ".assembly__save")
         (await-count! driver 1)
-        (is (= 1 (s/count-els driver "[data-ship-slot]")))
+        (is (= (:loadout/id hull-only) (get-in @state [:draft :loadout-id])))
+        (s/ship-table! driver)
         (is (= "8 empty mounts" (s/text driver (str (card (:loadout/id hull-only)) " .ship-card__empty-mounts"))))
         (is (= 3 (count (:loadouts (persisted/records! store :loadouts))))))
       (finally (s/quit! driver) (fixture/stop! started)))))

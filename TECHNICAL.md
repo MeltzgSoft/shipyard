@@ -2228,7 +2228,9 @@ fleet layer, Primary, legacy role, then neutral. RGB is sRGB and is converted at
 three.js boundary. Mount colors change display only. Missing schemes keep their refs.
 
 Inputs preview viewport resources locally; change commits a complete material.
-Paint responses update status without overwriting newer input. Monotonic edit and
+Paint responses apply the acknowledged scene, then restore newer unsaved material
+input from the still-current form. Detached forms cannot repaint another selection.
+Monotonic edit and
 brush sequences, activation guards, source identity and transaction boundaries reject
 stale work. Scheme preview resolves only the fleet palette even when a named ship
 was selected. Late mesh completion reads current slot payload materials. There is no

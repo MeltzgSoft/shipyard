@@ -24,7 +24,6 @@
                      (when-not (.await admitted 10 TimeUnit/SECONDS)
                        (throw (ex-info "Both cold mesh requests must overlap" {}))))))
       (s/go! driver (s/base-url system))
-      (s/click! driver ".masthead__mode:text-is('Orient')")
       (s/wait-visible! driver "[data-bulk-select]")
       (doseq [id [a b]] (s/check! driver (str "[data-bulk-select][value='" id "']")))
       (s/click! driver "[data-bulk-render-button]")

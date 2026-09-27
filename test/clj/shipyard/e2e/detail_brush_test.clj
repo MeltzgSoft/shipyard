@@ -235,7 +235,7 @@
           (.up mouse)
           (is (= saved (schemes/snapshot! store)))
           (is (= (into {} (map (fn [[k v]] [(keyword k) v]) (get-in (masks) [[[:weapon 0]] :faces])))
-                 (update-vals (:details (materials/slot driver [["weapon" 0]])) #(-> % (update :base (partial mapv double)) (update :metalness double) (update :roughness double)))))
+                 (update-vals (:details (materials/slot driver [["weapon" 0]])) #(-> % (update :base (partial mapv double)) (update :metalness double) (update :roughness double) (update :glow double)))))
           (.unroute page "**/ships/paint/stroke")
           (s/click! driver "button:text-is('Retry last stroke')")
           (await-saved! driver))
