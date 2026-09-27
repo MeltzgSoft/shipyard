@@ -1,20 +1,12 @@
 (ns shipyard.loadout.transforms
   "Pure durable representation. Catalog compatibility belongs to operations."
-  (:require [clojure.string :as str]))
+  (:require [shipyard.loadout.identity :as identity]))
 
 (def empty-store {:version 1 :loadouts {}})
 
-(defn name? [value]
-  (and (string? value) (<= 1 (count value) 200) (not (str/blank? value))))
-
-(defn part-id? [value]
-  (and (string? value) (<= 1 (count value) 2048)))
-
-(defn slot-path? [path]
-  (and (vector? path) (<= 1 (count path) 16)
-       (every? #(and (vector? %) (= 2 (count %))
-                     (keyword? (first %)) (integer? (second %))
-                     (<= 0 (second %) 255)) path)))
+(def name? identity/name?)
+(def part-id? identity/part-id?)
+(def slot-path? identity/slot-path?)
 
 (defn loadout? [record]
   (and (map? record)

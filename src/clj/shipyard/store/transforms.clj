@@ -1,12 +1,13 @@
 (ns shipyard.store.transforms
   "Pure conversion between normalized storage entities and domain values."
   (:require [clojure.set :as set]
+            [shipyard.paint.job :as job]
             [shipyard.regions.model :as regions]
             [shipyard.regions.registry :as registry]))
 
 (def material-keys
   {:base :material/base :metalness :material/metalness
-   :roughness :material/roughness :paint :material/paint})
+   :roughness :material/roughness :glow :material/glow :paint :material/paint})
 
 (defn material-tx [material] (set/rename-keys material material-keys))
 (defn material [entity]
@@ -43,16 +44,18 @@
   {:version 1 :revision (or revision 0)
    :layers (into {} (keep (fn [layer]
                             (when-not (or (:layer/deleted? layer) (:layer/builtin? layer))
-                              [(:layer/id layer) {:name (:layer/name layer)
-                                                  :preview-name (:layer/preview-name layer)}]))) layers)
+                              [(:layer/id layer) (cond-> {:name (:layer/name layer)
+                                                          :preview-name (:layer/preview-name layer)}
+                                                   (:layer/preview-color layer) (assoc :preview-color (:layer/preview-color layer)))]))) layers)
    :deleted (into #{} (comp (filter :layer/deleted?) (map :layer/id)) layers)})
 
-(defn layer-tx [library id {:keys [name preview-name]}]
+(defn layer-tx [library id {:keys [name preview-name preview-color]}]
   (cond-> {:layer/key [library id] :layer/id id :layer/library [:library/id library]
            :layer/name name :layer/preview-name preview-name
            :layer/builtin? (boolean (some #{id} regions/builtins))
            :layer/deleted? false}
-    name (assoc :layer/active-name [library name])))
+    name (assoc :layer/active-name [library name])
+    preview-color (assoc :layer/preview-color preview-color)))
 
 (defn layers-tx [library shared]
   (mapv (fn [[id definition]] (layer-tx library id definition)) (registry/definitions shared)))
@@ -63,6 +66,9 @@
                 (dissoc :db/id :part/library :part/key :part/imported? :part/regions
                         :part/sources :migration/extra)
                 (assoc :part/mounts mounts))
+      (:part/name-override entity) (assoc :part/name (:part/name-override entity))
+      (:part/bundle-override entity) (assoc :part/bundle (:part/bundle-override entity))
+      (:part/class-override entity) (assoc :part/class (:part/class-override entity))
       (:part/role-override entity) (assoc :part/role-hint (:part/role-override entity)
                                           :part/role-source :manual)
       (:part/regions entity) (assoc :part/paint-regions (region (:part/regions entity) shared)))))
@@ -134,3 +140,26 @@
                                                             :membership/target (target-key (:path member) (:part-id member))})
                                                          (range) (:group/members group))}))
                           (:scheme/groups record))}))
+
+(def paint-attributes
+  {:scheme/roles :paint/roles :scheme/layers :paint/layers :scheme/targets :paint/targets
+   :scheme/groups :paint/groups :scheme/fields :paint/fields})
+
+(defn paint-tx [library parts ship-id value]
+  (-> (scheme-tx library parts (assoc (job/profile value) :scheme/id (str "ship:" ship-id)))
+      (dissoc :scheme/id :scheme/name :scheme/deleted?)
+      (update :scheme/groups #(mapv (fn [group] (set/rename-keys group {:group/id :paint/group-id})) %))
+      (set/rename-keys paint-attributes)))
+
+(defn paint-value [entity]
+  (-> entity
+      (set/rename-keys (set/map-invert paint-attributes))
+      (update :scheme/groups #(mapv (fn [group] (set/rename-keys group {:paint/group-id :group/id})) %))
+      (scheme-value)
+      (job/from-profile)))
+
+(defn ship-value [entity]
+  (cond-> {:ship/id (:ship/id entity) :ship/name (:ship/name entity)
+           :ship/class (get-in entity [:ship/class :loadout/id])
+           :ship/paint (paint-value (:ship/paint entity))}
+    (:ship/scheme entity) (assoc :ship/scheme (get-in entity [:ship/scheme :scheme/id]))))

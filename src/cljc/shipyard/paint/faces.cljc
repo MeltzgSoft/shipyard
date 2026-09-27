@@ -1,20 +1,23 @@
 (ns shipyard.paint.faces
   "Stable source-space triangle identity and sparse color masks.")
 
-(defn- float-hex [value]
-  (let [value (if (zero? value) 0.0 value)]
-    #?(:clj (let [hex (Integer/toHexString (Float/floatToIntBits (float value)))]
-              (str (subs "00000000" (count hex)) hex))
-       :cljs (let [buffer (js/ArrayBuffer. 4) view (js/DataView. buffer)]
-               (.setFloat32 view 0 value)
-               (.padStart (.toString (.getUint32 view 0) 16) 8 "0")))))
+#?(:clj
+   (defn- float-hex [value]
+     (let [value (if (zero? value) 0.0 value)
+           hex (Integer/toHexString (Float/floatToIntBits (float value)))]
+       (str (subs "00000000" (count hex)) hex))))
 
 (defn face-key
   "Canonical Float32 vertex rotation: stable indices, distinct opposite faces."
   [vertices]
   (let [[a b c] vertices
         ordered (first (sort [[a b c] [b c a] [c a b]]))]
-    (apply str (mapcat #(map float-hex %) ordered))))
+    #?(:clj (apply str (mapcat #(map float-hex %) ordered))
+       :cljs (let [buffer (js/Float32Array. 1) bits (js/Uint32Array. (.-buffer buffer))]
+               ;; One scratch buffer per triangle, not nine buffers and views.
+               (apply str (for [vertex ordered value vertex]
+                            (do (aset buffer 0 (if (zero? value) 0 value))
+                                (.padStart (.toString (aget bits 0) 16) 8 "0"))))))))
 
 (defn key? [value]
   (and (string? value) (boolean (re-matches #"[0-9a-f]{72}" value))))
@@ -25,15 +28,16 @@
 
 (defn paint? [value]
   (or (rgb? value)
-      (and (map? value) (= #{:base :metalness :roughness} (set (keys value)))
+      (and (map? value) (#{#{:base :metalness :roughness} #{:base :metalness :roughness :glow}} (set (keys value)))
            (rgb? (:base value))
+           (or (not (contains? value :glow)) (and (number? (:glow value)) (<= 0 (:glow value) 1)))
            (every? #(and (number? %) (<= 0 % 1)) [(:metalness value) (:roughness value)]))))
 
 (defn resolve-material
   "Legacy RGB details inherit finish; new material entries override all channels."
   [inherited detail]
   (cond (rgb? detail) (assoc inherited :base detail)
-        (map? detail) (merge inherited detail)
+        (map? detail) (merge (dissoc inherited :glow) detail)
         :else inherited))
 
 (defn layer? [value]

@@ -11,7 +11,7 @@
         deleted (:registry (registry/change renamed 2 "delete" id nil nil))]
     (is (registry/valid? added))
     (is (= ["Primary" "Secondary" id] (registry/ids added)))
-    (is (= {:name "Accent" :preview-name "Trim"} (get-in renamed [:layers id])))
+    (is (= (assoc (get-in added [:layers id]) :name "Accent") (get-in renamed [:layers id])))
     (is (= ["Primary" "Secondary"] (registry/ids deleted)))
     (is (= #{id} (:deleted deleted)))
     (is (registry/valid? deleted))

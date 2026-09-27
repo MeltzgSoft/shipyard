@@ -9,7 +9,7 @@
 
 (defn post! [handler request activation poses]
   (handler (-> (mock/request :post "/orient/save" {"request" (str request) "orientations" (pr-str poses)})
-               (mock/header "x-shipyard-workspace" "orient")
+               (mock/header "x-shipyard-workspace" "browse")
                (mock/header "x-shipyard-activation" (str activation)))))
 
 (deftest ordered-and-partial-saves-use-real-persistence

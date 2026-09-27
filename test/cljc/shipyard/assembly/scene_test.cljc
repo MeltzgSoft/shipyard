@@ -61,3 +61,24 @@
     (is (scene/current? updated (:slot set-a) token))
     (is (= details (get-in updated [:slots (:slot set-a) :payload :details])))
     (is (not (scene/current? (scene/leave updated) (:slot set-a) token)))))
+
+(deftest appearance-patches-retain-source-masks-and-tokens
+  (let [regions {:mesh-key "key" :faces {"face" "Secondary"}}
+        initial (scene/accept-event scene/empty-state
+                                    (assoc (event 1 [{:op :reset} (assoc set-a :region-ref "weapon")])
+                                           :region-data {"weapon" regions}))
+        updated (scene/accept-event initial (event 2 [{:op :paint :slot (:slot set-a) :changes {:material {:base [1 0 0]}}}]))]
+    (is (= regions (get-in updated [:slots (:slot set-a) :payload :regions])))
+    (is (= (get-in initial [:slots (:slot set-a) :token]) (get-in updated [:slots (:slot set-a) :token])))
+    (is (= {:base [1 0 0]} (get-in updated [:slots (:slot set-a) :payload :material])))
+    (is (nil? (get-in (scene/accept-event updated (event 3 [{:op :paint :slot (:slot set-a) :changes {:regions nil}}]))
+                      [:slots (:slot set-a) :payload :regions])))))
+
+(deftest sparse-details-merge-and-remove-without-reloading-geometry
+  (let [details {:part-id "example" :mesh-key "hash" :faces {"a" [1 0 0] "b" [0 1 0]}}
+        initial (scene/accept-event scene/empty-state (event 1 [{:op :reset} (assoc set-a :details details)]))
+        patch {:part-id "example" :mesh-key "hash" :patch {:set {"c" [0 0 1]} :remove ["a"]}}
+        updated (scene/accept-event initial (event 2 [{:op :paint :slot (:slot set-a) :changes {:detail-delta patch}}]))]
+    (is (= {"b" [0 1 0] "c" [0 0 1]} (get-in updated [:slots (:slot set-a) :payload :details :faces])))
+    (is (= (get-in initial [:slots (:slot set-a) :token]) (get-in updated [:slots (:slot set-a) :token])))
+    (is (= updated (scene/accept-event updated (event 2 [{:op :reset}]))))))

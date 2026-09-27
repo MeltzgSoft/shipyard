@@ -15,8 +15,8 @@
       (db/put! store record :create)
       (let [before (db/snapshot! store)]
         (s/go! driver (s/base-url (:system started)))
-        (s/wait-visible! driver "#library-results .part")
-        (s/click! driver ".masthead__mode:has-text('Assemble')")
+        (s/wait-visible! driver "#bulk-orient-results .bulk-orient__row")
+        (s/open-assembly! driver)
         (s/wait-visible! driver ".assembly__hull")
         (s/select-option! driver ".assembly__hull select[name=part-id]" "hull")
         (s/click! driver ".assembly__hull button")

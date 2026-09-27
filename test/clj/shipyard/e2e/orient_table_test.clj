@@ -16,7 +16,7 @@
         cat (:shipyard.catalog/db (:system started))]
     (try
       (s/go! driver (s/base-url (:system started)))
-      (s/click! driver ".masthead [data-workspace-mode='orient']")
+      (s/click! driver ".masthead [data-workspace-mode='browse']")
       (s/wait-visible! driver "[data-bulk-select]")
       (filter! driver "Orientation unset")
       (doseq [id [a b]] (s/check! driver (str "[data-bulk-select][value='" id "']")))

@@ -3,6 +3,7 @@
             [shipyard.catalog.db :as catalog]
             [shipyard.library.index :as index]
             [shipyard.paint.strokes :as strokes]
+            [shipyard.paint.delta :as delta]
             [shipyard.regions.model :as model]
             [shipyard.regions.migration :as migration]
             [shipyard.regions.views :as views]
@@ -47,7 +48,11 @@
     (when filled? (workspace/update-workspace! workspace :browse assoc :colors false))
     (htmx/fragment
      (list (views/panel part-id mesh-key saved (or (:selected result) layer) (:error result)
-                        (catalog/region-registry! catalog) {:mode (or mode "facets") :angle (if angle (parse-long angle) 1)})
+                        (catalog/region-registry! catalog) (cond-> {:mode (or mode "facets") :angle (if angle (parse-long angle) 1)}
+                                                             (and (not (:error result)) (= (parse-long revision) (or (:revision before) 0)))
+                                                             (assoc :face-delta {:from (or (:revision before) 0)
+                                                                                 :mesh-key (:mesh-key saved)
+                                                                                 :patch (delta/between (:faces before) (:faces saved))})))
            (when filled?
              (list (workspace-views/colors-toggle false :browse)
                    (workspace-views/context (workspace/active-context! workspace) false))))
@@ -57,3 +62,13 @@
   (let [body (get-in request [:parameters :body])]
     (save! deps (assoc request :params (:metadata body)
                        :region-selection (select-keys body [:triangle-count :indices])))))
+
+(defn snapshot! [{:keys [catalog library workspace]} {:keys [parameters]}]
+  (let [id (get-in parameters [:query :part-id])
+        {:keys [part registry]} (catalog/part-context! catalog id)]
+    (if (and part (= id (:selection (workspace/workspace! workspace :browse))))
+      (htmx/fragment (views/panel id (index/mesh-key! library id) (:part/paint-regions part)
+                                  (get-in parameters [:query :layer]) nil registry
+                                  {:mode (or (get-in parameters [:query :mode]) "facets")
+                                   :angle (or (get-in parameters [:query :angle]) 1)}))
+      (htmx/fragment [:p.detail__error "Reopen this part to restore its regions."] {:status 409}))))

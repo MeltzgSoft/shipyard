@@ -10,14 +10,15 @@
             [shipyard.e2e.paint-editor-test :as editor]
             [shipyard.e2e.paint-material-test :as materials]
             [shipyard.loadout-fixture :as lf]
-            [shipyard.scheme.db :as schemes]
+            [shipyard.ship.db :as schemes]
             [shipyard.workspace.db :as workspace-db])
   (:import [com.microsoft.playwright Page Mouse$MoveOptions Mouse$DownOptions Mouse$UpOptions Dialog Route]
            [java.util.function Consumer]
            [com.microsoft.playwright.options MouseButton]))
 
 (defn await-saved! [driver]
-  (when-not (s/wait-until #(= "Details saved." (s/text driver "#brush-status")))
+  (when-not (s/wait-until #(and (= "Details saved." (s/text driver "#brush-status"))
+                                (false? (s/js driver "() => document.querySelector('#paint-brush input[name=radius]').disabled"))))
     (throw (ex-info "Stroke was not confirmed" {:status (s/text driver "#brush-status")}))))
 
 (defn stroke! [driver x y]
@@ -47,23 +48,23 @@
 (deftest visible-strokes-save-undo-erase-and-retry
   (s/assert-bundle!)
   (let [started (fixture/start! true) sys (:system started) driver (s/make-driver)
-        store (:shipyard.scheme/db sys)]
+        store (:shipyard.ship/db sys)]
     (try
       (swap! (:state (:shipyard.assembly/db sys)) assoc :draft lf/draft :root (str (:root started)))
+      (lf/save-class! sys)
       (s/go! driver (s/base-url sys))
       (workspace/switch! driver "assembly") (workspace/await-ship! driver)
-      (s/click! driver "button:text-is('Paint assembly')")
-      (s/click! driver ".paint-scheme-actions summary:text-is('New')")
+      (s/click! driver "button:text-is('Create named ship')")
       (s/wait-visible! driver "#paint-create")
-      (s/fill-and-blur! driver "#paint-create input" "Detail proof")
+      (s/fill-and-blur! driver "#paint-create input[name=name]" "Detail proof")
       (s/click! driver "#paint-create button")
       (s/click! driver ".paint-tools button:text-is('Brush')")
       (s/wait-visible! driver "#paint-brush")
       (workspace/await-ship! driver)
       (.uncheck ^Page (:page driver) "#paint-brush input[name=cross-instances]")
-      (let [id (get-in @(:state (:shipyard.paint/db sys)) [:draft :scheme])
+      (let [id (get-in @(:state (:shipyard.paint/db sys)) [:draft :ship-id])
             center (face-point driver [] 0)
-            masks #(get-in (schemes/snapshot! store) [:schemes id :scheme/details])
+            masks #(get-in (schemes/snapshot! store) [:ships id :ship/paint :paint/details])
             paint! #(apply stroke! driver center)]
         (paint!)
         (when-not (s/wait-until #(= "Details saved." (s/text driver "#brush-status")))
@@ -72,7 +73,7 @@
         (let [painted (get-in (masks) [[] :faces])]
           (is (<= 1 (count painted) 6) "Only front-facing visible faces of the 12-triangle cube")
           (is (= #{[]} (set (keys (masks)))) "Repeated and nested instances stay untouched")
-          (is (= painted (get-in (persisted/records! store :schemes) [:schemes id :scheme/details [] :faces])))
+          (is (= painted (get-in (persisted/records! store :ships) [:ships id :ship/paint :paint/details [] :faces])))
           (is (true? (:vertex-colors (materials/slot driver []))))
           (s/click! driver "[data-mount-colors-toggle]")
           (is (s/wait-until #(false? (:vertex-colors (materials/slot driver [])))))
@@ -106,18 +107,18 @@
             (is (s/wait-until #(and (empty? (:details (materials/slot driver [])))
                                     (false? (s/js driver "() => document.querySelector('#paint-brush').elements.radius.disabled")))))
             (let [before (schemes/snapshot! store)
-                  revision (persisted/scheme-revision! store id Long/MAX_VALUE)]
+                  revision (persisted/ship-revision! store id Long/MAX_VALUE)]
               (try
                 (paint!)
                 (s/wait-visible! driver "#brush-status [role=alert]")
                 (is (= before (schemes/snapshot! store)))
-                (is (= before (persisted/records! store :schemes)))
-                (finally (persisted/scheme-revision! store id revision)))
+                (is (= before (persisted/records! store :ships)))
+                (finally (persisted/ship-revision! store id revision)))
               (s/click! driver "button:text-is('Retry last stroke')")
               (is (s/wait-until #(= painted (get-in (masks) [[] :faces]))))
               (await-saved! driver)))
-          (workspace/switch! driver "assembly")
-          (workspace/switch! driver "paint") (workspace/await-ship! driver)
+          (workspace/switch! driver "browse")
+          (workspace/switch! driver "ships") (workspace/await-ship! driver)
           (is (= (count painted) (count (:details (materials/slot driver [])))))
           (testing "Two separated areas retain distinct colors on one instance"
             (.uncheck ^Page (:page driver) "#paint-brush input[name=cross-instances]")
@@ -125,8 +126,13 @@
             (apply stroke! driver (face-point driver [] 0))
             (await-saved! driver)
             (editor/input! driver "#paint-brush input[name=brush-color]" "#00ff00" "input")
-            (apply stroke! driver (face-point driver [] 3))
-            (is (s/wait-until #(= #{[1.0 0.0 0.0] [0.0 1.0 0.0]} (set (map :base (vals (get-in (masks) [[] :faces]))))))))
+            (let [[x y] (face-point driver [] 3)]
+              (is (= "CANVAS" (s/js driver (str "() => document.elementFromPoint(" x "," y ")?.tagName")))
+                  "Returning to Ship Browser keeps the paint surface clear of the inspector")
+              (stroke! driver x y))
+            (await-saved! driver)
+            (is (s/wait-until #(= #{[1.0 0.0 0.0] [0.0 1.0 0.0]} (set (map :base (vals (get-in (masks) [[] :faces]))))))
+                (pr-str {:status (s/text driver "#brush-status") :faces (get-in (masks) [[] :faces])})))
           (testing "Repeated and nested copies have independent masks"
             (doseq [[label path slot] [["weapon · [[:weapon 0]]" "[[:weapon 0]]" [["weapon" 0]]]
                                        ["turret · [[:weapon 0] [:turret 0]]" "[[:weapon 0] [:turret 0]]" [["weapon" 0] ["turret" 0]]]]]
@@ -172,22 +178,22 @@
 (deftest cross-instance-drag-flushes-and-rolls-back-failed-parts
   (s/assert-bundle!)
   (let [started (fixture/start! true) sys (:system started) driver (s/make-driver)
-        store (:shipyard.scheme/db sys) ^Page page (:page driver) mouse (.mouse page)
-        state #(workspace-db/workspace! (:shipyard.workspace/db sys) :paint)]
+        store (:shipyard.ship/db sys) ^Page page (:page driver) mouse (.mouse page)
+        state #(workspace-db/workspace! (:shipyard.workspace/db sys) :ships)]
     (try
       (swap! (:state (:shipyard.assembly/db sys)) assoc :draft lf/draft :root (str (:root started)))
+      (lf/save-class! sys)
       (s/go! driver (s/base-url sys))
       (workspace/switch! driver "assembly") (workspace/await-ship! driver)
-      (s/click! driver "button:text-is('Paint assembly')")
-      (s/click! driver ".paint-scheme-actions summary:text-is('New')")
-      (s/fill-and-blur! driver "#paint-create input" "Cross instance")
+      (s/click! driver "button:text-is('Create named ship')")
+      (s/fill-and-blur! driver "#paint-create input[name=name]" "Cross instance")
       (s/click! driver "#paint-create button")
       (s/click! driver ".paint-tools button:text-is('Brush')")
       (s/wait-visible! driver "#paint-brush") (workspace/await-ship! driver)
       (is (true? (s/js driver "() => document.querySelector('#paint-brush').elements['cross-instances'].checked")))
       (editor/input! driver "#paint-brush input[name=radius]" "2" "input")
-      (let [id (get-in @(:state (:shipyard.paint/db sys)) [:draft :scheme])
-            masks #(get-in (schemes/snapshot! store) [:schemes id :scheme/details])
+      (let [id (get-in @(:state (:shipyard.paint/db sys)) [:draft :ship-id])
+            masks #(get-in (schemes/snapshot! store) [:ships id :ship/paint :paint/details])
             [ax ay] (face-point driver [["weapon" 0]] 2)
             [bx by] (face-point driver [["weapon" 1]] 2)
             before (schemes/snapshot! store)]
@@ -216,7 +222,7 @@
           (is (s/wait-until #(and (seq (:details (materials/slot driver [["weapon" 0]])))
                                   (false? (s/js driver "() => document.querySelector('#paint-brush').elements.radius.disabled"))))))
         (let [saved (schemes/snapshot! store) parts (atom 0)]
-          (.route page "**/paint/stroke"
+          (.route page "**/ships/paint/stroke"
                   (reify Consumer
                     (accept [_ value]
                       (let [^Route route value]
@@ -230,12 +236,12 @@
           (is (= saved (schemes/snapshot! store)))
           (is (= (into {} (map (fn [[k v]] [(keyword k) v]) (get-in (masks) [[[:weapon 0]] :faces])))
                  (update-vals (:details (materials/slot driver [["weapon" 0]])) #(-> % (update :base (partial mapv double)) (update :metalness double) (update :roughness double)))))
-          (.unroute page "**/paint/stroke")
+          (.unroute page "**/ships/paint/stroke")
           (s/click! driver "button:text-is('Retry last stroke')")
           (await-saved! driver))
         (is (some #{[0.0 0.0 1.0]} (map :base (vals (get-in (masks) [[[:weapon 0]] :faces])))))
         (is (= 2 (count (get-in (state) [:brush-history :undo]))))
-        (is (false? (s/js driver "() => document.querySelector('[data-workspace-mode=assembly]').disabled"))))
+        (is (false? (s/js driver "() => document.querySelector('[data-workspace-mode=ships]').disabled"))))
       (finally (s/quit! driver) (fixture/stop! started)))))
 
 (deftest large-visible-stroke-exceeds-the-former-face-cap
@@ -246,30 +252,30 @@
                         (with-open [out (io/output-stream (fs/file root (:hull fixture/ids) "unsupported.stl"))]
                           (.write out ^bytes (fixtures/->binary-stl (fixtures/uv-sphere 6.0 192 256))))
                         root))
-        sys (:system started) driver (s/make-driver) store (:shipyard.scheme/db sys)]
+        sys (:system started) driver (s/make-driver) store (:shipyard.ship/db sys)]
     (try
       (swap! (:state (:shipyard.assembly/db sys)) assoc :draft {:revision 1 :hull (:hull fixture/ids) :assignments {}}
              :root (str (:root started)))
+      (lf/save-class! sys)
       (s/go! driver (s/base-url sys))
       (workspace/switch! driver "assembly")
       (is (s/wait-until #(= 1 (count (get-in (s/stats driver) [:assembly :slots])))))
-      (s/click! driver "button:text-is('Paint assembly')")
-      (s/click! driver ".paint-scheme-actions summary:text-is('New')")
-      (s/fill-and-blur! driver "#paint-create input" "Large stroke")
+      (s/click! driver "button:text-is('Create named ship')")
+      (s/fill-and-blur! driver "#paint-create input[name=name]" "Large stroke")
       (s/click! driver "#paint-create button")
       (s/click! driver ".paint-tools button:text-is('Brush')")
       (s/wait-visible! driver "#paint-brush")
       (is (s/wait-until #(= 1 (count (get-in (s/stats driver) [:assembly :slots])))))
       (editor/input! driver "#paint-brush input[name=radius]" "100" "input")
-      (let [id (get-in @(:state (:shipyard.paint/db sys)) [:draft :scheme])
+      (let [id (get-in @(:state (:shipyard.paint/db sys)) [:draft :ship-id])
             center (s/js driver "() => {const c=document.querySelector('canvas').getBoundingClientRect(),i=document.querySelector('.paint-editor').getBoundingClientRect();return [c.x+(c.width-i.width-28)/2,c.y+c.height/2];}")
             began (System/nanoTime) geometries (:geometries (s/stats driver))]
         (apply stroke! driver center)
         (when-not (s/wait-until #(= "Details saved." (s/text driver "#brush-status")))
           (throw (ex-info "Large stroke failed" {:status (s/text driver "#brush-status")})))
-        (let [layer (get-in (schemes/snapshot! store) [:schemes id :scheme/details []])]
+        (let [layer (get-in (schemes/snapshot! store) [:ships id :ship/paint :paint/details []])]
           (is (> (count (:faces layer)) 1024))
-          (is (= layer (get-in (persisted/records! store :schemes) [:schemes id :scheme/details []])))
+          (is (= layer (get-in (persisted/records! store :ships) [:ships id :ship/paint :paint/details []])))
           (is (<= (:geometries (s/stats driver)) (inc geometries)))
           (spit "/tmp/shipyard-large-stroke.edn"
                 (pr-str {:triangles (* 2 256 191) :painted-faces (count (:faces layer))

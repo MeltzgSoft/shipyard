@@ -4,6 +4,7 @@
             [shipyard.assembly.scene :as scene]
             [shipyard.catalog.db :as catalog]
             [shipyard.geom :as geom]
+            [shipyard.paint.delta :as delta]
             [shipyard.http.urls :as urls]))
 
 (def empty-draft {:revision 0 :hull nil :assignments {}})
@@ -77,23 +78,56 @@
                 {[] {:part-id (:hull draft) :matrix (geom/orientation-matrix (:part/orientation root))}}
                 slots)))))
 
+(def appearance-keys [:material :details :regions :layers])
+
 (defn commands
-  "Render-ready sets and explicit removals. Repeated unchanged sets may be retained by the viewport."
+  "Send geometry only when changed, and appearance patches without unchanged masks."
   [before after mesh-keys reset?]
   (vec
    (concat
     (when reset? [{:op :reset}])
     (when-not reset?
       (for [slot (sort-by pr-str (keys before))
-            :when (not= (dissoc (get before slot) :material :details :regions :layers) (dissoc (get after slot) :material :details :regions :layers))]
+            :when (not= (apply dissoc (get before slot) appearance-keys)
+                        (apply dissoc (get after slot) appearance-keys))]
         {:op :remove :slot slot}))
-    (for [[slot {:keys [part-id matrix mount-position material role details regions layers]}] (sort-by (comp pr-str key) after)
-          :let [mesh-key (get mesh-keys part-id)]
-          :when mesh-key]
-      {:op :set :slot slot :part-id part-id :matrix matrix
-       :mesh-key mesh-key :url (urls/mesh-url mesh-key 0)
-       :color (:hex (scene/color-for-slot slot))
-       :mount-position mount-position :material material :role role :details details :regions regions :layers layers}))))
+    (keep (fn [[slot {:keys [part-id matrix mount-position material role details regions layers] :as placement}]]
+            (when-let [mesh-key (get mesh-keys part-id)]
+              (let [previous (get before slot)
+                    same-geometry? (and (not reset?) (= mesh-key (:mesh-key previous))
+                                        (= (apply dissoc previous appearance-keys)
+                                           (apply dissoc placement appearance-keys)))
+                    changes (into {} (keep (fn [k] (when (not= (get previous k) (get placement k)) [k (get placement k)]))) appearance-keys)
+                    changes (if (and same-geometry? details (contains? changes :details)
+                                     (or (nil? (:details previous))
+                                         (= (select-keys details [:part-id :mesh-key])
+                                            (select-keys (:details previous) [:part-id :mesh-key]))))
+                              (-> changes (dissoc :details)
+                                  (assoc :detail-delta (assoc (select-keys details [:part-id :mesh-key])
+                                                              :patch (delta/between (get-in previous [:details :faces]) (:faces details)))))
+                              changes)]
+                (if same-geometry?
+                  ;; Reassert compact values: the browser may have an unsaved local preview.
+                  {:op :paint :slot slot :changes (merge {:material material :layers layers} changes)}
+                  {:op :set :slot slot :part-id part-id :matrix matrix
+                   :mesh-key mesh-key :url (urls/mesh-url mesh-key 0)
+                   :color (:hex (scene/color-for-slot slot))
+                   :mount-position mount-position :material material :role role :details details :regions regions :layers layers}))))
+          (sort-by (comp pr-str key) after)))))
+
+(defn pack-regions
+  "A source region mask is shared by all its mounted instances in one envelope."
+  [event placements]
+  (reduce (fn [event [i command]]
+            (let [path (if (= :paint (:op command)) [:changes :regions] [:regions])
+                  regions (get-in command path)
+                  part-id (get-in placements [(:slot command) :part-id])]
+              (if (and part-id (seq (:faces regions)))
+                (let [parent (into [:commands i] (butlast path))]
+                  (-> event
+                      (assoc-in [:region-data part-id] regions)
+                      (update-in parent #(-> % (dissoc :regions) (assoc :region-ref part-id)))))
+                event))) event (map-indexed vector (:commands event))))
 
 (defn mount-markers
   "World-space marker positions for every reachable mount, including empty slots."

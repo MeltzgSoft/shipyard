@@ -874,24 +874,12 @@ body {
 .assembly__save button { justify-self: start; }
 
 /* Workspace views share the canvas, while their models and controls are independent. */
-.ship-cards { display: grid; gap: 10px; padding: 12px; }
 .ship-card { position: relative; border: 1px solid var(--line); border-radius: 6px; padding: 12px; background: var(--panel-2); }
 .ship-card h3 { margin: 0 0 6px; }
 .ship-card p { color: var(--ink-dim); font-size: 12px; }
 .ship-card__empty-mounts { display: inline-block; padding: 2px 6px; border: 1px solid var(--warn); border-radius: 4px; color: var(--warn); }
-.ship-card__select { margin: 0; }
-.ship-card__load { border: 0; padding: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-.ship-card__load::after { content: ""; position: absolute; inset: 0; border-radius: 6px; }
-.ship-card__load:hover::after { box-shadow: inset 0 0 0 1px var(--accent); }
-.ship-card__load:focus-visible { outline: none; }
-.ship-card__load:focus-visible::after { outline: 2px solid var(--accent); outline-offset: 2px; }
 .ship-card__action { position: relative; z-index: 1; display: inline-block; margin-right: 6px; }
 .ship-inspector { padding: 12px; }
-.ship-tree { list-style: none; padding: 0; }
-.ship-tree li { display: flex; align-items: center; gap: 6px; margin: 7px 0; flex-wrap: wrap; }
-.ship-tree small { color: var(--ink-dim); font-size: 10px; }
-.ship-tree__color { width: 9px; height: 9px; border-radius: 2px; background: var(--slot-color); }
-body:has(#workspace-context[data-mount-colors="false"]) .ship-tree__color { background: var(--paint-color, #9aa4af); }
 
 .bulk-grid__card [data-bulk-retry] { position: absolute; top: 44px; left: 7px; }
 .bulk-grid__card[data-mesh-state="failed"] .bulk-grid__card-state { color: var(--warn); right: 7px; }
@@ -899,13 +887,44 @@ body:has(#workspace-context[data-mount-colors="false"]) .ship-tree__color { back
 
 .assembly-discard { padding: 12px; }
 .assembly-discard form { display: inline-block; margin-right: 8px; }
-/* Paint owns its rail and floating inspector; other workspaces keep their layout. */
-.layout:has(.paint-editor) { grid-template-columns: 300px minmax(0, 1fr); }
-.stage:has(.paint-editor) { --paint-inspector-width: clamp(280px, 46%, 376px); }
-.stage:has(.paint-editor) .stage__detail { inset: 0; width: 100%; height: 100%; max-height: none; border: 0; border-radius: 0; background: none; box-shadow: none; overflow: visible; pointer-events: none; }
-.stage:has(.paint-editor) .stage__mount-colors-toggle { top: 52px; left: 14px; right: auto; }
-.stage:has(.paint-editor) .stage__axis-legend { bottom: 52px; }
-.paint-editor { position: absolute; inset: 14px 14px 14px auto; width: var(--paint-inspector-width); display: flex; flex-direction: column; min-height: 0; border: 1px solid #3a434f; border-radius: 8px; background: rgba(28,33,40,.95); box-shadow: 0 18px 48px #05070ab3; overflow: hidden; pointer-events: auto; font-size: 12px; }
+/* Ship Browser keeps one floating inspector for class, palette, and custom paint. */
+.stage:has(.ship-inspector) .stage__detail { width: clamp(300px, 40%, 390px); max-height: calc(100% - 28px); top: 14px; right: 14px; overflow-y: auto; }
+.ship-inspector { padding: 12px; }
+.ship-inspector > nav { position: sticky; top: -12px; z-index: 2; background: var(--panel); margin-bottom: 12px; }
+.ship-inspector > nav button { flex: 1; padding: 9px; text-align: center; color: var(--ink-dim); text-decoration: none; }
+.ship-inspector > nav button[aria-current=page] { color: var(--ink); background: var(--line); border-radius: 4px; }
+.ship-card__ships { position: relative; z-index: 1; margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; }
+.ship-card__ships summary { cursor: pointer; color: var(--ink-dim); }
+.ship-card__named { margin-top: 6px; }
+.ship-card__named button { width: 100%; text-align: left; padding: 8px; }
+.ship-card__named button[aria-pressed=true] { border-color: var(--accent); color: var(--accent); }
+.paint-editor { display: flex; flex-direction: column; font-size: 12px; }
+.scheme-editor form, #paint-create, #paint-rename { display: grid; gap: 8px; margin: 12px 0; }
+.scheme-editor label { display: grid; gap: 5px; }
+.scheme-editor input, .scheme-editor select { max-width: 100%; min-width: 0; }
+.scheme-layers { min-width: 0; margin: 0; padding: 0; border: 0; }
+.scheme-layers legend { margin-bottom: 8px; }
+.scheme-layers ul { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; }
+.scheme-editor .scheme-layer { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; }
+.scheme-editor .scheme-layer[aria-pressed="true"] { border-color: var(--accent); }
+.scheme-layer__swatch { flex: 0 0 28px; height: 28px; border: 1px solid var(--line); border-radius: 4px; }
+.scheme-layer__name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.scheme-layer__current { color: var(--accent); font-size: 0.75rem; }
+#scheme-material-label { margin: 0; font-size: 1rem; }
+.color-picker { display: grid; gap: 10px; }
+.color-spectrum { position: relative; height: 160px; touch-action: none; cursor: crosshair; border-radius: 5px;
+  background: linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, transparent), var(--spectrum-hue); }
+.color-spectrum:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.color-spectrum__cursor { position: absolute; width: 12px; height: 12px; border: 2px solid white; border-radius: 50%;
+  box-shadow: 0 0 0 1px #000; transform: translate(-50%, -50%); pointer-events: none; }
+.scheme-editor .color-hue { width: 100%; appearance: none; height: 14px; border-radius: 7px;
+  background: linear-gradient(to right, red, #ff0, #0f0, #0ff, blue, #f0f, red); }
+.color-presets { display: grid; grid-template-columns: repeat(auto-fill, minmax(38px, 1fr)); gap: 8px; }
+.color-preset { position: relative; }
+.scheme-editor .color-preset__color { width: 100%; height: 36px; border: 1px solid var(--line); border-radius: 4px; }
+.scheme-editor .color-preset form { margin: 0; }
+.scheme-editor .color-preset__remove { position: absolute; right: -4px; top: -5px; border-radius: 50%; padding: 0; width: 17px; height: 17px; line-height: 14px; }
+#scheme-presets h3 { font-size: 0.9rem; }
 .paint-inspector-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px; border-bottom: 1px solid var(--line); }
 .paint-inspector-header h2 { margin: 0; font-size: 15px; font-weight: 600; }
 .paint-inspector-header p { margin: 3px 0 0; font: 11px/1.5 ui-monospace, monospace; color: var(--ink-dim); overflow-wrap: anywhere; }
@@ -923,7 +942,7 @@ body:has(#workspace-context[data-mount-colors="false"]) .ship-tree__color { back
 .paint-scheme-actions details { flex: 1; }
 .paint-scheme-actions summary { padding: 4px 12px; border: 1px solid var(--line); border-radius: 5px; text-align: center; }
 .paint-scheme-actions form, .paint-group-controls form { display: grid; gap: 8px; margin-top: 8px; }
-.paint-targets { flex: 1; min-height: 0; overflow: auto; }
+.paint-targets { flex: 1; min-height: 0; max-height: 260px; overflow: auto; }
 #paint-target h3 { padding: 9px 12px; background: var(--bg); border-block: 1px solid var(--line); }
 .paint-target-row { display: flex; align-items: center; gap: 6px; border-left: 2px solid transparent; border-bottom: 1px solid var(--line); padding-left: 8px; }
 .paint-target-row.is-selected { background: var(--panel-2); border-left-color: var(--accent); }
@@ -948,12 +967,12 @@ body:has(#workspace-context[data-mount-colors="false"]) .ship-tree__color { back
 .paint-actions { display: flex; gap: 7px; flex-wrap: wrap; align-items: center; padding: 12px 14px; border-top: 1px solid var(--line); }
 .paint-actions .paint-primary { background: var(--accent); color: var(--bg); font-weight: 600; }
 .paint-actions p { flex: 1 0 100%; margin: 0; color: var(--ink-dim); }
-.paint-tools, .paint-legend { position: absolute; left: 14px; right: calc(var(--paint-inspector-width) + 28px); display: flex; flex-wrap: wrap; align-items: center; gap: 8px; pointer-events: auto; font-size: 11px; }
+.paint-tools, .paint-legend { position: static; margin-top: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; pointer-events: auto; font-size: 11px; }
 .paint-tools { top: 14px; }
 .paint-legend { bottom: 14px; color: var(--ink-dim); }
 .paint-tools > span, .paint-legend { padding: 5px 9px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); }
 .paint-tool-active { color: var(--bg); background: var(--accent) !important; }
-@media (max-width: 760px) { .layout:has(.paint-editor) { grid-template-columns: 210px minmax(0, 1fr); } .stage:has(.paint-editor) { --paint-inspector-width: 280px; } }
+@media (max-width: 760px) { .stage:has(.ship-inspector) .stage__detail { width: 280px; } }
 
 #paint-header { display: none; }
 body:has(.paint-editor) #paint-header { display: flex; gap: 14px; align-items: center; min-width: 0; font-size: 11px; color: var(--ink-dim); }
@@ -1027,3 +1046,75 @@ body:has(#workspace-context[data-workspace="browse"]) .stage__mount-colors-toggl
   left: 14px;
   right: auto;
 }
+.ship-card__action button, .ship-card__named button, .scheme-editor button {
+  color: var(--ink); background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: 5px; padding: 6px 9px; font: inherit; cursor: pointer;
+}
+.ship-card__named button:hover, .ship-card__action button:hover { border-color: var(--accent); }
+.ship-card__named button[aria-pressed=true] { background: var(--line); color: var(--accent); }
+
+/* The Part Browser owns the table, orientation grid and individual editor. */
+body:has(#workspace-context[data-workspace="browse"]) .layout:has(#library[data-part-view="part"]) { grid-template-columns: 1fr; }
+body:has(#workspace-context[data-workspace="browse"]) #library[data-part-view="part"] { display: none; }
+.bulk-orient__table { min-width: 1150px; }
+.bulk-orient__columns, .bulk-orient__row {
+  grid-template-columns: 28px 96px minmax(150px, 2fr) minmax(100px, 1fr) 75px minmax(75px, 1fr) minmax(170px, 1.5fr) 56px 44px 44px 44px 72px;
+}
+.bulk-orient__row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.bulk-orient__row:has(input:checked) { background: color-mix(in srgb, var(--accent) 12%, var(--panel)); }
+.bulk-orient__bundle { color: var(--ink-dim); overflow-wrap: anywhere; }
+.part-thumbnail { display: flex; width: 96px; height: 66px; align-items: center; justify-content: center; font-size: 10px; color: var(--ink-faint); background: #14171c; border-radius: 4px; overflow: hidden; }
+.part-thumbnail img { width: 96px; height: 66px; object-fit: contain; }
+.part-bulk-edit { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; padding: 8px 12px; }
+.part-bulk-edit label { display: grid; gap: 4px; font-size: 11px; }
+.part-bulk-edit input, .part-bulk-edit select, .part-bulk-edit button { background: var(--panel-2); color: var(--ink); border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; }
+.part-bulk-edit__name, .part-bulk-edit__find { display: none !important; }
+.part-bulk-edit:has(select[name="field"] option[value="name"]:checked) .part-bulk-edit__name { display: grid !important; }
+.part-bulk-edit:has(select[name="field"] option[value="name"]:checked):has(select[name="operation"] option[value="replace"]:checked) .part-bulk-edit__find { display: grid !important; }
+#part-edit-status { margin: 0; padding: 0 12px 8px; font-size: 12px; }
+[data-part-back] { margin-bottom: 12px; border: 1px solid var(--line); border-radius: 4px; padding: 6px 9px; background: var(--panel-2); color: var(--ink); cursor: pointer; }
+#bulk-orient-filters { display: grid; grid-template-columns: repeat(5, minmax(100px, 1fr)); gap: 8px; padding: 12px; }
+#bulk-orient-filters .filters__field { margin: 0; }
+@media (max-width: 800px) {
+  #bulk-orient-filters { grid-template-columns: repeat(2, minmax(100px, 1fr)); }
+}
+
+/* Ships use a full-width table and one Assembly / Schemes / Paint editor. */
+body:has(#workspace-context[data-workspace="ships"]) .layout { grid-template-columns: 1fr; }
+body:has(#workspace-context[data-workspace="ships"]) #library[data-ship-view="editor"] { display: none; }
+.layout:has(#library[data-ship-view="table"]) > #library { grid-column: 1; grid-row: 1; z-index: 4; }
+.layout:has(#library[data-ship-view="table"]) > .stage { grid-column: 1; grid-row: 1; visibility: hidden; }
+#library.ship-table { display: flex; flex-direction: column; min-height: 0; }
+#ship-filters { display: grid; grid-template-columns: repeat(3, minmax(100px, 1fr)); gap: 12px; padding: 12px; }
+#ship-filters label { display: grid; gap: 4px; font-size: 12px; }
+.ship-table__results { flex: 1; min-height: 0; overflow: auto; }
+.ship-table__columns, .ship-table__row { display: grid; grid-template-columns: 96px minmax(180px, 2fr) minmax(100px, 1fr) minmax(90px, 1fr) 110px 200px; align-items: center; gap: 12px; padding: 12px; min-width: 760px; }
+.ship-table__columns { position: sticky; top: 0; z-index: 2; background: var(--panel); border-bottom: 1px solid var(--line); color: var(--ink-dim); font-size: 11px; text-transform: uppercase; }
+.ship-table .ship-card { margin: 0; padding: 0; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; }
+.ship-table__row { cursor: pointer; font-size: 12px; }
+.ship-table__row:hover { background: var(--panel-2); }
+.ship-table__row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.ship-table__name { overflow-wrap: anywhere; }
+.ship-table__actions { display: flex; gap: 6px; }
+.ship-table__actions form { margin: 0; }
+.ship-table .ship-card__ships { margin: 0; padding: 0; border: 0; }
+.ship-table .ship-card__ships > summary { padding: 0 12px 10px; font-size: 11px; }
+.ship-table__named { background: color-mix(in srgb, var(--accent) 5%, var(--panel)); }
+.ship-table__named > .ship-table__name { padding-left: 20px; }
+.ship-table__empty { padding: 12px; font-size: 12px; color: var(--ink-dim); }
+.ship-table button, .ship-editor__back { background: var(--panel-2); color: var(--ink); border: 1px solid var(--line); border-radius: 4px; padding: 6px 9px; cursor: pointer; }
+.ship-table .bulk-orient__head button { margin-top: 10px; }
+.ship-editor__title { margin: 10px 0; font-size: 16px; }
+#detail:has(.ship-inspector #assembly) { display: block; }
+.ship-inspector .assembly { display: block; }
+.ship-inspector .assembly__header { display: none; }
+.ship-inspector .assembly__rail-slots { height: auto; overflow: visible; }
+.ship-table__new { display: inline-block; margin: 0 8px 0 0; }
+
+.ship-thumbnail { width: 96px; height: 66px; display: grid; place-items: center; overflow: hidden; border-radius: 4px; background: #14171c; color: var(--ink-dim); font-size: 10px; }
+.ship-thumbnail img { width: 96px; height: 66px; object-fit: contain; }
+
+.table-pages { display: flex; align-items: center; gap: .6rem; padding: .6rem; }
+
+.bulk-orient__mounts { color: var(--ink-dim); overflow-wrap: anywhere; }
+.bulk-orient__regions[data-has-regions="true"] { color: var(--accent); }

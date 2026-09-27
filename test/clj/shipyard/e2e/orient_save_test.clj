@@ -12,7 +12,7 @@
 
 (defn open-grid! [driver started ids]
   (s/go! driver (s/base-url (:system started)))
-  (s/click! driver ".masthead [data-workspace-mode='orient']")
+  (s/click! driver ".masthead [data-workspace-mode='browse']")
   (s/wait-visible! driver "[data-bulk-select]")
   (doseq [id ids] (s/check! driver (str "[data-bulk-select][value='" id "']")))
   (s/click! driver "[data-bulk-render-button]")
@@ -70,7 +70,7 @@
       (let [reloaded (persisted/catalog! (:shipyard.catalog/db (:system started)))]
         (is (saves/same-pose? q90 (:part/orientation (catalog/part reloaded id)))))
       (s/go! driver (s/base-url (:system started)))
-      (s/click! driver ".masthead [data-workspace-mode='orient']")
+      (s/click! driver ".masthead [data-workspace-mode='browse']")
       (is (s/wait-until #(saves/same-pose? q90 (preview driver id))))
       (finally (s/quit! driver) (fixture/stop! started)))))
 

@@ -3,6 +3,8 @@
   (:require ["three" :as three]
             [shipyard.math :as math]
             [shipyard.paint.brush :as brush]
+            [shipyard.paint.render :as render]
+            [shipyard.regions.center :as center]
             [shipyard.regions.symmetry :as symmetry]))
 
 (defn- field [^js form name] (.namedItem (.-elements form) name))
@@ -15,6 +17,28 @@
               bounds [(vec (.toArray (.-min box))) (vec (.toArray (.-max box)))]]
           (set! (.. object -userData -regionMirrorBounds) {:orientation orientation :bounds bounds})
           bounds))))
+
+(defn offset!
+  "Shared automatic plane for picking and guide. Cache per source/orientation/axis;
+  color-buffer replacement during painting does not change the surface geometry."
+  [^js object orientation axis explicit]
+  (if (some? explicit) explicit
+      (let [key [(.. object -userData -meshKey) orientation axis]
+            cached (.. object -userData -regionMirrorCenters)]
+        (if (contains? cached key) (get cached key)
+            (let [bounds (bounds! object orientation)
+                  geometry (.-geometry object)
+                  point (three/Vector3.)
+                  triangles (map (fn [i]
+                                   (mapv (fn [p]
+                                           (.fromArray point (to-array p))
+                                           (.applyMatrix4 point (.-matrixWorld object))
+                                           (vec (.toArray point)))
+                                         (render/triangle-points geometry i)))
+                                 (range (render/triangle-count geometry)))
+                  offset (center/estimate triangles bounds axis)]
+              (set! (.. object -userData -regionMirrorCenters) (assoc cached key offset))
+              offset)))))
 
 (defn install! [{:keys [current] :as sys}]
   (let [settings (atom nil)
@@ -59,5 +83,7 @@
                        (when (or (.. (field form "mirror-offset") -validity -badInput)
                                  (and (seq (:offset @settings)) (nil? offset)))
                          (throw (ex-info "Enter a finite mirror plane offset." {:type :mirror-input})))
-                       (let [transform (symmetry/reflection-matrix (bounds! object (:orientation @current)) axis offset)]
+                       (let [orientation (:orientation @current)
+                             transform (symmetry/reflection-matrix (bounds! object orientation) axis
+                                                                   (offset! object orientation axis offset))]
                          (brush/cached-visible-buffer! picking (assoc sys :picking-transform transform) slot)))))))}))

@@ -52,7 +52,7 @@
   disagree, and computed once per page load - the library does not change while
   the process runs."
   [catalog]
-  (let [db (db/snapshot! catalog)]
+  (let [db (db/listing! catalog)]
     {:bundles (db/bundles db)
      :classes (db/classes db)
      :roles   (db/roles db)}))
@@ -79,11 +79,11 @@
                      (views/library-needs-root)))
     (htmx/fragment
      (views/library-results
-      (db/browse (db/snapshot! catalog)
+      (db/browse (db/listing! catalog)
                  {:bundle (blank->nil (get params "bundle"))
                   :class  (blank->nil (get params "class"))
                   :role   (some-> (get params "role") blank->nil keyword)
-                  :q      (blank->nil (get params "q"))})))))
+                  :q      (blank->nil (get params "q"))}) (get params "page")))))
 
 ;; --- part detail ------------------------------------------------------------
 
@@ -102,7 +102,7 @@
     (htmx/fragment (views/detail-preparing part)
                    {:events {:status {:state :preparing
                                       :message "Restoring saved mount faces."}}})
-    (htmx/fragment (views/detail-ready part mesh-key {:region-layers (db/region-registry (db/snapshot! (:catalog deps)))})
+    (htmx/fragment (views/detail-ready part mesh-key {:region-layers (db/region-registry! (:catalog deps))})
                    {:headers {"HX-Trigger-After-Swap"
                               (htmx/trigger {:load-mesh {:url     (urls/mesh-url mesh-key 0)
                                                          :part-id (:part/id part)
@@ -134,9 +134,9 @@
   `?retry=1` is the only way a failed job runs again. The poll fragment does not
   carry it, so a failure is shown rather than silently retried on the next tick."
   [{:keys [catalog library cache jobs] :as deps} {:keys [params path-params]}]
-  (when (:workspace deps) (workspace/update-workspace! (:workspace deps) :browse assoc :selection (:id path-params)))
+  (when (:workspace deps) (workspace/update-workspace! (:workspace deps) :browse assoc :view :part :selection (:id path-params)))
   (let [id   (:id path-params)
-        part (db/part (db/snapshot! catalog) id)]
+        part (:part (db/part-context! catalog id))]
     (cond
       (nil? (:part/id part))
       (htmx/fragment (views/detail-missing id) {:status 404 :events {:clear nil}})
@@ -199,8 +199,7 @@
                  (re-matches mesh-key-re mesh-key)
                  triangle-index)
       (invalid-selection part-id)
-      (let [db (db/snapshot! catalog)
-            part (db/part db part-id)]
+      (let [part (:part (db/part-context! catalog part-id))]
         (cond
           (nil? (:part/id part))
           (facet-error :part-not-found "That part is no longer in the library." part-id 404)
@@ -278,11 +277,11 @@
 (defn- mount-response!
   ([deps part-id events] (mount-response! deps part-id events nil))
   ([{:keys [catalog library]} part-id events view-options]
-   (let [part (db/part (db/snapshot! catalog) part-id)
+   (let [part (:part (db/part-context! catalog part-id))
          mesh-key (index/mesh-key! library part-id)]
      (if (and (:part/id part) mesh-key)
-       (htmx/fragment (views/detail-ready part mesh-key (assoc (merge {:mount-active? true} view-options)
-                                                               :region-layers (db/region-registry (db/snapshot! catalog))))
+       (htmx/fragment (views/detail-ready part mesh-key (assoc (merge {:mount-active? true :preserve-regions? true} view-options)
+                                                               :region-layers (db/region-registry! catalog)))
                       {:events (assoc events :interfaces {:part-id part-id
                                                           :mesh-key mesh-key
                                                           :mounts (catalog-part/durable-mounts
@@ -320,7 +319,7 @@
 (defn- save-mount!
   [{:keys [catalog library cache] :as deps} {:keys [params]}]
   (let [part-id (get params "part-id")
-        part (db/part (db/snapshot! catalog) part-id)
+        part (:part (db/part-context! catalog part-id))
         mesh-key (index/mesh-key! library part-id)]
     (cond
       (nil? (:part/id part))
@@ -367,7 +366,7 @@
 (defn- edit-mount!
   [{:keys [catalog library] :as deps} {:keys [params]}]
   (let [part-id (get params "part-id")
-        part (db/part (db/snapshot! catalog) part-id)
+        part (:part (db/part-context! catalog part-id))
         mesh-key (index/mesh-key! library part-id)]
     (cond
       (nil? (:part/id part))
@@ -405,7 +404,7 @@
 (defn- save-part-role!
   [{:keys [catalog] :as deps} {:keys [params]}]
   (let [part-id (get params "part-id")
-        part (db/part (db/snapshot! catalog) part-id)]
+        part (:part (db/part-context! catalog part-id))]
     (cond
       (nil? (:part/id part))
       (facet-error :part-not-found "That part is no longer in the library." part-id 404)
@@ -426,7 +425,7 @@
 (defn- save-part-orientation!
   [{:keys [catalog] :as deps} {:keys [params]}]
   (let [part-id (get params "part-id")
-        part (db/part (db/snapshot! catalog) part-id)]
+        part (:part (db/part-context! catalog part-id))]
     (cond
       (nil? (:part/id part))
       (facet-error :part-not-found "That part is no longer in the library." part-id 404)
@@ -458,7 +457,7 @@
 (defn- delete-mount!
   [{:keys [catalog] :as deps} {:keys [params]}]
   (let [part-id (get params "part-id")
-        part (db/part (db/snapshot! catalog) part-id)]
+        part (:part (db/part-context! catalog part-id))]
     (cond
       (nil? (:part/id part))
       (facet-error :part-not-found "That part is no longer in the library." part-id 404)
@@ -552,6 +551,12 @@
    ["/mounts/delete" {:post {:handler (partial delete-mount! deps)
                              :parameters {:form contracts/mount-id-form}
                              :responses contracts/html-responses}}]
+   ["/parts/regions/snapshot" {:get {:handler (partial regions/snapshot! deps)
+                                     :parameters {:query [:map [:part-id string?]
+                                                          [:layer {:optional true} string?]
+                                                          [:mode {:optional true} [:enum "facets" "faces"]]
+                                                          [:angle {:optional true} [:int {:min 0 :max 90}]]]}
+                                     :responses contracts/html-responses}}]
    ["/parts/regions/stroke" {:post {:handler (partial regions/save-stroke! deps)
                                     :parameters {:body region-transport/schema}
                                     :responses contracts/html-responses}}]

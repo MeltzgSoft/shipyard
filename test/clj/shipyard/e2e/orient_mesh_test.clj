@@ -15,7 +15,7 @@
 
 (defn render! [driver started ids]
   (s/go! driver (s/base-url (:system started)))
-  (s/click! driver ".masthead [data-workspace-mode='orient']")
+  (s/click! driver ".masthead [data-workspace-mode='browse']")
   (s/wait-visible! driver "[data-bulk-select]")
   (doseq [id ids] (s/check! driver (str "[data-bulk-select][value='" id "']")))
   (s/click! driver "[data-bulk-render-button]"))

@@ -29,12 +29,12 @@
 
 (defn- open-app! []
   (s/go! *driver* (s/base-url *system*))
-  (s/wait-visible! *driver* "#library-results .part"))
+  (s/wait-visible! *driver* "#bulk-orient-results .bulk-orient__row"))
 
 (defn- select-part! [part-name]
   ;; Playwright reads a leading `//` as XPath, so this is the same selector it
   ;; always was - the button whose name span holds this text.
-  (s/click! *driver* (format "//button[.//span[text()='%s']]" part-name)))
+  (s/open-part! *driver* part-name))
 
 (defn- viewport-center []
   (s/js *driver*
@@ -115,29 +115,29 @@
 
 (deftest browse-and-filter
   (open-app!)
-  (is (= 5 (s/count-els *driver* "#library-results .part")))
+  (is (= 5 (s/count-els *driver* "#bulk-orient-results .bulk-orient__row")))
   (testing "a supported-only part is greyed, with its reason, not hidden"
-    (is (= 1 (s/count-els *driver* ".part--unrenderable")))
-    (is (str/includes? (s/text *driver* ".part--unrenderable")
-                       "supported STL")))
+    (is (= 1 (s/count-els *driver* ".bulk-orient__row:has(.part-thumbnail:text-is('No preview'))")))
+    (is (str/includes? (s/text *driver* ".bulk-orient__row:has(.part-thumbnail:text-is('No preview'))")
+                       "No preview")))
   (testing "filtering by bundle narrows the list"
     (s/select-option! *driver* "select[name=bundle]" "Ork Fleet Bundle")
-    (is (s/wait-until #(= 1 (s/count-els *driver* "#library-results .part"))))
-    (is (str/includes? (s/text *driver* "#library-results") "Ram Ship")))
+    (is (s/wait-until #(= 1 (s/count-els *driver* "#bulk-orient-results .bulk-orient__row"))))
+    (is (str/includes? (s/text *driver* "#bulk-orient-results") "Ram Ship")))
   (testing "and All bundles widens it again"
     (s/select-option! *driver* "select[name=bundle]" "All bundles")
-    (is (s/wait-until #(= 5 (s/count-els *driver* "#library-results .part")))))
+    (is (s/wait-until #(= 5 (s/count-els *driver* "#bulk-orient-results .bulk-orient__row")))))
   (testing "free-text search matches names across bundles"
     (s/fill! *driver* "input[name=q]" "Ram")
-    (is (s/wait-until #(= 2 (s/count-els *driver* "#library-results .part"))))))
+    (is (s/wait-until #(= 2 (s/count-els *driver* "#bulk-orient-results .bulk-orient__row"))))))
 
 (deftest browser-results-scroll-within-the-library-panel
   (try
     (s/resize! *driver* 1280 360)
     (open-app!)
-    (s/scroll-into-view! *driver* "#library-results .part:last-child")
+    (s/scroll-into-view! *driver* "#bulk-orient-results .bulk-orient__row:last-child")
     (let [library (s/bounds *driver* "#library")
-          last-part (s/bounds *driver* "#library-results .part:last-child")]
+          last-part (s/bounds *driver* "#bulk-orient-results .bulk-orient__row:last-child")]
       (is (>= (:y last-part) (:y library))
           (str "the final result should not scroll above the library: " {:library library :last-part last-part}))
       (is (<= (+ (:y last-part) (:height last-part))
@@ -156,7 +156,7 @@
         (.submit pool ^Runnable (fn [] (.countDown entered) (.await release 30 TimeUnit/SECONDS))))
       (is (.await entered 10 TimeUnit/SECONDS))
       (open-app!)
-      (s/click! *driver* ".masthead__mode[data-workspace-mode='orient']")
+      (s/click! *driver* ".masthead__mode[data-workspace-mode='browse']")
       (s/wait-visible! *driver* "#bulk-orient-filters")
       (is (s/wait-until #(= 5 (s/count-els *driver* "[data-bulk-select]")))
           "the orientation table should finish its initial HTMX load")
@@ -228,7 +228,7 @@
 
 (deftest bulk-models-render-inside-their-cards
   (open-app!)
-  (s/click! *driver* ".masthead__mode[data-workspace-mode='orient']")
+  (s/click! *driver* ".masthead__mode[data-workspace-mode='browse']")
   (s/wait-visible! *driver* "[data-bulk-select]")
   (doseq [id [s/hull-id s/prow-id s/mount-plate-id s/ork-id]]
     (s/check! *driver* (str "[data-bulk-select][value='" id "']")))
@@ -610,12 +610,15 @@
   (s/click! *driver* ".part-metadata__form button")
   (is (s/wait-until #(str/includes? (s/text *driver* "#detail") "Manual"))
       "part-level role edits should live in the metadata form")
-  (s/select-option! *driver* "select[name=class]" "Cruiser")
+  (s/click! *driver* "[data-part-back]")
+  (s/select-option! *driver* "#bulk-orient-filters select[name=class]" "Cruiser")
   (is (s/wait-until #(= "hull" (s/js *driver* "() => {
-    const card = [...document.querySelectorAll('.part')].find((el) => el.textContent.includes('Mount Test Plate'));
-    return card ? card.querySelector('.part__role').textContent : null;
+    const card = [...document.querySelectorAll('.bulk-orient__row')].find((el) => el.textContent.includes('Mount Test Plate'));
+    return card ? card.querySelector('.bulk-orient__role').textContent : null;
   }")))
       "the manual role is visible as the part's authoritative role")
+  (select-part! "Mount Test Plate")
+  (s/await-part *driver* s/mount-plate-id)
   (s/click! *driver* "[data-detail-tab=mounts]")
   (s/click! *driver* "form:has(input[name=mount-id][value='weapon-1']) button:has-text('Delete')")
   (is (s/wait-until #(not (str/includes? (s/text *driver* "#detail") "weapon-1")))
@@ -723,8 +726,9 @@
   ;; marker goes with it - which is exactly the failure hx-preserve prevents.
   (s/js *driver* "() => { document.getElementById('viewport').__alive = 42; }")
   (testing "swap the library panel and the detail panel"
+    (s/click! *driver* "[data-part-back]")
     (s/select-option! *driver* "select[name=bundle]" "Ork Fleet Bundle")
-    (is (s/wait-until #(= 1 (s/count-els *driver* "#library-results .part"))))
+    (is (s/wait-until #(= 1 (s/count-els *driver* "#bulk-orient-results .bulk-orient__row"))))
     (select-part! "Ram Ship")
     (s/await-part *driver* s/ork-id))
   (testing "the canvas element survived both"
@@ -775,18 +779,30 @@
           driver (s/make-driver)]
       (try
         (s/go! driver (str "http://127.0.0.1:" (s/server-port server)))
-        (s/wait-visible! driver "#library-results .part")
+        (s/wait-visible! driver "#bulk-orient-results .bulk-orient__row")
         (is (= "undefined" (s/js driver "() => typeof window.__shipyard"))
             "the island really is absent")
-        (is (= 5 (s/count-els driver "#library-results .part")))
+        (is (= 5 (s/count-els driver "#bulk-orient-results .bulk-orient__row")))
         (testing "filtering still works, because htmx is a separate file"
           (s/select-option! driver "select[name=bundle]" "Ork Fleet Bundle")
-          (is (s/wait-until #(= 1 (s/count-els driver "#library-results .part")))))
+          (is (s/wait-until #(= 1 (s/count-els driver "#bulk-orient-results .bulk-orient__row")))))
         (testing "and a part still preprocesses and reports itself loaded"
-          (s/click! driver "//button[.//span[text()='Ram Ship']]")
+          (s/open-part! driver "Ram Ship")
           (is (s/wait-until
                #(str/includes? (s/text driver "#detail") "Loaded"))))
         (finally
           (s/quit! driver)
           (.stop ^org.eclipse.jetty.server.Server server)
           (s/stop-system! system))))))
+
+(deftest nonpreviewable-parts-can-edit-labels-and-show-grid-error
+  (open-app!)
+  (s/check! *driver* (str "[data-bulk-select][value='" s/supported-id "']"))
+  (s/select-option! *driver* ".part-bulk-edit select[name=field]" "Name")
+  (s/select-option! *driver* ".part-bulk-edit select[name=operation]" "Add prefix")
+  (s/fill-and-blur! *driver* ".part-bulk-edit input[name=value]" "Archived ")
+  (s/click! *driver* ".part-bulk-edit button")
+  (is (s/wait-until #(str/includes? (s/text *driver* "#bulk-orient-results") "Archived Supported Only Prow")))
+  (s/click! *driver* "[data-bulk-render-button]")
+  (s/wait-visible! *driver* "#part-edit-status[role=alert]")
+  (is (str/includes? (s/text *driver* "#part-edit-status") "None of those parts can be previewed")))

@@ -35,9 +35,9 @@
         (.route ^Page (:page driver) "**/js/viewport.js"
                 (reify Consumer (accept [_ route] (.abort ^Route route)))))
       (s/go! driver (s/base-url (:system started)))
-      (s/wait-visible! driver "#library-results .part")
+      (s/wait-visible! driver "#bulk-orient-results .bulk-orient__row")
       (s/js driver "() => { window.assemblyCanvas = document.querySelector('#viewport'); }")
-      (s/click! driver ".masthead__mode:has-text('Assemble')")
+      (s/open-assembly! driver)
       (s/wait-visible! driver ".assembly__hull")
       (s/select-option! driver ".assembly__hull select[name=part-id]" "hull")
       (s/click! driver ".assembly__hull button")
@@ -73,8 +73,8 @@
   (let [started (fixture/start! true lf/scanned-library!) driver (s/make-driver)]
     (try
       (s/go! driver (s/base-url (:system started)))
-      (s/wait-visible! driver "#library-results .part")
-      (s/click! driver ".masthead__mode:has-text('Assemble')")
+      (s/wait-visible! driver "#bulk-orient-results .bulk-orient__row")
+      (s/open-assembly! driver)
       (s/wait-visible! driver ".assembly__hull")
       (s/select-option! driver ".assembly__hull select[name=part-id]" "hull")
       (s/click! driver ".assembly__hull button")
@@ -83,7 +83,7 @@
         (is (s/wait-until #(= 1 (count (get-in (s/stats driver) [:assembly :slots])))))
         (s/fill-and-blur! driver ".assembly__save input[name=name]" "Incomplete")
         (s/click! driver ".assembly__save button")
-        (is (s/wait-until #(str/includes? (s/text driver "#library") "Ship saved.")))
+        (is (s/wait-until #(str/includes? (s/text driver "#assembly-rail") "Class saved.")))
         (is (= 1 (count (get-in (s/stats driver) [:assembly :slots]))))
         (let [store (:shipyard.loadout/db (:system started))
               records (:loadouts (persisted/records! store :loadouts))
@@ -111,7 +111,7 @@
       (testing "saving with inferred and folder-derived roles persists the exact tree; repeated Save updates the same identity"
         (s/fill-and-blur! driver ".assembly__save input[name=name]" "Browser Cruiser")
         (s/click! driver ".assembly__save button")
-        (is (s/wait-until #(str/includes? (s/text driver "#library") "Ship saved.")))
+        (is (s/wait-until #(str/includes? (s/text driver "#assembly-rail") "Class saved.")))
         (let [store (:shipyard.loadout/db (:system started))
               saved (first (vals (:loadouts (persisted/records! store :loadouts))))]
           (is (= "Browser Cruiser" (:loadout/name saved)))

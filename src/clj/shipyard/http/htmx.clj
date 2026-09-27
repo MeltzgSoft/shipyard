@@ -58,12 +58,17 @@
   the defaults."
   ([body] (fragment body nil))
   ([body {:keys [status headers events]}]
-   {:status  (or status 200)
-    :headers (cond-> (merge {"content-type"  "text/html; charset=utf-8"
-                             "cache-control" fragment-cache-control}
-                            headers)
-               (seq events) (assoc "HX-Trigger" (trigger events)))
-    :body    (html body)}))
+   (let [headers (cond-> (merge {"content-type" "text/html; charset=utf-8"
+                                 "cache-control" fragment-cache-control} headers)
+                   (seq events) (assoc "HX-Trigger" (trigger events)))
+         ;; Jetty's total header limit also includes cookies and transport metadata.
+         ;; Keep variable-size events out of that budget altogether once they grow.
+         moved (select-keys headers (filter #(> (count (.getBytes ^String (get headers %) "UTF-8")) 2048)
+                                            (filter #(contains? headers %) ["HX-Trigger" "HX-Trigger-After-Swap" "HX-Trigger-After-Settle"])))]
+     {:status (or status 200)
+      :headers (apply dissoc headers (keys moved))
+      :body (html (list body (for [[_ value] moved]
+                               [:input {:type "hidden" :data-viewport-events value}])))})))
 
 (defn page
   "A whole document rather than a fragment. Same caching rule: the shell embeds

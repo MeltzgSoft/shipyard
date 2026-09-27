@@ -27,8 +27,11 @@
             [shipyard.mount.split :as split]
             [shipyard.part.orientation :as orientation]
             [shipyard.paint.render :as paint-render]
+            [shipyard.paint.glow :as glow]
             [shipyard.paint.brush :as brush]
             [shipyard.scheme.material :as paint-material]
+            [shipyard.scheme.color :as scheme-color]
+            [shipyard.scheme.picker :as scheme-picker]
             [shipyard.wire :as wire]))
 
 (goog-define ^boolean TEST-HOOKS false)
@@ -80,6 +83,7 @@
   [^js obj]
   (when obj
     (.traverse obj (fn [^js child]
+                     (glow/dispose-object! child)
                      (some-> child .-geometry .dispose)
                      (dispose-material! (.-material child))))))
 
@@ -101,7 +105,7 @@
      :radius radius}))
 
 (defn- frame! [{:keys [^js camera ^js controls workspace ^js canvas]} bbox-min bbox-max]
-  (let [inspector (when (= workspace :paint) (.querySelector js/document ".paint-editor"))
+  (let [inspector (when (= workspace :ships) (.querySelector js/document ".ship-inspector"))
         width (max 1 (- (.-clientWidth canvas) (if inspector (+ 42 (.-offsetWidth inspector)) 0)))
         aspect (/ width (max 1 (.-clientHeight canvas)))
         fov (if inspector (* 2 (/ 180 js/Math.PI) (js/Math.atan (* (min 1 aspect) (js/Math.tan (/ (* (.-fov camera) js/Math.PI) 360))))) (.-fov camera))
@@ -305,6 +309,8 @@
 (declare sync-inspector-tool!)
 
 (defn clear! [{:keys [^js canvas parts authoring current repeat bulk] :as sys}]
+  (glow/dispose! sys)
+  (when-let [cache (:paint-topology sys)] (.clear cache))
   (when-let [assembly (:assembly sys)] (swap! assembly assembly-scene/leave))
   (when-let [generation (:browse-generation sys)] (swap! generation inc))
   (clear-authoring-preview! sys)
@@ -472,7 +478,7 @@
   (sync-inspector-tool! sys))
 
 (defn- apply-material! [^js object value colors?]
-  (let [{:keys [base metalness roughness]} (or value paint-material/neutral)
+  (let [{:keys [base metalness roughness glow] :or {glow 0}} (or value paint-material/neutral)
         ^js surface (.-material object)
         [r g b] (mapv paint-material/srgb->linear base)]
     (set! (.. object -userData -paintMaterial) (or value paint-material/neutral))
@@ -481,6 +487,8 @@
       (.setRGB (.-color surface) r g b))
     (set! (.-metalness surface) metalness)
     (set! (.-roughness surface) roughness)
+    (.setRGB (.-emissive surface) r g b)
+    (set! (.-emissiveIntensity surface) (if colors? 0 glow))
     (paint-render/apply-details! object (or value paint-material/neutral) colors?)))
 
 (defn- set-mount-colors! [{:keys [parts mount-markers mount-colors-enabled interfaces]} enabled?]
@@ -1066,6 +1074,9 @@
                        surface (material)
                        object (three/Mesh. geometry surface)]
                    (try
+                     (let [cache (:paint-topology sys) key (:url payload)
+                           topology (or (.get cache key) (let [value #js {}] (.set cache key value) value))]
+                       (set! (.. geometry -userData -paintTopology) topology))
                      (when-let [color (:color payload)]
                        (set! (.. object -userData -mountColor) color))
                      (set! (.-matrixAutoUpdate object) false)
@@ -1106,6 +1117,7 @@
         (dispose-object! marker)
         (swap! (:mount-markers sys) dissoc slot))
       (reset! assembly after)
+      (set! (.. js/document -documentElement -dataset -shipyardSceneSequence) (str (:sequence after)))
       (doseq [[slot ^js object] @parts]
         (paint-render/set-details! object (get-in after [:slots slot :payload :details]))
         (paint-render/set-regions! object (get-in after [:slots slot :payload :regions]) (get-in after [:slots slot :payload :layers]))
@@ -1118,6 +1130,14 @@
               :when (not= (:token entry) (get-in before [:slots slot :token]))]
         (load-assembly-slot! sys slot entry)))))
 
+(defn- sync-viewport-events! []
+  (doseq [element (array-seq (.querySelectorAll js/document "[data-viewport-events]"))]
+    (let [events (js/JSON.parse (.getAttribute element "data-viewport-events"))]
+      (.remove element)
+      (doseq [name (array-seq (js/Object.keys events))]
+        (.dispatchEvent (.-body js/document)
+                        (js/CustomEvent. name #js {:bubbles true :detail #js {:value (aget events name)}}))))))
+
 (defn- sync-assembly-from-dom! [sys]
   (doseq [element (array-seq (.querySelectorAll js/document "#detail [data-assembly-event]"))]
     (let [event (edn/read-string (.getAttribute element "data-assembly-event"))]
@@ -1127,6 +1147,21 @@
       (when (and (or (nil? (:workspace event)) (= (:workspace sys) (:workspace event)))
                  (or (nil? (:activation event)) (= @(:activation sys) (:activation event))))
         (apply-assembly! sys event)))))
+
+(defn- sync-scheme-from-dom! [{:keys [assembly parts mount-colors-enabled] :as sys}]
+  (doseq [element (array-seq (.querySelectorAll js/document "#detail [data-scheme-palette]"))]
+    (let [{:keys [workspace activation layers]} (edn/read-string (.getAttribute element "data-scheme-palette"))
+          base (or (get layers "Primary") paint-material/neutral)]
+      (.remove element)
+      (when (and (= :ships (:workspace sys))
+                 (or (nil? workspace) (= workspace (:workspace sys)))
+                 (or (nil? activation) (= activation @(:activation sys))))
+        (swap! assembly update :slots
+               (fn [slots] (into {} (map (fn [[slot entry]]
+                                           [slot (update entry :payload assoc :layers layers :material base)])) slots)))
+        (doseq [[_ ^js object] @parts]
+          (paint-render/set-regions! object (.. object -userData -paintRegions) layers)
+          (apply-material! object base @mount-colors-enabled))))))
 
 ;; --- bulk orientation -------------------------------------------------------
 
@@ -1196,7 +1231,7 @@
   (let [elements (vec (bulk-elements))
         wanted (set (map #(.getAttribute % "data-bulk-part") elements))]
     (cond
-      (and (= :orient (:workspace sys)) (empty? wanted)) nil
+      (empty? wanted) nil
       (seq wanted)
       (do
         (when (or (and (empty? @bulk) (seq @parts))
@@ -1384,6 +1419,7 @@
          ;; scene" from "actually released" - which is what #47's test claimed
          ;; to check and could not.
          :geometries (.. renderer -info -memory -geometries)
+         :glow (clj->js (glow/stats sys))
          :status    (clj->js (:state @status))
          :authoring (clj->js @authoring)
          :mount-colors-enabled @(:mount-colors-enabled sys)
@@ -1397,6 +1433,8 @@
                                        :color (.getHexString (.. object -material -color))
                                        :metalness (.. object -material -metalness)
                                        :roughness (.. object -material -roughness)
+                                       :glow (.. object -material -emissiveIntensity)
+                                       :emissive (.getHexString (.. object -material -emissive))
                                        :details (:faces (.. object -userData -paintDetails))
                                        :vertex-colors (.. object -material -vertexColors)
                                        :finish-compiled (true? (.. object -material -userData -finishCompiled))
@@ -1408,7 +1446,8 @@
                                                                    :base (when-let [color (.getAttribute (.-geometry object) "color")]
                                                                            [(.getX color (* 3 triangle)) (.getY color (* 3 triangle)) (.getZ color (* 3 triangle))])
                                                                    :metalness (.getX finish (* 3 triangle))
-                                                                   :roughness (.getY finish (* 3 triangle))})
+                                                                   :roughness (.getY finish (* 3 triangle))
+                                                                   :glow (.getZ finish (* 3 triangle))})
                                                                 (range (paint-render/triangle-count (.-geometry object))))))
                                        :face-centers (paint-render/projected-faces object camera (:canvas sys))
                                        :uuid (.-uuid object) :matrix (vec (.. object -matrix -elements))})
@@ -1428,7 +1467,7 @@
     (set! (.-aspect camera) (/ w h))
     (.updateProjectionMatrix camera)
     (.setSize renderer w h false)
-    (if-let [inspector (when (= workspace :paint) (.querySelector js/document ".paint-editor"))]
+    (if-let [inspector (when (= workspace :ships) (.querySelector js/document ".ship-inspector"))]
       (.setViewOffset camera w h (/ (+ 28 (.-offsetWidth inspector)) 2) 0 w h)
       (.clearViewOffset camera))))
 
@@ -1498,7 +1537,7 @@
     (.clear renderer true true true)
     (if (seq @bulk)
       (render-bulk! sys)
-      (.render renderer scene camera))
+      (when-not (glow/render! sys) (.render renderer scene camera)))
     (when @orientation-guide
       (let [size (min orientation-guide-size
                       (max 72.0 (* 0.38 (min w h))))
@@ -1535,16 +1574,23 @@
                      (boolean capture?)))
 
 (defn- preview-paint! [sys ^js event]
-  (when (and (= :paint (:workspace sys)) (some-> (.-target event) (.hasAttribute "data-paint-input")))
-    (when-let [^js form (.closest (.-target event) "#paint-material")]
+  (when (and (#{:ships} (:workspace sys)) (some-> (.-target event) (.hasAttribute "data-paint-input")))
+    (when-let [^js form (let [form (.closest (.-target event) "#paint-material, #scheme-material")]
+                          (when (and form (scheme-color/valid-hex? (.-value (.namedItem (.-elements form) "base")))) form))]
       (let [value (fn [name] (.-value (.namedItem (.-elements form) name)))
             hex (value "base")
             material {:base (mapv #(/ (js/parseInt (subs hex % (+ % 2)) 16) 255) [1 3 5])
                       :metalness (js/parseFloat (value "metalness"))
-                      :roughness (js/parseFloat (value "roughness"))}
+                      :roughness (js/parseFloat (value "roughness"))
+                      :glow (js/parseFloat (value "glow"))}
             paths (edn/read-string (.getAttribute form "data-paint-slots"))
             layer (.getAttribute form "data-paint-layer")
             override? (= "true" (.getAttribute form "data-paint-override"))]
+        (when (= "scheme-material" (.getAttribute form "id"))
+          (doseq [^js swatch (array-seq (.querySelectorAll js/document
+                                                           (str "#scheme-layer [aria-pressed=true] .scheme-layer__swatch"
+                                                                (when (= layer "Primary") ", #scheme-layer [data-inherits-primary=true]"))))]
+            (set! (.. swatch -style -backgroundColor) hex)))
         (doseq [path paths]
           (if layer
             (do (swap! (:assembly sys) assoc-in [:slots path :payload :layers layer] material)
@@ -1578,7 +1624,12 @@
     (listen-event! body sys "shipyard:interfaces" #(draw-interfaces! sys (payload %)))
     (listen-event! body sys "shipyard:part-orientation" #(orient-part! sys (payload %)))
     (listen-event! body sys "htmx:afterSwap" (fn [_]
+                                               ;; Workspace headers arrive before the destination inspector.
+                                               ;; Restore its view offset once the new panel is in the DOM.
+                                               (when (= :ships (:workspace sys)) (resize! sys))
+                                               (sync-viewport-events!)
                                                (sync-assembly-from-dom! sys)
+                                               (sync-scheme-from-dom! sys)
                                                (sync-regions-from-dom! sys)
                                                (sync-bulk-from-dom! sys)
                                                (sync-bulk-save-result! sys)
@@ -1650,6 +1701,8 @@
         controls (OrbitControls. camera canvas)
         sys      {:workspace mode :active (atom (= mode :browse)) :activation (atom 0)
                   :canvas canvas :renderer renderer :scene scene :camera camera
+                  :glow (atom nil)
+                  :paint-topology (js/Map.)
                   :orientation-scene orientation-scene
                   :orientation-camera orientation-camera
                   :controls controls :parts (atom {}) :status (atom {:state :idle})
@@ -1666,11 +1719,11 @@
     (.set (.-position orientation-camera) 3.0 2.6 4.0)
     (.lookAt orientation-camera 0.0 0.0 0.0)
     ;; Paint must stop orbiting exactly where the next brush stroke begins.
-    (set! (.-enableDamping controls) (not= mode :paint))
+    (set! (.-enableDamping controls) (not= mode :ships))
     (set! (.-enabled controls) (= mode :browse))
     (if environment (set! (.-environment scene) environment) (environment! renderer scene))
     (listen! sys)
-    (when (= mode :paint) (brush/listen! sys apply-material!))
+    (when (= mode :ships) (brush/listen! sys apply-material!))
     (when (= mode :browse) (region-brush/install! sys apply-material!))
     sys))
 
@@ -1683,11 +1736,13 @@
         next (get runtimes destination)]
     (when next
       (when (not= previous next)
+        (glow/dispose! previous)
         (reset! (:active previous) false)
         (set! (.-enabled (:controls previous)) false))
       (swap! (:bulk-saves previous) assoc :pending {})
       (swap! (:browse-generation previous) inc)
-      (swap! (:assembly previous) assembly-scene/leave)
+      (when (not= previous next)
+        (swap! (:assembly previous) assembly-scene/leave))
       (swap! (:bulk previous) #(into {} (remove (comp :loading val)) %))
       (reset! active-workspace destination)
       (reset! (:bulk-refresh? next) true)
@@ -1705,7 +1760,7 @@
     (let [browse (runtime! canvas renderer :browse nil)
           environment (.-environment ^js (:scene browse))
           runtimes (into {:browse browse} (map (fn [mode] [mode (runtime! canvas renderer mode environment)]))
-                         [:orient :assembly :ships :paint])
+                         [:ships])
           app {:runtimes runtimes :active-workspace (atom :browse)}]
       (set! (.-outputColorSpace renderer) three/SRGBColorSpace)
       (.setPixelRatio renderer (min 2 (.-devicePixelRatio js/window)))
@@ -1726,6 +1781,7 @@
       app)))
 
 (defn ^:export init []
+  (scheme-picker/install!)
   (when-let [canvas (.getElementById js/document "viewport")]
     (let [sys (start! canvas)]
       (reset! state sys)
@@ -1737,4 +1793,5 @@
       (when TEST-HOOKS
         (when sys
           (set! (.-__shipyard js/window)
-                #js {:stats (fn [] (stats (active-runtime sys)))}))))))
+                #js {:stats (fn [] (stats (active-runtime sys)))
+                     :lightingPixel (fn [x y] (clj->js (glow/sample-lighting! (active-runtime sys) x y)))}))))))

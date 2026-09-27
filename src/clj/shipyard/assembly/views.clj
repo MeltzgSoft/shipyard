@@ -12,7 +12,7 @@
 
 (defn- form-attrs [action]
   {:method "post" :action action :hx-post action :hx-target "#detail"
-   :hx-swap "innerHTML" :hx-sync "#detail:replace"})
+   :hx-swap "innerHTML settle:0ms" :hx-sync "#detail:replace"})
 (defn- hidden [name value] [:input {:type "hidden" :name name :value (str value)}])
 (defn- slot-label [path]
   (str/join " / " (map (fn [[mount ordinal]] (str (name mount) " " (inc ordinal))) path)))
@@ -43,7 +43,7 @@
      {:style (str "--mount-color:" (:css (scene/color-for-slot id)))}
      [:details.assembly__slot details-attrs
       [:summary.assembly__mount-header
-       {:hx-post "/assembly/drawer" :hx-target "#detail" :hx-swap "innerHTML" :hx-sync "#detail:replace"
+       {:hx-post "/assembly/drawer" :hx-target "#detail" :hx-swap "innerHTML settle:0ms" :hx-sync "#detail:replace"
         :hx-vals (json/write-str {"revision" (str revision) "slot" (pr-str id) "open" (str (not open?))})}
        [:span.assembly__mount-dot]
        [:span.assembly__mount-copy
@@ -86,7 +86,7 @@
       (map render-slot (get children-by-parent [])))))
 
 (defn- assembly-filters [database selected-bundle selected-class]
-  [:form.assembly__filters {:hx-get "/assembly" :hx-target "#detail" :hx-swap "innerHTML" :hx-trigger "change"}
+  [:form.assembly__filters {:hx-get "/assembly" :hx-target "#detail" :hx-swap "innerHTML settle:0ms" :hx-trigger "change"}
    [:label "Bundle" [:select {:name "bundle"}
                      [:option {:value ""} "All bundles"]
                      (for [value (catalog/bundles database)] [:option {:value value :selected (= value selected-bundle)} value])]]
@@ -94,12 +94,12 @@
                     [:option {:value ""} "All classes"]
                     (for [value (catalog/classes database)] [:option {:value value :selected (= value selected-class)} value])]]])
 
-(defn- assembly-rail [{:keys [database hulls selected-bundle selected-class revision hull selected-hull root slots available draft error saved? drawers schemes scheme-warning]}]
-  [:div#assembly-rail {:hx-swap-oob "innerHTML:#library"}
+(defn- assembly-rail [{:keys [database hulls selected-bundle selected-class revision hull selected-hull root slots available draft error saved? drawers]}]
+  [:div#assembly-rail
    (assembly-filters database selected-bundle selected-class)
    ;; The included draft name can be blank; the hull is validated by the server.
    [:form.assembly__hull {:novalidate true :method "post" :action "/assembly/hull" :hx-post "/assembly/hull"
-                          :hx-target "#detail" :hx-swap "innerHTML"
+                          :hx-target "#detail" :hx-swap "innerHTML settle:0ms"
                           :hx-include ".assembly__save input[name=name]"}
     (hidden "revision" revision) (hidden "bundle" selected-bundle) (hidden "class" selected-class)
     [:label "Hull" [:select {:name "part-id" :required true :disabled (empty? hulls)}
@@ -109,30 +109,17 @@
    (when hull
      [:form.assembly__save (form-attrs "/assembly/save")
       (hidden "revision" revision)
-      [:label "Ship name" [:input {:name "name" :value (or (:name draft) "") :required true :maxlength 200}]]
-      [:button {:type "submit"} (if (:loadout-id draft) "Save changes" "Save ship")]])
-   (when saved? [:p {:role "status"} "Ship saved."])
-   (when hull
-     [:form.assembly__scheme (merge (form-attrs "/assembly/scheme")
-                                    {:novalidate true :hx-trigger "change"
-                                     :hx-include ".assembly__save input[name=name]"})
-      (hidden "revision" revision)
-      [:label "Paint scheme override"
-       [:select {:name "id"}
-        [:option {:value "" :selected (nil? (:scheme draft))} "No override"]
-        (when scheme-warning [:option {:value (str (:scheme draft)) :selected true} "Unavailable scheme (reference retained)"])
-        (for [record (sort-by :scheme/name (vals schemes))]
-          [:option {:value (str (:scheme/id record)) :selected (= (:scheme draft) (:scheme/id record))} (:scheme/name record)])]]
-      [:p "Save ship to keep this selection."]])
-   (when scheme-warning [:p.detail__error {:role "alert"} "Scheme unavailable. Showing neutral materials; choose another scheme or clear the override. The saved reference is preserved."])
-   (when hull (paint/transfer-button "assembly" "Paint assembly"))
+      [:label "Class name" [:input {:name "name" :value (or (:name draft) "") :required true :maxlength 200}]]
+      [:button {:type "submit"} (if (:loadout-id draft) "Save changes" "Save class")]])
+   (when saved? [:p {:role "status"} "Class saved."])
+   (when (:loadout-id draft) (paint/transfer-button "assembly" "Create named ship"))
    (when error [:p.detail__error {:role "alert"} (get responses/messages error (name error))])
    [:p.assembly__rail-count (str (count hulls) " compatible hulls")]
    (when root
      [:div.assembly__rail-slots {:data-hull-id hull}
       (slot-tree database root revision available selected-bundle selected-class drawers slots)])])
 
-(defn panel [{:keys [database draft available prepared error saved? selected-hull selected-bundle selected-class drawers schemes scheme-warning]}]
+(defn panel [{:keys [database draft available prepared error saved? selected-hull selected-bundle selected-class drawers]}]
   (let [{:keys [revision hull assignments]} draft
         root (when hull (catalog/part database hull))
         derived (when hull (model/slots database hull assignments))
@@ -164,18 +151,18 @@
            [:p.detail__error "Could not prepare " id ": " message " "
             [:a {:href (str "/assembly?retry=" (urls/encode-id id)) :hx-get (str "/assembly?retry=" (urls/encode-id id)) :hx-target "#detail"} "Retry"]]
            [:p {:role "status"} "Preparing " id "…"])])
-      (when pending? [:div {:hx-get "/assembly?poll=1" :hx-trigger "load delay:400ms" :hx-target "#detail" :hx-swap "innerHTML" :hx-sync "#detail:abort"}])]
+      (when pending? [:div {:hx-get "/assembly?poll=1" :hx-trigger "load delay:400ms" :hx-target "#detail" :hx-swap "innerHTML settle:0ms" :hx-sync "#detail:abort"}])]
      (assembly-rail {:database database :hulls hulls :selected-bundle selected-bundle :selected-class selected-class
                      :revision revision :hull hull :selected-hull selected-hull :root root :slots slots :available available
-                     :draft draft :error error :saved? saved? :drawers drawers :schemes schemes :scheme-warning scheme-warning})]))
+                     :draft draft :error error :saved? saved? :drawers drawers})]))
 
 (defn discard-confirmation [action label cancel-url params revision transition?]
   [:section.assembly-discard {:aria-labelledby "discard-heading"}
    [:h2#discard-heading "Discard unsaved assembly?"]
-   [:p "Assemble contains an unsaved ship or changes. Continuing will discard them."]
+   [:p "Assemble contains an unsaved class or changes. Continuing will discard them."]
    [:form (merge (form-attrs action) (when transition? workspace-views/transition-attrs))
     (for [[field value] (dissoc params :discard-revision)] (hidden (name field) value))
     (hidden "discard-revision" revision)
     [:button {:type "submit" :data-workspace-transition (when transition? "true")} label]]
-   [:button {:type "button" :hx-get cancel-url :hx-target "#detail" :hx-swap "innerHTML"
+   [:button {:type "button" :hx-get cancel-url :hx-target "#detail" :hx-swap "innerHTML settle:0ms"
              :hx-sync "#detail:replace"} "Cancel"]])

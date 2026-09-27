@@ -246,6 +246,12 @@
 
 (defn click! [{:keys [^Page page]} sel] (.click page sel))
 
+(defn open-part! [{:keys [^Page page] :as driver} part-name]
+  (when (pos? (.count (.locator page "[data-part-back]")))
+    (click! driver "[data-part-back]"))
+  (.dblclick (.locator page (str ".bulk-orient__part:text-is('" part-name "')")))
+  (wait-visible! driver (str ".detail__name:text-is('" part-name "')")))
+
 (defn check! [{:keys [^Page page]} sel] (.check page sel))
 
 (defn resize! [{:keys [^Page page]} width height]
@@ -359,3 +365,33 @@
                          (when (some #{part-id} (:parts s)) s)))]
     (is (some? s) (str "part never reached the viewport: " part-id))
     s))
+
+(defn ship-table! [driver]
+  (click! driver "[data-workspace-mode=ships]")
+  (wait-until #(= "ships" (js driver "() => document.querySelector('.masthead__mode--active').dataset.workspaceMode")))
+  (when (pos? (count-els driver "[data-ship-back]"))
+    (click! driver "[data-ship-back]"))
+  (wait-visible! driver "#ship-filters")
+  (wait-until #(js driver "() => !document.querySelector('.htmx-swapping, .htmx-settling, #workspace-navigation.htmx-request')")))
+
+(defn open-assembly! [driver]
+  (ship-table! driver)
+  (click! driver "[data-ship-new]")
+  (wait-visible! driver ".assembly__hull"))
+
+(defn open-class! [driver name]
+  (ship-table! driver)
+  (.dblclick ^Page (:page driver) (str ".ship-table__row[aria-label='Open class " name "']"))
+  (wait-visible! driver ".assembly__save"))
+
+(defn open-named-ship! [driver id]
+  (ship-table! driver)
+  (let [^Page page (:page driver) row (str "[data-ship-id='" id "']")]
+    ;; Hull rows are fetched when their class disclosure opens.
+    (doseq [n (range (.count (.locator page ".ship-card__ships")))]
+      (let [details (.nth (.locator page ".ship-card__ships") n)]
+        (when-not (.evaluate details "e => e.open")
+          (.click (.locator details "summary")))))
+    (wait-visible! driver row)
+    (click! driver (str row " button")))
+  (wait-visible! driver "#paint-material"))

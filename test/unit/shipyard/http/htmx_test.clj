@@ -77,3 +77,16 @@
 (deftest cache-control-constants
   (is (= "public, max-age=31536000, immutable" htmx/immutable-cache-control))
   (is (= "no-store" htmx/fragment-cache-control)))
+
+(deftest oversized-events-use-the-fragment-body
+  (let [payload {:faces (zipmap (map str (range 1000)) (repeat "layer"))}
+        response (htmx/fragment [:div "Ready"] {:events {:facets payload}})]
+    (is (nil? (get-in response [:headers "HX-Trigger"])))
+    (is (str/includes? (:body response) "data-viewport-events="))
+    (is (str/includes? (:body response) "shipyard:facets"))
+    (is (str/includes? (:body response) "&quot;")))
+  (let [response (htmx/fragment [:div] {:headers {"HX-Trigger-After-Swap" (htmx/trigger {:mounts (vec (repeat 1000 {:role :weapon}))})}
+                                        :events {:clear nil}})]
+    (is (get-in response [:headers "HX-Trigger"]))
+    (is (nil? (get-in response [:headers "HX-Trigger-After-Swap"])))
+    (is (str/includes? (:body response) "shipyard:mounts"))))

@@ -1,3 +1,5 @@
 {:lint-as {datalevin.core/with-transaction clojure.core/let
            shipyard.mesh.lod/with-native clojure.core/let}
- :linters {:unresolved-var {:exclude [digest/sha-256]}}}
+ ;; Datalevin 1.x imports this macro at runtime via util/import-macro;
+ ;; lint-as above still checks its transaction binding and body.
+ :linters {:unresolved-var {:exclude [digest/sha-256 datalevin.core/with-transaction]}}}

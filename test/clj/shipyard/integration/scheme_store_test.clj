@@ -6,7 +6,7 @@
 
 (deftest normalized-scheme-roundtrip
   (let [started (fixture/start!) facade (:shipyard.scheme/db (:system started))
-        material {:base [0.1 0.2 0.3] :metalness 0.7 :roughness 0.3 :paint "Example"}
+        material {:base [0.1 0.2 0.3] :metalness 0.7 :roughness 0.3 :glow 0.8 :paint "Example"}
         part (:weapon fixture/ids) path [[:weapon 0]]
         record {:scheme/id (random-uuid) :scheme/name "Scheme" :scheme/roles {:hull material}
                 :scheme/layers {"Primary" material} :scheme/layer-ids? true

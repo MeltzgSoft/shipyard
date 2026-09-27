@@ -14,21 +14,31 @@
             [shipyard.part.orientation :as orientation]
             [shipyard.loadout.transforms :as loadout]
             [shipyard.scheme.transforms :as scheme]
+            [shipyard.paint.job :as paint-job]
+            [shipyard.ship.transforms :as ship]
             [shipyard.system :as system]))
 
 (def part-pattern
   '[* {:part/mounts [*] :part/regions [* {:region/content [:mesh/sha]
                                           :region/masks [* {:mask/layer [:layer/id]
                                                             :mask/chunks [*]}]}]}])
-(def loadout-pattern
-  '[* {:loadout/hull [:part/id] :loadout/scheme [:scheme/id]
-       :loadout/slots [* {:slot/part [:part/id]}]}])
 (def scheme-pattern
   '[* {:scheme/roles [*] :scheme/layers [* {:binding/layer [:layer/id]}]
        :scheme/groups [* {:group/members [* {:membership/target [:db/id]}]}]
        :scheme/targets [* {:target/part [:part/id]
                            :target/details [* {:detail/content [:mesh/sha]
                                                :detail/chunks [*]}]}]}])
+
+(def paint-pattern
+  '[* {:paint/roles [*] :paint/layers [* {:binding/layer [:layer/id]}]
+       :paint/groups [* {:group/members [* {:membership/target [:db/id]}]}]
+       :paint/targets [* {:target/part [:part/id]
+                          :target/details [* {:detail/content [:mesh/sha] :detail/chunks [*]}]}]}])
+(def loadout-pattern
+  '[* {:loadout/hull [:part/id] :loadout/scheme [:scheme/id]
+       :loadout/slots [* {:slot/part [:part/id]}]}])
+(def ship-pattern
+  ['* {:ship/class [:loadout/id] :ship/scheme [:scheme/id] :ship/paint paint-pattern}])
 
 (defn open! [directory]
   (let [directory (str (fs/normalize (fs/absolutize directory)))
@@ -182,18 +192,56 @@
                 (d/transact! conn [{:library/id library :library/imported? true}])
                 library)))))
 
+(defn- record-spec [kind]
+  (case kind
+    :schemes [:scheme/id :scheme/deleted? scheme-pattern t/scheme-value]
+    :loadouts [:loadout/id :loadout/deleted? loadout-pattern t/loadout-value]
+    :ships [:ship/id :ship/deleted? ship-pattern t/ship-value]))
+
+(defn record-value [db kind id]
+  (when id
+    (let [[id-attr deleted pattern project] (record-spec kind)
+          entity (d/pull db pattern [id-attr id])]
+      (when (and (get entity id-attr) (not (get entity deleted))) (project entity)))))
+
 (defn records-value [db kind]
-  (let [[id-attr deleted pattern project] (case kind
-                                            :schemes [:scheme/id :scheme/deleted? scheme-pattern t/scheme-value]
-                                            :loadouts [:loadout/id :loadout/deleted? loadout-pattern t/loadout-value])]
+  (let [[id-attr deleted pattern project] (record-spec kind)]
     {:version 1 kind (into {} (keep (fn [eid]
                                       (let [entity (d/pull db pattern eid)]
                                         (when-not (get entity deleted) [(get entity id-attr) (project entity)]))))
                            (d/q '[:find [?e ...] :in $ ?a :where [?e ?a]] db id-attr))}))
 
+(defn ship-summaries [db]
+  (into {} (keep (fn [entity]
+                   (when-not (:ship/deleted? entity)
+                     [(:ship/id entity) (select-keys (t/ship-value entity) [:ship/id :ship/name :ship/class :ship/scheme])])))
+        (d/q '[:find [(pull ?ship [:ship/id :ship/name :ship/deleted? {:ship/class [:loadout/id] :ship/scheme [:scheme/id]}]) ...]
+               :where [?ship :ship/id]] db)))
+
+(defn scheme-summaries [db]
+  (into {} (keep (fn [entity] (when-not (:scheme/deleted? entity)
+                                [(:scheme/id entity) (select-keys entity [:scheme/id :scheme/name])])))
+        (d/q '[:find [(pull ?scheme [:scheme/id :scheme/name :scheme/deleted?]) ...]
+               :where [?scheme :scheme/id]] db)))
+
+(defn scheme-palette [db id]
+  (when id
+    (let [entity (d/pull db '[:scheme/id :scheme/name :scheme/deleted? :scheme/fields
+                              {:scheme/layers [* {:binding/layer [:layer/id]}]}] [:scheme/id id])]
+      (when (and (:scheme/id entity) (not (:scheme/deleted? entity)))
+        (select-keys (t/scheme-value entity) [:scheme/id :scheme/name :scheme/layers :scheme/layer-ids?])))))
+
 (defn- ensure-scheme! [conn id]
   (when-not (d/pull @conn [:db/id] [:scheme/id id])
     (d/transact! conn [{:scheme/id id :scheme/deleted? true}])))
+
+(defn- paint-refs! [conn library record]
+  (let [paths (concat (map :part-id (vals (:scheme/instances record)))
+                      (map :part-id (vals (:scheme/details record)))
+                      (map :part-id (mapcat :group/members (:scheme/groups record))))]
+    (doseq [layer (keys (:scheme/layers record))] (layer-ref! conn library layer))
+    (doseq [detail (vals (:scheme/details record))] (content! conn (:mesh-key detail)))
+    (into {} (map (fn [path] [path (part-ref! conn library path)])) paths)))
 
 (defn put-loadout! [conn library record]
   (let [library (or (get-in (d/pull @conn [{:loadout/library [:library/id]}] [:loadout/id (:loadout/id record)]) [:loadout/library :library/id]) library)
@@ -215,13 +263,8 @@
 
 (defn put-scheme! [conn library record]
   (let [library (or (get-in (d/pull @conn [{:scheme/library [:library/id]}] [:scheme/id (:scheme/id record)]) [:scheme/library :library/id]) library)
-        paths (concat (map :part-id (vals (:scheme/instances record)))
-                      (map :part-id (vals (:scheme/details record)))
-                      (map :part-id (mapcat :group/members (:scheme/groups record))))
-        parts (into {} (map (fn [path] [path (part-ref! conn library path)])) paths)
+        parts (paint-refs! conn library record)
         id (:scheme/id record) old (d/pull @conn '[*] [:scheme/id id])]
-    (doseq [layer (keys (:scheme/layers record))] (layer-ref! conn library layer))
-    (doseq [detail (vals (:scheme/details record))] (content! conn (:mesh-key detail)))
     ;; Resolve identity upserts after removing the old owned graph, inside the
     ;; enclosing transaction, so no parent refs point at retracted entities.
     (d/transact! conn (retract-children @conn [:scheme/id id]
@@ -229,6 +272,38 @@
     (d/transact! conn [(cond-> (assoc (t/scheme-tx library parts record)
                                       :scheme/revision (inc (or (:scheme/revision old) 0)))
                          library (assoc :scheme/library [:library/id library]))])))
+
+(defn put-ship! [conn library record]
+  (let [id (:ship/id record) old (d/pull @conn '[* {:ship/library [:library/id]}] [:ship/id id])
+        library (or (get-in old [:ship/library :library/id]) library)
+        parts (paint-refs! conn library (paint-job/profile (:ship/paint record)))]
+    (when-not (let [class (d/pull @conn [:db/id :loadout/deleted?] [:loadout/id (:ship/class record)])]
+                (and class (or old (not (:loadout/deleted? class)))))
+      (throw (ex-info "This ship class is missing." {:type :missing-class})))
+    (when-let [scheme (:ship/scheme record)] (ensure-scheme! conn scheme))
+    (d/transact! conn (concat (retract-children @conn [:ship/id id] [:ship/paint])
+                              (when (:ship/scheme old) [[:db.fn/retractAttribute [:ship/id id] :ship/scheme]])))
+    (d/transact! conn [(cond-> {:ship/id id :ship/name (:ship/name record) :ship/deleted? false
+                                :ship/revision (inc (or (:ship/revision old) 0))
+                                :ship/library [:library/id library] :ship/class [:loadout/id (:ship/class record)]
+                                :ship/paint (t/paint-tx library parts id (:ship/paint record))}
+                         (:ship/scheme record) (assoc :ship/scheme [:scheme/id (:ship/scheme record)]))])))
+
+(defn migrate-ship-paint! [conn]
+  (when-not (:store/named-ships-migrated? (d/pull @conn '[*] [:store/key "shipyard"]))
+    (let [schemes (:schemes (records-value @conn :schemes))]
+      (doseq [[id class] (:loadouts (records-value @conn :loadouts))
+              :when (:loadout/scheme class)
+              :let [library (get-in (d/pull @conn [{:loadout/library [:library/id]}] [:loadout/id id])
+                                    [:loadout/library :library/id])
+                    ship-id (java.util.UUID/nameUUIDFromBytes (.getBytes (str "shipyard:legacy-ship:" id) "UTF-8"))]]
+        ;; Preserve prior scheme assignments and custom paint as a named vessel.
+        ;; Keep the class and legacy scheme data unchanged for recovery.
+        (when-not (d/pull @conn [:db/id] [:ship/id ship-id])
+          (put-ship! conn library {:ship/id ship-id :ship/name (:loadout/name class) :ship/class id
+                                   :ship/scheme (:loadout/scheme class)
+                                   :ship/paint (paint-job/legacy (get schemes (:loadout/scheme class)))})))
+      (d/transact! conn [{:store/key "shipyard" :store/named-ships-migrated? true}]))))
 
 (defn import-records! [store library]
   (when library
@@ -238,23 +313,24 @@
                 (let [records (legacy/records! (fs/parent (:directory store)) (:legacy-files store))]
                   (doseq [record (vals (:schemes records))] (put-scheme! conn library (migration/scheme record)))
                   (doseq [record (vals (:loadouts records))] (put-loadout! conn library record))
-                  (d/transact! conn [{:store/key "shipyard" :store/imported? true}])))))))
+                  (d/transact! conn [{:store/key "shipyard" :store/imported? true}])))
+              (migrate-ship-paint! conn)))))
 
 (defn put-record! [store library kind record mode]
   (try
     (write! store
             (fn [conn]
               (let [record (if (= kind :schemes) (migration/scheme record) record)
-                    operation (if (= kind :schemes) scheme/put-record loadout/put-record)
+                    operation (case kind :schemes scheme/put-record :loadouts loadout/put-record :ships ship/put-record)
                     result (operation (records-value @conn kind) record mode)]
                 (if (:error result) result
                     (do
                       (when (and (nil? library)
-                                 (or (= kind :loadouts) (seq (:scheme/layers record))
+                                 (or (#{:loadouts :ships} kind) (seq (:scheme/layers record))
                                      (seq (:scheme/instances record)) (seq (:scheme/details record))
                                      (seq (mapcat :group/members (:scheme/groups record)))))
                         (throw (ex-info "Select a library before saving part or layer references" {})))
-                      ((if (= kind :schemes) put-scheme! put-loadout!) conn library record)
+                      ((case kind :schemes put-scheme! :loadouts put-loadout! :ships put-ship!) conn library record)
                       (dissoc result :store))))))
     (catch Exception e {:error :store-write-failed :message (str "Could not save metadata. " (ex-message e))})))
 
@@ -262,9 +338,9 @@
   (try
     (write! store
             (fn [conn]
-              (let [result ((if (= kind :schemes) scheme/delete-record loadout/delete-record)
+              (let [result ((case kind :schemes scheme/delete-record :loadouts loadout/delete-record :ships ship/delete-record)
                             (records-value @conn kind) id)
-                    [key deleted] (if (= kind :schemes) [:scheme/id :scheme/deleted?] [:loadout/id :loadout/deleted?])]
+                    [key deleted] (case kind :schemes [:scheme/id :scheme/deleted?] :loadouts [:loadout/id :loadout/deleted?] :ships [:ship/id :ship/deleted?])]
                 (if (:error result) result
                     (do (d/transact! conn [{key id deleted true}]) (dissoc result :store))))))
     (catch Exception e {:error :store-write-failed :message (str "Could not delete metadata. " (ex-message e))})))

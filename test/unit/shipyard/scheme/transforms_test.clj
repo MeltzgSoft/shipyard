@@ -16,6 +16,8 @@
 (deftest material?-test
   (testing "optional free text and complete PBR fields"
     (is (t/material? material))
+    (doseq [glow [0 0.5 1]] (is (t/material? (assoc material :glow glow))))
+    (doseq [glow [nil "1" -0.1 1.1 ##NaN ##Inf]] (is (not (t/material? (assoc material :glow glow)))))
     (is (t/material? (dissoc material :paint)))
     (doseq [value [(dissoc material :base) (assoc material :base [0 1])
                    (assoc material :base [0 0 ##NaN]) (assoc material :paint 4)

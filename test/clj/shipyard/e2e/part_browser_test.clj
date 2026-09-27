@@ -1,0 +1,88 @@
+(ns shipyard.e2e.part-browser-test
+  (:require [clojure.test :refer [deftest is]]
+            [shipyard.assembly-fixture :as fixture]
+            [shipyard.catalog.db :as catalog]
+            [shipyard.library.index :as index]
+            [shipyard.e2e.support :as s]
+            [shipyard.e2e.orient-table-test :as table]
+            [shipyard.e2e.orient-save-test :as orient])
+  (:import [com.microsoft.playwright Page]))
+
+(deftest table-edit-detail-back-and-grid
+  (s/assert-bundle!)
+  (let [started (fixture/start! true) driver (s/make-driver)
+        cat (:shipyard.catalog/db (:system started))
+        lib (:shipyard.library/index (:system started))
+        a (:prow fixture/ids) b (:bridge fixture/ids)
+        part #(catalog/part (catalog/snapshot! cat) %)]
+    (try
+      (s/go! driver (s/base-url (:system started)))
+      (s/wait-visible! driver (table/row a))
+      (is (= ["Part Browser" "Assemble" "Ship Browser"]
+             (s/js driver "() => [...document.querySelectorAll('.masthead__mode')].map(e=>e.textContent)")))
+      (s/scroll-into-view! driver (table/row a))
+      (s/wait-visible! driver (str (table/row a) " .part-thumbnail img"))
+      (is (s/js driver "() => document.querySelector('.part-thumbnail img').naturalWidth > 0"))
+      (doseq [id [a b]] (s/check! driver (str "[data-bulk-select][value='" id "']")))
+      (is (s/wait-until #(= "2 selected" (s/text driver "[data-bulk-count]"))))
+      (doseq [[field label value] [["bundle" "Bundle / faction" "New Fleet"] ["class" "Class" "New Class"] ["role" "Role" "prow"]]]
+        (s/select-option! driver ".part-bulk-edit select[name=field]" label)
+        (s/fill-and-blur! driver ".part-bulk-edit input[name=value]" value)
+        (s/click! driver ".part-bulk-edit button")
+        (is (s/wait-until #(not (s/js driver "() => document.querySelector('.part-bulk-edit button').disabled"))))
+        (is (s/wait-until #(every? (fn [id] (= (if (= field "role") (keyword value) value)
+                                               (get (part id) (keyword "part" (if (= field "role") "role-hint" field))))) [a b]))))
+      (s/select-option! driver ".part-bulk-edit select[name=field]" "Name")
+      (s/select-option! driver ".part-bulk-edit select[name=operation]" "Add prefix")
+      (s/fill-and-blur! driver ".part-bulk-edit input[name=value]" "Custom ")
+      (s/click! driver ".part-bulk-edit button")
+      (is (s/wait-until #(not (s/js driver "() => document.querySelector('.part-bulk-edit button').disabled"))))
+      (is (s/wait-until #(.startsWith (:part/name (part a)) "Custom ")))
+      (catalog/reingest! cat (index/parts! lib) (index/root! lib))
+      (is (= "New Fleet" (:part/bundle (part a))))
+      (is (= "New Class" (:part/class (part b))))
+      (is (= :prow (:part/role-hint (part b))))
+      (s/fill! driver "#bulk-orient-filters input[name=q]" "Custom")
+      (is (s/wait-until #(= 2 (s/count-els driver ".bulk-orient__row"))))
+      (.dblclick ^Page (:page driver) (str (table/row a) " .bulk-orient__part"))
+      (s/await-part driver a)
+      (s/wait-visible! driver "[data-part-back]")
+      (is (s/js driver "() => getComputedStyle(document.getElementById('library')).display === 'none'"))
+      (s/click! driver "[data-part-back]")
+      (s/wait-visible! driver (table/row a))
+      (is (= "2 selected" (s/text driver "[data-bulk-count]")))
+      (is (= "Custom" (s/js driver "() => document.querySelector('#bulk-orient-filters input[name=q]').value")))
+      (s/click! driver "[data-bulk-render-button]")
+      (is (s/wait-until #(= 2 (get-in (s/stats driver) [:bulk :count]))))
+      (orient/set-yaw! driver 45)
+      (s/open-assembly! driver)
+      (s/wait-visible! driver ".assembly__hull")
+      (s/click! driver "[data-workspace-mode=browse]")
+      (is (s/wait-until #(= 2 (get-in (s/stats driver) [:bulk :dirty]))))
+      (orient/save! driver)
+      (is (s/wait-until #(zero? (get-in (s/stats driver) [:bulk :dirty]))))
+      (s/click! driver "[data-bulk-back]")
+      (s/wait-visible! driver (table/row a))
+      (is (= "2 selected" (s/text driver "[data-bulk-count]")))
+      (is (zero? (s/count-els driver "[data-bulk-angle]")))
+      (s/screenshot-el! driver ".layout" (java.io.File. "/tmp/shipyard-part-browser.png"))
+      (finally (s/quit! driver) (fixture/stop! started)))))
+
+(deftest row-navigation
+  (let [started (fixture/start! true) driver (s/make-driver) scroll (atom 0)]
+    (try
+      (s/resize! driver 1280 560)
+      (s/go! driver (s/base-url (:system started)))
+      (s/wait-visible! driver (table/row (:prow fixture/ids)))
+      (s/scroll-into-view! driver (table/row (:prow fixture/ids)))
+      (s/wait-visible! driver (str (table/row (:prow fixture/ids)) " .part-thumbnail img"))
+      (reset! scroll (s/js driver "() => document.getElementById('bulk-orient-results').scrollTop"))
+      (is (pos? @scroll))
+      (s/open-part! driver "prow")
+      (s/await-part driver (:prow fixture/ids))
+      (s/click! driver "[data-detail-tab=regions]")
+      (s/wait-visible! driver "[data-part-back]")
+      (s/click! driver "[data-part-back]")
+      (s/wait-visible! driver "[data-bulk-select]")
+      (is (s/wait-until #(= @scroll (s/js driver "() => document.getElementById('bulk-orient-results').scrollTop"))))
+      (finally (s/quit! driver) (fixture/stop! started)))))

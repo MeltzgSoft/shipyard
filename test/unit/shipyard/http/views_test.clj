@@ -62,11 +62,9 @@
 
 ;; --- links ------------------------------------------------------------------
 
-(deftest workspace-modes-lead-with-orient
+(deftest workspace-modes-match-browser-ownership
   (let [html (render (views/shell {:bundles [] :classes [] :roles []} nil))]
-    (is (< (.indexOf html ">Orient<")
-           (.indexOf html ">Part Browser<")
-           (.indexOf html ">Assemble<")
+    (is (< (.indexOf html ">Part Browser<")
            (.indexOf html ">Ship Browser<")))))
 
 (deftest cards-link-to-percent-encoded-ids

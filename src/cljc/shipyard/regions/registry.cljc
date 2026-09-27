@@ -1,6 +1,7 @@
 (ns shipyard.regions.registry
   "Shared layer entities. Identity is independent of labels and part usage."
-  (:require [shipyard.regions.model :as model]))
+  (:require [shipyard.regions.model :as model]
+            [shipyard.regions.colors :as colors]))
 
 (def empty-registry {:version 1 :revision 0 :layers {} :deleted #{}})
 
@@ -11,7 +12,9 @@
   (and (map? value) (= #{:version :revision :layers :deleted} (set (keys value)))
        (= 1 (:version value)) (nat-int? (:revision value))
        (map? (:layers value)) (every? id? (keys (:layers value)))
-       (every? #(and (= #{:name :preview-name} (set (keys %)))
+       (every? #(and (or (= #{:name :preview-name} (set (keys %)))
+                         (and (= #{:name :preview-name :preview-color} (set (keys %)))
+                              (colors/valid? (:preview-color %))))
                      (model/name? (:name %)) (model/name? (:preview-name %))) (vals (:layers value)))
        (set? (:deleted value)) (every? id? (:deleted value))
        (not-any? (:deleted value) (keys (:layers value)))))
@@ -22,11 +25,21 @@
 (defn ids [registry]
   (into model/builtins (sort-by #(vector (get-in registry [:layers % :name]) %) (keys (:layers registry)))))
 
+(defn assign-colors
+  "Assign missing colors once, across the entire library rather than per part."
+  [registry]
+  (reduce (fn [result id]
+            (assoc-in result [:layers id :preview-color]
+                      (colors/choose (keep :preview-color (vals (:layers result))))))
+          registry (sort-by #(vector (get-in registry [:layers % :preview-name]) %)
+                            (remove #(get-in registry [:layers % :preview-color]) (keys (:layers registry))))))
+
 (defn discover [registry regions]
-  (reduce (fn [result region]
-            (update result :layers
-                    #(merge (apply dissoc (:layer-definitions region) (:deleted result)) %)))
-          registry regions))
+  (assign-colors
+   (reduce (fn [result region]
+             (update result :layers
+                     #(merge (apply dissoc (:layer-definitions region) (:deleted result)) %)))
+           registry regions)))
 
 (defn change [registry revision action id name new-id]
   (cond
@@ -46,4 +59,5 @@
                      "add" (assoc-in registry [:layers new-id] {:name name :preview-name name})
                      "rename" (assoc-in registry [:layers id :name] name)
                      "delete" (-> registry (update :layers dissoc id) (update :deleted conj id)))
+                   (assign-colors)
                    (update :revision inc))}))

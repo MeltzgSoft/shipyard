@@ -4,16 +4,16 @@
             [integrant.core :as ig]
             [shipyard.workspace.transforms :as transforms]))
 
-(def modes #{:browse :orient :assembly :ships :paint})
+(def modes #{:browse :ships})
 (def ^:dynamic *context* nil)
+(def ^:dynamic *scene-sequence* nil)
 
 (defmethod ig/init-key :shipyard.workspace/db [_ {:keys [assembly preview]}]
   {:state (atom {:active :browse :activation 0
                  :workspaces (-> (zipmap modes (repeat {:filters {} :colors true}))
-                                 (assoc-in [:assembly :model] assembly)
+                                 (assoc-in [:ships :assembly] assembly)
                                  (assoc-in [:ships :model] preview)
-                                 (assoc-in [:ships :colors] false)
-                                 (assoc-in [:paint :colors] false))})})
+                                 (assoc-in [:ships :colors] false))})})
 
 (defn workspace! [{:keys [state]} mode] (get-in @state [:workspaces mode]))
 (defn update-workspace! [{:keys [state]} mode f & args]
@@ -21,10 +21,9 @@
 
 (defn owner [uri]
   (cond
-    (str/starts-with? uri "/orient") :orient
-    (str/starts-with? uri "/assembly") :assembly
+    (str/starts-with? uri "/orient") :browse
+    (str/starts-with? uri "/assembly") :ships
     (str/starts-with? uri "/ships") :ships
-    (str/starts-with? uri "/paint") :paint
     (or (= uri "/library") (str/starts-with? uri "/part/")
         (str/starts-with? uri "/parts/") (str/starts-with? uri "/mounts") (= uri "/facet")) :browse))
 
@@ -50,21 +49,24 @@
       (locking state
         (let [incoming (context request)
               current (active-context! db)]
-          (if (and incoming
-                   (or (not= incoming current)
-                       (not (transforms/current-request? (:activation current) (:activation incoming)
-                                                         (:workspace incoming) (owner (:uri request))))))
+          (if (or (and (get-in request [:headers "x-shipyard-workspace"]) (nil? incoming))
+                  (and incoming
+                       (or (not= incoming current)
+                           (not (transforms/current-request? (:activation current) (:activation incoming)
+                                                             (:workspace incoming) (owner (:uri request)))))))
             {:status 204 :headers {} :body ""}
-            (binding [*context* current]
+            (binding [*context* current
+                      *scene-sequence* (some-> (get-in request [:headers "x-shipyard-scene-sequence"]) parse-long)]
               (handler request)))))
       (handler request))))
 
 (defn remember! [workspace mode params]
   (update-workspace! workspace mode update :filters merge
-                     (select-keys params ["bundle" "class" "role" "q" "orientation"])))
+                     (select-keys params ["bundle" "class" "role" "q" "orientation" "table-scroll" "expanded" "page"])))
 
 (defn outgoing! [{:keys [workspace assembly]} params]
   (let [mode (:workspace (active-context! workspace))]
-    (remember! workspace mode params)
-    (when (and (= mode :assembly) (contains? params "name"))
+    (when-not (and (= mode :ships) (= :editor (:view (workspace! workspace :ships))))
+      (remember! workspace mode params))
+    (when (and (= mode :ships) (= "assembly" (:inspector-tab (workspace! workspace :ships))) (contains? params "name"))
       (swap! (:state assembly) assoc-in [:draft :name] (get params "name")))))

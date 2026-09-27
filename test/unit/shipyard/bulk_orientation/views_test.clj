@@ -20,11 +20,11 @@
         results (render (views/results [hull supported-only]))
         grid (render (views/grid
                       [(merge hull {:state :ready :mesh-key "abc" :mesh-url "/mesh/abc.0.symesh"})]))]
-    (testing "the picker reuses catalog facets and excludes unpreviewable rows from selection"
+    (testing "the picker reuses catalog facets and keeps unpreviewable rows available for metadata selection"
       (is (str/includes? picker "Orientation unset"))
       (is (str/includes? picker "data-bulk-render"))
       (is (str/includes? results "Prow"))
-      (is (re-find #"data-bulk-select=\"true\"[^>]*disabled" results)))
+      (is (not (re-find #"<input[^>]* disabled" results))))
     (testing "the viewport grid carries mesh identity and shared controls"
       (is (str/includes? grid "data-bulk-part"))
       (is (str/includes? grid "/mesh/abc.0.symesh"))

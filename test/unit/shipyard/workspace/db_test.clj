@@ -4,8 +4,8 @@
             [shipyard.workspace.transforms :as transforms]))
 
 (deftest owner-test
-  (is (= :orient (w/owner "/orient/save")))
-  (is (= :assembly (w/owner "/assembly/save")))
+  (is (= :browse (w/owner "/orient/save")))
+  (is (= :ships (w/owner "/assembly/save")))
   (is (= :ships (w/owner "/ships/preview")))
   (is (= :browse (w/owner "/part/navy/hull")))
   (is (nil? (w/owner "/workspace/ships"))))
