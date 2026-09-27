@@ -109,6 +109,7 @@ Linux, Windows, and Apple Silicon macOS runners. The uberjar is the exception an
 nothing: `clojure -T:build uber` bundles all four classifiers, which is why the Quick start
 above is a plain `java -jar`.
 
+CI prints each JVM and browser test name so a slow or stalled run identifies the active test.
 The README command check isolates configuration, cache and database directories and
 resolves the server command's dependencies before timing startup.
 
