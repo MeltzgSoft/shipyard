@@ -110,6 +110,8 @@ nothing: `clojure -T:build uber` bundles all four classifiers, which is why the 
 above is a plain `java -jar`.
 
 CI prints each JVM and browser test name so a slow or stalled run identifies the active test.
+The README command check isolates configuration, cache and database directories and
+resolves the server command's dependencies before timing startup.
 
 Tests come in three levels separated by **what they are allowed to touch**, not by size:
 unit touches nothing outside the process, integration gets the filesystem and natives,
