@@ -47,10 +47,10 @@ jobs:
           echo "$HOME/clojure/bin" >> "$GITHUB_PATH"
 
       - name: Unit tests
-        run: clojure -M:test:natives-linux --focus :unit
+        run: clojure -M:test:natives-linux --focus :unit --reporter kaocha.report/documentation
 
       - name: Integration tests
-        run: clojure -M:test:natives-linux --focus :integration
+        run: clojure -M:test:natives-linux --focus :integration --reporter kaocha.report/documentation
 
   test-windows:
     # Windows earns its slot on integration, not compilation: path separators,
@@ -86,11 +86,11 @@ jobs:
 
       - name: Unit tests
         shell: pwsh
-        run: clojure -M:test:natives-windows --focus :unit
+        run: clojure -M:test:natives-windows --focus :unit --reporter kaocha.report/documentation
 
       - name: Integration tests
         shell: pwsh
-        run: clojure -M:test:natives-windows --focus :integration
+        run: clojure -M:test:natives-windows --focus :integration --reporter kaocha.report/documentation
 
   test-macos:
     # Apple Silicon earns its slot for the same reason as Windows: execute the
@@ -110,10 +110,10 @@ jobs:
         run: clojure -Sdescribe
 
       - name: Unit tests
-        run: clojure -M:test:natives-macos-arm64 --focus :unit
+        run: clojure -M:test:natives-macos-arm64 --focus :unit --reporter kaocha.report/documentation
 
       - name: Integration tests
-        run: clojure -M:test:natives-macos-arm64 --focus :integration
+        run: clojure -M:test:natives-macos-arm64 --focus :integration --reporter kaocha.report/documentation
 
   test-cljs:
     # The cljc tests again, on the browser runtime. A JVM-only pass proves the
@@ -262,7 +262,7 @@ jobs:
           cp node_modules/htmx.org/dist/htmx.min.js resources/public/js/
 
       - name: E2E tests
-        run: clojure -M:test:natives-linux --focus :e2e
+        run: clojure -M:test:natives-linux --focus :e2e --reporter kaocha.report/documentation
 
   package:
     # The release artifact, and the only job that proves one exists. Linux
