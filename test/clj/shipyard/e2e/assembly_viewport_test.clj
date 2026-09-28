@@ -49,6 +49,9 @@
       (doseq [render-grid? [false true]]
         (testing (if render-grid? "return from Orient previews" "return from the Orient table")
           (s/click! driver ".masthead__mode:has-text('Part Browser')")
+          (s/wait-visible! driver "[data-part-back], [data-bulk-select]")
+          (when (pos? (s/count-els driver "[data-part-back]"))
+            (s/click! driver "[data-part-back]"))
           (s/wait-visible! driver "[data-bulk-select]")
           (when render-grid?
             (s/check! driver (str "[data-bulk-select][value='" (:hull fixture/ids) "']"))
