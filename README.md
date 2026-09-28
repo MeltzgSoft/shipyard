@@ -20,6 +20,10 @@ Current work and delivery planning live in the
 | Clojure CLI | 1.12.4.1618+ | |
 | Node | 24+ | shadow-cljs and the npm-managed frontend dependencies |
 
+On Windows, install the [x64 Visual C++ Redistributable](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)
+for Datalevin's C++ and OpenMP native dependencies. CI checks these DLLs before
+loading Datalevin and installs the runtime when the runner has administrator access.
+
 **Java 25 is the canonical JDK for this project.** It is not a floor to be negotiated
 down. The `:run` and `:test` aliases pass `--sun-misc-unsafe-memory-access=allow`, which
 does not exist before JDK 23 - an older JVM refuses to start rather than ignoring it -
