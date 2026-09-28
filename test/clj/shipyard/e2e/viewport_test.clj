@@ -345,7 +345,7 @@
   (s/await-part *driver* s/mount-plate-id)
   (is (vec-close? (:orientation (s/stats *driver*))
                   [-0.5 -0.5 0.5 0.5])
-      "loading the part again should restore its sidecar orientation")
+      "loading the part again should restore its saved orientation")
   (is (vec-close? (get-in (s/stats *driver*) [:orientation-guide :orientation])
                   [0.0 0.0 0.0 1.0])
       "a loaded saved orientation should be the wireframe's standard")

@@ -7,11 +7,7 @@
             [integrant.core :as ig]
             [shipyard.store.schema :as schema]
             [shipyard.store.transforms :as t]
-            [shipyard.store.legacy :as legacy]
             [shipyard.regions.registry :as registry]
-            [shipyard.regions.model :as regions]
-            [shipyard.regions.migration :as migration]
-            [shipyard.part.orientation :as orientation]
             [shipyard.loadout.transforms :as loadout]
             [shipyard.scheme.transforms :as scheme]
             [shipyard.paint.job :as paint-job]
@@ -60,9 +56,8 @@
 
 (defn close! [{:keys [conn]}] (d/close conn))
 
-(defmethod ig/init-key :shipyard.store/db [_ {:keys [data-home directory legacy-files]}]
-  (assoc (open! (or directory (fs/path (or data-home (system/data-home!)) "shipyard" "database")))
-         :legacy-files legacy-files))
+(defmethod ig/init-key :shipyard.store/db [_ {:keys [data-home directory]}]
+  (open! (or directory (fs/path (or data-home (system/data-home!)) "shipyard" "database"))))
 (defmethod ig/halt-key! :shipyard.store/db [_ store] (close! store))
 
 (defn read! [{:keys [conn lock]} f]
@@ -132,45 +127,28 @@
    :part/renderable :part/mesh-key :part/tris :part/weapons? :part/turrets? :part/accepts-turrets?])
 
 (defn scan!
-  "Import each part once and refresh observed facts without replacing authored state.
-  A failed legacy read aborts the entire library import."
+  "Refresh observed files without replacing authored database state."
   [store parts root]
   (when root
     (write! store
             (fn [conn]
               (let [library (or (library-id @conn root) (random-uuid))
-                    existing (d/pull @conn '[*] [:library/id library])
-                    imported? (:library/imported? existing)
-                    authored (into {} (keep (fn [part]
-                                              (when-not (:part/imported? (d/pull @conn '[:part/imported?] [:part/key [library (:part/id part)]]))
-                                                [(:part/id part) (legacy/part! root (:part/id part))]))) parts)
-                    shared (registry/discover (if imported? (registry-value @conn library) (legacy/layers! root))
-                                              (keep #(migration/regions (:part/paint-regions %)) (vals authored)))]
+                    shared (registry-value @conn library)]
                 (d/transact! conn [{:library/id library :library/root (library-location root)
                                     :library/revision (:revision shared)}])
                 (d/transact! conn (t/layers-tx library shared))
-                (doseq [id (:deleted shared)] (layer-ref! conn library id))
                 (doseq [old (entities @conn :part/library (:db/id (d/pull @conn [:db/id] [:library/id library])) [:db/id])]
                   (d/transact! conn [{:db/id (:db/id old) :part/present? false}]))
                 (doseq [part parts]
                   (let [path (:part/id part) ref (part-ref! conn library path)
-                        sc (get authored path)
                         old (d/pull @conn '[*] ref)
                         removed (for [attr (conj scan-attributes :part/variants)
                                       :when (contains? old attr)]
                                   [:db.fn/retractAttribute ref attr])
-                        value (into {} (remove (comp nil? val)) (select-keys part scan-attributes))
-                        value (cond-> (assoc value :db/id ref :part/present? true :part/imported? true
-                                             :part/variants (vec (:part/variants part)))
-                                (contains? authored path)
-                                (merge (cond-> {:part/mounts (mapv (fn [order mount] (assoc mount :mount/uid (random-uuid) :mount/order order)) (range) (:mounts sc))}
-                                         (:part/role sc) (assoc :part/role-override (:part/role sc))
-                                         (:part/orientation sc) (assoc :part/orientation
-                                                                       (or (orientation/normalize-quaternion (:part/orientation sc))
-                                                                           (throw (ex-info "Invalid imported orientation" {:part path}))))
-                                         (seq (apply dissoc sc [:mounts :part/role :part/orientation :part/paint-regions :shipyard/version]))
-                                         (assoc :migration/extra (apply dissoc sc [:mounts :part/role :part/orientation :part/paint-regions :shipyard/version])))))]
-                    (d/transact! conn (conj (vec removed) value))
+                        value (into {} (remove (comp nil? val)) (select-keys part scan-attributes))]
+                    (d/transact! conn (conj (vec removed)
+                                            (assoc value :db/id ref :part/present? true
+                                                   :part/variants (vec (:part/variants part)))))
                     (doseq [source (:part/sources old)]
                       (d/transact! conn [{:db/id (:db/id source) :source/present? false}]))
                     (doseq [variant (:part/variants part)]
@@ -186,10 +164,7 @@
                                                                         :source/variant variant :source/path (str (fs/path path (str (name variant) ".stl")))
                                                                         :source/size (fs/size source)
                                                                         :source/mtime (.toMillis ^java.nio.file.attribute.FileTime (fs/last-modified-time source))}
-                                                                 sha (assoc :source/content [:mesh/sha sha]))]}])))))
-                    (when-let [region (:part/paint-regions sc)]
-                      (save-region! conn library path (reduce regions/without-layer (migration/regions region) (:deleted shared))))))
-                (d/transact! conn [{:library/id library :library/imported? true}])
+                                                                 sha (assoc :source/content [:mesh/sha sha]))]}])))))))
                 library)))))
 
 (defn- record-spec [kind]
@@ -289,39 +264,11 @@
                                 :ship/paint (t/paint-tx library parts id (:ship/paint record))}
                          (:ship/scheme record) (assoc :ship/scheme [:scheme/id (:ship/scheme record)]))])))
 
-(defn migrate-ship-paint! [conn]
-  (when-not (:store/named-ships-migrated? (d/pull @conn '[*] [:store/key "shipyard"]))
-    (let [schemes (:schemes (records-value @conn :schemes))]
-      (doseq [[id class] (:loadouts (records-value @conn :loadouts))
-              :when (:loadout/scheme class)
-              :let [library (get-in (d/pull @conn [{:loadout/library [:library/id]}] [:loadout/id id])
-                                    [:loadout/library :library/id])
-                    ship-id (java.util.UUID/nameUUIDFromBytes (.getBytes (str "shipyard:legacy-ship:" id) "UTF-8"))]]
-        ;; Preserve prior scheme assignments and custom paint as a named vessel.
-        ;; Keep the class and legacy scheme data unchanged for recovery.
-        (when-not (d/pull @conn [:db/id] [:ship/id ship-id])
-          (put-ship! conn library {:ship/id ship-id :ship/name (:loadout/name class) :ship/class id
-                                   :ship/scheme (:loadout/scheme class)
-                                   :ship/paint (paint-job/legacy (get schemes (:loadout/scheme class)))})))
-      (d/transact! conn [{:store/key "shipyard" :store/named-ships-migrated? true}]))))
-
-(defn import-records! [store library]
-  (when library
-    (write! store
-            (fn [conn]
-              (when-not (:store/imported? (d/pull @conn '[*] [:store/key "shipyard"]))
-                (let [records (legacy/records! (fs/parent (:directory store)) (:legacy-files store))]
-                  (doseq [record (vals (:schemes records))] (put-scheme! conn library (migration/scheme record)))
-                  (doseq [record (vals (:loadouts records))] (put-loadout! conn library record))
-                  (d/transact! conn [{:store/key "shipyard" :store/imported? true}])))
-              (migrate-ship-paint! conn)))))
-
 (defn put-record! [store library kind record mode]
   (try
     (write! store
             (fn [conn]
-              (let [record (if (= kind :schemes) (migration/scheme record) record)
-                    operation (case kind :schemes scheme/put-record :loadouts loadout/put-record :ships ship/put-record)
+              (let [operation (case kind :schemes scheme/put-record :loadouts loadout/put-record :ships ship/put-record)
                     result (operation (records-value @conn kind) record mode)]
                 (if (:error result) result
                     (do

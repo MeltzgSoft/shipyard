@@ -1,17 +1,12 @@
 (ns shipyard.integration.part-regions-test
   (:require [shipyard.persistence-fixture :as persisted]
-            [babashka.fs :as fs]
             [clojure.string :as str]
             [clojure.test :refer [deftest is]]
             [ring.mock.request :as mock]
             [shipyard.assembly-fixture :as fixture]
             [shipyard.catalog.db :as catalog]
-            [shipyard.regions.migration :as migration]
             [shipyard.regions.colors :as colors]
-            [shipyard.store.db :as store]
-            [datalevin.core :as d]
             [shipyard.region-fixture :as rf]
-            [shipyard.catalog.sidecar :as sidecar]
             [shipyard.http.jobs :as jobs]
             [shipyard.library.index :as index]
             [shipyard.paint.strokes :as strokes]
@@ -23,7 +18,7 @@
                          (cond-> (merge {:layer-revision (str (:revision (catalog/region-registry (catalog/snapshot! cat))))} params)
                            (:layer params) (assoc :layer (or (rf/id cat (:layer params)) (:layer params)))))))
 
-(deftest region-colors-migrate-and-persist
+(deftest region-colors-persist-across-rescans
   (let [started (fixture/start!) sys (:system started) cat (:shipyard.catalog/db sys)
         library (:shipyard.library/index sys) id (:weapon fixture/ids)
         registry! #(catalog/region-registry! cat)
@@ -32,12 +27,6 @@
       (doseq [name ["Trim" "Lights" "Armor" "Engines" "Torpedo tube"]]
         (is (= 200 (:status (region-post (:handler started) cat
                                          {:part-id id :mesh-key (apply str (repeat 64 "a")) :revision "0" :action "add" :name name})))))
-      ;; Simulate an existing library written before colors were stored.
-      (store/write! (:store cat)
-                    (fn [conn]
-                      (d/transact! conn (mapv (fn [layer] [:db.fn/retractAttribute
-                                                           [:layer/key [(:library @(:state cat)) layer]] :layer/preview-color])
-                                              (keys (:layers (registry!)))))))
       (rescan!)
       (let [assigned (registry!) palette (mapv :preview-color (vals (:layers assigned)))]
         (is (every? colors/valid? palette))
@@ -145,28 +134,27 @@
         (is (empty? (:schemes (persisted/records! store :schemes)))))
       (finally (fixture/stop! started)))))
 
-(deftest shared-identities-migrate-and-edit-from-an-unused-part
+(deftest shared-identities-edit-from-an-unused-part
   (let [mesh (apply str (repeat 64 "a")) face (apply str (repeat 72 "0"))
-        legacy {:mesh-key mesh :revision 4 :layers ["Primary" "Secondary" "Trim"] :faces {face "Trim"}}
         scheme-id (random-uuid) material {:base [0.2 0.3 0.4] :metalness 0.7 :roughness 0.2}
-        started (fixture/start!
-                 false (fn [root]
-                         (fixture/library! root)
-                         (doseq [id [(:weapon fixture/ids) (:weapon-alt fixture/ids)]]
-                           (sidecar/update-sidecar! (str root) id assoc :part/paint-regions legacy))
-                         (let [file (fs/path (fs/parent root) "data" "shipyard" "schemes.edn")]
-                           (fs/create-dirs (fs/parent file))
-                           (spit (str file) (pr-str {:version 1 :schemes {scheme-id {:scheme/id scheme-id :scheme/name "Legacy"
-                                                                                     :scheme/roles {} :scheme/layers {"Trim" material}}}})))
-                         root))
+        started (fixture/start!)
         sys (:system started) handler (:handler started) cat (:shipyard.catalog/db sys)
         store (:shipyard.scheme/db sys) root (str (:root started))
-        selected (:hull fixture/ids) layer (migration/legacy-id "Trim")
-        files (mapv #(sidecar/sidecar-file root %) [(:weapon fixture/ids) (:weapon-alt fixture/ids)])
-        read! #(mapv slurp files)
+        selected (:hull fixture/ids)
+        _ (catalog/edit-region-layer! cat selected 0 0 "add" nil "Trim")
+        layer (rf/id cat "Trim")
+        ids [(:weapon fixture/ids) (:weapon-alt fixture/ids)]
+        read! #(mapv (fn [id] (get-in (persisted/authored! cat id) [:part/paint-regions :faces])) ids)
         params {:part-id selected :mesh-key mesh :revision "0" :action "rename" :layer layer :name "Accent"}
         post #(region-post handler cat %)]
     (try
+      (doseq [id ids]
+        (catalog/save-regions! cat id {:version 2 :mesh-key mesh :revision 4
+                                       :layers ["Primary" "Secondary" layer]
+                                       :layer-definitions (:layers (catalog/region-registry! cat))
+                                       :faces {face layer}}))
+      (schemes/put! store {:scheme/id scheme-id :scheme/name "Palette" :scheme/roles {}
+                           :scheme/layers {layer material} :scheme/layer-ids? true} :create)
       (workspace/update-workspace! (:shipyard.workspace/db sys) :browse assoc :selection selected)
       (let [before (read!) palette (schemes/snapshot! store)]
         (is (= layer (rf/id cat "Trim")))
@@ -175,7 +163,7 @@
         (is (= layer (rf/id cat "Accent")))
         (is (nil? (rf/id cat "Trim")))
         (is (= before (read!)) "Renaming an entity never rewrites its face assignments")
-        (is (= palette (persisted/records! store :schemes)) "Legacy palettes resolve to the same IDs on every restart")
+        (is (= palette (persisted/records! store :schemes)) "Palettes retain the same layer IDs on every restart")
         (schemes/put! store (get-in palette [:schemes scheme-id]) :update)
         (is (= material (get-in (schemes/snapshot! store) [:schemes scheme-id :scheme/layers layer])))
         (is (= palette (persisted/records! store :schemes)))

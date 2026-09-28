@@ -9,18 +9,18 @@
   (and (string? value) (boolean (re-matches #"layer:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}" value))))
 (defn name? [value]
   (and (string? value) (<= 1 (count value) 200) (= value (str/trim value))))
-(defn empty-regions [mesh-key] {:mesh-key mesh-key :revision 0 :layers builtins :faces {}})
+(defn empty-regions [mesh-key]
+  {:version 2 :mesh-key mesh-key :revision 0 :layers builtins :layer-definitions {} :faces {}})
 (defn valid? [value]
-  (and (map? value) (or (= #{:mesh-key :revision :layers :faces} (set (keys value)))
-                        (and (= 2 (:version value))
-                             (= #{:version :mesh-key :revision :layers :faces :layer-definitions} (set (keys value)))
-                             (map? (:layer-definitions value))
-                             (every? #(or (some #{%} builtins) (detail-id? %)) (:layers value))
-                             (every? (fn [[id entry]] (and (some #{id} (:layers value))
-                                                           (detail-id? id)
-                                                           (name? (:name entry)) (name? (:preview-name entry))
-                                                           (or (not (contains? entry :preview-color)) (colors/valid? (:preview-color entry)))))
-                                     (:layer-definitions value))))
+  (and (map? value) (= 2 (:version value))
+       (= #{:version :mesh-key :revision :layers :faces :layer-definitions} (set (keys value)))
+       (map? (:layer-definitions value))
+       (every? #(or (some #{%} builtins) (detail-id? %)) (:layers value))
+       (every? (fn [[id entry]] (and (some #{id} (:layers value))
+                                     (detail-id? id)
+                                     (name? (:name entry)) (name? (:preview-name entry))
+                                     (or (not (contains? entry :preview-color)) (colors/valid? (:preview-color entry)))))
+               (:layer-definitions value))
        (string? (:mesh-key value)) (boolean (re-matches #"[0-9a-f]{64}" (:mesh-key value)))
        (nat-int? (:revision value)) (vector? (:layers value))
        (= builtins (vec (take 2 (:layers value))))
@@ -38,19 +38,15 @@
     regions))
 
 (defn change
-  ([regions mesh-key revision action layer new-name keys]
-   (change regions mesh-key revision action layer new-name keys []))
-  ([regions mesh-key revision action layer new-name keys available-layers]
+  ([regions mesh-key revision action layer _new-name keys]
+   (change regions mesh-key revision action layer _new-name keys []))
+  ([regions mesh-key revision action layer _new-name keys available-layers]
    (let [current (or regions (empty-regions mesh-key)) layers (:layers current)]
      (cond
        (not= revision (:revision current)) {:error "Regions changed. Reopen this part before retrying."}
        (and (not= action "reset") (not= mesh-key (:mesh-key current)))
        {:error "Source mesh changed. Reset regions before assigning faces to this source."}
        (= action "reset") {:regions (assoc (empty-regions mesh-key) :revision (inc revision))}
-       (= action "add")
-       (if (and (name? new-name) (not (some #{new-name} layers)))
-         {:regions (-> current (update :layers conj new-name) (update :revision inc))}
-         {:error "Enter a unique layer name between 1 and 200 characters."})
        (not (or (some #{layer} layers)
                 (and (= action "assign") (some #{layer} available-layers))))
        {:error "Choose an existing layer."}
@@ -62,16 +58,7 @@
                                            (reduce (fn [m key] (assoc m key layer)) % keys)))
                        (update :revision inc))}
          {:error "Choose visible faces to assign."})
-       (and (= action "rename") (not (some #{layer} builtins)))
-       (if (and (name? new-name) (not (some #{new-name} layers)))
-         {:regions (-> current
-                       (update :layers #(mapv (fn [name] (if (= name layer) new-name name)) %))
-                       (update :faces #(into {} (map (fn [[key name]] [key (if (= name layer) new-name name)])) %))
-                       (update :revision inc))}
-         {:error "Enter a unique layer name between 1 and 200 characters."})
-       (and (= action "delete") (not (some #{layer} builtins)))
-       {:regions (without-layer current layer)}
-       :else {:error "Primary and Secondary cannot be renamed or deleted."}))))
+       :else {:error "Unknown region operation."}))))
 
 (defn- preview-color [name]
   (case name

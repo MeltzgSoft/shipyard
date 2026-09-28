@@ -11,7 +11,7 @@
                [:store/key :library/root :part/id :part/name :part/bundle :part/class
                 :part/name-override :part/bundle-override :part/class-override
                 :part/mesh-key :source/path :mesh/sha :layer/id :layer/name :layer/preview-name
-                :scheme/name :ship/name :loadout/name :group/name :fleet/name :migration/path])
+                :scheme/name :ship/name :loadout/name :group/name :fleet/name])
    (attributes :db.type/uuid
                [:library/id :part/uid :mount/uid :scheme/id :ship/id :loadout/id :group/id :paint/group-id :fleet/id])
    (attributes :db.type/long
@@ -21,7 +21,7 @@
    (attributes :db.type/boolean
                [:source/present? :part/present? :part/renderable :part/weapons? :part/turrets?
                 :part/accepts-turrets? :layer/deleted? :scheme/deleted? :loadout/deleted?
-                :ship/deleted? :store/named-ships-migrated? :part/imported? :library/imported? :store/imported? :layer/builtin?])
+                :ship/deleted? :layer/builtin?])
    (attributes :db.type/keyword
                [:part/source :part/role-hint :part/role-source :part/role-override :mount/id :mount/kind
                 :mount/origin :mount/mirror-id :source/variant :binding/role])
@@ -29,7 +29,7 @@
                [:part/orientation :mount/pos :mount/axis :mount/roll :mount/magnet
                 :mount/facet :mount/split :mount/mirror-plane :mount/mirror-offset :chunk/payload
                 :slot/path :target/path :layer/preview-color :material/base :material/metalness
-                :material/roughness :material/glow :material/paint :scheme/fields :paint/fields :migration/extra])
+                :material/roughness :material/glow :material/paint :scheme/fields :paint/fields])
    (attributes :db.type/ref
                [:part/library :source/part :source/content :layer/library :mask/layer
                 :region/content :slot/part :ship/class :ship/scheme :ship/library :loadout/hull :loadout/library :loadout/scheme :scheme/library
@@ -48,7 +48,7 @@
    (into {} (map (fn [attr] [attr {:db/valueType :db.type/uuid :db/unique :db.unique/identity}]))
          [:library/id :part/uid :mount/uid :scheme/id :ship/id :loadout/id :group/id :fleet/id])
    (into {} (map (fn [attr] [attr {:db/valueType :db.type/string :db/unique :db.unique/identity}]))
-         [:store/key :library/root :mesh/sha :migration/path :color-preset/hex])
+         [:store/key :library/root :mesh/sha :color-preset/hex])
    (into {} (map (fn [attr] [attr {:db/unique :db.unique/identity}]))
          [:part/key :layer/key :source/key])
    {:layer/active-name {:db/unique :db.unique/value}}))

@@ -61,10 +61,6 @@
                                         (re-matches #"[0-9]+" %)))]]
    [:original-mount-id {:optional true} string?]])
 
-(def part-form
-  [:map {:closed false}
-   [:part-id string?]])
-
 (def mount-form
   [:map {:closed false}
    [:part-id string?]

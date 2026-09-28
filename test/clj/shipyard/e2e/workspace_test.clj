@@ -4,6 +4,7 @@
             [clojure.string :as str]
             [clojure.test :refer [deftest is]]
             [shipyard.assembly-fixture :as fixture]
+            [shipyard.catalog.db :as catalog]
             [shipyard.e2e.support :as s]
             [shipyard.http.jobs :as jobs]
             [shipyard.loadout-fixture :as lf]
@@ -97,6 +98,9 @@
                   (update :loadout/slots #(update-vals % (fn [id] (str/replace id "Synthetic Navy/Cruiser" "Other Navy/Escort")))))
         missing (assoc original :loadout/id (random-uuid) :loadout/name "Missing hull" :loadout/hull "gone")]
     (try
+      (doseq [[id value] (fixture/authored)]
+        (catalog/save-authoring! (:catalog deps)
+                                 (str/replace id "Synthetic Navy/Cruiser" "Other Navy/Escort") value))
       (doseq [record [original other missing]] (store/put! (:loadouts deps) record :create))
       (s/go! driver (s/base-url (:system started)))
       (switch! driver "ships")

@@ -396,7 +396,7 @@ Authored metadata is stored in a shared Datalevin database. Shared concepts such
 layers are entities referenced by parts and schemes. Owned children and shared refs
 have distinct lifecycles; related changes commit atomically. The maps below are domain
 projections, not serialized storage documents. Source STLs and derived mesh files stay
-outside the database. Legacy EDN authoring is imported once and retained unchanged.
+outside the database. Authored metadata is created and edited in Datalevin.
 
 ### 8.1 Part
 
@@ -463,8 +463,9 @@ self-contained: absent class matches absent class within that same bundle, never
 another bundle. Multi-section ships use one manually selected root hull and authored
 plugs/sockets joining its sections; filenames never imply those attachments.
 
-The draft has no name or disk persistence. M4 adds the named loadout below and uses
-the same path identity, rather than a flat mount-id map that loses repeated/nested slots.
+The draft retains its working name and optional saved-class identity in memory.
+Only Save writes the reusable class below, using the same path identity rather than
+a flat mount-id map that loses repeated/nested slots.
 
 A reusable ship class: a named hull and slot configuration. Named painted ships reference this class rather than copying its assembly.
 
@@ -475,9 +476,11 @@ A reusable ship class: a named hull and slot configuration. Named painted ships 
  :loadout/slots   {[[:prow 0]]   "human-navy/cruiser/voss-ram-prow"
                    [[:bridge 0]] "human-navy/cruiser/bridge"
                    [[:port-1 0]] "human-navy/cruiser/lance-battery"
-                   [[:port-1 1]] "human-navy/cruiser/weapon-battery"}
- :loadout/thumb   "thumbs/….png"}
+                   [[:port-1 1]] "human-navy/cruiser/weapon-battery"}}
 ```
+
+Class and named-ship thumbnails are generated on demand from their current assembly
+and paint; thumbnail paths are not part of the durable class record.
 
 Saved loadouts may be incomplete: a hull alone or any valid subset of its reachable
 assignments can be saved, previewed, edited and duplicated. Unassigned mounts are
@@ -543,10 +546,6 @@ a material is saved. Deleting a group preserves instance materials and details.
 **Use inherited material** clears a selected instance, group or custom layer material.
 An unavailable scheme retains its reference and warns; custom paint remains usable.
 
-Legacy class scheme assignments migrate once to named ships referencing those
-classes and palettes, with the old role/instance/group/detail paint copied into each
-ship's independently owned paint graph. Original records remain intact for recovery.
-Unassigned legacy scheme custom paint remains archived in the original record.
 Fleet ordering and fleet-default assignment remain M6 work.
 
 Material controls preview locally on input, and commit on change/release. A failed
@@ -562,8 +561,7 @@ Detail layers are shared entities with stable IDs and editable names, stored in 
 library-wide registry independently of part usage. A layer can be added, renamed or
 deleted from any selected part, including parts that do not use it. Renaming changes
 only its shared label, preserving face assignments, scheme colors and preview colors.
-Existing name-based masks and palettes migrate to matching IDs without losing their
-assignments. Duplicate active names are rejected.
+Duplicate active names are rejected.
 
 Region preview colors are allocated across the library for visual separation,
 including separation from Primary and Secondary. Each chosen color is stored with

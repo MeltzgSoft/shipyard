@@ -3,7 +3,7 @@
   (:require [babashka.fs :as fs]
             [clojure.java.io :as io]
             [integrant.core :as ig]
-            [shipyard.catalog.sidecar :as sidecar]
+            [shipyard.catalog.db :as catalog]
             [shipyard.fixtures :as fixtures]
             [shipyard.system :as system])
   (:import [java.util.concurrent ExecutorService TimeUnit]))
@@ -35,26 +35,32 @@
 (defn library! [root]
   (doseq [[role id] ids]
     (let [dir (fs/file root id)
-          stl (fs/file dir (if (= role :supported) "supported.stl" "unsupported.stl"))
-          authored-role (case role :prow-alt :prow :weapon-alt :weapon role)]
+          stl (fs/file dir (if (= role :supported) "supported.stl" "unsupported.stl"))]
       (fs/create-dirs dir)
       (with-open [out (io/output-stream stl)]
         (.write out ^bytes (fixtures/->binary-stl
                             (if (= role :hull)
                               (mapv (fn [triangle] (mapv (fn [[x y z]] [(* 3 x) (* 3 y) z]) triangle))
                                     (fixtures/cube 4.0))
-                              (fixtures/cube 1.0)))))
-      (when-not (= role :hint)
-        (sidecar/write-sidecar! (str root) id
-                                {:part/role authored-role
-                                 :mounts (case role :hull hull-mounts
-                                               (:weapon :weapon-alt) weapon-mounts [plug])}))))
+                              (fixtures/cube 1.0)))))))
   root)
+
+(defn authored []
+  (into {} (for [[role id] ids :when (not= role :hint)]
+             [id {:part-role (case role :prow-alt :prow :weapon-alt :weapon role)
+                  :mounts (case role :hull hull-mounts
+                                (:weapon :weapon-alt) weapon-mounts [plug])}])))
+
+(defn author! [cat]
+  (doseq [[id value] (authored)
+          :when (catalog/part (catalog/snapshot! cat) id)]
+    (catalog/save-authoring! cat id value)))
 
 (defn start!
   ([] (start! false))
   ([server?] (start! server? library!))
-  ([server? build-library!]
+  ([server? build-library!] (start! server? build-library! author!))
+  ([server? build-library! author-catalog!]
    (let [temp (fs/create-temp-dir {:prefix "shipyard-assembly-"})
          root (build-library! (fs/path temp "library"))
          cfg (-> (system/load-config! {:profile :test :config-dir (str (fs/path temp "config")) :env {}})
@@ -66,6 +72,7 @@
                  (assoc-in [:shipyard.http/server :port] 0))
          cfg (cond-> cfg (not server?) (dissoc :shipyard.http/server))
          started (system/start! cfg)]
+     (author-catalog! (:shipyard.catalog/db started))
      {:temp temp :root root :system started :handler (:shipyard.http/routes started)})))
 
 (defn stop! [{:keys [temp system]}]

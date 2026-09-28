@@ -219,14 +219,14 @@
     (is (some? (settings/problem! "   ")))
     (is (some? (settings/problem! (str root "/no/such/place"))))))
 
-(deftest failed-migration-keeps-the-active-library
+(deftest failed-database-update-keeps-the-active-library
   (let [sys (system) root (library-tree "Hull") other (library-tree "Replacement Hull")]
     (is (nil? (settings/relocate! sys (str root))))
     (let [library-before @(:state (:library sys))
           catalog-before @(:state (:catalog sys))
           setting-before (slurp (system/library-file (:config-dir sys)))]
-      (spit (io/file other "Replacement Hull" "shipyard.edn") "{:shipyard/version 99}")
-      (is (str/includes? (settings/relocate! sys (str other)) "Cannot import"))
+      (with-redefs [metadata/scan! (fn [& _] (throw (ex-info "Database write failed" {})))]
+        (is (str/includes? (settings/relocate! sys (str other)) "Database write failed")))
       (is (= library-before @(:state (:library sys))))
       (is (= catalog-before @(:state (:catalog sys))))
       (is (= setting-before (slurp (system/library-file (:config-dir sys))))))))

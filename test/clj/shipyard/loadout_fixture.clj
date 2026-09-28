@@ -1,7 +1,7 @@
 (ns shipyard.loadout-fixture
   (:require [babashka.fs :as fs]
             [shipyard.assembly-fixture :as fixture]
-            [shipyard.catalog.sidecar :as sidecar]
+            [shipyard.catalog.db :as catalog]
             [shipyard.loadout.db :as loadouts]))
 
 (def assignments
@@ -36,16 +36,21 @@
                           id)])) assignments))
 
 (defn scanned-library!
-  "Real scanned roles with authored mounts, matching an imported authored library."
+  "Source folders whose roles are inferred by the real scanner."
   [root]
   (fixture/library! root)
   (doseq [role [:hull :prow :bridge :antenna :weapon :turret]]
     (let [old-id (fixture/ids role) new-id (scanned-ids role)]
-      (sidecar/update-sidecar! (str root) old-id dissoc :part/role)
       (when (not= old-id new-id)
         (fs/create-dirs (fs/parent (fs/path root new-id)))
         (fs/move (fs/path root old-id) (fs/path root new-id)))))
   root)
+
+(defn author-scanned! [cat]
+  (doseq [[role id] scanned-ids :when (not= role :hint)]
+    (catalog/save-authoring! cat id
+                             (cond-> (get (fixture/authored) (fixture/ids role))
+                               (#{:hull :prow :bridge :antenna :weapon :turret} role) (dissoc :part-role)))))
 
 (defn save-class! [sys]
   (let [state (:state (:shipyard.assembly/db sys))

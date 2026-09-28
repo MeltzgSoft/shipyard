@@ -172,11 +172,7 @@ export. Start a fresh JVM without `:db-v1`; namespace reloads cannot replace a
 loaded native library. The export is a trusted local backup, not a file exchange
 format. New installations need no migration.
 
-Existing part/layer sidecars and sibling `loadouts.edn`/`schemes.edn` are imported once
-when the library is scanned. Existing per-store `:data-home` overrides are honored
-as import locations. Original files remain unchanged and are not used for later
-edits. Malformed legacy records stop import with a path and recovery message. Repair
-or restore the named original and retry. Back up both the database and source STLs;
+Back up both the database and source STLs;
 copying an STL folder alone no longer carries authored metadata. The scan index and
 mesh cache remain disposable. Database native binaries support Linux x86-64/ARM64,
 Windows x86-64 and macOS ARM64; this dependency does not ship macOS Intel binaries.

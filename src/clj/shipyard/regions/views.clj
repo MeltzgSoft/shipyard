@@ -2,7 +2,6 @@
   (:require [clojure.string :as str]
             [clojure.data.json :as json]
             [shipyard.regions.model :as model]
-            [shipyard.regions.migration :as migration]
             [shipyard.regions.registry :as registry]
             [shipyard.workspace.views :as workspace]))
 
@@ -64,7 +63,7 @@
    (panel part-id mesh-key saved selected error shared {}))
   ([part-id mesh-key saved selected error shared {:keys [mode angle face-delta] :or {mode "facets" angle 1}}]
    (let [available (registry/ids shared)
-         regions (assoc (or saved (migration/regions (model/empty-regions mesh-key)))
+         regions (assoc (or saved (model/empty-regions mesh-key))
                         :layer-revision (:revision shared)
                         :layer-definitions (:layers shared))
          preview (assoc regions :layers available)

@@ -6,19 +6,18 @@
             [shipyard.assembly-fixture :as fixture]
             [shipyard.bulk-orientation.save-state :as saves]
             [shipyard.catalog.db :as catalog]
-            [shipyard.catalog.sidecar :as sidecar]
             [shipyard.e2e.orient-save-test :as orient]
             [shipyard.e2e.support :as s]
             [shipyard.part.orientation :as orientation]))
 
 (deftest invalid-bulk-transport-preserves-every-durable-pose
   (let [started (fixture/start! true) driver (s/make-driver)
-        c (:shipyard.catalog/db (:system started)) root (str (:root started))
+        c (:shipyard.catalog/db (:system started))
         a (:prow fixture/ids) b (:bridge fixture/ids)
         q45 (orientation/from-euler-degrees 45 0 0) q90 (orientation/from-euler-degrees 90 0 0)]
     (try
       (doseq [id [a b]] (catalog/save-part-orientation! c id q45))
-      (let [before (mapv #(slurp (sidecar/sidecar-file root %)) [a b])]
+      (let [before (mapv #(persisted/authored! c %) [a b])]
         (orient/open-grid! driver started [a b])
         (orient/set-yaw! driver 90)
         (s/js driver "() => { window.validationReplies=0; document.body.addEventListener('htmx:afterRequest', e => { if(e.detail.pathInfo.requestPath === '/orient/save') window.validationReplies++; }); }")
@@ -31,7 +30,7 @@
             (orient/save! driver)
             (is (s/wait-until #(< count-before (s/js driver "() => window.validationReplies"))))
             (is (str/includes? (s/text driver "#bulk-orient-status") "data was invalid"))
-            (is (= before (mapv #(slurp (sidecar/sidecar-file root %)) [a b])))
+            (is (= before (mapv #(persisted/authored! c %) [a b])))
             (is (= 2 (get-in (s/stats driver) [:bulk :dirty])))
             (doseq [id [a b]]
               (is (saves/same-pose? q45 (orient/durable started id)))

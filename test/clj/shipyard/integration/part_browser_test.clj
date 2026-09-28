@@ -33,7 +33,7 @@
 (deftest row-summaries-exclude-face-payloads
   (let [started (fixture/start!) cat (get-in started [:system :shipyard.catalog/db])
         id (:weapon fixture/ids) read! #(catalog/part (catalog/listing! cat) id)
-        regions {:mesh-key (apply str (repeat 64 "a")) :revision 0 :layers ["Primary" "Secondary"]
+        regions {:version 2 :layer-definitions {} :mesh-key (apply str (repeat 64 "a")) :revision 0 :layers ["Primary" "Secondary"]
                  :faces (zipmap (map #(format "%072x" %) (range 10000)) (repeat "Secondary"))}]
     (try
       (is (= {:plugs 1 :sockets {#{:turret} 1}} (:part/mount-summary (read!))))

@@ -32,7 +32,7 @@
                                       (do (Thread/sleep 20) (recur)))))]
           (is (= :ready (:state prepared)))
           (when (#{(:hull fixture/ids) (:weapon fixture/ids)} id)
-            (catalog/save-regions! cat id {:mesh-key (:mesh-key prepared) :revision 0
+            (catalog/save-regions! cat id {:version 2 :layer-definitions {} :mesh-key (:mesh-key prepared) :revision 0
                                            :layers ["Primary" "Secondary"] :faces (zipmap keys (repeat "Secondary"))}))))
       (loadouts/put! (:shipyard.loadout/db sys) {:loadout/id class-id :loadout/name "Payload test"
                                                  :loadout/hull (:hull lf/draft) :loadout/slots lf/assignments} :create)

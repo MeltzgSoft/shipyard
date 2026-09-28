@@ -439,10 +439,6 @@
      (when part
        (dismiss-error-button part))]]))
 
-(defn mount-saved []
-  [:div.facet-preview
-   [:p.detail__status "Mount saved."]])
-
 ;; --- the library location ---------------------------------------------------
 
 (defn settings-form

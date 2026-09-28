@@ -78,7 +78,7 @@
       (finally (fixture/stop! started)))))
 
 (deftest scanned-roles-save-and-transfer-without-reauthoring
-  (let [started (fixture/start! false lf/scanned-library!) deps (lf/deps started)
+  (let [started (fixture/start! false lf/scanned-library! lf/author-scanned!) deps (lf/deps started)
         state (get-in deps [:assembly :state])
         draft (assoc lf/draft :assignments lf/scanned-assignments)]
     (try

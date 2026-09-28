@@ -61,7 +61,8 @@ curl -s -X POST \
 ```
 
 `{run}` is the run *number*, not its id. `{index}` is the job's position in the workflow
-file, not its id - in `test.yml`, 0 is `test-linux`, 1 is `test-windows`, 2 is `test-cljs`.
+file, not its id - in `test.yml`, 0 is `test-linux`, 1 is `test-windows`, 2 is
+`test-macos`, 3 is `test-cljs`, 4 is `readme`, 5 is `test-e2e`, and 6 is `package`.
 Post `{"logCursors":[]}` first: that returns `state.currentJob.steps` with each step's
 status, which is how you find the `N` worth expanding. Lines come back at
 `logs.stepsLog[].lines[].message`.
