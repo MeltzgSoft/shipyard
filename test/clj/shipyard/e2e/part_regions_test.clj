@@ -54,8 +54,14 @@
   (s/assert-bundle!)
   (let [started (fixture/start! true) sys (:system started) driver (s/make-driver)
         cat (:shipyard.catalog/db sys) id (:weapon fixture/ids)
+        recoveries (atom 0)
         swatches #(s/js driver "() => [...document.querySelectorAll('[data-region-layer] .paint-swatch')].map(e => e.style.background)")]
     (try
+      (.onRequest ^Page (:page driver)
+                  (reify Consumer
+                    (accept [_ request]
+                      (when (.contains (.url ^Request request) "/parts/regions/snapshot")
+                        (swap! recoveries inc)))))
       (s/go! driver (s/base-url sys))
       (s/open-part! driver "weapon")
       (s/await-part driver id)
@@ -73,6 +79,7 @@
       (apply brush/stroke! driver (region-point driver 0))
       (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
       (is (s/wait-until #(= 2 (count (set (vals (region-colors driver)))))))
+      (is (zero? @recoveries) "Adding layers to an unpainted part retains a valid preview baseline")
       (let [[a b] (vec (set (vals (region-colors driver)))) before (swatches)]
         (is (> (reduce + (map #(abs (- %1 %2)) a b)) 0.5) "Trim and Torpedo tube are visibly separated on the mesh")
         (s/click! driver "[data-detail-tab=part]")
