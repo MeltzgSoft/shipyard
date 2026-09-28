@@ -258,7 +258,7 @@
        [:p.detail__status "Loaded."]
        (when (#{:hull :hull-section} (:part/role-hint part))
          [:button (merge workspace-views/transition-attrs {:type "button"
-                                                           :hx-get "/workspace/ships?tab=assembly"
+                                                           :hx-get (str "/workspace/ships?tab=assembly&part-id=" (urls/encode-id (:part/id part)))
                                                            :hx-target "#detail"
                                                            :hx-include workspace-views/navigation-include :hx-swap "innerHTML settle:0ms"
                                                            :data-workspace-mode "ships" :data-hull (:part/id part)}) "Assemble this hull"])
