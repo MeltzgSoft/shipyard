@@ -12,7 +12,7 @@
             [shipyard.loadout-fixture :as lf]
             [shipyard.ship.db :as schemes]
             [shipyard.workspace.db :as workspace-db])
-  (:import [com.microsoft.playwright Page Mouse$MoveOptions Mouse$DownOptions Mouse$UpOptions Dialog Route]
+  (:import [com.microsoft.playwright Page Mouse$MoveOptions Mouse$DownOptions Mouse$UpOptions Dialog Route APIResponse Route$FulfillOptions]
            [java.util.function Consumer]
            [com.microsoft.playwright.options MouseButton]))
 
@@ -90,8 +90,23 @@
             (.onceDialog ^Page (:page driver) (reify Consumer (accept [_ dialog] (.accept ^Dialog dialog))))
             (s/click! driver "button:text-is('Clear instance details')")
             (is (s/wait-until #(nil? (get (masks) []))))
-            (s/click! driver "#paint-brush button[value=undo]")
-            (is (s/wait-until #(= painted (get-in (masks) [[] :faces])))))
+            (let [^Page page (:page driver) held (atom nil)]
+              ;; A durable Undo can finish before its response unlocks the brush.
+              ;; Hold that response so the next stroke cannot depend on local speed.
+              (.route page "**/ships/paint/stroke"
+                      (reify Consumer
+                        (accept [_ value]
+                          (let [^Route route value]
+                            (reset! held [route (.fetch route)])))))
+              (try
+                (s/click! driver "#paint-brush button[value=undo]")
+                (is (s/wait-until #(and @held (= painted (get-in (masks) [[] :faces])))))
+                (is (true? (s/js driver "() => document.querySelector('#paint-brush').elements.radius.disabled")))
+                (is (empty? (:details (materials/slot driver []))))
+                (let [[^Route route ^APIResponse response] @held]
+                  (.fulfill route (doto (Route$FulfillOptions.) (.setResponse response))))
+                (await-saved! driver)
+                (finally (.unroute page "**/ships/paint/stroke")))))
           (testing "Right-drag erases without changing the paint tool or camera"
             (let [camera (:camera (s/stats driver))]
               (apply right-stroke! driver center)
