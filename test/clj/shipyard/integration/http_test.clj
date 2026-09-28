@@ -18,7 +18,6 @@
             [shipyard.catalog.db :as catalog-db]
             [shipyard.mesh.cache :as cache]
             [shipyard.library.index :as index]
-            [shipyard.catalog.sidecar :as sidecar]
             [shipyard.wire :as wire])
   (:import [java.io File]))
 
@@ -261,8 +260,9 @@
                :mount/axis [0.0 0.0 1.0]
                :mount/roll [1.0 0.0 0.0]
                :mount/origin :picked}
-        _ (sidecar/write-sidecar! root hull-id {:mounts [mount] :part/role :hull})
-        sys (system root) h (handler sys)
+        sys (system root)
+        _ (catalog-db/save-authoring! (:catalog sys) hull-id {:mounts [mount] :part-role :hull})
+        h (handler sys)
         ready (await-ready h hull-id)
         load-mesh (get (triggers ready) "shipyard:load-mesh")]
     (is (= [(update mount :mount/accepts vec)] (:mounts load-mesh)))
@@ -392,9 +392,9 @@
     (is (str/includes? (:body saved) "port-1"))
     (is (str/includes? (:body saved) "x2"))
     (is (str/includes? (:body saved) "Interface colors"))
-    (let [sidecar (persisted/authored! (:catalog sys) hull-id)
-          mount (first (:mounts sidecar))]
-      (is (nil? (:part/role sidecar)))
+    (let [authored (persisted/authored! (:catalog sys) hull-id)
+          mount (first (:mounts authored))]
+      (is (nil? (:part/role authored)))
       (is (= :port-1 (:mount/id mount)))
       (is (= :socket (:mount/kind mount)))
       (is (= #{:weapon} (:mount/accepts mount)))
@@ -466,8 +466,8 @@
                :mount/axis [0.0 0.0 1.0]
                :mount/roll [1.0 0.0 0.0]
                :mount/origin :picked}
-        _ (sidecar/write-sidecar! root hull-id {:mounts [mount]})
         sys (system root)
+        _ (catalog-db/save-mounts! (:catalog sys) hull-id [mount])
         h (handler sys)
         mesh-key (seed-authoring-cache! sys)
         first-response (GET h (str "/part/" (str/replace hull-id " " "%20")))
@@ -476,7 +476,7 @@
     (testing "the request polls while a bounded server job recovers faces"
       (is (str/includes? (:body first-response) "Preparing this part"))
       (is (nil? (get (triggers first-response) "shipyard:load-mesh"))))
-    (testing "the completed response and durable sidecar carry direct indices"
+    (testing "the completed response and durable record carry direct indices"
       (is (= 1 (count (:part/mounts (catalog-db/part (catalog-db/snapshot! (:catalog sys)) hull-id)))))
       (is (= [{:mount/id :port-1
                :mount/pos [2.0 1.0 0.0]
@@ -615,9 +615,9 @@
       (is (nil? (:part/role (persisted/authored! (:catalog sys) hull-id)))))
     (testing "the standalone metadata form persists the role override"
       (let [role-saved (part-role-post h {:part-id hull-id :part-role "hull"})
-            sidecar (persisted/authored! (:catalog sys) hull-id)]
+            authored (persisted/authored! (:catalog sys) hull-id)]
         (is (= 200 (:status role-saved)))
-        (is (= :hull (:part/role sidecar)))
+        (is (= :hull (:part/role authored)))
         (is (str/includes? (:body role-saved) "Part metadata"))
         (is (str/includes? (:body role-saved) "Manual"))))))
 

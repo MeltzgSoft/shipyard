@@ -52,7 +52,6 @@
      (if normals? (* 3 v float-bytes) 0)
      (* i uint-bytes)))
 
-(defn normals-offset [_v] (+ off-payload 0))
 (defn indices-offset [v normals?]
   (+ off-payload (* 3 v float-bytes) (if normals? (* 3 v float-bytes) 0)))
 

@@ -8,24 +8,17 @@
   (is (not (model/valid? (assoc (model/empty-regions mesh) :layers ["Secondary" "Primary"])))))
 (deftest region-changes
   (let [empty (model/empty-regions mesh)
-        added (:regions (model/change empty mesh 0 "add" nil "Trim" nil))
-        painted (:regions (model/change added mesh 1 "assign" "Trim" nil [face]))
-        extended (:regions (model/change painted mesh 2 "add" nil "Running Lights" nil))
-        renamed (:regions (model/change painted mesh 2 "rename" "Trim" "Engines" nil))]
-    (is (= ["Primary" "Secondary" "Trim"] (:layers added)))
-    (is (= "Trim" (get-in painted [:faces face])))
-    (is (= (:faces painted) (:faces extended)))
-    (is (= "Engines" (get-in renamed [:faces face])))
-    (is (empty? (:faces (:regions (model/change renamed mesh 3 "delete" "Engines" nil nil)))))
-    (is (empty? (:faces (:regions (model/change painted mesh 2 "assign" "Primary" nil [face])))))
-    (testing "stale, invalid and protected data never writes"
-      (doseq [[revision action layer name keys] [[1 "assign" "Secondary" nil [face]] [0 "add" nil " " nil]
-                                                 [0 "add" nil "Primary" nil] [0 "delete" "Primary" nil nil]
-                                                 [0 "rename" "Secondary" "Trim" nil] [0 "assign" "Missing" nil [face]]
-                                                 [0 "assign" "Secondary" nil ["bad"]]]]
-        (is (:error (model/change empty mesh revision action layer name keys))))
+        painted (:regions (model/change empty mesh 0 "assign" "Secondary" nil [face]))]
+    (is (= "Secondary" (get-in painted [:faces face])))
+    (is (model/valid? painted))
+    (is (empty? (:faces (:regions (model/change painted mesh 1 "assign" "Primary" nil [face])))))
+    (testing "stale, invalid and registry-only operations never write"
+      (doseq [[revision action layer keys] [[1 "assign" "Secondary" [face]] [0 "add" nil nil]
+                                            [0 "delete" "Primary" nil] [0 "rename" "Secondary" nil]
+                                            [0 "assign" "Missing" [face]] [0 "assign" "Secondary" ["bad"]]]]
+        (is (:error (model/change empty mesh revision action layer nil keys))))
       (is (:error (model/change empty (apply str (repeat 64 "b")) 0 "assign" "Secondary" nil [face]))))
-    (is (= "Secondary" (last (:layers (:regions (model/change painted mesh 2 "reset" nil nil nil))))))))
+    (is (= (assoc empty :revision 2) (:regions (model/change painted mesh 1 "reset" nil nil nil))))))
 (deftest region-preview-materials
   (is (= #{"Primary" "Secondary"} (set (keys (model/preview-materials (model/empty-regions mesh)))))))
 
@@ -38,12 +31,13 @@
     (is (nil? (model/without-layer nil "Trim")))))
 
 (deftest assigning-a-shared-layer
-  (let [empty (model/empty-regions mesh)
-        result (:regions (model/change empty mesh 0 "assign" "Trim" nil [face] ["Trim" "Engines"]))]
-    (is (= ["Primary" "Secondary" "Trim"] (:layers result)))
-    (is (= {face "Trim"} (:faces result)))
+  (let [layer "layer:00000000-0000-0000-0000-000000000001"
+        empty (model/empty-regions mesh)
+        result (:regions (model/change empty mesh 0 "assign" layer nil [face] [layer "layer:00000000-0000-0000-0000-000000000002"]))]
+    (is (= ["Primary" "Secondary" layer] (:layers result)))
+    (is (= {face layer} (:faces result)))
     (is (= 1 (:revision result)))
     (is (model/valid? result))
-    (is (:error (model/change empty mesh 0 "assign" "Missing" nil [face] ["Trim"])))
-    (is (:error (model/change empty mesh 0 "delete" "Trim" nil nil ["Trim"])))
-    (is (:error (model/change empty mesh 1 "assign" "Trim" nil [face] ["Trim"])))))
+    (is (:error (model/change empty mesh 0 "assign" "Missing" nil [face] [layer])))
+    (is (:error (model/change empty mesh 0 "delete" layer nil nil [layer])))
+    (is (:error (model/change empty mesh 1 "assign" layer nil [face] [layer])))))

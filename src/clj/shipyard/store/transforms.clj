@@ -63,8 +63,8 @@
 (defn part-value [entity shared]
   (let [mounts (mapv #(dissoc % :db/id :mount/uid :mount/mirror :mount/order) (sort-by :mount/order (:part/mounts entity)))]
     (cond-> (-> entity
-                (dissoc :db/id :part/library :part/key :part/imported? :part/regions
-                        :part/sources :migration/extra)
+                (dissoc :db/id :part/library :part/key :part/regions
+                        :part/sources)
                 (assoc :part/mounts mounts))
       (:part/name-override entity) (assoc :part/name (:part/name-override entity))
       (:part/bundle-override entity) (assoc :part/bundle (:part/bundle-override entity))

@@ -27,6 +27,3 @@
   (assoc (profile (:ship/paint ship))
          :scheme/id (:ship/id ship) :scheme/name (:ship/name ship)
          :paint/ship-id (:ship/id ship) :scheme/base (palette scheme)))
-
-(defn legacy [record]
-  (from-profile (select-keys record [:scheme/roles :scheme/instances :scheme/groups :scheme/details])))

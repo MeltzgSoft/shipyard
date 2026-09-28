@@ -99,7 +99,9 @@ The individual editor has no listing sidebar.
 The individual editor shows whether the role is inferred or manual. Roughly one part in ten is
 labelled *unknown*, and some labels are simply wrong - a designer may sell a complete
 escort in a folder named "Cyanide Prow Rapier", which reads as a prow but is a whole
-ship. Treat roles as a browsing aid. Nothing important depends on them.
+ship. Roles control hull selection and which parts fit a socket's accepted roles.
+Correct a mistaken role in the Part Browser before assembling that part; a manual
+role takes precedence over the inferred label.
 
 ## 4. Viewing a part
 
@@ -356,7 +358,7 @@ the current library and returns its painted regions to Primary. It is available
 even on parts that have not used that type. Primary and Secondary are permanent.
 Deleted layers disappear from the list and Paint defaults. Recreating the same
 name makes a new layer. **Reset regions** clears this part’s assignments after
-confirmation while retaining shared layers. Existing EDN files import automatically once, retaining the originals unchanged.
+confirmation while retaining shared layers.
 Later edits live in the database. Back up the database along with your library;
 copying a part folder alone does not carry current authoring. Rescanning the same
 folder preserves authoring. Automatic relinking after moving part folders is not
@@ -419,9 +421,6 @@ details for a changed mesh remain saved but do not render until the original sou
 is restored or those details are cleared. Deleting a class retains its named ships’
 paint, but restore that class before continuing to paint them.
 
-Existing scheme-assigned saved assemblies migrate once to named ships of their
-original class, preserving custom paint. Original class and scheme data are retained;
-unassigned legacy scheme custom paint remains archived in its original record.
 Fleet ordering and fleet-default assignment are not yet available.
 
 ### Painting details

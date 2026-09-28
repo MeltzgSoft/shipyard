@@ -136,9 +136,6 @@
 (defn replace-mount-by-id [mounts old-id mount]
   (conj (vec (remove #(= old-id (:mount/id %)) mounts)) mount))
 
-(defn delete-mount [mounts id]
-  (vec (remove #(= id (:mount/id %)) mounts)))
-
 (defn suggest-mirror-id [id]
   (keyword (str (name id) "-mirror")))
 

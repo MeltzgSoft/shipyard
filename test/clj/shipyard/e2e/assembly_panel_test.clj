@@ -70,7 +70,7 @@
   (workflow! true))
 
 (deftest complete-synthetic-cruiser
-  (let [started (fixture/start! true lf/scanned-library!) driver (s/make-driver)]
+  (let [started (fixture/start! true lf/scanned-library! lf/author-scanned!) driver (s/make-driver)]
     (try
       (s/go! driver (s/base-url (:system started)))
       (s/wait-visible! driver "#bulk-orient-results .bulk-orient__row")

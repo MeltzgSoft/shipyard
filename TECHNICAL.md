@@ -45,15 +45,12 @@ remain outside the database. The mtime/size scan index remains a disposable EDN 
 configuration and the selected library location remain configuration files. None of
 these files owns mounts, orientations, shared layers, loadouts or paint schemes.
 
-### 1.3 Legacy import and identities
+### 1.3 Source discovery and identities
 
-On first scan, import each part's `shipyard.edn` and the library's
-`shipyard-layers.edn`. Import sibling `loadouts.edn` and `schemes.edn` once when a
-library is selected. Validate input, reject unsupported or malformed records, retain
-all original files unchanged, and record completed imports in the database. Later
-rescans refresh observed file facts without rereading imported authoring. Unknown
-part-level legacy fields are retained in `:migration/extra`. Missing sources retain
-metadata but are excluded from the available catalog.
+Scanning creates or refreshes source-file facts in the database. Authored mounts,
+orientations, shared layers, classes, schemes and named ships are written through
+catalog and record transactions. Rescans preserve these edits. Missing sources
+retain metadata but are excluded from the available catalog.
 
 A library has a UUID and root location. A part has a stable UUID, library ref and
 current relative path; HTTP/domain projections continue using that path for compatible
@@ -91,7 +88,7 @@ shipyard/
 │   ├── system.clj                  integrant key derivation, halt ordering
 │   ├── library/{scan,index}.clj    part-folder discovery; mtime+size scan cache
 │   ├── catalog/db.clj             immutable catalog projections and authoring boundary
-│   ├── store/{db,schema,transforms,legacy}.clj  shared Datalevin persistence and import
+│   ├── store/{db,schema,transforms}.clj  shared Datalevin persistence
 │   ├── mesh/{stl,weld,lod,cache}.clj
 │   └── http/{server,routes,views,htmx,urls,jobs}.clj  server = jetty lifecycle
 │
@@ -263,7 +260,7 @@ also runs at the transactional boundary.
 
 | Entity | Identity and relationships |
 |---|---|
-| Library | UUID, root, shared-layer revision, import marker |
+| Library | UUID, root, shared-layer revision |
 | Part | UUID, unique `[library UUID, relative path]`, library ref, present flag, observed source facts, manual role/orientation |
 | Source/content | Source identity `[part UUID, variant]`, file stamps; shared content keyed by SHA-256 |
 | Mount | UUID, part-owned component, local mount ID, explicit order, frame, role profile, optional facet provenance |
@@ -536,8 +533,8 @@ library**, because the root is a setting and can change (§7.3). Not one shared 
 part id is library-relative, so a shared index would have to be discarded on every switch,
 and re-hashing is precisely the cost this cache exists to avoid.
 
-Budget: full scan of 1,661 folders, cold, **under 2 s**. It stats files and updates source metadata; initial migration also reads legacy
-EDN. It opens no mesh.
+Budget: full scan of 1,661 folders, cold, **under 2 s**. It stats files and updates
+source metadata without opening meshes.
 
 ---
 
@@ -1006,12 +1003,12 @@ table closes over its dependencies at build time - `routes` is a tree of
 already holding the old one. `shipyard.http.settings/relocate!` therefore:
 
 1. scans the candidate root without changing the active library;
-2. validates/imports its metadata transactionally into the shared store;
+2. refreshes its source metadata transactionally into the shared store;
 3. persists the selected root, then publishes the new library and catalog state;
 4. clears the job table (`jobs/clear!`).
 
-A failed import or settings write leaves the active library and selection setting
-unchanged. A successfully imported inactive library can remain in the database for
+A failed database transaction or settings write leaves the active library and selection setting
+unchanged. A successfully scanned inactive library can remain in the database for
 later reuse.
 
 **A success answers `HX-Refresh: true`, not a fragment.** The library has been replaced
@@ -1277,7 +1274,7 @@ user's library.
 | Cache lifecycle | Miss -> generate -> hit; touching an STL invalidates its `mesh-key`; LRU evicts at the cap |
 | Atomic writes | A concurrent reader never observes a partial `.symesh` |
 | Concurrent preprocess | Two requests for one part produce one job, not two (§6.5) |
-| Metadata | Commit -> durable reopen -> equal; malformed legacy input aborts import without dropping authoring |
+| Metadata | Commit -> durable reopen -> equal; failed transactions preserve authored state |
 | Atomic metadata writes | A failed transaction preserves all prior entities (§1.2) |
 | meshoptimizer | Real native calls: simplify hits target, `optimizeVertexFetch` compacts, Prune is not enabled |
 | HTTP | Routes return expected fragments; `/mesh/*` sends immutable cache headers; `HX-Trigger` payloads parse |
@@ -1694,7 +1691,7 @@ values resolve to identity. A manual
 `:part/role-hint`; inferred role and its evidence remain derived catalog data. Once M2
 adds manual roles to the catalog transaction, browsing displays the manual role as
 authoritative and keeps the original hint only as evidence, never as a compatibility
-fact. Unknown imported fields are retained as migration data.
+fact.
 
 The selected triangle, ambiguity flag, roll source, symmetry plane, unsaved Twist
 adjustment, repeated classification, form validation state and preview geometry are
@@ -2166,18 +2163,12 @@ unsaved viewport poses, while selections and settings remain in the running serv
 
 `:shipyard.scheme/db` projects `{:version 1 :schemes {uuid record}}` from the shared
 Datalevin store. New scheme authoring changes only name and shared layer materials.
-Legacy roles, targets, groups and details remain readable for recovery and migration.
 `:shipyard.ship/db` projects `{:version 1 :ships {uuid record}}`. Each named ship has a
 stable `:ship/class` ref to a loadout, optional `:ship/scheme` ref and an owned
 `:ship/paint` component. Paint role/layer bindings, instance targets, group memberships
 and face chunks are normalized entities; only dense masks use data values. Group IDs
-are local to the paint graph, so migrating or copying a group cannot merge siblings.
-All writes, graph replacement and one-time migration use the shared transaction lock.
-
-Migration creates one named vessel per legacy scheme-assigned class, using a stable
-UUID derived from its class ID. It copies legacy custom roles, groups, instances and
-details while preserving class and scheme records. A durable store marker makes this
-idempotent, including after a migrated ship is deleted. Reopening preserves all refs.
+are local to the paint graph, so copying a group cannot merge siblings.
+All writes and graph replacements use the shared transaction lock.
 
 Ship Browser owns one preview cell and one workspace context. `:shipyard.paint/db`
 shares `:shipyard.loadout.operations/preview`'s state atom and adds face-cache and
@@ -2329,17 +2320,15 @@ parts. Renaming changes one entity's name and preserves identity and preview col
 `:layer/preview-color` stores the chosen RGB triple as a small mathematical value.
 Allocation maximizes the minimum OKLab distance from all assigned library colors
 and both builtin colors over a bounded-brightness RGB grid. The grid grows with
-the number of types. Registry discovery assigns missing colors in deterministic
-name/ID order during the library transaction; subsequent scans retain them. Browser
+the number of types. Layer creation assigns colors inside its database transaction; subsequent scans retain them. Browser
 geometry and server legends use the same stored values, including on parts that
-use only a subset of the types. Name hashing remains only a legacy projection
-fallback before import; it does not allocate new registry colors.
+use only a subset of the types. Name hashing provides a deterministic fallback for incomplete in-memory projections;
+it does not allocate registry colors.
 
 `:part/paint-regions` is an immutable compatibility projection containing version,
 source hash, revision, builtins and used layer IDs, face assignments, and shared layer
 definitions. Labels are looked up from layer refs, never persisted on each part.
-Legacy names normalize to deterministic IDs during import; palettes use the same
-conversion. Imported files stay unchanged. Tombstones prevent deleted layers from
+Palettes reference the same stable IDs. Tombstones prevent deleted layers from
 reappearing during later scans.
 
 `POST /parts/regions` accepts fill/add/rename/delete/reset. Brush assignment is
@@ -2444,9 +2433,8 @@ painting, and preserve the selected mode/material/layer for the next left stroke
 Region erasing submits Primary; freehand erasing uses the existing atomic erase
 operation and undo history. Alt-modified gestures retain camera control.
 
-Preview materials derive deterministic colors from each entity’s immutable preview
-name identically on the JVM and in the browser. Rename, ordering and membership do
-not change existing colors; migration preserves the original name-based swatches.
+Preview materials use each shared layer’s persisted preview color on the JVM and
+in the browser. Rename, ordering and membership do not change existing colors.
 Region colors expand the displayed mesh into nonindexed triangle vertices without
 changing triangle order. Mount highlights, frame-based facet recovery and authoring
 previews accept both indexed and nonindexed geometry, retaining saved facet IDs.

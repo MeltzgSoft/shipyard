@@ -5,7 +5,6 @@
             [shipyard.paint.strokes :as strokes]
             [shipyard.paint.delta :as delta]
             [shipyard.regions.model :as model]
-            [shipyard.regions.migration :as migration]
             [shipyard.regions.views :as views]
             [shipyard.http.htmx :as htmx]
             [shipyard.workspace.db :as workspace]
@@ -34,7 +33,7 @@
                  {:error "Source changed. Rescan and reopen this part before editing regions."}
                  (and (= action "assign") (nil? @keys))
                  {:error "Invalid region faces. Nothing saved."}
-                 :else (model/change (or before (migration/regions (model/empty-regions mesh-key))) mesh-key (parse-long revision)
+                 :else (model/change (or before (model/empty-regions mesh-key)) mesh-key (parse-long revision)
                                      (if (= action "fill") "assign" action) layer name
                                      (if (= action "fill") (vec (strokes/known-faces! deps mesh-key)) @keys)
                                      shared-layers))

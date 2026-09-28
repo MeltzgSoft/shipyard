@@ -10,7 +10,6 @@
             [shipyard.regions.transport :as transport]
             [shipyard.paint.faces :as faces]
             [shipyard.part.orientation :as orientation]
-            [shipyard.catalog.sidecar :as sidecar]
             [shipyard.e2e.support :as s]
             [shipyard.e2e.workspace-test :as workspace]
             [shipyard.e2e.detail-brush-test :as brush]
@@ -237,8 +236,6 @@
       (is (s/wait-until #(seq (:faces (regions)))))
       (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
       (let [before (regions)]
-        ;; Legacy files are no longer authoritative after import.
-        (spit (sidecar/sidecar-file (str (:root started)) id) "{invalid legacy data")
         (is (= before (:part/paint-regions (persisted/authored! cat id)))))
       (let [secondary (first (keys (:faces (regions))))]
         (s/click! driver "button[aria-label='Paint Trim']")
@@ -479,13 +476,13 @@
       (is (= "View: Mount faces" (s/text driver "#mount-colors-toggle")))
       (s/click! driver "[data-detail-tab=regions]")
       (s/click! driver "button[data-region-layer='Secondary']")
-      (let [sidecar-before (persisted/authored! (:shipyard.catalog/db (:system started)) id)]
+      (let [authored-before (persisted/authored! (:shipyard.catalog/db (:system started)) id)]
         (s/click! driver "button:text-is('Apply layer to entire part')")
         (is (s/wait-until #(= 12 (count (:faces (regions))))))
         (is (= "View: Layer types" (s/text driver "#mount-colors-toggle")))
         (is (= #{"Secondary"} (set (vals (:faces (regions))))))
         (is (s/wait-until #(= {:faces 12 :vertex-colors true} (:region-preview (s/stats driver)))))
-        (is (= sidecar-before (dissoc (persisted/authored! (:shipyard.catalog/db (:system started)) id) :part/paint-regions))))
+        (is (= authored-before (dissoc (persisted/authored! (:shipyard.catalog/db (:system started)) id) :part/paint-regions))))
       (let [saved (regions)]
         (s/click! driver "#mount-colors-toggle")
         (is (s/wait-until #(true? (:mount-colors-enabled (s/stats driver)))))
@@ -764,10 +761,6 @@
                                   (fixture/library! root)
                                   (with-open [out (io/output-stream (fs/file root id "unsupported.stl"))]
                                     (.write out ^bytes (fixtures/->binary-stl (into outer inner))))
-                                  ;; The source X plane becomes canonical Y after saved orientation.
-                                  (sidecar/write-sidecar! (str root) id
-                                                          {:part/role :weapon :mounts []
-                                                           :part/orientation (orientation/rotate-around-world-axis nil :z 90)})
                                   root))
         sys (:system started) cat (:shipyard.catalog/db sys) driver (s/make-driver)
         regions #(catalog/part-regions (catalog/part (catalog/snapshot! cat) id))
@@ -779,6 +772,8 @@
                    (region-point driver ordinal)))
         saved! #(is (s/wait-until (fn [] (= "Regions saved." (s/text driver "#region-status")))))]
     (try
+      (catalog/save-mounts! cat id [])
+      (catalog/save-part-orientation! cat id (orientation/rotate-around-world-axis nil :z 90))
       (s/resize! driver 1600 1000)
       (s/go! driver (s/base-url sys))
       (s/open-part! driver "weapon")
@@ -846,13 +841,12 @@
                                   (fixture/library! root)
                                   (with-open [out (io/output-stream (fs/file root id "unsupported.stl"))]
                                     (.write out ^bytes (fixtures/->binary-stl (into hull detail))))
-                                  (sidecar/write-sidecar! (str root) id
-                                                          {:part/role :weapon :mounts []
-                                                           :part/orientation (orientation/rotate-around-world-axis nil :z 90)})
                                   root))
         sys (:system started) cat (:shipyard.catalog/db sys) driver (s/make-driver)
         regions #(catalog/part-regions (catalog/part (catalog/snapshot! cat) id))]
     (try
+      (catalog/save-mounts! cat id [])
+      (catalog/save-part-orientation! cat id (orientation/rotate-around-world-axis nil :z 90))
       (s/resize! driver 1600 1000)
       (s/go! driver (s/base-url sys))
       (s/open-part! driver "weapon")

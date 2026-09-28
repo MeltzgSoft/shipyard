@@ -1,6 +1,5 @@
 (ns shipyard.integration.catalog-test
-  (:require [babashka.fs :as fs]
-            [clojure.test :refer [deftest is testing]]
+  (:require [clojure.test :refer [deftest is testing]]
             [datalevin.core :as d]
             [shipyard.assembly-fixture :as fixture]
             [shipyard.catalog.db :as catalog]
@@ -13,12 +12,10 @@
   (let [started (fixture/start!) sys (:system started) cat (:shipyard.catalog/db sys)
         root (:root started) id (:weapon fixture/ids) read! #(catalog/part (catalog/snapshot! cat) id)]
     (try
-      (let [uid (:part/uid (read!)) before (slurp (str (fs/path root id "shipyard.edn")))]
+      (let [uid (:part/uid (read!))]
         (catalog/save-part-role! cat id :bridge)
         (catalog/save-part-orientation! cat id [0.0 0.0 0.0 1.0])
         (catalog/save-mounts! cat id [fixture/plug])
-        (is (= before (slurp (str (fs/path root id "shipyard.edn")))) "Legacy input is never rewritten")
-        (fs/delete (fs/path root id "shipyard.edn"))
         (catalog/reingest! cat (index/parts! (:shipyard.library/index sys)) (str root))
         (let [part (catalog/part (persisted/catalog! cat) id)]
           (is (= uid (:part/uid part)))

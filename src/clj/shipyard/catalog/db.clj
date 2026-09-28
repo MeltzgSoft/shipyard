@@ -6,12 +6,9 @@
             [shipyard.store.transforms :as t]
             [shipyard.catalog.part :as part]
             [shipyard.regions.model :as regions]
-            [shipyard.regions.migration :as migration]
             [shipyard.regions.registry :as registry]
             [shipyard.library.index :as index]
             [shipyard.part.orientation :as orientation]))
-
-(def geometry-keys #{:part/positions :part/normals :part/indices :part/vertices :part/geometry})
 
 (defn from-parts
   "Immutable domain catalog, also useful for pure fixtures."
@@ -65,12 +62,7 @@
 (defn reingest! [{:keys [store state]} parts root]
   (let [lock (:lock store)]
     (locking lock
-      (let [library (store/write! store
-                                  (fn [conn]
-                                    (let [transaction (assoc store :conn conn)
-                                          library (store/scan! transaction (or parts []) root)]
-                                      (store/import-records! transaction library)
-                                      library)))]
+      (let [library (store/scan! store (or parts []) root)]
         (reset! state {:library library :root root})))))
 
 (defn open! [store parts root]
@@ -127,13 +119,12 @@
             (fn [conn library _ entity]
               (let [shared (store/registry-value @conn library)
                     current (t/region (:part/regions entity) shared)
-                    normalized (migration/regions value)
                     known (set (registry/ids shared))]
                 (when (or (and expected-revision (not= expected-revision (or (:revision current) 0)))
-                          (not-every? known (vals (:faces normalized))))
+                          (not-every? known (vals (:faces value))))
                   (throw (ex-info "Regions or shared layers changed before saving. Reopen the part." {})))
-                (store/save-region! conn library part-id normalized)
-                (assoc normalized :layer-definitions (select-keys (:layers shared) (:layers normalized))))))))
+                (store/save-region! conn library part-id value)
+                (assoc value :layer-definitions (select-keys (:layers shared) (:layers value))))))))
 
 (defn edit-region-layer!
   [{:keys [store state]} part-id revision layer-revision action layer name]

@@ -29,7 +29,7 @@
               :loadout/slots lf/assignments :loadout/scheme id}]
     (try
       (loadouts/put! (:shipyard.loadout/db sys) (dissoc ship :loadout/scheme) :create)
-      (ships/put! (:shipyard.ship/db sys) {:ship/id vessel-id :ship/name "Painted vessel" :ship/class ship-id :ship/paint (job/legacy scheme)} :create)
+      (ships/put! (:shipyard.ship/db sys) {:ship/id vessel-id :ship/name "Painted vessel" :ship/class ship-id :ship/paint (job/from-profile scheme)} :create)
       (s/go! driver (s/base-url sys))
       (workspace/switch! driver "ships")
 
@@ -61,7 +61,7 @@
       (workspace/await-ship! driver)
       (is (= "0000ff" (:color (slot driver [["weapon" 1]]))))
       (ships/put! (:shipyard.ship/db sys) {:ship/id vessel-id :ship/name "Painted vessel" :ship/class ship-id
-                                           :ship/paint (job/legacy (assoc-in scheme [:scheme/instances [[:weapon 1]] :material] red))} :update)
+                                           :ship/paint (job/from-profile (assoc-in scheme [:scheme/instances [[:weapon 1]] :material] red))} :update)
       (workspace/switch! driver "browse")
       (workspace/switch! driver "ships")
       (workspace/await-ship! driver)

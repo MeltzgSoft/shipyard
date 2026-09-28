@@ -80,30 +80,28 @@
       (is (empty? (presets/colors! facade)))
       (finally (fixture/stop! started)))))
 
-(deftest legacy-paint-migrates-once-and-groups-have-independent-ownership
+(deftest ships-have-independent-paint-group-ownership
   (let [started (fixture/start!) sys (:system started)
         class-db (:shipyard.loadout/db sys) ship-db (:shipyard.ship/db sys) scheme-db (:shipyard.scheme/db sys)
-        store (:shipyard.store/db sys) scheme-id (random-uuid) group-id (random-uuid)
-        class {:loadout/id (random-uuid) :loadout/name "Legacy" :loadout/hull (:hull lf/draft) :loadout/slots lf/assignments :loadout/scheme scheme-id}
-        palette {:scheme/id scheme-id :scheme/name "Legacy palette" :scheme/roles {}
+        scheme-id (random-uuid) group-id (random-uuid)
+        class {:loadout/id (random-uuid) :loadout/name "Class" :loadout/hull (:hull lf/draft) :loadout/slots lf/assignments :loadout/scheme scheme-id}
+        palette {:scheme/id scheme-id :scheme/name "Palette" :scheme/roles {}
                  :scheme/groups [{:group/id group-id :group/name "Battery" :group/order 0
                                   :group/material {:base [1 0 0] :metalness 0.4 :roughness 0.7}
                                   :group/members [{:path [[:weapon 0]] :part-id (:weapon fixture/ids)}]}]}]
     (try
       (schemes/put! scheme-db palette :create)
       (classes/put! class-db class :create)
-      (store/write! store (fn [conn]
-                            (d/transact! conn [[:db.fn/retractAttribute [:store/key "shipyard"] :store/named-ships-migrated?]])
-                            (store/migrate-ship-paint! conn)))
-      (let [ship (-> (ships/snapshot! ship-db) :ships vals first)
+      (let [ship {:ship/id (random-uuid) :ship/name "Vessel" :ship/class (:loadout/id class)
+                  :ship/scheme scheme-id :ship/paint {:paint/groups (:scheme/groups palette)}}
             sibling (assoc ship :ship/id (random-uuid) :ship/name "Sibling")]
+        (is (not (:error (ships/put! ship-db ship :create))))
         (is (= (:loadout/id class) (:ship/class ship)))
         (is (= (:scheme/groups palette) (get-in ship [:ship/paint :paint/groups])))
         (is (not (:error (ships/put! ship-db sibling :create))))
         (ships/put! ship-db (assoc-in ship [:ship/paint :paint/groups 0 :group/name] "Changed") :update)
         (is (= "Battery" (get-in (ships/snapshot! ship-db) [:ships (:ship/id sibling) :ship/paint :paint/groups 0 :group/name])))
         (is (= palette (get-in (schemes/snapshot! scheme-db) [:schemes scheme-id])))
-        (store/write! store store/migrate-ship-paint!)
         (is (= 2 (count (:ships (ships/snapshot! ship-db)))))
         (is (= (ships/snapshot! ship-db) (persisted/records! ship-db :ships)))
         (let [before (ships/snapshot! ship-db) write! store/put-ship!]
@@ -113,6 +111,5 @@
             (is (:error (ships/put! ship-db (assoc sibling :ship/name "Not committed") :update))))
           (is (= before (ships/snapshot! ship-db)) "A failed graph replacement rolls back atomically"))
         (ships/delete! ship-db (:ship/id ship))
-        (store/write! store store/migrate-ship-paint!)
         (is (= #{(:ship/id sibling)} (set (keys (:ships (ships/snapshot! ship-db)))))))
       (finally (fixture/stop! started)))))
