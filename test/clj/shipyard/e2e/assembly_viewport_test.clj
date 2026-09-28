@@ -43,7 +43,7 @@
       (s/await-part driver (:hull fixture/ids))
       (s/click! driver "button:text-is('Assemble this hull')")
       (s/wait-visible! driver ".assembly__hull")
-      (s/select-option! driver ".assembly__hull select[name=part-id]" "hull")
+      (is (= (:hull fixture/ids) (s/js driver "() => document.querySelector('.assembly__hull select[name=part-id]').value")))
       (s/click! driver ".assembly__hull button")
       (assert-visible-assembly! driver)
       (doseq [render-grid? [false true]]
