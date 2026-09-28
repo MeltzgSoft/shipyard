@@ -84,6 +84,10 @@ jobs:
           Import-Module ClojureTools
           clojure -Sdescribe
 
+      - name: Prepare Datalevin native runtime
+        shell: pwsh
+        run: ./.forgejo/scripts/prepare-windows-natives.ps1
+
       - name: Unit tests
         shell: pwsh
         run: clojure -M:test:natives-windows --focus :unit --reporter kaocha.report/documentation
