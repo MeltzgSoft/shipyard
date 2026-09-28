@@ -4,9 +4,7 @@
 
 (def material {:base [0.2 0.3 0.4] :metalness 0.5 :roughness 0.6 :paint "Blue"})
 (def record {:scheme/id #uuid "93c3df7f-4b02-44cd-a4ed-c239f6851a8c" :scheme/name "Navy"
-             :scheme/roles {:weapon material}
-             :scheme/instances {[] {:part-id "hull" :material material}
-                                [[:weapon 0] [:turret 1]] {:part-id "turret" :material material}}})
+             :scheme/layers {"Primary" material}})
 
 (deftest unit-number?-test
   (testing "bounded finite values only"
@@ -32,12 +30,13 @@
     (is (not (t/instance-entry? [[] {:material material}])))))
 
 (deftest scheme?-test
-  (testing "records preserve role and instance overrides"
+  (testing "palettes contain shared layer materials only"
     (is (t/scheme? record))
-    (is (t/scheme? (dissoc record :scheme/instances)))
+    (is (t/scheme? (assoc record :scheme/layers {})))
     (doseq [value [(assoc record :scheme/name " ") (assoc record :scheme/id "id")
-                   (assoc record :scheme/roles {"weapon" material})
-                   (assoc record :scheme/instances {[] {:part-id "x" :material {}}})]]
+                   (assoc record :scheme/layers {"Old named layer" material})
+                   (assoc record :scheme/roles {:weapon material})
+                   (assoc record :scheme/instances {[] {:part-id "x" :material material}})]]
       (is (not (t/scheme? value))))))
 
 (deftest store?-test
@@ -78,7 +77,7 @@
 
 (deftest groups?-test
   (is (t/groups? []))
-  (is (t/scheme? (assoc record :scheme/groups [group-record])))
+  (is (not (t/scheme? (assoc record :scheme/groups [group-record]))))
   (is (not (t/groups? [group-record group-record])))
   (is (not (t/groups? [group-record (assoc group-record :group/id (random-uuid))])))
   (is (t/groups? [group-record (assoc group-record :group/id (random-uuid) :group/order 1)])))

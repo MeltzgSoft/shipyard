@@ -48,7 +48,7 @@
                             (do (workspace/update-workspace! workspace :ships assoc :scheme-layer layer :scheme-sequence 0) {})
                             {:error "Choose an available region layer."})
                    :create (if (loadout/name? name)
-                             (let [id (random-uuid) result (schemes/put! schemes {:scheme/id id :scheme/name name :scheme/roles {} :scheme/layers {} :scheme/layer-ids? true} :create)]
+                             (let [id (random-uuid) result (schemes/put! schemes {:scheme/id id :scheme/name name :scheme/layers {}} :create)]
                                (when-not (:error result) (workspace/update-workspace! workspace :ships assoc :scheme id :scheme-sequence 0)) result)
                              {:error "Enter a scheme name between 1 and 200 characters."})
                    :rename (if (and record (= id (str selected)) (loadout/name? name))
@@ -62,7 +62,7 @@
                                       n (> n (or (:scheme-sequence state) 0)) (some #{layer} layers))
                                (let [value (paint/parse-material params)]
                                  (if value
-                                   (let [result (schemes/put! schemes (-> record (assoc :scheme/layer-ids? true) (assoc-in [:scheme/layers layer] value)) :update)]
+                                   (let [result (schemes/put! schemes (assoc-in record [:scheme/layers layer] value) :update)]
                                      (when-not (:error result) (workspace/update-workspace! workspace :ships assoc :scheme-sequence n
                                                                                             :scheme-picker {:scheme selected :layer layer
                                                                                                             :hsv (color/picker-value

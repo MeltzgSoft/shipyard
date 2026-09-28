@@ -76,7 +76,7 @@
              :status 422)
       (ships! deps {:params {"poll" "1"}}))))
 
-(declare transition!)
+(declare transition! ship-tab!)
 
 (defn- transition-response [db response]
   (let [{:keys [workspace activation] :as context} (workspace/active-context! db)
@@ -113,7 +113,7 @@
           (assembly/request! deps {:op :reset :revision revision} {})
           (workspace/update-workspace! workspace :ships dissoc :drawers)
           (workspace/update-workspace! workspace :ships assoc :needs-scene-reset? true)
-          (transition! deps {:path-params {:mode "assembly"} :params {} :headers {"hx-request" "true"}}))))))
+          (ship-tab! deps {:path-params {:tab "assembly"} :params {}}))))))
 
 (defn open-ship! [{{state :state} :assembly :keys [workspace named-ships] :as deps} {:keys [parameters params]}]
   (workspace/remember! workspace :ships params)
@@ -155,11 +155,11 @@
           (let [result (loadouts/transfer! deps (parse-uuid id) :duplicate)]
             (if (:error result)
               (ships! deps {:params {"error" (get errors/messages (:error result))}})
-              (transition! deps {:path-params {:mode "assembly"} :params {} :headers {"hx-request" "true"}}))))))))
+              (ship-tab! deps {:path-params {:tab "assembly"} :params {}}))))))))
 
 (defn transition! [{:keys [workspace library part-handler facets] :as deps} {:keys [path-params params headers]}]
   (workspace/outgoing! deps params)
-  (let [mode (case (:mode path-params) "orient" :browse "assembly" :ships (keyword (:mode path-params)))
+  (let [mode (keyword (:mode path-params))
         same-ships? (and (= mode :ships) (= :ships (:workspace (workspace/active-context! workspace))) (not= "1" (get params "resume")))
         context (if (and (= "1" (get params "resume"))
                          (= mode (:workspace (workspace/active-context! workspace))))
@@ -167,7 +167,7 @@
                   (workspace/activate! workspace mode))]
     (when (and (= mode :ships) (not same-ships?))
       (workspace/update-workspace! workspace :ships assoc :needs-scene-reset? true))
-    (when (and (= mode :ships) (= "assembly" (:mode path-params)))
+    (when (and (= mode :ships) (= "assembly" (get params "tab")))
       (workspace/update-workspace! workspace :ships assoc :view :editor :inspector-tab "assembly"))
     (when (and (= mode :ships) (= "1" (get params "table")))
       (workspace/update-workspace! workspace :ships assoc :view :table))
@@ -268,7 +268,7 @@
 
 (defn ship-tab! [{:keys [workspace assembly preview] :as deps} {:keys [path-params params]}]
   (workspace/outgoing! deps params)
-  (let [tab (if (= "class" (:tab path-params)) "assembly" (:tab path-params))
+  (let [tab (:tab path-params)
         draft (:draft @(:state assembly))
         paint-class (get-in @(:state preview) [:draft :class-id])
         result (when (and (= tab "paint") (not (loadouts/unsaved? deps)) (or (not= (:loadout-id draft) paint-class) (nil? (get-in @(:state preview) [:draft :ship-id]))))

@@ -25,14 +25,12 @@
 (defn from-record [record revision mode]
   (cond-> {:revision revision :hull (:loadout/hull record) :assignments (:loadout/slots record)
            :name (str (:loadout/name record) (when (= :duplicate mode) " - Copy"))}
-    (not= :duplicate mode) (assoc :loadout-id (:loadout/id record))
-    (:loadout/scheme record) (assoc :scheme (:loadout/scheme record))))
+    (not= :duplicate mode) (assoc :loadout-id (:loadout/id record))))
 
 (defn to-record [draft id name]
   (when (store/name? name)
-    (cond-> {:loadout/id id :loadout/name name :loadout/hull (:hull draft)
-             :loadout/slots (:assignments draft)}
-      (:scheme draft) (assoc :loadout/scheme (:scheme draft)))))
+    {:loadout/id id :loadout/name name :loadout/hull (:hull draft)
+     :loadout/slots (:assignments draft)}))
 
 (defn empty-mount-count
   "Count reachable, unassigned mounts; invalid trees have no reliable count."
@@ -86,11 +84,3 @@
         (let [id (:loadout-id value) record (get records id)]
           (or (nil? record)
               (not= record (to-record value id (:name value))))))))
-
-(defn choose-scheme [draft revision id records]
-  (cond
-    (not= revision (:revision draft)) {:error :stale-revision}
-    (nil? (:hull draft)) {:error :no-draft}
-    (and id (not (contains? records id))) {:error :missing-scheme}
-    :else {:draft (-> (if id (assoc draft :scheme id) (dissoc draft :scheme))
-                      (update :revision inc))}))

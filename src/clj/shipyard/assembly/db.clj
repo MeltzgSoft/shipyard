@@ -7,7 +7,6 @@
             [shipyard.http.jobs :as jobs]
             [shipyard.library.index :as index]
             [shipyard.mesh.cache :as cache]
-            [shipyard.scheme.db :as schemes]
             [shipyard.scheme.material :as material]
             [shipyard.workspace.db :as workspace]))
 
@@ -39,7 +38,7 @@
 
 (defn request!
   "Serialize draft changes and responses. Polling advances event sequence, never draft revision."
-  [{:keys [catalog library workspace] scheme-store :schemes {state :state} :assembly :as deps} operation {:keys [resume? retry]}]
+  [{:keys [catalog library workspace] {state :state} :assembly :as deps} operation {:keys [resume? retry]}]
   (locking state
     (let [{:keys [draft sequence root scene]} @state
           sequence (if (and workspace workspace/*context*)
@@ -69,20 +68,17 @@
                                 (catch clojure.lang.ExceptionInfo e
                                   {:scene {} :error (:code (ex-data e))}))
           effective-draft (if (:error placement-result) draft-before draft)
-          selected (material/select-scheme (when (and scheme-store (not (contains? deps :paint-profile))) (let [id (:scheme effective-draft)]
-                                                                                                            (when-let [record (schemes/record! scheme-store id)] {id record})))
-                                           (:scheme effective-draft) nil)
-          profile (material/effective-profile (if (contains? deps :paint-profile) (:paint-profile deps) (:scheme selected)))
+          profile (material/effective-profile (:paint-profile deps))
           after (if (:error placement-result) scene
                     (into {} (map (fn [[path placement]]
                                     (let [id (:part-id placement) part (catalog/part database id) role (:part/role-hint part)
-                                          layers (when (#{:role :layer} (first (material/material-source profile path id role)))
+                                          layers (when (#{:neutral :layer} (first (material/material-source profile path id)))
                                                    (:scheme/layers profile))]
                                       [path (assoc placement :role role
-                                                   :regions (when (and layers (or (:paint-profile deps) (:scheme selected))) (catalog/part-regions part))
+                                                   :regions (when (and layers (:paint-profile deps)) (catalog/part-regions part))
                                                    :layers layers
                                                    :details (get-in profile [:scheme/details path])
-                                                   :material (material/resolve-material profile path id role))])))
+                                                   :material (material/resolve-material profile path id))])))
                           (:scene placement-result)))
           sources (fresh-sources library (map :part-id (vals after)))
           prepared (prepare! deps sources (map :part-id (vals after)) retry)
@@ -98,7 +94,7 @@
         (workspace/update-workspace! workspace (:workspace workspace/*context*) assoc :scene-sequence (inc sequence) :scene after :needs-scene-reset? false))
       (reset! state {:draft effective-draft :sequence (inc sequence)
                      :root (if blocked-root? root current-root) :scene after})
-      (merge result {:database database :prepared prepared :event envelope :scheme-warning (:missing? selected)
+      (merge result {:database database :prepared prepared :event envelope
                      :detail-warning (boolean (some (fn [[_ {:keys [part-id details]}]]
                                                       (and details (or (not= part-id (:part-id details))
                                                                        (not (contains? sources part-id))

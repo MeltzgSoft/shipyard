@@ -11,10 +11,9 @@
 
 (deftest explicit-save-preview-edit-and-duplicate
   (let [started (fixture/start!) deps (lf/deps started)
-        state (get-in deps [:assembly :state]) preview (get-in deps [:preview :state])
-        scheme (random-uuid)]
+        state (get-in deps [:assembly :state]) preview (get-in deps [:preview :state])]
     (try
-      (swap! state assoc :draft (assoc lf/draft :scheme scheme))
+      (swap! state assoc :draft lf/draft)
       (let [original (:loadout (ops/save! deps 1 "Cruiser")) id (:loadout/id original)
             bytes (store/snapshot! (:loadouts deps))]
         (is (uuid? id))
@@ -29,7 +28,7 @@
         (testing "Duplicate has no durable effect and retains configuration"
           (is (nil? (:error (ops/transfer! deps id :duplicate))))
           (is (= "Cruiser - Copy" (get-in @state [:draft :name])))
-          (is (= scheme (get-in @state [:draft :scheme])))
+          (is (= lf/assignments (get-in @state [:draft :assignments])))
           (is (nil? (get-in @state [:draft :loadout-id])))
           (is (= bytes (store/snapshot! (:loadouts deps))))
           (is (= 1 (count (ops/list! deps {}))))
@@ -121,7 +120,6 @@
             (let [result (ops/transfer! reloaded id mode)]
               (is (nil? (:error result)))
               (is (= assignments (get-in result [:draft :assignments])))
-              (is (= (:loadout/scheme saved) (get-in result [:draft :scheme])))
               (is (= (inc (count assignments)) (count (:scene result))))))
           (is (= bytes (store/snapshot! (:loadouts deps))))
           (let [copy (:loadout (ops/save! deps (get-in @state [:draft :revision]) "Partial copy"))

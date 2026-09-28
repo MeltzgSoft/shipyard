@@ -10,12 +10,11 @@
 
 (defn loadout? [record]
   (and (map? record)
-       (every? #{:loadout/id :loadout/name :loadout/hull :loadout/slots :loadout/scheme} (keys record))
+       (every? #{:loadout/id :loadout/name :loadout/hull :loadout/slots} (keys record))
        (uuid? (:loadout/id record)) (name? (:loadout/name record))
        (part-id? (:loadout/hull record))
        (map? (:loadout/slots record)) (<= (count (:loadout/slots record)) 4096)
-       (every? (fn [[path id]] (and (slot-path? path) (part-id? id))) (:loadout/slots record))
-       (or (not (contains? record :loadout/scheme)) (uuid? (:loadout/scheme record)))))
+       (every? (fn [[path id]] (and (slot-path? path) (part-id? id))) (:loadout/slots record))))
 
 (defn store? [value]
   (and (map? value) (= #{:version :loadouts} (set (keys value)))

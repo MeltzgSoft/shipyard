@@ -153,8 +153,8 @@
                                        :layers ["Primary" "Secondary" layer]
                                        :layer-definitions (:layers (catalog/region-registry! cat))
                                        :faces {face layer}}))
-      (schemes/put! store {:scheme/id scheme-id :scheme/name "Palette" :scheme/roles {}
-                           :scheme/layers {layer material} :scheme/layer-ids? true} :create)
+      (schemes/put! store {:scheme/id scheme-id :scheme/name "Palette"
+                           :scheme/layers {layer material}} :create)
       (workspace/update-workspace! (:shipyard.workspace/db sys) :browse assoc :selection selected)
       (let [before (read!) palette (schemes/snapshot! store)]
         (is (= layer (rf/id cat "Trim")))

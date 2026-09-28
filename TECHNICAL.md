@@ -60,11 +60,7 @@ Copying an STL folder does not copy its current authored metadata. Back up the d
 as well as the source library. Stop Shipyard before copying its database directory.
 
 The native Datalevin binaries are pinned to 1.1.5 (DLMDB file format v2), including
-the compressed overflow-page deletion fix needed for dense paint masks. The offline
-`shipyard.store.migrate` utility exports entity/attribute/value facts and schema
-using the former 0.19.4 library (`:db-v1`) and imports them into a new directory
-using the current library. It verifies the reopened destination against the export
-and never replaces the source. See README for the upgrade and backup procedure.
+the compressed overflow-page deletion fix needed for dense paint masks.
 
 ---
 
@@ -2019,8 +2015,7 @@ projection remain distinct model cells within this workspace, so palette preview
 class edits or custom paint. Table filters are separate from assembly hull filters. Part Browser owns a `:view` (`:table`, `:part`, or `:grid`), an
 individual `:selection` and a separate `:bulk-selection`. Its table filters and scroll
 position survive opening an individual part and returning. `/orient/*` routes are
-owned by `:browse`; `/workspace/orient` is a legacy entry into that same workspace,
-not an independent owner or client runtime.
+owned by `:browse`, whose entry point is `/workspace/browse`.
 Client display state must have the same workspace ownership. A single shared renderer
 and canvas may be reused without sharing the logical selection or display settings.
 
@@ -2067,8 +2062,8 @@ or missed responses cannot strand incremental state.
 Paint detail changes use source-bound `:detail-delta` patches (sets/removals or a smaller
 replacement); the acknowledged scene sequence establishes their baseline. Initial scene
 loads and sequence recovery still include authoritative full details. Scheme selectors
-pull ID/name summaries, and palette previews pull only layer bindings, excluding legacy
-instance details and groups.
+pull ID/name summaries, and palette previews pull only layer bindings. Instance details
+and groups belong to named ships.
 Tables render at most 50 rows per page. Part selection remains server-owned across pages;
 filter changes reset the page, while returning from an editor restores it. Named hulls
 load on expansion through `/ships/hulls/:id` and have independent pages. Table and hull
@@ -2104,8 +2099,8 @@ their class; double-click and Enter submit an ordinary server-rendered form outs
 the replaceable results. Edit, Duplicate and Delete remain explicit row actions.
 
 `/assembly/*`, `/ships/*` and their asynchronous responses belong to `:ships`.
-`/workspace/assembly` is a legacy entry to its Assembly editor, not an independent
-workspace. The client retains only `:browse` and `:ships` viewport runtimes. A shared
+`/ships/tab/assembly` opens its Assembly editor. The client retains only `:browse`
+and `:ships` viewport runtimes. A shared
 workspace scene baseline and sequence order assembly, scheme and paint projections;
 model cells keep distinct drafts. Reusing a baseline allows material/tab changes to
 retain geometry and camera while diffing removals and additions correctly. Activation
@@ -2215,7 +2210,7 @@ preserves custom paint. Reset replaces only the owned paint graph after confirma
 `:scheme/base` carries its fleet palette for resolution only. `from-profile` selects
 only custom fields before persistence, never freezing inherited palette materials.
 Material resolution is detail, instance, first matching material group, custom layer,
-fleet layer, Primary, legacy role, then neutral. RGB is sRGB and is converted at the
+fleet layer, Primary, then neutral. RGB is sRGB and is converted at the
 three.js boundary. Mount colors change display only. Missing schemes keep their refs.
 
 Inputs preview viewport resources locally; change commits a complete material.
@@ -2241,12 +2236,10 @@ scrolls within the viewport. Back to ships replaces the editor with the full-wid
 
 Optional `:paint/details` maps each full instance path to
 `{:part-id string :mesh-key source-sha256 :faces {face-key detail}}`.
-New details are `{:base [sRGB r g b] :metalness number :roughness number :glow number}`, with
-finite channels in `[0,1]`. Legacy RGB vectors remain valid, inheriting current
-instance metalness/roughness/glow. Old full materials lacking glow default to zero;
-no eager migration or startup write occurs. The HTTP
-endpoint accepts legacy requests with no finish fields, but rejects incomplete
-or invalid supplied finishes. Retry reuses the material captured at stroke start.
+Details are `{:base [sRGB r g b] :metalness number :roughness number :glow number}`, with
+finite channels in `[0,1]`; optional glow defaults to zero. The HTTP endpoint requires
+color, metalness and roughness and rejects incomplete or invalid finishes.
+Retry reuses the material captured at stroke start.
 A face key is the concatenation of the nine lower-case, eight-digit Float32 hex
 coordinates of the lexicographically smallest cyclic rotation of its three
 source-space vertices, with negative zero normalized. It survives triangle/index
@@ -2268,7 +2261,7 @@ not materials/draws per face. A narrowly scoped MeshStandardMaterial `onBeforeCo
 extension substitutes face metalness/roughness at the pinned Three.js shader's PBR
 input chunks, and face color multiplied by glow at its emission chunk. An explicit program cache key and per-material enable uniform prevent
 program collisions and restore base finish when all details are removed. All three
-vertices of each triangle receive the same finish; unpainted and legacy-colour faces
+vertices of each triangle receive the same finish; unpainted faces
 use inherited finish. Mount colours disable vertex colour and emission, leaving metalness/roughness intact.
 Base material changes refresh inherited buffer values while explicit detail materials
 stay fixed. This preserves normals, studio lighting and placement; erase restores

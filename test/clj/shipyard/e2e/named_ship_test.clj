@@ -102,6 +102,11 @@
       (tab! driver "Paint")
       (create! driver "Resolute")
       (workspace/await-ship! driver)
+      (is (zero? (s/count-els driver "#paint-target button[value^='role/']")))
+      (s/click! driver ".paint-write button:text-is('Layer')")
+      (is (s/wait-until #(= "layer/Primary" (s/js driver "() => document.querySelector('#paint-material').elements.target.value"))))
+      (s/click! driver ".paint-write button:text-is('Instance')")
+      (is (s/wait-until #(= "[]" (s/js driver "() => document.querySelector('#paint-material').elements.target.value"))))
       (let [id (-> (ships/snapshot! ship-db) :ships keys first)]
         (is (= (:loadout/id class) (get-in (ships/snapshot! ship-db) [:ships id :ship/class])))
         (is (= "Ship Browser" (s/text driver ".masthead__mode--active")))

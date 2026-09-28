@@ -6,13 +6,13 @@
 (def a #uuid "8102e06a-0c4a-4c11-914f-0614170871db")
 (def b #uuid "24d87c7d-ab3c-4e37-830e-738ec8416551")
 (def member {:path [] :part-id "hull"})
-(def record {:scheme/id a :scheme/name "Scheme" :scheme/roles {}})
+(def record {:scheme/groups []})
 
 (deftest members-test
-  (let [targets [(assoc member :key "[]") {:key "role/hull" :role :hull}]]
+  (let [targets [(assoc member :key "[]") {:key "layer/Primary" :layer-id "Primary"}]]
     (is (= [member] (groups/members targets "[]")))
     (is (= [member] (groups/members targets ["[]" "[]"])))
-    (is (nil? (groups/members targets ["role/hull"])))
+    (is (nil? (groups/members targets ["layer/Primary"])))
     (is (nil? (groups/members targets ["gone"])))
     (is (= [] (groups/members targets nil)))))
 
@@ -25,7 +25,7 @@
         two (:scheme (groups/change created :create b "Two" [member] nil))
         moved (:scheme (groups/change two :order b nil nil "up"))
         deleted (:scheme (groups/change moved :delete a nil nil nil))]
-    (is (schema/scheme? two))
+    (is (schema/custom-paint? two))
     (is (= [b a] (mapv :group/id (:scheme/groups moved))))
     (is (= [0] (mapv :group/order (:scheme/groups deleted))))
     (is (= moved (:scheme (groups/change moved :order b nil nil "up"))))

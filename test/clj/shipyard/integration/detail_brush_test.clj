@@ -30,7 +30,7 @@
       (lf/save-class! sys) (post "/assembly/paint" {}) (post "/ships/paint/create" {:name "Faces"})
       (let [scheme (get-in @(:state paint) [:draft :ship-id])
             params {:id (str scheme) :target "[]" :mesh-key mesh-key :sequence "1"
-                    :color "#ff0000" :operation "paint" :faces (pr-str [face])}]
+                    :color "#ff0000" :metalness "0" :roughness "1" :operation "paint" :faces (pr-str [face])}]
         (is (str/includes? (:body (post "/ships/paint/stroke" params)) "Details saved"))
         (let [before (schemes/snapshot! store)]
           (is (str/includes? (:body (post "/ships/paint/stroke" params)) "selection changed"))
@@ -132,12 +132,12 @@
       (let [scheme (get-in @(:state (:shipyard.paint/db sys)) [:draft :ship-id])
             params {:id (str scheme) :target "[]" :mesh-key mesh-key :sequence "1"
                     :color "#ffcc00" :operation "paint" :faces (pr-str [a])}]
-        (post "/ships/paint/stroke" params)
-        (is (vector? (get-in (schemes/snapshot! store) [:ships scheme :ship/paint :paint/details [] :faces a])))
+        (is (str/includes? (:body (post "/ships/paint/stroke" params)) "Invalid detail material"))
+        (is (nil? (get-in (schemes/snapshot! store) [:ships scheme :ship/paint :paint/details [] :faces a])))
         (is (str/includes? (:body (post "/ships/paint/stroke" (assoc params :sequence "2" :faces (pr-str [b]) :metalness "1" :roughness "0.15"))) "Details saved"))
         (is (= {:base [1.0 0.8 0.0] :metalness 1.0 :roughness 0.15}
                (get-in (persisted/records! store :ships) [:ships scheme :ship/paint :paint/details [] :faces b])))
-        (is (vector? (get-in (persisted/records! store :ships) [:ships scheme :ship/paint :paint/details [] :faces a])))
+        (is (nil? (get-in (persisted/records! store :ships) [:ships scheme :ship/paint :paint/details [] :faces a])))
         (let [before (schemes/snapshot! store) bytes (schemes/snapshot! store)]
           (doseq [[n invalid] (map-indexed vector [{:metalness "NaN" :roughness "0.5"}
                                                    {:metalness "1" :roughness "Infinity"}

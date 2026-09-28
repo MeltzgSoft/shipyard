@@ -19,7 +19,7 @@
         primary {:base [0 0 1] :metalness 0 :roughness 1}]
     (with-redefs [faces/face-key (fn [vertices] (swap! calls inc) (original vertices))]
       (doseq [[i ^js object] (map-indexed vector objects)]
-        (render/set-details! object {:part-id "part" :mesh-key "hash" :faces {key [(if (zero? i) 1 0) 1 0]}})
+        (render/set-details! object {:part-id "part" :mesh-key "hash" :faces {key (assoc primary :base [(if (zero? i) 1 0) 1 0])}})
         (render/apply-details! object primary false)))
     (is (= 1 @calls) "Repeated instances build source triangle identities only once")
     (let [^js first-object (objects 0) ^js second-object (objects 1)]

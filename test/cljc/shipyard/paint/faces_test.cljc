@@ -7,8 +7,8 @@
 (def inherited {:base [0 0 1] :metalness 0 :roughness 0.9})
 
 (deftest paint?-test
-  (testing "legacy colours and complete finite materials are supported"
-    (is (faces/paint? [1 0 0]))
+  (testing "only complete finite materials are supported"
+    (is (not (faces/paint? [1 0 0])))
     (is (faces/paint? metal))
     (doseq [glow [0 0.5 1]] (is (faces/paint? (assoc metal :glow glow))))
     (doseq [glow [nil "1" -0.1 1.1 ##NaN ##Inf]] (is (not (faces/paint? (assoc metal :glow glow)))))
@@ -19,21 +19,21 @@
       (is (not (faces/paint? value))))))
 
 (deftest resolve-material-test
-  (testing "legacy entries track inherited finish; new entries freeze all channels"
+  (testing "details override all material channels"
     (is (= inherited (faces/resolve-material inherited nil)))
-    (is (= (assoc inherited :base [1 0 0]) (faces/resolve-material inherited [1 0 0])))
+    (is (= inherited (faces/resolve-material inherited [1 0 0])))
     (is (= metal (faces/resolve-material inherited metal)))
-    (is (= metal (faces/resolve-material (assoc inherited :glow 1) metal)) "Legacy full materials default to no glow")
-    (is (= 1 (:glow (faces/resolve-material (assoc inherited :glow 1) [1 0 0]))) "Color-only details inherit glow")
+    (is (= metal (faces/resolve-material (assoc inherited :glow 1) metal)) "Absent glow defaults to zero")
+    (is (= (assoc inherited :glow 1) (faces/resolve-material (assoc inherited :glow 1) nil)))
     (is (= metal (faces/resolve-material (assoc inherited :roughness 0.3) metal)))))
 
 (deftest mixed-layer-stroke-test
   (let [a (faces/face-key [[0 0 0] [1 0 0] [0 1 0]])
         b (faces/face-key [[0 0 1] [1 0 1] [0 1 1]])
         hash (apply str (repeat 64 "a"))
-        old (:layer (faces/stroke nil "part" hash [a] [1 0 0] false))
+        old (:layer (faces/stroke nil "part" hash [a] inherited false))
         updated (:layer (faces/stroke old "part" hash [b] metal false))]
     (is (faces/layer? updated))
-    (is (= {a [1 0 0] b metal} (:faces updated)))
+    (is (= {a inherited b metal} (:faces updated)))
     (is (= old (:layer (faces/stroke updated "part" hash [b] metal true))))
     (is (= :invalid-material (:error (faces/stroke old "part" hash [b] (assoc metal :roughness ##NaN) false))))))

@@ -23,7 +23,7 @@
     (try
       (is (not (:error (classes/put! class-db class :create))))
       (enter "ships")
-      (post "/ships/preview" {:id (str (:loadout/id class))})
+      (post "/ships/edit" {:id (str (:loadout/id class))})
       (is (= 200 (:status (post "/ships/schemes/create" {:name "Fleet"}))))
       (let [scheme-id (-> (schemes/snapshot! scheme-db) :schemes keys first)]
         (doseq [[url params] [["/ships/schemes/layer" {:layer "Primary"}]
@@ -84,20 +84,20 @@
   (let [started (fixture/start!) sys (:system started)
         class-db (:shipyard.loadout/db sys) ship-db (:shipyard.ship/db sys) scheme-db (:shipyard.scheme/db sys)
         scheme-id (random-uuid) group-id (random-uuid)
-        class {:loadout/id (random-uuid) :loadout/name "Class" :loadout/hull (:hull lf/draft) :loadout/slots lf/assignments :loadout/scheme scheme-id}
-        palette {:scheme/id scheme-id :scheme/name "Palette" :scheme/roles {}
-                 :scheme/groups [{:group/id group-id :group/name "Battery" :group/order 0
-                                  :group/material {:base [1 0 0] :metalness 0.4 :roughness 0.7}
-                                  :group/members [{:path [[:weapon 0]] :part-id (:weapon fixture/ids)}]}]}]
+        class {:loadout/id (random-uuid) :loadout/name "Class" :loadout/hull (:hull lf/draft) :loadout/slots lf/assignments}
+        palette {:scheme/id scheme-id :scheme/name "Palette" :scheme/layers {}}
+        groups [{:group/id group-id :group/name "Battery" :group/order 0
+                 :group/material {:base [1 0 0] :metalness 0.4 :roughness 0.7}
+                 :group/members [{:path [[:weapon 0]] :part-id (:weapon fixture/ids)}]}]]
     (try
       (schemes/put! scheme-db palette :create)
       (classes/put! class-db class :create)
       (let [ship {:ship/id (random-uuid) :ship/name "Vessel" :ship/class (:loadout/id class)
-                  :ship/scheme scheme-id :ship/paint {:paint/groups (:scheme/groups palette)}}
+                  :ship/scheme scheme-id :ship/paint {:paint/groups groups}}
             sibling (assoc ship :ship/id (random-uuid) :ship/name "Sibling")]
         (is (not (:error (ships/put! ship-db ship :create))))
         (is (= (:loadout/id class) (:ship/class ship)))
-        (is (= (:scheme/groups palette) (get-in ship [:ship/paint :paint/groups])))
+        (is (= groups (get-in ship [:ship/paint :paint/groups])))
         (is (not (:error (ships/put! ship-db sibling :create))))
         (ships/put! ship-db (assoc-in ship [:ship/paint :paint/groups 0 :group/name] "Changed") :update)
         (is (= "Battery" (get-in (ships/snapshot! ship-db) [:ships (:ship/id sibling) :ship/paint :paint/groups 0 :group/name])))

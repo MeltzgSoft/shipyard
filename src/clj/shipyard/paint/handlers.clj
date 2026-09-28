@@ -33,7 +33,7 @@
                           (transforms/affected-paths record targets target)
                           (or (:edit-sequence state) 0)
                           (or (get params "error") (:error checked)
-                              (when (:scheme-warning result) "Scheme unavailable. Choose another scheme; custom paint is preserved.")
+                              (when (and (:scheme draft) (nil? base)) "Scheme unavailable. Choose another scheme; custom paint is preserved.")
                               (when (:detail-warning result) "Some details belong to a changed part or source mesh. Select that instance and Clear instance details before repainting."))
                           (:prepared result) (:anchor-target state) state (:flush-interval-ms paint))
              [[:input {:type "hidden" :data-assembly-event (pr-str (:event result))}]]))))

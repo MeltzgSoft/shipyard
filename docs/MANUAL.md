@@ -436,11 +436,11 @@ faces are never painted. Even a small brush fills a whole triangle. Alt+drag or 
 **Select** tool permits orbiting. Colour and finish are captured together at the start
 of each drag, so metallic details can sit beside matte faces. Finish controls initially
 match the selected target's effective material. Changing them affects the next stroke,
-not existing details. Older colour-only details inherit the instance's current finish.
+not existing details.
 
 For gold trim, choose a gold colour, metalness `1` and roughness around `0.2`.
 Lower roughness gives sharper reflections. Right-drag erases details and restores
-the underlying instance/group/layer/role colour and finish without changing the
+the underlying instance/group/layer colour and finish without changing the
 selected mode or paint material. The next left-drag can paint again. **Erase to base**
 is also available for erasing with the left button. **Mount colors** temporarily replaces displayed
 colours while keeping face finishes.

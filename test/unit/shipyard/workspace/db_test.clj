@@ -6,7 +6,7 @@
 (deftest owner-test
   (is (= :browse (w/owner "/orient/save")))
   (is (= :ships (w/owner "/assembly/save")))
-  (is (= :ships (w/owner "/ships/preview")))
+  (is (= :ships (w/owner "/ships/edit")))
   (is (= :browse (w/owner "/part/navy/hull")))
   (is (nil? (w/owner "/workspace/ships"))))
 
