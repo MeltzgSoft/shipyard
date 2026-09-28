@@ -36,7 +36,7 @@
                                            :layers ["Primary" "Secondary"] :faces (zipmap keys (repeat "Secondary"))}))))
       (loadouts/put! (:shipyard.loadout/db sys) {:loadout/id class-id :loadout/name "Payload test"
                                                  :loadout/hull (:hull lf/draft) :loadout/slots lf/assignments} :create)
-      (schemes/put! (:shipyard.scheme/db sys) {:scheme/id scheme-id :scheme/name "Palette" :scheme/roles {}
+      (schemes/put! (:shipyard.scheme/db sys) {:scheme/id scheme-id :scheme/name "Palette"
                                                :scheme/layers {"Primary" {:base [1 0 0] :metalness 0.1 :roughness 0.5}}} :create)
       (compact! (get! "/ships"))
       (compact! (post "/ships/edit" {:id (str class-id)}))
@@ -74,18 +74,20 @@
         (is (not (str/includes? (:body response) "data-region-faces"))))
       (finally (fixture/stop! started)))))
 
-(deftest scheme-projections-exclude-legacy-detail-data
+(deftest palettes-reject-instance-details
   (let [started (fixture/start!) scheme-db (:shipyard.scheme/db (:system started))
         id (random-uuid)
-        record {:scheme/id id :scheme/name "Legacy" :scheme/roles {}
+        record {:scheme/id id :scheme/name "Palette"
                 :scheme/layers {"Primary" {:base [1 0 0] :metalness 0.1 :roughness 0.5}}
                 :scheme/details {[] {:part-id (:hull fixture/ids) :mesh-key (apply str (repeat 64 "a"))
                                      :faces (zipmap (map #(format "%072x" %) (range 10000)) (repeat [1 0 0]))}}}]
     (try
-      (is (not (:error (schemes/put! scheme-db record :create))))
-      (is (= {id {:scheme/id id :scheme/name "Legacy"}} (schemes/listing! scheme-db)))
-      (is (= (select-keys (schemes/record! scheme-db id) [:scheme/id :scheme/name :scheme/layers :scheme/layer-ids?])
+      (is (= :invalid-scheme (:error (schemes/put! scheme-db record :create))))
+      (is (empty? (schemes/listing! scheme-db)))
+      (is (not (:error (schemes/put! scheme-db (dissoc record :scheme/details) :create))))
+      (is (= {id {:scheme/id id :scheme/name "Palette"}} (schemes/listing! scheme-db)))
+      (is (= (select-keys (schemes/record! scheme-db id) [:scheme/id :scheme/name :scheme/layers])
              (schemes/palette! scheme-db id)))
       (is (< (count (pr-str (schemes/palette! scheme-db id))) 500))
-      (is (= 10000 (count (get-in (schemes/record! scheme-db id) [:scheme/details [] :faces]))))
+      (is (nil? (:scheme/details (schemes/record! scheme-db id))))
       (finally (fixture/stop! started)))))

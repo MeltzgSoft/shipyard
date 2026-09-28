@@ -505,7 +505,6 @@ global illumination. UV/texture painting is outside v1.
 
 ```clojure
 {:scheme/id #uuid "…" :scheme/name "Gothic Sector, 2nd Fleet"
- :scheme/roles {} ; compatibility with legacy records
  :scheme/layers {"Primary" {:base [0.12 0.18 0.32] :metalness 0.3 :roughness 0.6}
                  "Secondary" {:base [0.55 0.45 0.15] :metalness 0.8 :roughness 0.35}}}
 ```
@@ -539,7 +538,7 @@ It preserves the name, class and selected scheme. Scheme changes are live beneat
 custom overrides and are never copied into the custom paint record.
 
 Resolution is detail face, instance, first matching material group, custom layer,
-fleet layer, Primary fallback, legacy role fallback, then neutral. Groups are named,
+fleet layer, Primary fallback, then neutral. Groups are named,
 ordered sets of instance identities belonging to one named ship. They may overlap;
 the first group with a material wins. Group creation leaves inheritance intact until
 a material is saved. Deleting a group preserves instance materials and details.
@@ -607,12 +606,11 @@ brush option; the Ship Browser Paint tab detail brush keeps its existing behavio
 Changed source meshes retain old regions but cannot display or extend them until
 reset. Shared rename and delete remain available even for stale masks.
 
-Optional `:scheme/layers` maps stable layer IDs to complete materials. Deleted IDs
+`:scheme/layers` maps stable layer IDs to complete materials. Deleted IDs
 may retain dormant palette entries, but cannot reappear in available layers; a newly
 created layer has a new identity even if its label matches a deleted layer.
 Per-face resolution is freehand detail, matching instance material, winning group
-material, assigned layer material, Primary material, role material, then neutral.
-Legacy color-only detail strokes inherit the resolved region's finish. Layer identities
+material, assigned layer material, Primary material, then neutral. Layer identities
 are shared across parts. Scheme defaults are reusable without a preview model;
 instance/group and brush tools require a named ship. Before creation, explain how
 to name a ship of the selected class and hide unavailable editing controls.
@@ -636,10 +634,9 @@ touched instances. **Detail colour**, **Detail metalness**, **Detail roughness**
 are captured together for each stroke. Finish controls initially use the selected
 target's effective material; changing controls alone does not repaint details.
 **Erase to base** removes all face material overrides. Mount colors replaces displayed
-colour and suppresses glow, preserving metalness and roughness without changing saved details. Older colour-only
-strokes remain compatible and inherit their instance's current finish.
+colour and suppresses glow, preserving metalness and roughness without changing saved details.
 
-Detail masks are shared scheme data, scoped to full slot path, part id and source
+Detail masks belong to named ships, scoped to full slot path, part id and source
 mesh identity. Changed parts or source meshes never receive an old mask silently;
 retain the old data and warn in Paint. **Clear instance details** explicitly removes
 it so that the new source can be painted. Undo/redo retains up to 20 detail strokes

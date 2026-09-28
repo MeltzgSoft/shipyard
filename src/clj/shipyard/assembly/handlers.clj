@@ -7,8 +7,6 @@
             [shipyard.workspace.transforms :as workspace-transforms]
             [shipyard.http.htmx :as htmx]
             [shipyard.loadout.operations :as loadouts]
-            [shipyard.loadout.model :as loadout-model]
-            [shipyard.scheme.db :as schemes]
             [shipyard.workspace.db :as workspace]
             [shipyard.workspace.views :as workspace-views]))
 
@@ -72,14 +70,3 @@
       (workspace/update-workspace! workspace :ships assoc-in [:drawers (edn/read-string slot) :open] (= open "true")))
     ;; Disclosure changes HTML only; an incremental envelope retains the scene.
     (current! deps {:params {"poll" "1"}})))
-
-(defn scheme! [{:keys [schemes] {state :state} :assembly :as deps} {:keys [parameters]}]
-  (locking state
-    (let [{:keys [revision id name]} (:form parameters)
-          result (loadout-model/choose-scheme (:draft @state) (parse-long revision)
-                                              (when (seq id) (parse-uuid id))
-                                              (schemes/listing! schemes))]
-      (when-not (:error result)
-        (swap! state assoc :draft (cond-> (:draft result) (some? name) (assoc :name name))))
-      (response deps (merge (db/request! (assoc deps :paint-profile nil) nil {})
-                            (when (:error result) {:error (:error result) :status 422}))))))

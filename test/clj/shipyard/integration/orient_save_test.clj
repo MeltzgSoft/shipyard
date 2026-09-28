@@ -17,7 +17,7 @@
         q45 (orientation/from-euler-degrees 45 0 0) q90 (orientation/from-euler-degrees 90 0 0)
         current #(-> (:system started) :shipyard.catalog/db (catalog/snapshot!) (catalog/part id) :part/orientation)]
     (try
-      (is (= 200 (:status (handler (-> (mock/request :get "/workspace/orient")
+      (is (= 200 (:status (handler (-> (mock/request :get "/workspace/browse")
                                        (mock/header "HX-Request" "true"))))))
       (let [result (post! handler 2 1 {id q45 "missing" q90})]
         (is (= 422 (:status result)))

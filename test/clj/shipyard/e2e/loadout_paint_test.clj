@@ -18,7 +18,7 @@
                 :ship/paint {:paint/instances {[] {:part-id (:hull fixture/ids) :material material-test/red}}}}]
     (try
       (loadouts/put! (:shipyard.loadout/db sys) class :create)
-      (schemes/put! (:shipyard.scheme/db sys) {:scheme/id scheme-id :scheme/name "Blue" :scheme/roles {} :scheme/layers {"Primary" material-test/blue}} :create)
+      (schemes/put! (:shipyard.scheme/db sys) {:scheme/id scheme-id :scheme/name "Blue" :scheme/layers {"Primary" material-test/blue}} :create)
       (ships/put! (:shipyard.ship/db sys) vessel :create)
       (s/go! driver (s/base-url sys))
       (workspace/switch! driver "ships")

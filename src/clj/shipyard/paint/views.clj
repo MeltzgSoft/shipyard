@@ -23,7 +23,7 @@
 
 (defn target-row [record target entry count selected-members]
   (let [instance? (contains? entry :path) selected? (= (:key target) (:key entry))
-        source (when instance? (material/material-source record (:path entry) (:part-id entry) (:role entry)))
+        source (when instance? (material/material-source record (:path entry) (:part-id entry)))
         inherited (when (= :group (first source)) (material/winning-group record (:path entry) (:part-id entry)))]
     [:div.paint-target-row {:class (when selected? "is-selected")}
      (when instance?
@@ -35,7 +35,7 @@
       (swatch (transforms/target-material record entry))
       [:span.paint-target-name (or (:name entry) (some-> (:role entry) (name)) (:label entry))
        (when instance? [:small (str (if (empty? (:path entry)) "Hull" (pr-str (:path entry))) " · "
-                                    (case (first source) :instance "instance material" :group (:group/name inherited) :layer "layer defaults" "role default"))])]
+                                    (case (first source) :instance "instance material" :group (:group/name inherited) :layer "layer defaults" "neutral material"))])]
       (when count [:small (str count " instances")])]]))
 
 (defn scheme-options [records selected]
@@ -82,9 +82,6 @@
      [:form#paint-target (merge selection-attrs {:method "post" :action "/ships/paint/target" :hx-post "/ships/paint/target"})
       [:h3 "Ship layer overrides"]
       (for [entry targets :when (:layer-id entry)] (target-row record target entry nil members))
-      (when-not (:paint/ship-id record) [:h3 "Role fallbacks"])
-      (for [entry targets :when (and (:role entry) (not (contains? entry :path)))]
-        (target-row record target entry (count (filter #(= (:role entry) (:role %)) instances)) members))
       [:h3 "Groups" [:button.paint-group-link {:type "button" :onclick "var d=document.getElementById('paint-group-disclosure');if(d){d.open=true;d.scrollIntoView({block:'nearest'});}"} "Group selection"]]
       (for [entry targets :when (:group-id entry)]
         (target-row record target entry (count (:group/members (group-record record entry))) members))
@@ -117,9 +114,8 @@
 (defn write-targets [record targets target anchor-key]
   (let [belongs? (fn [entry]
                    (and (contains? entry :path)
-                        (if (:group-id target)
-                          (some #{(select-keys entry [:path :part-id])} (:group/members (group-record record target)))
-                          (= (:role target) (:role entry)))))
+                        (or (not (:group-id target))
+                            (some #{(select-keys entry [:path :part-id])} (:group/members (group-record record target))))))
         anchor (or (when (contains? target :path) target)
                    (first (filter #(and (= anchor-key (:key %)) (belongs? %)) targets))
                    (first (filter belongs? targets)))

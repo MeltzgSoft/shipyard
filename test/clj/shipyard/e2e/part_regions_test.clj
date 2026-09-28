@@ -320,10 +320,10 @@
 (deftest confirmed-scheme-deletion
   (s/assert-bundle!)
   (let [started (fixture/start! true) sys (:system started) driver (s/make-driver) store (:shipyard.scheme/db sys)
-        id (random-uuid) ship {:loadout/id (random-uuid) :loadout/name "Flagship" :loadout/hull (:hull fixture/ids) :loadout/slots {} :loadout/scheme id}
+        id (random-uuid) ship {:loadout/id (random-uuid) :loadout/name "Flagship" :loadout/hull (:hull fixture/ids) :loadout/slots {}}
         vessel-id (random-uuid) confirmation (atom nil)]
     (try
-      (schemes/put! store {:scheme/id id :scheme/name "Shared palette" :scheme/roles {}} :create)
+      (schemes/put! store {:scheme/id id :scheme/name "Shared palette" :scheme/layers {}} :create)
       (loadouts/put! (:shipyard.loadout/db sys) ship :create)
       (ships/put! (:shipyard.ship/db sys) {:ship/id vessel-id :ship/name "Flagship vessel" :ship/class (:loadout/id ship) :ship/scheme id :ship/paint {}} :create)
       (s/go! driver (s/base-url sys)) (workspace/switch! driver "ships")
@@ -339,7 +339,7 @@
       (.onceDialog ^Page (:page driver) (reify Consumer (accept [_ d] (.accept ^Dialog d))))
       (s/click! driver "button:text-is('Delete scheme')")
       (is (s/wait-until #(empty? (:schemes (schemes/snapshot! store)))))
-      (is (= id (get-in (loadouts/snapshot! (:shipyard.loadout/db sys)) [:loadouts (:loadout/id ship) :loadout/scheme])))
+      (is (= id (get-in (ships/snapshot! (:shipyard.ship/db sys)) [:ships vessel-id :ship/scheme])))
       (workspace/switch! driver "ships")
       (s/open-named-ship! driver vessel-id)
       (is (s/wait-until #(re-find #"(?i)unavailable|missing" (s/text driver "#detail"))))

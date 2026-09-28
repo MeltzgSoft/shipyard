@@ -27,18 +27,15 @@
        (every? #(and (number? %) (<= 0 % 1)) value)))
 
 (defn paint? [value]
-  (or (rgb? value)
-      (and (map? value) (#{#{:base :metalness :roughness} #{:base :metalness :roughness :glow}} (set (keys value)))
-           (rgb? (:base value))
-           (or (not (contains? value :glow)) (and (number? (:glow value)) (<= 0 (:glow value) 1)))
-           (every? #(and (number? %) (<= 0 % 1)) [(:metalness value) (:roughness value)]))))
+  (and (map? value) (#{#{:base :metalness :roughness} #{:base :metalness :roughness :glow}} (set (keys value)))
+       (rgb? (:base value))
+       (or (not (contains? value :glow)) (and (number? (:glow value)) (<= 0 (:glow value) 1)))
+       (every? #(and (number? %) (<= 0 % 1)) [(:metalness value) (:roughness value)])))
 
 (defn resolve-material
-  "Legacy RGB details inherit finish; new material entries override all channels."
+  "A detail material overrides the inherited material's channels."
   [inherited detail]
-  (cond (rgb? detail) (assoc inherited :base detail)
-        (map? detail) (merge (dissoc inherited :glow) detail)
-        :else inherited))
+  (if (map? detail) detail inherited))
 
 (defn layer? [value]
   (and (map? value) (= #{:part-id :mesh-key :faces} (set (keys value)))

@@ -5,23 +5,21 @@
             [shipyard.scheme.transforms :as scheme]))
 
 (def profile-keys
-  {:paint/roles :scheme/roles :paint/layers :scheme/layers
+  {:paint/layers :scheme/layers
    :paint/instances :scheme/instances :paint/groups :scheme/groups :paint/details :scheme/details})
 
 (defn profile [job]
-  (merge {:scheme/roles {}} (set/rename-keys job profile-keys)))
+  (set/rename-keys job profile-keys))
 
 (defn from-profile [record]
-  (let [value (set/rename-keys (select-keys record (vals profile-keys)) (set/map-invert profile-keys))]
-    (cond-> value (empty? (:paint/roles value)) (dissoc :paint/roles))))
+  (set/rename-keys (select-keys record (vals profile-keys)) (set/map-invert profile-keys)))
 
 (defn valid? [job]
   (and (map? job) (every? (set (keys profile-keys)) (keys job))
-       (scheme/scheme? (assoc (profile job) :scheme/id #uuid "00000000-0000-0000-0000-000000000000"
-                              :scheme/name "Ship paint" :scheme/layer-ids? true))))
+       (scheme/custom-paint? (profile job))))
 
 (defn palette [record]
-  (select-keys record [:scheme/id :scheme/name :scheme/layers :scheme/layer-ids?]))
+  (select-keys record [:scheme/id :scheme/name :scheme/layers]))
 
 (defn editor-record [ship scheme]
   (assoc (profile (:ship/paint ship))

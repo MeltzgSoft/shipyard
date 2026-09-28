@@ -39,7 +39,9 @@
     (try
       (s/go! driver (s/base-url (:system started)))
       (s/wait-visible! driver "#bulk-orient-results .bulk-orient__row")
-      (s/open-assembly! driver)
+      (s/open-part! driver "hull")
+      (s/await-part driver (:hull fixture/ids))
+      (s/click! driver "button:text-is('Assemble this hull')")
       (s/wait-visible! driver ".assembly__hull")
       (s/select-option! driver ".assembly__hull select[name=part-id]" "hull")
       (s/click! driver ".assembly__hull button")

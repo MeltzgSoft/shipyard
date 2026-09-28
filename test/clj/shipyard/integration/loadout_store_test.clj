@@ -7,7 +7,7 @@
 (deftest durable-identities-concurrency-and-deletion
   (let [started (fixture/start!) facade (:shipyard.loadout/db (:system started))
         record {:loadout/id (random-uuid) :loadout/name "Ship" :loadout/hull (:hull fixture/ids)
-                :loadout/slots {[[:weapon 0]] (:weapon fixture/ids)} :loadout/scheme (random-uuid)}]
+                :loadout/slots {[[:weapon 0]] (:weapon fixture/ids)}}]
     (try
       (is (= record (:loadout (db/put! facade record :create))))
       (is (= record (get-in (persisted/records! facade :loadouts) [:loadouts (:loadout/id record)])))

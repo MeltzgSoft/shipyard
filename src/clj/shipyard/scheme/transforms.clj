@@ -43,27 +43,29 @@
        (= (count value) (count (set (map :group/id value))))
        (= (count value) (count (set (map :group/order value))))))
 
-(defn scheme? [value]
+(defn layers? [value]
   (and (map? value)
-       (every? #{:scheme/id :scheme/name :scheme/roles :scheme/instances :scheme/groups :scheme/details :scheme/layers :scheme/layer-ids?} (keys value))
-       (or (not (contains? value :scheme/layer-ids?)) (true? (:scheme/layer-ids? value)))
+       (every? #(or (some #{%} regions/builtins) (regions/detail-id? %)) (keys value))
+       (every? material? (vals value))))
+
+(defn custom-paint? [value]
+  (and (map? value)
+       (or (not (contains? value :scheme/layers)) (layers? (:scheme/layers value)))
        (or (not (contains? value :scheme/groups)) (groups? (:scheme/groups value)))
-       (or (not (contains? value :scheme/layers))
-           (and (map? (:scheme/layers value))
-                (every? #(or (some #{%} regions/builtins) (regions/detail-id? %)) (keys (:scheme/layers value)))
-                (every? (fn [[name value]] (and (regions/name? name) (material? value))) (:scheme/layers value))))
-       (uuid? (:scheme/id value)) (loadout/name? (:scheme/name value))
-       (map? (:scheme/roles value)) (<= (count (:scheme/roles value)) 256)
-       (every? (fn [[role material]] (and (keyword? role) (material? material))) (:scheme/roles value))
        (or (not (contains? value :scheme/instances))
            (and (map? (:scheme/instances value)) (<= (count (:scheme/instances value)) 4097)
                 (every? instance-entry? (:scheme/instances value))))
        (or (not (contains? value :scheme/details))
-           (and (map? (:scheme/details value))
-                (<= (count (:scheme/details value)) 4097)
+           (and (map? (:scheme/details value)) (<= (count (:scheme/details value)) 4097)
                 (every? (fn [[path layer]]
                           (and (or (= [] path) (loadout/slot-path? path)) (faces/layer? layer)))
                         (:scheme/details value))))))
+
+(defn scheme? [value]
+  (and (map? value)
+       (= #{:scheme/id :scheme/name :scheme/layers} (set (keys value)))
+       (uuid? (:scheme/id value)) (loadout/name? (:scheme/name value))
+       (layers? (:scheme/layers value))))
 
 (defn store? [value]
   (and (map? value) (= #{:version :schemes} (set (keys value)))

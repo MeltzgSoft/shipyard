@@ -11,10 +11,10 @@
                 :ship/scheme (:scheme/id scheme) :ship/paint {:paint/instances {[] {:part-id "hull" :material red}}}}
         profile (job/editor-record vessel scheme)]
     (is (ship/valid? vessel))
-    (is (= red (material/resolve-material profile [] "hull" :hull)))
-    (is (= blue (material/resolve-material profile [[:weapon 0]] "gun" :weapon)))
-    (is (= blue (material/resolve-material profile [] "replaced-hull" :hull)) "Replaced parts do not inherit incompatible custom paint")
-    (is (= (:ship/paint vessel) (dissoc (job/from-profile profile) :paint/roles)))
+    (is (= red (material/resolve-material profile [] "hull")))
+    (is (= blue (material/resolve-material profile [[:weapon 0]] "gun")))
+    (is (= blue (material/resolve-material profile [] "replaced-hull")) "Replaced parts do not inherit incompatible custom paint")
+    (is (= (:ship/paint vessel) (job/from-profile profile)))
     (is (nil? (:paint/layers (job/from-profile profile))) "Inherited palette values never become custom overrides")
     (is (not (ship/valid? (assoc vessel :ship/class nil))))
     (is (not (ship/valid? (assoc vessel :ship/paint {:paint/instances {[] {:part-id "hull" :material {:base [2 0 0]}}}}))))))

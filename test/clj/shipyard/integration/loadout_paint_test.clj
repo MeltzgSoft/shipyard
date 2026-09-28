@@ -8,24 +8,21 @@
             [shipyard.loadout.operations :as operations]
             [shipyard.scheme.db :as schemes]))
 
-(deftest choosing-scheme-is-a-draft-change-until-save
+(deftest classes-reject-scheme-assignment
   (let [started (fixture/start!) sys (:system started) deps (lf/deps started)
         handler (:handler started) state (:state (:assembly deps))
         id (random-uuid)]
     (try
-      (schemes/put! (:shipyard.scheme/db sys) {:scheme/id id :scheme/name "Scheme" :scheme/roles {}} :create)
+      (schemes/put! (:shipyard.scheme/db sys) {:scheme/id id :scheme/name "Scheme" :scheme/layers {}} :create)
       (swap! state assoc :draft lf/draft :root (str (:root started)))
       (let [record (:loadout (operations/save! deps 1 "Original")) revision (get-in @state [:draft :revision])
             before (loadouts/snapshot! (:loadouts deps))
             post (fn [revision id] (handler (mock/request :post "/assembly/scheme" {:revision (str revision) :id id})))]
-        (is (= 400 (:status (post revision "invalid"))))
-        (is (= 422 (:status (post revision (str (random-uuid))))))
-        (is (= 200 (:status (post revision (str id)))))
-        (is (= id (get-in @state [:draft :scheme])))
-        (is (operations/unsaved? deps))
+        (is (= 404 (:status (post revision (str id)))))
+        (is (= :invalid-loadout (:error (loadouts/put! (:loadouts deps) (assoc record :loadout/scheme id) :update))))
+        (is (nil? (get-in @state [:draft :scheme])))
+        (is (not (operations/unsaved? deps)))
         (is (= before (loadouts/snapshot! (:loadouts deps))))
-        (is (= 422 (:status (post revision ""))))
-        (operations/save! deps (get-in @state [:draft :revision]) "Original")
-        (is (= id (get-in (persisted/records! (:loadouts deps) :loadouts)
-                          [:loadouts (:loadout/id record) :loadout/scheme]))))
+        (is (= record (get-in (persisted/records! (:loadouts deps) :loadouts)
+                              [:loadouts (:loadout/id record)]))))
       (finally (fixture/stop! started)))))

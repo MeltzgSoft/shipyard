@@ -13,7 +13,7 @@
                 :part/mesh-key :source/path :mesh/sha :layer/id :layer/name :layer/preview-name
                 :scheme/name :ship/name :loadout/name :group/name :fleet/name])
    (attributes :db.type/uuid
-               [:library/id :part/uid :mount/uid :scheme/id :ship/id :loadout/id :group/id :paint/group-id :fleet/id])
+               [:library/id :part/uid :mount/uid :scheme/id :ship/id :loadout/id :paint/group-id :fleet/id])
    (attributes :db.type/long
                [:store/version :library/revision :part/revision :part/tris :source/size
                 :source/mtime :mesh/tris :region/revision :chunk/index :chunk/version
@@ -24,15 +24,15 @@
                 :ship/deleted? :layer/builtin?])
    (attributes :db.type/keyword
                [:part/source :part/role-hint :part/role-source :part/role-override :mount/id :mount/kind
-                :mount/origin :mount/mirror-id :source/variant :binding/role])
+                :mount/origin :mount/mirror-id :source/variant])
    (attributes :db.type/data
                [:part/orientation :mount/pos :mount/axis :mount/roll :mount/magnet
                 :mount/facet :mount/split :mount/mirror-plane :mount/mirror-offset :chunk/payload
                 :slot/path :target/path :layer/preview-color :material/base :material/metalness
-                :material/roughness :material/glow :material/paint :scheme/fields :paint/fields])
+                :material/roughness :material/glow :material/paint :paint/fields])
    (attributes :db.type/ref
                [:part/library :source/part :source/content :layer/library :mask/layer
-                :region/content :slot/part :ship/class :ship/scheme :ship/library :loadout/hull :loadout/library :loadout/scheme :scheme/library
+                :region/content :slot/part :ship/class :ship/scheme :ship/library :loadout/hull :loadout/library :scheme/library
                 :membership/target :binding/layer :target/part :detail/content :fleet/default-scheme
                 :fleet-entry/loadout :mount/mirror])
    (into {} (map (fn [attr] [attr {:db/valueType :db.type/ref :db/isComponent true}]))
@@ -40,13 +40,13 @@
    (into {} (map (fn [attr] [attr {:db/valueType :db.type/ref :db/cardinality :db.cardinality/many
                                    :db/isComponent true}]))
          [:part/mounts :part/sources :region/masks :mask/chunks :detail/chunks
-          :scheme/roles :scheme/layers :scheme/targets :scheme/groups :loadout/slots
-          :paint/roles :paint/layers :paint/targets :paint/groups
+          :scheme/layers :loadout/slots
+          :paint/layers :paint/targets :paint/groups
           :fleet/entries :group/members])
    {:mount/accepts {:db/valueType :db.type/keyword :db/cardinality :db.cardinality/many}
     :part/variants {:db/valueType :db.type/keyword :db/cardinality :db.cardinality/many}}
    (into {} (map (fn [attr] [attr {:db/valueType :db.type/uuid :db/unique :db.unique/identity}]))
-         [:library/id :part/uid :mount/uid :scheme/id :ship/id :loadout/id :group/id :fleet/id])
+         [:library/id :part/uid :mount/uid :scheme/id :ship/id :loadout/id :fleet/id])
    (into {} (map (fn [attr] [attr {:db/valueType :db.type/string :db/unique :db.unique/identity}]))
          [:store/key :library/root :mesh/sha :color-preset/hex])
    (into {} (map (fn [attr] [attr {:db/unique :db.unique/identity}]))

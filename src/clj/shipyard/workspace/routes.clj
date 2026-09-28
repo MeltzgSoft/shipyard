@@ -14,10 +14,10 @@
                                               :responses contracts/html-responses}}]
          ["/workspace/display/colors" {:post {:handler (partial handlers/colors! deps) :responses contracts/html-responses}}]
          ["/workspace/:mode" {:get {:handler (partial handlers/transition! deps)
-                                    :parameters {:path [:map [:mode [:enum "browse" "orient" "assembly" "ships"]]]}
+                                    :parameters {:path [:map [:mode [:enum "browse" "ships"]]]}
                                     :responses contracts/html-responses}}]
          ["/ships/tab/:tab" {:get {:handler (partial handlers/ship-tab! deps)
-                                   :parameters {:path [:map [:tab [:enum "assembly" "class" "schemes" "paint"]]]}
+                                   :parameters {:path [:map [:tab [:enum "assembly" "schemes" "paint"]]]}
                                    :responses contracts/html-responses}}]
          ["/ships" {:get {:handler (partial handlers/ships! deps) :responses contracts/html-responses}}]
          ["/ships/hulls/:id" {:get {:handler (partial handlers/named-rows! deps)
@@ -61,7 +61,7 @@
          (for [source [:assembly :ships]]
            [(str "/" (name source) "/paint") {:post {:handler (partial handlers/paint-transfer! deps source)
                                                      :responses contracts/html-responses}}])
-         (for [mode [:preview :edit :duplicate]]
+         (for [mode [:edit :duplicate]]
            [(str "/ships/" (name mode))
             {:post {:handler (partial handlers/transfer! deps mode)
                     :parameters {:form (conj ship-id-form [:discard-revision {:optional true} assembly-routes/revision-schema])}

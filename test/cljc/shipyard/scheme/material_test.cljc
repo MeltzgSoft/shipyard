@@ -3,15 +3,15 @@
             [shipyard.scheme.material :as m]))
 
 (deftest resolve-material-test
-  (testing "instance identity, role and neutral precedence"
-    (let [role (assoc m/neutral :metalness 0.8)
+  (testing "instance identity, shared layer and neutral precedence"
+    (let [layer (assoc m/neutral :metalness 0.8)
           specific (assoc m/neutral :roughness 0.1)
-          scheme {:scheme/roles {:weapon role}
+          scheme {:scheme/layers {"Secondary" layer}
                   :scheme/instances {[[:weapon 0]] {:part-id "gun" :material specific}}}]
-      (is (= specific (m/resolve-material scheme [[:weapon 0]] "gun" :weapon)))
-      (is (= role (m/resolve-material scheme [[:weapon 1]] "gun" :weapon)))
-      (is (= role (m/resolve-material scheme [[:weapon 0]] "replacement" :weapon)))
-      (is (= m/neutral (m/resolve-material scheme [] "hull" :hull))))))
+      (is (= specific (m/resolve-material scheme [[:weapon 0]] "gun")))
+      (is (= m/neutral (m/resolve-material scheme [[:weapon 1]] "gun")))
+      (is (= m/neutral (m/resolve-material scheme [[:weapon 0]] "replacement")))
+      (is (= m/neutral (m/resolve-material scheme [] "hull"))))))
 
 (deftest select-scheme-test
   (testing "dangling overrides do not silently select a fleet default"
@@ -35,21 +35,21 @@
         scheme {:scheme/groups [a b]}]
     (is (= [b a] (m/groups-for scheme [] "hull")))
     (is (= b (m/winning-group scheme [] "hull")))
-    (is (= (:group/material b) (m/resolve-material scheme [] "hull" :hull)))
-    (is (= [:group :b] (m/material-source scheme [] "hull" :hull)))
-    (is (= m/neutral (m/resolve-material scheme [] "replacement" :hull)))
-    (is (= [:role :hull] (m/material-source scheme [] "replacement" :hull)))
-    (is (= (:group/material a) (m/resolve-material (assoc scheme :scheme/groups [a (dissoc b :group/material)]) [] "hull" :hull)))
-    (is (= [:instance []] (m/material-source (assoc scheme :scheme/instances {[] {:part-id "hull" :material m/neutral}}) [] "hull" :hull)))))
+    (is (= (:group/material b) (m/resolve-material scheme [] "hull")))
+    (is (= [:group :b] (m/material-source scheme [] "hull")))
+    (is (= m/neutral (m/resolve-material scheme [] "replacement")))
+    (is (= [:neutral] (m/material-source scheme [] "replacement")))
+    (is (= (:group/material a) (m/resolve-material (assoc scheme :scheme/groups [a (dissoc b :group/material)]) [] "hull")))
+    (is (= [:instance []] (m/material-source (assoc scheme :scheme/instances {[] {:part-id "hull" :material m/neutral}}) [] "hull")))))
 
 (deftest primary-layer-and-overrides
   (let [primary (assoc m/neutral :metalness 1)
         role (assoc m/neutral :roughness 0.1)
-        scheme {:scheme/roles {:hull role} :scheme/layers {"Primary" primary}}]
-    (is (= primary (m/resolve-material scheme [] "hull" :hull)))
-    (is (= [:layer "Primary"] (m/material-source scheme [] "hull" :hull)))
-    (is (= role (m/resolve-material (dissoc scheme :scheme/layers) [] "hull" :hull)))
-    (is (= role (m/resolve-material (assoc scheme :scheme/instances {[] {:part-id "hull" :material role}}) [] "hull" :hull)))
+        scheme {:scheme/layers {"Primary" primary}}]
+    (is (= primary (m/resolve-material scheme [] "hull")))
+    (is (= [:layer "Primary"] (m/material-source scheme [] "hull")))
+    (is (= m/neutral (m/resolve-material (dissoc scheme :scheme/layers) [] "hull")))
+    (is (= role (m/resolve-material (assoc scheme :scheme/instances {[] {:part-id "hull" :material role}}) [] "hull")))
     (is (= role (m/resolve-material (assoc scheme :scheme/groups [{:group/id :a :group/order 0
                                                                    :group/members [{:path [] :part-id "hull"}]
-                                                                   :group/material role}]) [] "hull" :hull)))))
+                                                                   :group/material role}]) [] "hull")))))

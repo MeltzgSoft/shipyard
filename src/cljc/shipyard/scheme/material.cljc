@@ -9,8 +9,7 @@
   (let [base (:scheme/base profile)]
     (-> profile
         (dissoc :scheme/base)
-        (assoc :scheme/layers (merge (:scheme/layers base) (:scheme/layers profile))
-               :scheme/roles (merge (:scheme/roles base) (:scheme/roles profile))))))
+        (assoc :scheme/layers (merge (:scheme/layers base) (:scheme/layers profile))))))
 
 (defn groups-for [scheme path part-id]
   (filterv #(some #{{:path path :part-id part-id}} (:group/members %))
@@ -19,21 +18,21 @@
 (defn winning-group [scheme path part-id]
   (first (filter :group/material (groups-for scheme path part-id))))
 
-(defn material-source [profile path part-id role]
+(defn material-source [profile path part-id]
   (let [scheme (effective-profile profile)]
     (if (= part-id (get-in scheme [:scheme/instances path :part-id]))
       [:instance path]
       (if-let [group (winning-group scheme path part-id)]
         [:group (:group/id group)]
-        (if (get-in scheme [:scheme/layers "Primary"]) [:layer "Primary"] [:role role])))))
+        (if (get-in scheme [:scheme/layers "Primary"]) [:layer "Primary"] [:neutral])))))
 
-(defn resolve-material [scheme path part-id role]
+(defn resolve-material [scheme path part-id]
   (let [scheme (effective-profile scheme)
         instance (get-in scheme [:scheme/instances path])]
     (or (when (= part-id (:part-id instance)) (:material instance))
         (:group/material (winning-group scheme path part-id))
         (get-in scheme [:scheme/layers "Primary"])
-        (get-in scheme [:scheme/roles role]) neutral)))
+        neutral)))
 
 (defn select-scheme [schemes override fleet-default]
   (let [id (or override fleet-default)]

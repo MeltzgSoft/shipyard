@@ -2,7 +2,6 @@
   "One application-owned Datalevin store. All writes and snapshot materialization
   share this boundary; domain functions never receive live database handles."
   (:require [babashka.fs :as fs]
-            [clojure.string :as str]
             [datalevin.core :as d]
             [integrant.core :as ig]
             [shipyard.store.schema :as schema]
@@ -10,7 +9,6 @@
             [shipyard.regions.registry :as registry]
             [shipyard.loadout.transforms :as loadout]
             [shipyard.scheme.transforms :as scheme]
-            [shipyard.paint.job :as paint-job]
             [shipyard.ship.transforms :as ship]
             [shipyard.system :as system]))
 
@@ -19,32 +17,22 @@
                                           :region/masks [* {:mask/layer [:layer/id]
                                                             :mask/chunks [*]}]}]}])
 (def scheme-pattern
-  '[* {:scheme/roles [*] :scheme/layers [* {:binding/layer [:layer/id]}]
-       :scheme/groups [* {:group/members [* {:membership/target [:db/id]}]}]
-       :scheme/targets [* {:target/part [:part/id]
-                           :target/details [* {:detail/content [:mesh/sha]
-                                               :detail/chunks [*]}]}]}])
+  '[* {:scheme/layers [* {:binding/layer [:layer/id]}]}])
 
 (def paint-pattern
-  '[* {:paint/roles [*] :paint/layers [* {:binding/layer [:layer/id]}]
+  '[* {:paint/layers [* {:binding/layer [:layer/id]}]
        :paint/groups [* {:group/members [* {:membership/target [:db/id]}]}]
        :paint/targets [* {:target/part [:part/id]
                           :target/details [* {:detail/content [:mesh/sha] :detail/chunks [*]}]}]}])
 (def loadout-pattern
-  '[* {:loadout/hull [:part/id] :loadout/scheme [:scheme/id]
+  '[* {:loadout/hull [:part/id]
        :loadout/slots [* {:slot/part [:part/id]}]}])
 (def ship-pattern
   ['* {:ship/class [:loadout/id] :ship/scheme [:scheme/id] :ship/paint paint-pattern}])
 
 (defn open! [directory]
   (let [directory (str (fs/normalize (fs/absolutize directory)))
-        conn (try
-               (d/get-conn directory schema/schema {:validate-data? true :closed-schema? true})
-               (catch Exception e
-                 (if (str/includes? (or (ex-message e) "") "MDB_VERSION_MISMATCH")
-                   (throw (ex-info "Database native format requires offline migration. Stop Shipyard and follow README's :db-v1 export/import procedure; keep the original database as a backup."
-                                   {:type :native-format-mismatch :directory directory} e))
-                   (throw e))))
+        conn (d/get-conn directory schema/schema {:validate-data? true :closed-schema? true})
         store {:conn conn :lock conn :directory directory}]
     (try
       (let [version (:store/version (d/pull @conn '[*] [:store/key "shipyard"]))]
@@ -201,21 +189,21 @@
 
 (defn scheme-palette [db id]
   (when id
-    (let [entity (d/pull db '[:scheme/id :scheme/name :scheme/deleted? :scheme/fields
+    (let [entity (d/pull db '[:scheme/id :scheme/name :scheme/deleted?
                               {:scheme/layers [* {:binding/layer [:layer/id]}]}] [:scheme/id id])]
       (when (and (:scheme/id entity) (not (:scheme/deleted? entity)))
-        (select-keys (t/scheme-value entity) [:scheme/id :scheme/name :scheme/layers :scheme/layer-ids?])))))
+        (select-keys (t/scheme-value entity) [:scheme/id :scheme/name :scheme/layers])))))
 
 (defn- ensure-scheme! [conn id]
   (when-not (d/pull @conn [:db/id] [:scheme/id id])
     (d/transact! conn [{:scheme/id id :scheme/deleted? true}])))
 
 (defn- paint-refs! [conn library record]
-  (let [paths (concat (map :part-id (vals (:scheme/instances record)))
-                      (map :part-id (vals (:scheme/details record)))
-                      (map :part-id (mapcat :group/members (:scheme/groups record))))]
-    (doseq [layer (keys (:scheme/layers record))] (layer-ref! conn library layer))
-    (doseq [detail (vals (:scheme/details record))] (content! conn (:mesh-key detail)))
+  (let [paths (concat (map :part-id (vals (:paint/instances record)))
+                      (map :part-id (vals (:paint/details record)))
+                      (map :part-id (mapcat :group/members (:paint/groups record))))]
+    (doseq [layer (keys (:paint/layers record))] (layer-ref! conn library layer))
+    (doseq [detail (vals (:paint/details record))] (content! conn (:mesh-key detail)))
     (into {} (map (fn [path] [path (part-ref! conn library path)])) paths)))
 
 (defn put-loadout! [conn library record]
@@ -224,34 +212,31 @@
         parts (into {} (map (fn [path] [path (part-ref! conn library path)])) paths)
         id (:loadout/id record)
         old (d/pull @conn '[*] [:loadout/id id])]
-    (when-let [scheme (:loadout/scheme record)] (ensure-scheme! conn scheme))
     (d/transact! conn
                  (concat (retract-children @conn [:loadout/id id] [:loadout/slots])
-                         (when (:loadout/scheme old) [[:db.fn/retractAttribute [:loadout/id id] :loadout/scheme]])
-                         [(cond-> {:loadout/id id :loadout/name (:loadout/name record)
-                                   :loadout/deleted? false :loadout/revision (inc (or (:loadout/revision old) 0))
-                                   :loadout/library [:library/id library]
-                                   :loadout/hull (get parts (:loadout/hull record))
-                                   :loadout/slots (mapv (fn [[path part]] {:slot/path path :slot/part (get parts part)})
-                                                        (:loadout/slots record))}
-                            (:loadout/scheme record) (assoc :loadout/scheme [:scheme/id (:loadout/scheme record)]))]))))
+                         [{:loadout/id id :loadout/name (:loadout/name record)
+                           :loadout/deleted? false :loadout/revision (inc (or (:loadout/revision old) 0))
+                           :loadout/library [:library/id library]
+                           :loadout/hull (get parts (:loadout/hull record))
+                           :loadout/slots (mapv (fn [[path part]] {:slot/path path :slot/part (get parts part)})
+                                                (:loadout/slots record))}]))))
 
 (defn put-scheme! [conn library record]
   (let [library (or (get-in (d/pull @conn [{:scheme/library [:library/id]}] [:scheme/id (:scheme/id record)]) [:scheme/library :library/id]) library)
-        parts (paint-refs! conn library record)
         id (:scheme/id record) old (d/pull @conn '[*] [:scheme/id id])]
+    (doseq [layer (keys (:scheme/layers record))] (layer-ref! conn library layer))
     ;; Resolve identity upserts after removing the old owned graph, inside the
     ;; enclosing transaction, so no parent refs point at retracted entities.
     (d/transact! conn (retract-children @conn [:scheme/id id]
-                                        [:scheme/groups :scheme/roles :scheme/layers :scheme/targets]))
-    (d/transact! conn [(cond-> (assoc (t/scheme-tx library parts record)
+                                        [:scheme/layers]))
+    (d/transact! conn [(cond-> (assoc (t/scheme-tx library record)
                                       :scheme/revision (inc (or (:scheme/revision old) 0)))
                          library (assoc :scheme/library [:library/id library]))])))
 
 (defn put-ship! [conn library record]
   (let [id (:ship/id record) old (d/pull @conn '[* {:ship/library [:library/id]}] [:ship/id id])
         library (or (get-in old [:ship/library :library/id]) library)
-        parts (paint-refs! conn library (paint-job/profile (:ship/paint record)))]
+        parts (paint-refs! conn library (:ship/paint record))]
     (when-not (let [class (d/pull @conn [:db/id :loadout/deleted?] [:loadout/id (:ship/class record)])]
                 (and class (or old (not (:loadout/deleted? class)))))
       (throw (ex-info "This ship class is missing." {:type :missing-class})))
@@ -273,9 +258,7 @@
                 (if (:error result) result
                     (do
                       (when (and (nil? library)
-                                 (or (#{:loadouts :ships} kind) (seq (:scheme/layers record))
-                                     (seq (:scheme/instances record)) (seq (:scheme/details record))
-                                     (seq (mapcat :group/members (:scheme/groups record)))))
+                                 (or (#{:loadouts :ships} kind) (seq (:scheme/layers record))))
                         (throw (ex-info "Select a library before saving part or layer references" {})))
                       ((case kind :schemes put-scheme! :loadouts put-loadout! :ships put-ship!) conn library record)
                       (dissoc result :store))))))

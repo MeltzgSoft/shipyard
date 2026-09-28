@@ -19,12 +19,12 @@
   (:import [java.nio.file Files]))
 
 (defn appearance [part profile path mesh-key]
-  (let [id (:part/id part) role (:part/role-hint part)
+  (let [id (:part/id part)
         regions (:part/paint-regions part)
         details (get-in profile [:scheme/details path])
-        layers (when (#{:role :layer} (first (material/material-source profile path id role)))
+        layers (when (#{:neutral :layer} (first (material/material-source profile path id)))
                  (:scheme/layers profile))]
-    {:material (material/resolve-material profile path id role)
+    {:material (material/resolve-material profile path id)
      :regions (when (and (seq layers) (= mesh-key (:mesh-key regions))) (:faces regions))
      :layers layers
      :details (when (and (= id (:part-id details)) (= mesh-key (:mesh-key details))) (:faces details))}))
@@ -64,7 +64,7 @@
         (let [part-ids (distinct (cons (:loadout/hull record) (vals (:loadout/slots record))))
               database (catalog/from-parts (keep #(-> (catalog/part-context! catalog %) :part) part-ids))
               placements (assembly/placements database (model/from-record record 0 :preview))
-              scheme (schemes/record! schemes (if ship (:ship/scheme ship) (:loadout/scheme record)))
+              scheme (when ship (schemes/record! schemes (:ship/scheme ship)))
               profile (material/effective-profile (if ship (job/editor-record ship scheme) scheme))
               prepared (into {} (for [id (distinct (map :part-id (vals placements)))]
                                   [id (bulk/grid-entry! deps (catalog/part database id))]))]

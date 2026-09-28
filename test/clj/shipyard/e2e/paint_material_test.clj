@@ -6,7 +6,6 @@
             [shipyard.loadout-fixture :as lf]
             [shipyard.loadout.db :as loadouts]
             [shipyard.ship.db :as ships]
-            [shipyard.paint.job :as job]
             [shipyard.scheme.material :as material]))
 
 (def red (assoc material/neutral :base [1 0 0] :metalness 0.7 :roughness 0.2))
@@ -17,19 +16,18 @@
 (deftest repeated-instance-paint-and-overlay-restoration
   (s/assert-bundle!)
   (let [started (fixture/start! true) driver (s/make-driver) sys (:system started)
-        id (random-uuid) ship-id (random-uuid) vessel-id (random-uuid)
-        scheme {:scheme/id id :scheme/name "Paint proof" :scheme/roles {:weapon blue}
-                :scheme/groups [{:group/id (random-uuid) :group/name "Battery" :group/order 0
-                                 :group/members [{:path [[:weapon 0]] :part-id (:weapon fixture/ids)}
-                                                 {:path [[:weapon 1]] :part-id (:weapon fixture/ids)}]
-                                 :group/material red}]
-                :scheme/instances {[[:weapon 1]] {:part-id (:weapon fixture/ids) :material blue}
-                                   [[:weapon 0] [:turret 0]] {:part-id (:turret fixture/ids) :material blue}}}
+        ship-id (random-uuid) vessel-id (random-uuid)
+        paint {:paint/groups [{:group/id (random-uuid) :group/name "Battery" :group/order 0
+                               :group/members [{:path [[:weapon 0]] :part-id (:weapon fixture/ids)}
+                                               {:path [[:weapon 1]] :part-id (:weapon fixture/ids)}]
+                               :group/material red}]
+               :paint/instances {[[:weapon 1]] {:part-id (:weapon fixture/ids) :material blue}
+                                 [[:weapon 0] [:turret 0]] {:part-id (:turret fixture/ids) :material blue}}}
         ship {:loadout/id ship-id :loadout/name "Painted ship" :loadout/hull (:hull fixture/ids)
-              :loadout/slots lf/assignments :loadout/scheme id}]
+              :loadout/slots lf/assignments}]
     (try
-      (loadouts/put! (:shipyard.loadout/db sys) (dissoc ship :loadout/scheme) :create)
-      (ships/put! (:shipyard.ship/db sys) {:ship/id vessel-id :ship/name "Painted vessel" :ship/class ship-id :ship/paint (job/from-profile scheme)} :create)
+      (loadouts/put! (:shipyard.loadout/db sys) ship :create)
+      (ships/put! (:shipyard.ship/db sys) {:ship/id vessel-id :ship/name "Painted vessel" :ship/class ship-id :ship/paint paint} :create)
       (s/go! driver (s/base-url sys))
       (workspace/switch! driver "ships")
 
@@ -61,7 +59,7 @@
       ;; Tab changes retain the same meshes; their count cannot acknowledge Paint.
       (is (s/wait-until #(= "0000ff" (:color (slot driver [["weapon" 1]])))))
       (ships/put! (:shipyard.ship/db sys) {:ship/id vessel-id :ship/name "Painted vessel" :ship/class ship-id
-                                           :ship/paint (job/from-profile (assoc-in scheme [:scheme/instances [[:weapon 1]] :material] red))} :update)
+                                           :ship/paint (assoc-in paint [:paint/instances [[:weapon 1]] :material] red)} :update)
       (workspace/switch! driver "browse")
       (workspace/switch! driver "ships")
       (workspace/await-ship! driver)

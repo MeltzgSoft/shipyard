@@ -5,8 +5,7 @@
 (def record {:loadout/id #uuid "00000000-0000-0000-0000-000000000001"
              :loadout/name "Cruiser" :loadout/hull "navy/hull"
              :loadout/slots {[[:weapon 0]] "navy/weapon" [[:weapon 1]] "navy/weapon"
-                             [[:weapon 0] [:turret 0]] "navy/turret"}
-             :loadout/scheme #uuid "00000000-0000-0000-0000-000000000002"})
+                             [[:weapon 0] [:turret 0]] "navy/turret"}})
 
 (deftest representation-validation
   (is (t/loadout? record))
@@ -17,7 +16,7 @@
                (assoc record :loadout/slots {[[:a 256]] "part"})]]
     (is (not (t/loadout? bad))))
   (is (not (t/store? {:version 2 :loadouts {}})))
-  (is (not (t/store? {:version 1 :loadouts {(:loadout/scheme record) record}}))))
+  (is (not (t/store? {:version 1 :loadouts {#uuid "00000000-0000-0000-0000-000000000002" record}}))))
 
 (deftest explicit-identity
   (let [created (t/put-record t/empty-store record :create)
@@ -26,7 +25,7 @@
     (is (= :id-exists (:error (t/put-record store record :create))))
     (is (= :missing-loadout (:error (t/put-record t/empty-store record :update))))
     (testing "names do not select update targets"
-      (let [copy (assoc record :loadout/id (:loadout/scheme record))
+      (let [copy (assoc record :loadout/id #uuid "00000000-0000-0000-0000-000000000002")
             both (:store (t/put-record store copy :create))]
         (is (= 2 (count (:loadouts both))))
         (is (= copy (get-in (:store (t/put-record both (assoc record :loadout/name "Renamed") :update))
