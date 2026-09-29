@@ -264,7 +264,7 @@
           (s/click! driver ".paint-scheme-actions summary:text-is('New')")
           (s/fill-and-blur! driver "#paint-create input" "Another palette")
           (s/click! driver "#paint-create button")
-          (s/wait-visible! driver "#paint-material")
+          (is (s/wait-until #(= "Another palette" (s/text driver "#paint-select option:checked"))))
           (set-layer! driver "Trim" "#ffffff" "0.1")
           (is (s/wait-until #(metallic/near? 0.1 (:metalness (face driver [["weapon" 1]] trim)))))
           (is (= 2 (count (:schemes (schemes/snapshot! store)))))
@@ -482,4 +482,39 @@
       (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
       (is (< 0 (count (:faces (regions))) 48) "Lowering tolerance recomputes the cached surface groups")
       (s/screenshot-el! driver "body" (java.io.File. "/tmp/shipyard-angle-tolerance.png"))
+      (finally (s/quit! driver) (fixture/stop! started)))))
+
+(deftest strokes-before-htmx-settle-stay-in-the-workspace
+  (s/assert-bundle!)
+  (let [started (fixture/start! true) sys (:system started) driver (s/make-driver)
+        cat (:shipyard.catalog/db sys) id (:weapon fixture/ids)
+        regions #(catalog/part-regions (catalog/part (catalog/snapshot! cat) id))]
+    (try
+      (s/go! driver (s/base-url sys))
+      (s/click! driver ".part__select:has(.part__name:text-is('weapon'))")
+      (s/await-part driver id)
+      (s/click! driver "[data-detail-tab=regions]")
+      (editor/input! driver "#region-stroke input[name=radius]" "2" "input")
+      (let [point (region-point driver 0)]
+        ;; Widen HTMX's normal swap/initialization gap deterministically.
+        (s/js driver "() => { htmx.config.defaultSettleDelay = 10000; window.regionSettled = false; document.addEventListener('htmx:afterSettle', () => window.regionSettled = true, {once:true}); }")
+        (apply brush/stroke! driver point)
+        (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
+        (is (false? (s/js driver "() => window.regionSettled")))
+        (apply brush/stroke! driver point)
+        (is (s/wait-until #(do (s/js driver "() => document.readyState") (= 2 (:revision (regions))))))
+        (is (= (str (s/base-url sys) "/") (.url ^Page (:page driver))) "A second stroke during settle must never submit a document navigation")
+        (is (false? (s/js driver "() => window.regionSettled")))
+        (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
+        (let [saved (regions) colors (region-colors driver)]
+          (s/js driver "() => { window.savedHtmx = window.htmx; window.htmx = undefined; }")
+          (apply brush/right-stroke! driver point)
+          (is (= "Region save failed. Reopen this part or retry the stroke." (s/text driver "#region-status")))
+          (is (= saved (regions)))
+          (is (= colors (region-colors driver)) "Failed transport restores the saved preview")
+          (is (= (str (s/base-url sys) "/") (.url ^Page (:page driver))))
+          (s/js driver "() => { window.htmx = window.savedHtmx; }")
+          (apply brush/right-stroke! driver point)
+          (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
+          (is (= 3 (:revision (regions))))))
       (finally (s/quit! driver) (fixture/stop! started)))))

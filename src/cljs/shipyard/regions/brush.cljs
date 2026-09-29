@@ -1,6 +1,7 @@
 (ns shipyard.regions.brush
   "Part Browser region assignment reuses the visible-only Paint picking pass."
   (:require [cljs.reader :as edn]
+            [shipyard.http.forms :as forms]
             [shipyard.paint.brush :as brush]
             [shipyard.paint.render :as render]
             [shipyard.regions.model :as model]
@@ -119,7 +120,11 @@
                                    (set! (.-disabled (field form "angle")) false)
                                    (set! (.-value (field form "layer")) (:layer current))
                                    (set! (.-value (field form "faces")) (pr-str (vec (:keys current))))
-                                   (.requestSubmit form))))) true)
+                                   (let [failed! (fn [_]
+                                                   (when (identical? form (:form @stroke))
+                                                     (cancel! "Region save failed. Reopen this part or retry the stroke.")))]
+                                     (try (-> (forms/post! form) (.catch failed!))
+                                          (catch :default error (failed! error)))))))) true)
       (.addEventListener canvas "contextmenu" (fn [^js e] (when (or @stroke (available?)) (.preventDefault e) (.stopImmediatePropagation e))) true)
       (.addEventListener canvas "pointercancel" (fn [_] (cancel! "Region stroke canceled.")) true)
       (.addEventListener canvas "click" (fn [^js e] (when (or @stroke (available?)) (.preventDefault e) (.stopImmediatePropagation e))) true)

@@ -2412,7 +2412,9 @@ selection, inline rename forms and confirmed delete actions. A hidden stroke-for
 layer value drives brushing and full-part assignment; selection and its visible
 pressed state are restored together after temporary right-button erasing.
 Transient stroke state captures one
-visible-ID buffer and submits the union of touched faces on release. It reuses the
+visible-ID buffer and submits the union of touched faces on release.
+Region strokes initialize replacement forms and issue an explicit HTMX POST, so a
+stroke during the swap/settle gap cannot navigate away through a native form submit. It reuses the
 Paint brush's depth-tested picker and stable face keys. Facets mode retains sampled
 triangles. Faces mode uses a cached partition by the angle between adjacent triangle
 normals, in degrees (0–90, default 1). There is no distance-to-seed-plane constraint:

@@ -339,7 +339,7 @@ jobs:
           trigger=""
           for _ in $(seq 1 120); do
             trigger="$(curl -fsSi 'http://127.0.0.1:8080/part/Test%20Bundle/Cruiser/Cube' \
-                       | tr -d '\r' | grep -i '^HX-Trigger:' || true)"
+                       | tr -d '\r' | grep -i '^HX-Trigger-After-Swap:' || true)"
             case "$trigger" in *load-mesh*) break ;; esac
             sleep 1
           done

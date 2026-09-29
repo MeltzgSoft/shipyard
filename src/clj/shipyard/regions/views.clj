@@ -5,7 +5,7 @@
             [shipyard.regions.registry :as registry]
             [shipyard.workspace.views :as workspace]))
 
-(def attrs (merge workspace/transition-attrs {:hx-post "/parts/regions" :hx-target "#part-regions" :hx-swap "outerHTML"
+(def attrs (merge workspace/transition-attrs {:method "post" :action "/parts/regions" :hx-post "/parts/regions" :hx-target "#part-regions" :hx-swap "outerHTML"
                                               :hx-include "#region-stroke input[name=mode], #region-stroke input[name=angle]"
                                               :hx-disabled-elt "#part-regions input, #part-regions select, #part-regions button, #workspace-navigation button, #library button"}))
 (defn fields [part-id mesh-key regions]
