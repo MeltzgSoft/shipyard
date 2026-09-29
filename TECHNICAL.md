@@ -850,6 +850,11 @@ in the HTTP layer rather than in `shipyard.mesh.cache` so the cache keeps its in
 contract for every other caller - the canary wants exactly that back-pressure, and an
 inline exception arrives as itself rather than wrapped in an `ExecutionException`.
 
+Shutdown interrupts this pool and waits up to 30 seconds for its workers to finish
+before Integrant closes the shared store. If they do not stop, shutdown fails
+and leaves the store open. Store closure also shares the transaction lock with
+reads and writes, so it cannot close a native handle during an active operation.
+
 Completion reaches the browser by polling, not by a push channel. The loading fragment
 carries `hx-trigger="load delay:400ms"` pointed back at the same route, so the cycle
 re-arms every time the server sends it and stops the moment a ready fragment arrives

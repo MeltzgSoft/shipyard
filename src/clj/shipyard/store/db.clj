@@ -43,7 +43,8 @@
       store
       (catch Exception e (d/close conn) (throw e)))))
 
-(defn close! [{:keys [conn]}] (d/close conn))
+(defn close! [{:keys [conn lock]}]
+  (locking lock (d/close conn)))
 
 (defmethod ig/init-key :shipyard.store/db [_ {:keys [data-home directory]}]
   (open! (or directory (fs/path (or data-home (system/data-home!)) "shipyard" "database"))))

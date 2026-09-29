@@ -16,7 +16,7 @@
             [integrant.core :as ig]
             [shipyard.library.index :as index]
             [shipyard.mesh.cache :as cache])
-  (:import [java.util.concurrent ExecutorService Executors ThreadFactory]))
+  (:import [java.util.concurrent ExecutorService Executors ThreadFactory TimeUnit]))
 
 (def ^:const threads 2)
 
@@ -145,4 +145,9 @@
    :cache   cache})
 
 (defmethod ig/halt-key! :shipyard.http/jobs [_ {:keys [^ExecutorService pool]}]
-  (when pool (.shutdownNow pool)))
+  (when pool
+    (.shutdownNow pool)
+    ;; Interruption is only a request: native mesh work may still return and
+    ;; write its scan entry. Do not let Integrant close the store beneath it.
+    (when-not (.awaitTermination pool 30 TimeUnit/SECONDS)
+      (throw (ex-info "Preprocessing workers did not stop; application store remains open" {})))))
