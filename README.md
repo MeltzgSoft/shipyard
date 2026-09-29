@@ -115,7 +115,9 @@ above is a plain `java -jar`.
 
 CI prints each JVM and browser test name so a slow or stalled run identifies the active test.
 The README command check isolates configuration, cache and database directories and
-resolves the server command's dependencies before timing startup.
+resolves the server command's dependencies before timing startup. It allows up to five
+minutes for readiness on a busy CI host, stops early if the server exits, and then
+checks the shell, htmx, library and fixture geometry.
 
 Tests come in three levels separated by **what they are allowed to touch**, not by size:
 unit touches nothing outside the process, integration gets the filesystem and natives,

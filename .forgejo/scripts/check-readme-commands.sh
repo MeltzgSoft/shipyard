@@ -83,10 +83,24 @@ smoke_test_server() {
   # shellcheck disable=SC2064
   trap "kill $pid 2>/dev/null || true" RETURN
 
-  for _ in $(seq 1 90); do
-    curl -fsS "http://127.0.0.1:$port/healthz" >/dev/null 2>&1 && break
+  # Cold JVM/Datalevin startup can exceed 90 seconds on the shared CI host.
+  # Wait for readiness before asserting endpoint behavior, but fail promptly
+  # when the command exits instead of reporting misleading missing-page errors.
+  local startup_started=$SECONDS startup_deadline=$((SECONDS + 300)) server_ready=""
+  while (( SECONDS < startup_deadline )); do
+    if curl -fsS --connect-timeout 1 --max-time 2 "http://127.0.0.1:$port/healthz" >/dev/null 2>&1; then
+      server_ready=yes; break
+    fi
+    kill -0 "$pid" 2>/dev/null || break
     sleep 1
   done
+  if [[ -z "$server_ready" ]]; then
+    echo "      FAILED - server did not become ready after $((SECONDS - startup_started)) seconds"
+    tail -20 /tmp/readme-server.log | sed 's/^/      | /'
+    failures+=("$cmd")
+    return
+  fi
+  echo "      ready after $((SECONDS - startup_started)) seconds"
 
   local part="Test%20Bundle/Cruiser/Cube"
   local problems=()
