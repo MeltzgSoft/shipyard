@@ -174,6 +174,36 @@
 
 ;; --- the scan index ---------------------------------------------------------
 
+(deftest a-settings-directory-refuses-relocation-and-allows-retry
+  (let [sys (system)
+        h (routes/handler sys)
+        root (library-tree "Original/Hull")
+        candidate (library-tree "Replacement/Hull")
+        target (system/library-file (:config-dir sys))
+        backup (io/file (:config-dir sys) "previous-library.edn")]
+    (is (= 204 (:status (POST h "/settings" {:root (str root)}))))
+    (fs/move target backup)
+    (fs/create-dir target)
+    (let [library-before @(:state (:library sys))
+          catalog-before @(:state (:catalog sys))
+          previous (slurp backup)
+          response (POST h "/settings" {:root (str candidate)})]
+      (is (= 422 (:status response)))
+      (is (str/includes? (:body response) "Could not save the setting"))
+      (is (str/includes? (:body response) "directory; expected a file"))
+      (is (nil? (get-in response [:headers "HX-Refresh"])))
+      (is (= library-before @(:state (:library sys))))
+      (is (= catalog-before @(:state (:catalog sys))))
+      (is (= previous (slurp backup)))
+      (is (empty? (fs/list-dir target)))
+      (is (= #{"library.edn"} (set (map fs/file-name (fs/list-dir (fs/parent target)))))))
+    (fs/delete target)
+    (is (= 204 (:status (POST h "/settings" {:root (str candidate)}))))
+    (is (= (str candidate) (index/root! (:library sys))))
+    (is (= (str candidate)
+           (get-in (system/load-config! {:config-dir (str (:config-dir sys)) :env {}})
+                   [:shipyard.library/index :root])))))
+
 (deftest the-scan-index-is-not-shared-between-libraries
   (let [part-id "Bundle/Cruiser/Hull"
         a       (library-tree part-id)

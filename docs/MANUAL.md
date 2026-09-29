@@ -471,6 +471,12 @@ on an older JDK. Install Java 25.
 **"My library is empty."** Check the path is right, and that your folders match the
 layout in section 2. Shipyard logs the root it is using at startup.
 
+**"Could not save the setting: … Write target is a directory; expected a file."**
+The saved library setting path (`$XDG_CONFIG_HOME/shipyard/library.edn`, usually
+`~/.config/shipyard/library.edn`) is occupied by a folder. Move that folder aside,
+then press **Use this folder** again. The failed save keeps your current library
+active.
+
 **"A part I own is not listed."** It probably has no `unsupported.stl`. Parts that ship
 only as `supported.stl` appear greyed out - look for them rather than assuming they are
 missing.

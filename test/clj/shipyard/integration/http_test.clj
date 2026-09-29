@@ -857,22 +857,14 @@
             a transient AccessDeniedException on the index write reported a part
             that had preprocessed perfectly as failed."
     (let [sys (system (library-tree))
-          ;; An index path whose **parent** is a regular file, so
-          ;; `write-atomically!` fails on its opening `create-dirs`.
-          ;;
-          ;; Pointing the index at a directory - the obvious fixture, and what
-          ;; this test used to do - does not fail at all: `babashka.fs/move`
-          ;; moves a file *into* an existing directory rather than refusing, so
-          ;; the write quietly succeeded somewhere else and the test proved
-          ;; nothing. Empty or not makes no difference.
+          ;; A directory at the exact index filename must fail rather than
+          ;; accepting the temporary file inside it (#122).
           ;;
           ;; Into the state atom, not onto the component map: the index file is
           ;; part of the library's state now that the root can change, and an
           ;; `assoc-in` on the component would leave this test passing without
           ;; ever making a write fail.
-          bad (let [blocker (io/file (temp-dir "shipyard-not-a-file") "blocker")]
-                (spit blocker "")
-                (io/file blocker "index.edn"))
+          bad (temp-dir "shipyard-not-a-file")
           _   (swap! (:state (:library sys)) assoc :index-file bad)
           ;; Pin the premise. This test passed for a while against a *writable*
           ;; index, because it was reaching for a key that had moved - a guard
@@ -889,7 +881,9 @@
       ;; retry backoff and has not recorded its result yet. What this test is
       ;; about is that the part is never reported failed; when the worker
       ;; finishes is the executor's business.
-      (is (not= :failed (:state (jobs/status (:jobs sys) hull-id)))))))
+      (is (not= :failed (:state (jobs/status (:jobs sys) hull-id))))
+      (is (= :ready (await-job-state (:jobs sys) hull-id :ready)))
+      (is (empty? (.listFiles bad)) "no index temp file was published inside the directory"))))
 
 (deftest missing-library-root-says-so
   (let [sys (system (library-tree))

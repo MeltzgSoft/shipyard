@@ -45,6 +45,13 @@ remain outside the database. The mtime/size scan index remains a disposable EDN 
 configuration and the selected library location remain configuration files. None of
 these files owns mounts, orientations, shared layers, loadouts or paint schemes.
 
+Settings, scan-index and report files use a temporary sibling followed by an
+exact-path rename. Directory targets are rejected; they cannot receive the temporary
+file and masquerade as a successful save. The writer retries transient filesystem
+errors and falls back to a non-atomic replacement when atomic moves are unsupported.
+Failed writes clean up their temporary files. Settings failures leave the active
+library unchanged; a failed scan-index cache write does not invalidate a ready mesh.
+
 ### 1.3 Source discovery and identities
 
 Scanning creates or refreshes source-file facts in the database. Authored mounts,

@@ -13,7 +13,8 @@
             [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
-            [integrant.core :as ig]))
+            [integrant.core :as ig])
+  (:import [java.nio.file CopyOption Files FileSystemException StandardCopyOption]))
 
 ;; aero needs to know how to read integrant refs out of config.edn
 (defmethod aero/reader 'ig/ref [_ _ value] (ig/ref value))
@@ -69,7 +70,8 @@
 
 (defn write-atomically!
   "Write via a temp file and rename, so a concurrent reader never sees a partial
-  file.
+  file. The target is an exact filename, never a destination directory. Failed
+  writes remove the temporary file.
 
   `:atomic-move` is not supported on every filesystem, so fall back rather than
   fail: the consequence is a torn read under concurrency, not corruption, and
@@ -90,24 +92,33 @@
   (let [target (fs/absolutize target)]
     (fs/create-dirs (fs/parent target))
     (let [tmp (fs/create-temp-file {:dir (fs/parent target) :prefix "shipyard-" :suffix ".tmp"})]
-      (spit (fs/file tmp) content)
-      (loop [attempt 1, atomic? true]
-        (let [outcome (try
-                        (fs/move tmp target (cond-> {:replace-existing true}
-                                              atomic? (assoc :atomic-move true)))
-                        :done
-                        ;; Must precede the FileSystemException catch: it is a
-                        ;; subclass, and this one is not worth retrying.
-                        (catch java.nio.file.AtomicMoveNotSupportedException _ :fallback)
-                        (catch java.nio.file.FileSystemException e
-                          (if (< attempt move-attempts)
-                            :retry
-                            (throw e))))]
-          (case outcome
-            :done     nil
-            :fallback (recur attempt false)
-            :retry    (do (Thread/sleep (* 50 (long attempt)))
-                          (recur (inc attempt) atomic?))))))))
+      (try
+        (spit (fs/file tmp) content)
+        (loop [attempt 1, atomic? true]
+          ;; Check on every attempt: a directory is a permanent error, including
+          ;; on filesystems whose non-atomic rename can replace an empty one.
+          (when (fs/directory? target)
+            (throw (FileSystemException. (str target) nil "Write target is a directory; expected a file")))
+          (let [outcome (try
+                          ;; Unlike fs/move, Files/move never appends the source
+                          ;; filename when the target happens to be a directory.
+                          (Files/move tmp target
+                                      (into-array CopyOption
+                                                  (cond-> [StandardCopyOption/REPLACE_EXISTING]
+                                                    atomic? (conj StandardCopyOption/ATOMIC_MOVE))))
+                          :done
+                          ;; Must precede FileSystemException: it is a subclass.
+                          (catch java.nio.file.AtomicMoveNotSupportedException _ :fallback)
+                          (catch FileSystemException e
+                            (if (< attempt move-attempts)
+                              :retry
+                              (throw e))))]
+            (case outcome
+              :done     nil
+              :fallback (recur attempt false)
+              :retry    (do (Thread/sleep (* 50 (long attempt)))
+                            (recur (inc attempt) atomic?)))))
+        (finally (Files/deleteIfExists tmp))))))
 
 ;; --- the library root, the one setting Shipyard writes back -----------------
 

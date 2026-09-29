@@ -1,7 +1,8 @@
 (ns shipyard.integration.cache-test
   "Real filesystem, real natives. This is the suite Windows CI exists for:
   path separators, file locking and Files.move atomicity (§10.2)."
-  (:require [clojure.java.io :as io]
+  (:require [babashka.fs :as fs]
+            [clojure.java.io :as io]
             [clojure.test :refer [deftest is testing]]
             [shipyard.fixtures :as f]
             [shipyard.library.index :as index]
@@ -85,6 +86,28 @@
           (is (= "relative" (slurp target)))
           (finally
             (.delete target)))))))
+
+(deftest atomic-write-rejects-directory-targets
+  (doseq [populated? [false true]]
+    (testing (if populated? "a nonempty directory" "an empty directory")
+      (let [dir (fs/create-temp-dir {:prefix "shipyard-atomic-directory-"})
+            target (fs/path dir "out.edn")
+            previous (fs/path dir "previous.edn")]
+        (try
+          (system/write-atomically! target "previous durable value")
+          (fs/move target previous)
+          (fs/create-dir target)
+          (when populated? (spit (fs/file target "keep.txt") "untouched"))
+          (is (thrown? java.nio.file.FileSystemException
+                       (system/write-atomically! target "replacement")))
+          (is (fs/directory? target))
+          (is (= "previous durable value" (slurp (fs/file previous))))
+          (is (= (if populated? #{"keep.txt"} #{})
+                 (set (map fs/file-name (fs/list-dir target)))))
+          (is (= #{"out.edn" "previous.edn"}
+                 (set (map fs/file-name (fs/list-dir dir))))
+              "failed writes leave no temporary siblings")
+          (finally (fs/delete-tree dir)))))))
 
 (deftest concurrent-requests-return-the-same-mesh
   (let [c (test-cache), src (write-stl (temp-dir "shipyard-src") 10)
