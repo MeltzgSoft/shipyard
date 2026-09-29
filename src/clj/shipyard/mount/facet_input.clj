@@ -1,16 +1,16 @@
 (ns shipyard.mount.facet-input
   "Bounded parsing and validation for durable facet selections."
-  (:require [clojure.edn :as edn]))
+  (:require [clojure.edn :as edn]
+            [malli.core :as m]
+            [shipyard.domain.schemas :as schemas]))
 
 (def ^:const max-indices 4096)
+(def ^:private valid-indices? (m/validator schemas/facet-indices))
 
 (defn parse-indices [value]
   (try
     (let [indices (edn/read-string value)]
-      (when (and (vector? indices)
-                 (seq indices)
-                 (<= (count indices) max-indices)
-                 (every? #(and (integer? %) (<= 0 % Integer/MAX_VALUE)) indices))
+      (when (valid-indices? indices)
         indices))
     (catch Exception _ nil)))
 

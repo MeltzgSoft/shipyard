@@ -1,5 +1,7 @@
 (ns shipyard.paint.faces
-  "Stable source-space triangle identity and sparse color masks.")
+  "Stable source-space triangle identity and sparse color masks."
+  (:require [malli.core :as m]
+            [shipyard.domain.schemas :as schemas]))
 
 #?(:clj
    (defn- float-hex [value]
@@ -19,34 +21,20 @@
                             (do (aset buffer 0 (if (zero? value) 0 value))
                                 (.padStart (.toString (aget bits 0) 16) 8 "0"))))))))
 
-(defn key? [value]
-  (and (string? value) (boolean (re-matches #"[0-9a-f]{72}" value))))
-
-(defn rgb? [value]
-  (and (vector? value) (= 3 (count value))
-       (every? #(and (number? %) (<= 0 % 1)) value)))
-
-(defn paint? [value]
-  (and (map? value) (#{#{:base :metalness :roughness} #{:base :metalness :roughness :glow}} (set (keys value)))
-       (rgb? (:base value))
-       (or (not (contains? value :glow)) (and (number? (:glow value)) (<= 0 (:glow value) 1)))
-       (every? #(and (number? %) (<= 0 % 1)) [(:metalness value) (:roughness value)])))
+(def key? (m/validator schemas/face-key))
+(def rgb? (m/validator schemas/rgb))
+(def paint? (m/validator schemas/detail-material))
 
 (defn resolve-material
   "A detail material overrides the inherited material's channels."
   [inherited detail]
   (if (map? detail) detail inherited))
 
-(defn layer? [value]
-  (and (map? value) (= #{:part-id :mesh-key :faces} (set (keys value)))
-       (string? (:part-id value)) (<= 1 (count (:part-id value)) 2048)
-       (string? (:mesh-key value)) (boolean (re-matches #"[0-9a-f]{64}" (:mesh-key value)))
-       (map? (:faces value))
-       (every? (fn [[key paint]] (and (key? key) (paint? paint))) (:faces value))))
+(def layer? (m/validator schemas/detail-layer))
 
 (defn stroke [layer part-id mesh-key keys paint erase?]
   (cond
-    (not (and (vector? keys) (seq keys) (every? key? keys))) {:error :invalid-faces}
+    (not (schemas/valid-face-keys? keys)) {:error :invalid-faces}
     (not (paint? paint)) {:error :invalid-material}
     (and layer (or (not= part-id (:part-id layer)) (not= mesh-key (:mesh-key layer)))) {:error :changed-source}
     :else (let [result {:part-id part-id :mesh-key mesh-key

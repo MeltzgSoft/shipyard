@@ -1,6 +1,8 @@
 (ns shipyard.loadout.transforms
   "Pure durable representation. Catalog compatibility belongs to operations."
-  (:require [shipyard.loadout.identity :as identity]))
+  (:require [malli.core :as m]
+            [shipyard.domain.schemas :as schemas]
+            [shipyard.loadout.identity :as identity]))
 
 (def empty-store {:version 1 :loadouts {}})
 
@@ -8,19 +10,8 @@
 (def part-id? identity/part-id?)
 (def slot-path? identity/slot-path?)
 
-(defn loadout? [record]
-  (and (map? record)
-       (every? #{:loadout/id :loadout/name :loadout/hull :loadout/slots} (keys record))
-       (uuid? (:loadout/id record)) (name? (:loadout/name record))
-       (part-id? (:loadout/hull record))
-       (map? (:loadout/slots record)) (<= (count (:loadout/slots record)) 4096)
-       (every? (fn [[path id]] (and (slot-path? path) (part-id? id))) (:loadout/slots record))))
-
-(defn store? [value]
-  (and (map? value) (= #{:version :loadouts} (set (keys value)))
-       (= 1 (:version value)) (map? (:loadouts value))
-       (every? (fn [[id record]] (and (= id (:loadout/id record)) (loadout? record)))
-               (:loadouts value))))
+(def loadout? (m/validator schemas/loadout))
+(def store? (m/validator (schemas/record-store :loadouts :loadout/id schemas/loadout)))
 
 (defn put-record
   "Create and replace are explicit; names never select the record to update."

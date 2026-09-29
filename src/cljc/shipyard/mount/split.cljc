@@ -1,6 +1,8 @@
 (ns shipyard.mount.split
   "Equal-width/height socket sections in the authored face frame."
-  (:require [shipyard.math :as math]))
+  (:require [shipyard.math :as math]
+            [malli.core :as m]
+            [shipyard.domain.schemas :as schemas]))
 
 (defn face-bounds
   "Project picked source points onto mount X/Y, relative to its origin."
@@ -12,10 +14,12 @@
                              [(math/dot v roll) (math/dot v up)])) points)]
       [(apply mapv min projected) (apply mapv max projected)])))
 
+(def ^:private bounds-shape?
+  (m/validator [:vector {:min 2 :max 2} [:vector {:min 2 :max 2} schemas/finite-number]]))
+
 (defn valid-bounds? [bounds]
   (boolean
-   (and (vector? bounds) (= 2 (count bounds))
-        (every? #(and (vector? %) (= 2 (count %)) (every? math/finite-number? %)) bounds)
+   (and (bounds-shape? bounds)
         (every? true? (map < (first bounds) (second bounds))))))
 
 (defn metadata-for
@@ -31,7 +35,7 @@
                                    (math/add (math/scale x (:mount/roll frame))
                                              (math/scale y up)))))))]
     (when (and (#{:vertical :horizontal} direction) (seq points)
-               (every? #(and (vector? %) (= 3 (count %)) (every? math/finite-number? %)) points))
+               (every? schemas/valid-vec3? points))
       (let [bounds (face-bounds adjusted points)]
         (when (valid-bounds? bounds)
           {:direction direction :bounds bounds})))))

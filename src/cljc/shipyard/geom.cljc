@@ -1,6 +1,7 @@
 (ns shipyard.geom
   "Pure source-space assembly matrices. Column-major, column vectors, millimeters."
   (:require [shipyard.math :as math]
+            [shipyard.domain.schemas :as schemas]
             [shipyard.part.orientation :as orientation]))
 
 (def identity-matrix [1.0 0.0 0.0 0.0
@@ -14,9 +15,8 @@
 (defn valid-frame?
   "A finite position and perpendicular unit +X/+Z define a right-handed frame."
   [{:mount/keys [pos axis roll]}]
-  (let [vec3? #(and (vector? %) (= 3 (count %)) (every? math/finite-number? %))
-        near? #(<= (abs (double %)) tolerance)]
-    (boolean (and (every? vec3? [pos axis roll])
+  (let [near? #(<= (abs (double %)) tolerance)]
+    (boolean (and (every? schemas/valid-vec3? [pos axis roll])
                   (near? (- 1.0 (math/length axis)))
                   (near? (- 1.0 (math/length roll)))
                   (near? (math/dot axis roll))))))
@@ -30,8 +30,7 @@
   (vec (concat roll [0.0] (math/cross axis roll) [0.0] axis [0.0] pos [1.0])))
 
 (defn- require-matrix [matrix]
-  (when-not (and (vector? matrix) (= 16 (count matrix))
-                 (every? math/finite-number? matrix))
+  (when-not (schemas/valid-matrix? matrix)
     (throw (ex-info "Expected 16 finite column-major matrix values."
                     {:code :invalid-matrix})))
   matrix)
@@ -52,7 +51,7 @@
   "Apply an affine matrix to a source point."
   [matrix point]
   (require-matrix matrix)
-  (when-not (and (vector? point) (= 3 (count point)) (every? math/finite-number? point))
+  (when-not (schemas/valid-vec3? point)
     (throw (ex-info "Expected a finite three-dimensional point." {:code :invalid-point})))
   (mapv (fn [row]
           (+ (nth matrix (+ 12 row))

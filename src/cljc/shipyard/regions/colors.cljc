@@ -1,10 +1,11 @@
 (ns shipyard.regions.colors
-  "Deterministic allocation of separated region-identification colors.")
+  "Deterministic allocation of separated region-identification colors."
+  (:require [malli.core :as m]
+            [shipyard.domain.schemas :as schemas]))
 
 (def builtins [[0.6 0.65 0.7] [0.15 0.6 0.95]])
 
-(defn valid? [rgb]
-  (and (vector? rgb) (= 3 (count rgb)) (every? #(and (number? %) (<= 0 % 1)) rgb)))
+(def valid? (m/validator schemas/rgb))
 
 (defn- oklab [[r g b]]
   (let [[r g b] (mapv #(if (<= % 0.04045) (/ % 12.92) (Math/pow (/ (+ % 0.055) 1.055) 2.4)) [r g b])

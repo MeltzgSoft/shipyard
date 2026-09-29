@@ -3,6 +3,7 @@
   (:require [clojure.edn :as edn]
             [clojure.string :as str]
             [shipyard.geom :as geom]
+            [shipyard.domain.schemas :as schemas]
             [shipyard.math :as math]
             [shipyard.mount.split :as split]
             [shipyard.part.orientation :as orientation]))
@@ -86,8 +87,7 @@
     (edn/read-string s)
     (catch Exception _ nil)))
 
-(defn- vec3? [x]
-  (and (vector? x) (= 3 (count x)) (every? math/finite-number? x)))
+(def ^:private vec3? schemas/valid-vec3?)
 
 (defn- fallback-roll [axis]
   (some #(math/normalize (math/project-onto-plane axis %) 1e-12)

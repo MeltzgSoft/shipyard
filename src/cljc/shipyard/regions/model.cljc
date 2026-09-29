@@ -1,32 +1,14 @@
 (ns shipyard.regions.model
   "Reusable, source-bound part regions. Faces reference stable shared layers."
-  (:require [clojure.string :as str]
-            [shipyard.regions.colors :as colors]
-            [shipyard.paint.faces :as faces]))
+  (:require [malli.core :as m]
+            [shipyard.domain.schemas :as schemas]))
 
-(def builtins ["Primary" "Secondary"])
-(defn detail-id? [value]
-  (and (string? value) (boolean (re-matches #"layer:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}" value))))
-(defn name? [value]
-  (and (string? value) (<= 1 (count value) 200) (= value (str/trim value))))
+(def builtins schemas/builtins)
+(def detail-id? (m/validator schemas/detail-id))
+(def name? (m/validator schemas/layer-name))
 (defn empty-regions [mesh-key]
   {:version 2 :mesh-key mesh-key :revision 0 :layers builtins :layer-definitions {} :faces {}})
-(defn valid? [value]
-  (and (map? value) (= 2 (:version value))
-       (= #{:version :mesh-key :revision :layers :faces :layer-definitions} (set (keys value)))
-       (map? (:layer-definitions value))
-       (every? #(or (some #{%} builtins) (detail-id? %)) (:layers value))
-       (every? (fn [[id entry]] (and (some #{id} (:layers value))
-                                     (detail-id? id)
-                                     (name? (:name entry)) (name? (:preview-name entry))
-                                     (or (not (contains? entry :preview-color)) (colors/valid? (:preview-color entry)))))
-               (:layer-definitions value))
-       (string? (:mesh-key value)) (boolean (re-matches #"[0-9a-f]{64}" (:mesh-key value)))
-       (nat-int? (:revision value)) (vector? (:layers value))
-       (= builtins (vec (take 2 (:layers value))))
-       (every? name? (:layers value)) (= (count (:layers value)) (count (set (:layers value))))
-       (map? (:faces value))
-       (every? (fn [[key layer]] (and (faces/key? key) (contains? (set (:layers value)) layer))) (:faces value))))
+(def valid? (m/validator schemas/regions))
 
 (defn without-layer [regions layer]
   (if (and (not (some #{layer} builtins)) (some #{layer} (:layers regions)))
@@ -51,7 +33,7 @@
                 (and (= action "assign") (some #{layer} available-layers))))
        {:error "Choose an existing layer."}
        (= action "assign")
-       (if (and (vector? keys) (seq keys) (every? faces/key? keys))
+       (if (schemas/valid-face-keys? keys)
          {:regions (-> current
                        (update :layers #(if (some #{layer} %) % (conj % layer)))
                        (update :faces #(if (= layer "Primary") (apply dissoc % keys)

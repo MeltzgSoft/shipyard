@@ -1,6 +1,8 @@
 (ns shipyard.paint.strokes
   "Ordered transient stroke parts with one atomic, multi-instance commit on release."
-  (:require [babashka.fs :as fs]
+  (:require [malli.core :as m]
+            [shipyard.domain.schemas :as schemas]
+            [babashka.fs :as fs]
             [clojure.edn :as edn]
             [shipyard.catalog.db :as catalog]
             [shipyard.library.index :as index]
@@ -82,11 +84,10 @@
   (if (= before after) history
       {:undo (vec (take-last 20 (conj (vec (:undo history)) {:before before :after after}))) :redo []}))
 
+(def ^:private valid-entries? (m/validator schemas/stroke-entries))
+
 (defn- validate-entries! [{:keys [library] :as deps} targets entries]
-  (if-not (and (vector? entries)
-               (every? #(and (map? %) (= #{:target :mesh-key :faces} (set (keys %)))
-                             (string? (:target %)) (string? (:mesh-key %))
-                             (vector? (:faces %)) (seq (:faces %)) (every? faces/key? (:faces %))) entries))
+  (if-not (valid-entries? entries)
     {:error :invalid-faces}
     (reduce (fn [result {:keys [target mesh-key faces]}]
               (let [selected (first (filter #(and (= target (:key %)) (contains? % :path)) targets))]

@@ -1,15 +1,9 @@
 (ns shipyard.ship.transforms
   "Named vessels reference reusable ship classes and own their custom paint."
-  (:require [shipyard.loadout.identity :as identity]
-            [shipyard.paint.job :as job]))
+  (:require [malli.core :as m]
+            [shipyard.domain.schemas :as schemas]))
 
-(defn valid? [record]
-  (and (map? record)
-       (every? #{:ship/id :ship/name :ship/class :ship/scheme :ship/paint} (keys record))
-       (uuid? (:ship/id record)) (identity/name? (:ship/name record))
-       (uuid? (:ship/class record))
-       (or (not (contains? record :ship/scheme)) (uuid? (:ship/scheme record)))
-       (job/valid? (:ship/paint record))))
+(def valid? (m/validator schemas/ship))
 
 (defn put-record [store record mode]
   (cond

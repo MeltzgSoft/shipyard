@@ -265,6 +265,35 @@ JVM stack viable.
 
 ## 4. Datalevin schema
 
+### Domain validation
+
+`shipyard.domain.schemas` defines reusable Malli schemas in `.cljc` for names,
+part identities, slot and instance paths, finite materials, palettes, groups,
+classes/loadouts, named ships, custom paint, face masks and region registries.
+Predicates exposed by domain namespaces are compiled once with `malli/validator`;
+the JVM and ClojureScript use the same shapes. Malli is an explicit dependency,
+also used by the HTTP coercion layer.
+
+Schemas preserve the boundary's existing defaults and openness: omitted glow and
+optional custom-paint collections stay omitted; durable records, materials and
+registry definitions reject extra keys; editor profiles and per-part layer
+definitions remain open. Focused predicates express finite numbers, distinct group
+identities/orders/members, region ordering and within-record references. Structural
+validation neither normalizes records nor decides catalog compatibility, ownership,
+source freshness or reference availability.
+
+HTTP coercion checks request encoding and form inputs. Domain validation also runs
+for callers that bypass HTTP: `store/put-record!` invokes the domain transformations
+inside `write!` before writing any record, and `catalog/save-regions!` validates the
+region shape before its transactional revision and shared-layer checks. Pure
+create/update conflict decisions keep their existing recoverable error codes.
+Database-dependent references and revisions stay inside the existing transaction;
+Datalevin's typed attributes, uniqueness constraints and rollback remain the final
+storage boundary. Rejected domain records leave persisted and published snapshots
+unchanged. These schemas do not replace Datalevin's schema below.
+
+### Storage constraints
+
 `shipyard.store.schema/schema` is the executable, typed, closed schema. Store version
 1 is checked at open. UUID and scoped identity attributes carry uniqueness constraints;
 active layer names are unique within their library. Record and relationship validation

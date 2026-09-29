@@ -1,76 +1,25 @@
 (ns shipyard.scheme.transforms
   "Pure scheme representation and explicit identity-based updates."
-  (:require [shipyard.loadout.identity :as loadout]
-            [shipyard.paint.faces :as faces]
-            [shipyard.regions.model :as regions]))
+  (:require [malli.core :as m]
+            [shipyard.domain.schemas :as schemas]))
 
 (def empty-store {:version 1 :schemes {}})
 
-(defn unit-number? [value]
-  (and (number? value) (Double/isFinite (double value)) (<= 0 value 1)))
+(def unit-number? (m/validator schemas/unit-number))
+(def material? (m/validator schemas/material))
+(def member? (m/validator schemas/member))
+(def group? (m/validator schemas/group))
+(def groups? (m/validator schemas/groups))
+(def layers? (m/validator schemas/palette))
+(def custom-paint? (m/validator schemas/custom-paint))
+(def scheme? (m/validator schemas/scheme))
+(def store? (m/validator (schemas/record-store :schemes :scheme/id schemas/scheme)))
 
-(defn material? [value]
-  (and (map? value)
-       (every? #{:base :metalness :roughness :glow :paint} (keys value))
-       (vector? (:base value)) (= 3 (count (:base value)))
-       (every? unit-number? (:base value))
-       (unit-number? (:metalness value)) (unit-number? (:roughness value))
-       (or (not (contains? value :glow)) (unit-number? (:glow value)))
-       (or (not (contains? value :paint))
-           (and (string? (:paint value)) (<= (count (:paint value)) 200)))))
+(def ^:private instance-path? (m/validator schemas/instance-path))
+(def ^:private valid-instance? (m/validator schemas/instance))
 
 (defn instance-entry? [[path value]]
-  (and (or (= [] path) (loadout/slot-path? path))
-       (map? value) (= #{:part-id :material} (set (keys value)))
-       (loadout/part-id? (:part-id value)) (material? (:material value))))
-
-(defn member? [value]
-  (and (map? value) (= #{:path :part-id} (set (keys value)))
-       (or (= [] (:path value)) (loadout/slot-path? (:path value)))
-       (loadout/part-id? (:part-id value))))
-
-(defn group? [value]
-  (and (map? value)
-       (every? #{:group/id :group/name :group/order :group/members :group/material} (keys value))
-       (uuid? (:group/id value)) (loadout/name? (:group/name value))
-       (nat-int? (:group/order value))
-       (vector? (:group/members value)) (every? member? (:group/members value))
-       (= (count (:group/members value)) (count (set (:group/members value))))
-       (or (not (contains? value :group/material)) (material? (:group/material value)))))
-
-(defn groups? [value]
-  (and (vector? value) (every? group? value)
-       (= (count value) (count (set (map :group/id value))))
-       (= (count value) (count (set (map :group/order value))))))
-
-(defn layers? [value]
-  (and (map? value)
-       (every? #(or (some #{%} regions/builtins) (regions/detail-id? %)) (keys value))
-       (every? material? (vals value))))
-
-(defn custom-paint? [value]
-  (and (map? value)
-       (or (not (contains? value :scheme/layers)) (layers? (:scheme/layers value)))
-       (or (not (contains? value :scheme/groups)) (groups? (:scheme/groups value)))
-       (or (not (contains? value :scheme/instances))
-           (and (map? (:scheme/instances value)) (<= (count (:scheme/instances value)) 4097)
-                (every? instance-entry? (:scheme/instances value))))
-       (or (not (contains? value :scheme/details))
-           (and (map? (:scheme/details value)) (<= (count (:scheme/details value)) 4097)
-                (every? (fn [[path layer]]
-                          (and (or (= [] path) (loadout/slot-path? path)) (faces/layer? layer)))
-                        (:scheme/details value))))))
-
-(defn scheme? [value]
-  (and (map? value)
-       (= #{:scheme/id :scheme/name :scheme/layers} (set (keys value)))
-       (uuid? (:scheme/id value)) (loadout/name? (:scheme/name value))
-       (layers? (:scheme/layers value))))
-
-(defn store? [value]
-  (and (map? value) (= #{:version :schemes} (set (keys value)))
-       (= 1 (:version value)) (map? (:schemes value))
-       (every? (fn [[id record]] (and (= id (:scheme/id record)) (scheme? record))) (:schemes value))))
+  (and (instance-path? path) (valid-instance? value)))
 
 (defn put-record [store record mode]
   (cond

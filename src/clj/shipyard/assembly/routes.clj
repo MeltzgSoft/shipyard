@@ -1,6 +1,7 @@
 (ns shipyard.assembly.routes
   "Malli-enforced form contracts for the local ephemeral draft."
   (:require [clojure.edn :as edn]
+            [shipyard.loadout.identity :as identity]
             [shipyard.assembly.handlers :as handlers]
             [shipyard.http.contracts :as contracts]))
 
@@ -15,10 +16,7 @@
         (try
           (let [forms (edn/read-string (str "[" value "]"))
                 path (first forms)]
-            (and (= 1 (count forms)) (vector? path) (<= 1 (count path) 16)
-                 (every? #(and (vector? %) (= 2 (count %))
-                               (keyword? (first %)) (integer? (second %))
-                               (<= 0 (second %) 255)) path)))
+            (and (= 1 (count forms)) (identity/slot-path? path)))
           (catch Exception _ false)))))
 
 (defn routes [deps]
