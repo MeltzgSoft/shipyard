@@ -620,9 +620,9 @@
         (with-redefs [catalog/save-regions! (fn [& _] (throw (ex-info "MDB_PROBLEM: txn should abort" {})))]
           (apply brush/right-stroke! driver (region-point driver 0))
           (is (s/wait-until #(= "Could not save part regions to the database. See the server log for details."
-                               (s/text driver "#part-regions [role=alert]"))))
+                                (s/text driver "#part-regions [role=alert]"))))
           (is (s/wait-until #(= "Region save failed. Reopen this part or retry the stroke."
-                               (s/text driver "#region-status")))))
+                                (s/text driver "#region-status")))))
         (is (= saved (regions)))
         (is (= colors (region-colors driver)))
         (is (false? (s/js driver "() => document.querySelector('#region-stroke input[name=radius]').disabled")))
