@@ -109,6 +109,9 @@ Linux, Windows, and Apple Silicon macOS runners. The uberjar is the exception an
 nothing: `clojure -T:build uber` bundles all four classifiers, which is why the Quick start
 above is a plain `java -jar`.
 
+The README command check isolates configuration, cache and database directories and
+resolves the server command's dependencies before timing startup.
+
 Tests come in three levels separated by **what they are allowed to touch**, not by size:
 unit touches nothing outside the process, integration gets the filesystem and natives,
 e2e drives a real browser. See TECHNICAL.md §10.

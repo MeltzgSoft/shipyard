@@ -57,6 +57,7 @@ mkdir -p "$fixture/Test Bundle/Cruiser/Cube"
 cp test/fixtures/cube-ascii-crlf.stl "$fixture/Test Bundle/Cruiser/Cube/unsupported.stl"
 export XDG_CONFIG_HOME="$(mktemp -d)"
 export XDG_CACHE_HOME="$(mktemp -d)"
+export XDG_DATA_HOME="$(mktemp -d)"
 mkdir -p "$XDG_CONFIG_HOME/shipyard"
 printf '{:root "%s"}\n' "$fixture" > "$XDG_CONFIG_HOME/shipyard/library.edn"
 
@@ -67,6 +68,15 @@ printf '{:root "%s"}\n' "$fixture" > "$XDG_CONFIG_HOME/shipyard/library.edn"
 # for geometry.
 smoke_test_server() {
   local cmd="$1" port=8123 pid
+  local -a server_command
+  read -r -a server_command <<< "$cmd"
+  echo "PREP  $cmd  (resolve its dependencies before timing server startup)"
+  if ! "${server_command[0]}" -P "${server_command[@]:1}" > /tmp/readme-prepare.log 2>&1; then
+    echo "      FAILED to prepare the server dependencies"
+    tail -20 /tmp/readme-prepare.log | sed 's/^/      | /'
+    failures+=("$cmd")
+    return
+  fi
   echo "RUN   $cmd  (backgrounded, then smoke-tested)"
   PORT=$port $cmd > /tmp/readme-server.log 2>&1 &
   pid=$!
