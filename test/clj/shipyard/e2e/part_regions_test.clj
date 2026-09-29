@@ -667,10 +667,15 @@
                                                       (when (and (= 1 (count (set (map #(nth % axis) (get triangles (:key face))))))
                                                                  (= "CANVAS" (s/js driver (str "() => document.elementFromPoint(" (+ left (:x face)) "," (+ top (:y face)) ")?.tagName")))) i)) visible))]
                    (region-point driver ordinal)))
-        saved! #(is (s/wait-until (fn [] (= "Regions saved." (s/text driver "#region-status")))))]
+        saved! (fn [label]
+                 (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status")))
+                     (pr-str {:stroke label :status (s/text driver "#region-status")
+                              :revision (:revision (regions))
+                              :requests (s/js driver "() => window.regionSaveRequests")})))]
     (try
       (s/resize! driver 1600 1000)
       (s/go! driver (s/base-url sys))
+      (s/js driver "() => {window.regionSaveRequests=[]; document.addEventListener('htmx:afterRequest', e => {const path=e.detail.requestConfig.path; if(path.startsWith('/parts/regions')) window.regionSaveRequests.push({path, status:e.detail.xhr.status, message:document.querySelector('#region-status')?.textContent});});}")
       (s/open-part! driver "weapon")
       (s/await-part driver id)
       (s/click! driver "[data-detail-tab=regions]")
@@ -695,7 +700,7 @@
             (is (< 0 (:opacity guide) 1))
             (is (false? (:depth-write guide)))))
         (apply brush/stroke! driver (point! axis))
-        (saved!)
+        (saved! (str name " paint"))
         (is (= 4 (count (:faces (regions)))) "Paint includes both sides, including the hidden side")
         (is (true? (s/js driver "() => document.querySelector('[name=mirror]').checked")))
         (is (= name (s/js driver "() => document.querySelector('[name=mirror-axis]').value")))
@@ -708,14 +713,14 @@
         (when (= name "z")
           (s/screenshot-el! driver "body" (java.io.File. "/tmp/shipyard-mirror-plane.png")))
         (apply brush/right-stroke! driver (point! axis))
-        (saved!)
+        (saved! (str name " erase"))
         (is (empty? (:faces (regions)))))
       ;; A deliberately displaced plane must not paint a guessed counterpart.
       ;; The first stroke must use a typed offset even before blur fires change.
       (editor/input! driver "#region-stroke input[name=mirror-offset]" "1000" "input")
       (is (s/wait-until #(= 1000 (get-in (s/stats driver) [:region-mirror-guide :position 2]))))
       (apply brush/stroke! driver (point! 2))
-      (saved!)
+      (saved! "displaced plane paint")
       (is (= 2 (count (:faces (regions)))))
       (is (= "1000" (s/js driver "() => document.querySelector('[name=mirror-offset]').value")))
       (s/fill-and-blur! driver "#region-add input[name=name]" "Mirrored trim")
@@ -727,7 +732,7 @@
       (s/click! driver "#region-stroke input[name=mirror]")
       (is (s/wait-until #(nil? (:region-mirror-guide (s/stats driver)))))
       (apply brush/right-stroke! driver (point! 2))
-      (saved!)
+      (saved! "erase after adding a layer")
       (is (empty? (:faces (regions))))
       (is (false? (s/js driver "() => document.querySelector('[name=mirror]').checked")))
       (s/check! driver "#region-stroke input[name=mirror]")
