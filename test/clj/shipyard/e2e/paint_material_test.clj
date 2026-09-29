@@ -58,8 +58,8 @@
       (workspace/await-ship! driver)
       (is (s/wait-until #(= "9aa4af" (:color (slot driver [["weapon" 1]])))))
       (s/click! driver ".ship-inspector nav button:text-is('Paint')")
-      (workspace/await-ship! driver)
-      (is (= "0000ff" (:color (slot driver [["weapon" 1]]))))
+      ;; Tab changes retain the same meshes; their count cannot acknowledge Paint.
+      (is (s/wait-until #(= "0000ff" (:color (slot driver [["weapon" 1]])))))
       (ships/put! (:shipyard.ship/db sys) {:ship/id vessel-id :ship/name "Painted vessel" :ship/class ship-id
                                            :ship/paint (job/legacy (assoc-in scheme [:scheme/instances [[:weapon 1]] :material] red))} :update)
       (workspace/switch! driver "browse")

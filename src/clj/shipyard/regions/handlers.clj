@@ -51,7 +51,7 @@
                         (catalog/region-registry! catalog) (cond-> {:mode (or mode "facets") :angle (if angle (parse-long angle) 1)}
                                                              (and (not (:error result)) (= (parse-long revision) (or (:revision before) 0)))
                                                              (assoc :face-delta {:from (or (:revision before) 0)
-                                                                                 :mesh-key (:mesh-key saved)
+                                                                                 :mesh-key (or (:mesh-key saved) mesh-key)
                                                                                  :patch (delta/between (:faces before) (:faces saved))})))
            (when filled?
              (list (workspace-views/colors-toggle false :browse)
