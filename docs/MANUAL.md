@@ -222,14 +222,16 @@ can have multiple sockets, but only one plug. Existing mounts appear below the l
 status with their picked or mirrored origin, plus capacity when it is greater than one.
 Mirrored entries are shown as one pair and can be edited or deleted deliberately together.
 Creating, editing, or deleting a mount keeps the Mounts tab open.
+Choose **Edit** on the pair to restore both face previews, adjust its settings, and
+**Save changes** to update both sockets. Mirroring stays enabled while editing a pair.
 
 If the source mesh changes, the picked frame is malformed, a socket has no accepted role,
 the mirror would overwrite an existing id, a centreline face has no mirrored counterpart,
 or a mount id is not valid, Shipyard keeps the problem recoverable: pick the face again
 or correct the field and save once more.
 
-This information is saved beside the part, in the same folder as its STL, so it survives
-if you reorganise or move your library.
+Mounts are saved in Shipyard's database. Back up the database along with your source
+STLs; copying an STL folder alone does not copy its authored mounts.
 
 ## Assembly draft
 

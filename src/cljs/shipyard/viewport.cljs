@@ -670,7 +670,8 @@
     (let [plane (input-value form "select[name=mirror-plane]")
           offset (math/parse-finite-double
                   (or (input-value form "input[name=mirror-offset]") "0"))]
-      (when (and (checked? form "input[name=mirror]")
+      (when (and (or (checked? form "input[name=mirror]")
+                     (= "true" (input-value form "input[name=mirror][type=hidden]")))
                  (= "socket" (input-value form "select[name=kind]"))
                  (contains? #{"x" "y" "z"} plane)
                  offset)

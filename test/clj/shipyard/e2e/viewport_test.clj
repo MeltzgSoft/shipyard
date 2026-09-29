@@ -721,6 +721,48 @@
   (is (s/wait-until #(str/includes? (s/text *driver* "#detail") "bridge-1"))
       "the repeated classification still waits for an explicit save"))
 
+(deftest mirrored-mount-pair-can-be-edited-and-reopened
+  (open-app!)
+  (select-part! "Mount Test Plate")
+  (s/await-part *driver* s/mount-plate-id)
+  (enter-authoring! s/mount-plate-id)
+  (let [{:keys [x y]} (viewport-center)]
+    (s/click-point! *driver* x y))
+  (is (some? (await-preview)))
+  (s/select-option! *driver* ".mount-wizard__form select[name=kind]" "socket")
+  (s/fill-and-blur! *driver* ".mount-wizard__form input[name=capacity]" "2")
+  (s/check! *driver* ".mount-wizard__form input[name=mirror]")
+  (s/click! *driver* ".mount-wizard__actions button[value=create]")
+  (is (s/wait-until #(str/includes? (s/text *driver* "#detail") "weapon-1-mirror")))
+  (testing "Edit renders the linked pair and restores both preview faces"
+    (s/click! *driver* "[data-detail-tab=mounts]")
+    (s/click! *driver* "form:has(input[name=mount-id][value='weapon-1']) button:has-text('Edit')")
+    (s/wait-visible! *driver* ".mount-wizard__form button[value=update]")
+    (is (= "true" (s/js *driver* "() => document.querySelector('input[name=mirror][type=hidden]').value")))
+    (is (zero? (s/count-els *driver* ".mount-wizard__form input[name=mirror][type=checkbox]")))
+    (is (str/includes? (s/text *driver* ".mount-wizard__mirror")
+                       "This mirrored pair is configured together."))
+    (is (s/wait-until #(true? (:mirror-visible? (:preview (s/stats *driver*))))))
+    (s/fill-and-blur! *driver* ".mount-wizard__form input[name=capacity]" "3")
+    (s/click! *driver* ".mount-wizard__actions button[value=update]")
+    (is (s/wait-until #(str/includes? (s/text *driver* "#detail") "x3"))
+        (s/text *driver* "#detail"))
+    (is (s/wait-until
+         #(let [items (get-in (s/stats *driver*) [:interfaces :items])]
+            (and (= #{"weapon-1" "weapon-1-mirror"} (set (map :mount-id items)))
+                 (every? (fn [item] (= 3 (count (:split-centers item)))) items))))
+        (str "saving updates both configured socket faces without creating extra mounts: "
+             (pr-str (:interfaces (s/stats *driver*))))))
+  (testing "reloading preserves the pair and its edited capacity"
+    (s/go! *driver* (s/base-url *system*))
+    (s/await-part *driver* s/mount-plate-id)
+    (s/click! *driver* "[data-detail-tab=mounts]")
+    (s/click! *driver* "form:has(input[name=mount-id][value='weapon-1']) button:has-text('Edit')")
+    (s/wait-visible! *driver* ".mount-wizard__form button[value=update]")
+    (is (= "3" (s/js *driver* "() => document.querySelector('.mount-wizard__form input[name=capacity]').value")))
+    (is (= "weapon-1-mirror" (s/js *driver* "() => document.querySelector('input[name=mirror-id]').value")))
+    (is (s/wait-until #(true? (:mirror-visible? (:preview (s/stats *driver*))))))))
+
 ;; --- the island -------------------------------------------------------------
 
 (deftest htmx-swaps-leave-the-webgl-context-alive

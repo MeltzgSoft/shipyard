@@ -205,6 +205,24 @@
     (is (str/includes? html "data-used-mount-ids=\"[]\""))
     (is (re-find #"name=\"mirror-id\"[^>]+value=\"weapon-1-mirror\"" html))))
 
+(deftest mirrored-mount-edit-renders-locked-controls
+  (testing "a linked pair submits mirroring without an unlink checkbox"
+    (let [html (render (views/facet-preview
+                        {:part hull
+                         :frame {:mount/pos [2 1 0]
+                                 :mount/axis [0 0 1]
+                                 :mount/roll [1 0 0]}
+                         :mode :edit
+                         :original-mount-id :weapon-1
+                         :values {:kind :socket :mount-id "weapon-1"
+                                  :mirror? true :mirror-locked? true
+                                  :mirror-id "weapon-1-mirror"}}))]
+      (is (re-find #"<input(?=[^>]*name=\"mirror\")(?=[^>]*type=\"hidden\")(?=[^>]*value=\"true\")[^>]*>" html))
+      (is (str/includes? html "This mirrored pair is configured together."))
+      (is (not (re-find #"<input(?=[^>]*name=\"mirror\")(?=[^>]*type=\"checkbox\")[^>]*>" html)))
+      (is (re-find #"name=\"mirror-id\"[^>]+value=\"weapon-1-mirror\"" html))
+      (is (str/includes? html "Save changes")))))
+
 (deftest new-plugs-use-a-plug-id-prefix
   (let [html (render (views/detail-ready hull
                                          (apply str (repeat 64 "1"))
