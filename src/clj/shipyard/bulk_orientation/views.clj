@@ -158,7 +158,7 @@
           [:button {:type "button" :disabled preparing? :data-bulk-rotate "true" :data-axis axis :data-direction "1"} "+"]])
        [:span.bulk-grid__steps {:aria-label "Rotation step"}
         (for [step [1 15 90]]
-          [:button {:type "button" :data-bulk-step step :aria-pressed (= 90 step)} (str step "°")])]
+          [:button {:type "button" :data-bulk-step step :aria-pressed (str (= 90 step))} (str step "°")])]
        [:button {:type "button" :disabled preparing? :data-bulk-copy "true"} "Copy first"]
        [:button {:type "button" :disabled preparing? :data-bulk-reset "true"} "Reset"]]]
      [:div.bulk-grid__cards

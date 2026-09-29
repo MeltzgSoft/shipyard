@@ -57,3 +57,39 @@
           (is (= 400 (:status (handler (mock/request :get url))))))
         (is (= 404 (:status (handler (mock/request :post "/ships/preview" {:id (str (random-uuid))}))))))
       (finally (fixture/stop! started)))))
+
+(deftest assembly-scroll-belongs-to-admitted-ship-workspace
+  (let [started (fixture/start!) handler (:handler started)
+        state (:state (:shipyard.workspace/db (:system started)))
+        request (fn [mode generation scroll]
+                  (handler (-> (mock/request :get "/assembly?poll=1")
+                               (mock/header "HX-Request" "true")
+                               (mock/header "X-Shipyard-Workspace" mode)
+                               (mock/header "X-Shipyard-Activation" (str generation))
+                               (mock/header "X-Shipyard-Assembly-Scroll" scroll))))]
+    (try
+      (handler (mock/request :get "/workspace/ships?tab=assembly"))
+      (testing "the admitted offset is rendered and retained on later refreshes"
+        (let [response (request "ships" 1 "320.5")]
+          (is (= 200 (:status response)))
+          (is (str/includes? (:body response) "data-scroll-top=\"320.5\"")))
+        (is (= 320.5 (get-in @state [:workspaces :ships :assembly-scroll])))
+        (is (str/includes? (:body (handler (mock/request :get "/assembly?poll=1")))
+                           "data-scroll-top=\"320.5\"")))
+      (testing "stale and foreign workspace responses cannot change the retained offset"
+        (is (= 204 (:status (request "ships" 0 "12"))))
+        (is (= 204 (:status (request "browse" 1 "12"))))
+        (is (= 320.5 (get-in @state [:workspaces :ships :assembly-scroll]))))
+      (testing "invalid and unbounded offsets are ignored"
+        (doseq [scroll ["invalid" "NaN" "Infinity" "-1" "100000001"]]
+          (is (= 200 (:status (request "ships" 1 scroll)))))
+        (is (= 320.5 (get-in @state [:workspaces :ships :assembly-scroll]))))
+      (testing "a failed hull request keeps context; a successful new hull resets it"
+        (let [failed (handler (mock/request :post "/assembly/hull" {:revision "0" :part-id "missing"}))
+              successful (handler (mock/request :post "/assembly/hull" {:revision "0" :part-id (:hull fixture/ids)}))]
+          (is (= 422 (:status failed)))
+          (is (str/includes? (:body failed) "data-scroll-top=\"320.5\""))
+          (is (= 200 (:status successful)))
+          (is (str/includes? (:body successful) "data-scroll-top=\"0\""))
+          (is (nil? (get-in @state [:workspaces :ships :assembly-scroll])))))
+      (finally (fixture/stop! started)))))

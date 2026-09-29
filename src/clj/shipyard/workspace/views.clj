@@ -17,6 +17,8 @@
   ;; The response guard lives on the originating element even when detached.
   ;; This is transport bookkeeping, not a browser workspace store or router.
   {:hx-headers "js:{...JSON.parse(document.getElementById('workspace-context').dataset.headers),'X-Shipyard-Scene-Sequence':document.documentElement.dataset.shipyardSceneSequence||'-1'}"
+   :hx-on--config-request
+   "if(document.querySelector('[data-ship-inspector-tab=assembly] #assembly')){event.detail.headers['X-Shipyard-Assembly-Scroll']=String(document.getElementById('detail').scrollTop)}"
    :hx-on--before-request
    (str "var elt=event.detail.elt,xhr=event.detail.xhr,generation=event.detail.requestConfig.headers['X-Shipyard-Activation'];"
         "var guard=function(e){if(e.detail.xhr===xhr&&generation!==document.getElementById('workspace-context').dataset.activation){e.preventDefault();}};"

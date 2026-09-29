@@ -207,7 +207,9 @@ the parts that failed without claiming they were saved. You can keep editing whi
 save is pending: its response acknowledges the submitted pose, and newer edits remain
 dirty with Save available. Reset restores the last successfully saved pose.
 **Back to table** remains available while previews are preparing and retains your
-selected parts.
+selected parts. Your rotation step stays selected through preparation, returning to the
+table and reopening the grid, or switching workspaces. Back to table discards unsaved
+preview poses; the next grid starts from saved orientations.
 
 **Back to table** refreshes saved angles and orientation status using the current
 filters. Newly saved parts disappear from an Unset-only result, but stay selected.
@@ -219,6 +221,7 @@ of overwriting silently; use **Replace** only when you mean to update that mount
 can have multiple sockets, but only one plug. Existing mounts appear below the loaded
 status with their picked or mirrored origin, plus capacity when it is greater than one.
 Mirrored entries are shown as one pair and can be edited or deleted deliberately together.
+Creating, editing, or deleting a mount keeps the Mounts tab open.
 
 If the source mesh changes, the picked frame is malformed, a socket has no accepted role,
 the mirror would overwrite an existing id, a centreline face has no mirrored counterpart,
@@ -235,7 +238,10 @@ Assembly tab and choose **Start assembly**. The inspector lists every mount as a
 the compatible parts for that mount. Select a part to assign it immediately; numbered
 positions are separate assignments, so you can use the same printable part more than
 once. Assigning a component with sockets reveals its nested drawers, such as turrets on
-a weapon. **Clear** removes that component and every nested assignment.
+a weapon. Selecting or changing a component retains the inspector’s scroll position;
+if the updated content is shorter, the position stops at its new bottom. Starting a
+new hull or opening a different class starts at the top. **Clear** removes that
+component and every nested assignment.
 
 Each mount has a stable color in its drawer header and on the model; selected parts take
 their mount's color. Split-capacity positions have distinct colors. Use **Mount colors**

@@ -30,6 +30,8 @@
       (is (str/includes? grid "/mesh/abc.0.symesh"))
       (is (str/includes? grid "Back to table"))
       (is (str/includes? grid "data-bulk-step=\"90\""))
+      (is (= 1 (count (re-seq #"aria-pressed=\"true\"" grid))))
+      (is (= 2 (count (re-seq #"aria-pressed=\"false\"" grid))))
       (is (= 3 (count (re-seq #"data-bulk-angle=\"true\"" grid))))
       (is (str/includes? grid "Set Yaw degrees for selection"))
       (is (str/includes? grid "Copy first"))

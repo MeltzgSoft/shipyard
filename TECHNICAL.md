@@ -2139,6 +2139,13 @@ Reloading the page reconstructs the active workspace from server state. The init
 restore request uses the same navigation synchronization and disabled controls as
 manual transitions, so replacing the restored controls cannot race the first click.
 
+Assembly requests and navigation carry the current inspector scroll offset in a scalar
+transport header. The workspace admission boundary retains it for Ship Browser only
+after validating the owning workspace and activation. Assembly fragments restore that
+offset after insertion, including preparation polls, without requiring the viewport
+bundle. A successful new hull, reset, duplicate or different class clears the previous
+drawers and scroll; failed operations keep their existing context.
+
 There is no workspace JavaScript/CLJS module or browser application store. HTMX reads
 request headers from the server-rendered context. A small stateless `hx-on` transport
 guard compares each request's captured generation with that context before applying a

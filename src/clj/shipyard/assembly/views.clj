@@ -119,7 +119,7 @@
      [:div.assembly__rail-slots {:data-hull-id hull}
       (slot-tree database root revision available selected-bundle selected-class drawers slots)])])
 
-(defn panel [{:keys [database draft available prepared error saved? selected-hull selected-bundle selected-class drawers]}]
+(defn panel [{:keys [database draft available prepared error saved? selected-hull selected-bundle selected-class drawers scroll]}]
   (let [{:keys [revision hull assignments]} draft
         root (when hull (catalog/part database hull))
         derived (when hull (model/slots database hull assignments))
@@ -130,6 +130,8 @@
                    (filter #(or (nil? selected-class) (= selected-class (:part/class %)))))
         pending? (some #(= :running (:state %)) (vals prepared))]
     [:div.assembly-response
+     {:data-scroll-top (or scroll 0)
+      :hx-on--load "if(event.target===this){document.getElementById('detail').scrollTop=Number(this.dataset.scrollTop)}"}
      [:section#assembly.assembly {:data-draft (pr-str draft)}
       [:header.assembly__header [:h2 "Assembly"]
        [:p (if root (str (:part/name root) " · " (count (filter :assigned slots)) " of " (count slots) " mounts filled")

@@ -57,6 +57,10 @@
             {:status 204 :headers {} :body ""}
             (binding [*context* current
                       *scene-sequence* (some-> (get-in request [:headers "x-shipyard-scene-sequence"]) parse-long)]
+              (when (= :ships (:workspace current))
+                (when-let [scroll (some-> (get-in request [:headers "x-shipyard-assembly-scroll"]) parse-double)]
+                  (when (<= 0 scroll 100000000)
+                    (update-workspace! db :ships assoc :assembly-scroll scroll))))
               (handler request)))))
       (handler request))))
 

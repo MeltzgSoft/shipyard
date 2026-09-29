@@ -42,6 +42,18 @@
       (s/select-option! driver ".assembly__hull select[name=part-id]" "hull")
       (s/click! driver ".assembly__hull button")
       (s/wait-visible! driver (slot-selector [[:weapon 0]]))
+      (s/js driver "() => document.body.addEventListener('htmx:beforeRequest', e => {if(e.detail.requestConfig.path==='/assembly/assign'){window.assignmentScroll=document.getElementById('detail').scrollTop}})")
+      (testing "assigning and changing a part retains the independently scrolling inspector"
+        (assign! driver [[:weapon 1]] "weapon")
+        (assign! driver [[:weapon 1]] "weapon-alt")
+        (await-ready! driver)
+        (is (pos? (s/js driver "() => window.assignmentScroll")))
+        (is (s/wait-until #(s/js driver "() => Math.abs(document.getElementById('detail').scrollTop-window.assignmentScroll)<2")))
+        (s/click! driver "[data-workspace-mode=browse]")
+        (s/wait-visible! driver "[data-bulk-select]")
+        (s/click! driver "[data-workspace-mode=ships]")
+        (s/wait-visible! driver ".assembly__hull")
+        (is (s/wait-until #(s/js driver "() => Math.abs(document.getElementById('detail').scrollTop-window.assignmentScroll)<2"))))
       (testing "capacity-two choices and nested turrets are server rendered"
         (assign! driver [[:weapon 0]] "weapon")
         (assign! driver [[:weapon 1]] "weapon")

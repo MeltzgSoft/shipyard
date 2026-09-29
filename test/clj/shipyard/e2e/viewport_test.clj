@@ -559,7 +559,8 @@
              (pr-str last-interfaces))))
   (is (s/wait-until #(nil? (:preview (s/stats *driver*))))
       "saving clears the transient preview")
-  (s/click! *driver* "[data-detail-tab=mounts]")
+  (is (= "true" (s/js *driver* "() => document.querySelector('[data-detail-tab=mounts]').getAttribute('aria-selected')"))
+      "creating a mount preserves the active Mounts tab")
   (s/click! *driver* "form:has(input[name=mount-id][value='weapon-1']) button:has-text('Edit')")
   (is (s/wait-until #(true? (s/js *driver* "() => !!document.querySelector('.mount-wizard__form button[value=update]')")))
       "Edit should open the mount with an update action")
@@ -591,6 +592,8 @@
   (is (s/wait-until #(str/includes? (s/text *driver* "#detail") "x3"))
       (str "saving an edit should update the existing mount; detail was "
            (pr-str (s/text *driver* "#detail"))))
+  (is (= "true" (s/js *driver* "() => document.querySelector('[data-detail-tab=mounts]').getAttribute('aria-selected')"))
+      "updating a mount preserves the active Mounts tab")
   (is (enter-authoring! s/mount-plate-id)
       "authoring mode should be active before picking another face")
   (let [{:keys [x y]} (viewport-center)]
@@ -623,6 +626,8 @@
   (s/click! *driver* "form:has(input[name=mount-id][value='weapon-1']) button:has-text('Delete')")
   (is (s/wait-until #(not (str/includes? (s/text *driver* "#detail") "weapon-1")))
       "deleting removes the mount from the detail panel")
+  (is (= "true" (s/js *driver* "() => document.querySelector('[data-detail-tab=mounts]').getAttribute('aria-selected')"))
+      "deleting a mount preserves the active Mounts tab")
   (is (s/wait-until #(not-any? (fn [item] (= "weapon-1" (:mount-id item)))
                                (get-in (s/stats *driver*) [:interfaces :items])))
       "deleting removes the configured interface highlight"))

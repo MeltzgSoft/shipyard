@@ -13,14 +13,14 @@
 (defn- response [{:keys [workspace]} result]
   (let [draft (:draft result)
         slots (:slots (when (:hull draft) (model/slots (:database result) (:hull draft) (:assignments draft))))
-        previous (:drawers (when workspace (workspace/workspace! workspace :ships)))
-        drawers (workspace-transforms/drawer-states previous slots)]
+        ship-workspace (when workspace (workspace/workspace! workspace :ships))
+        drawers (workspace-transforms/drawer-states (:drawers ship-workspace) slots)]
     (when workspace (workspace/update-workspace! workspace :ships assoc :drawers drawers))
     (htmx/fragment
    ;; Matrices and mount data grow with the assembly and exceed Jetty's
    ;; response-header limit. Hiccup escapes the EDN in this inert body field;
    ;; the viewport consumes it once after HTMX swaps the response into #detail.
-     (list (workspace-views/ship-editor "assembly" (views/panel (assoc result :drawers drawers)))
+     (list (workspace-views/ship-editor "assembly" (views/panel (assoc result :drawers drawers :scroll (:assembly-scroll ship-workspace))))
            (workspace-views/ship-editor-library)
            [:input {:type "hidden" :data-assembly-event (pr-str (:event result))}])
      {:status (:status result)})))
@@ -48,12 +48,12 @@
         (htmx/fragment (workspace-views/ship-editor "assembly"
                                                     (views/discard-confirmation "/assembly/hull" "Discard and start assembly"
                                                                                 "/assembly?poll=1" form current-revision false)))
-        (do
-          (when (and (:workspace deps) (#{:hull :reset} op) current?)
-            (workspace/update-workspace! (:workspace deps) :ships dissoc :drawers))
-          (response deps (assoc (db/request! (assoc deps :paint-profile nil) (cond-> {:op op :revision (parse-long revision) :part-id part-id}
-                                                                               slot (assoc :slot (edn/read-string slot))) {})
-                                :selected-bundle (not-empty bundle)
+        (let [result (db/request! (assoc deps :paint-profile nil)
+                                  (cond-> {:op op :revision (parse-long revision) :part-id part-id}
+                                    slot (assoc :slot (edn/read-string slot))) {})]
+          (when (and (:workspace deps) (#{:hull :reset} op) (not (:error result)))
+            (workspace/update-workspace! (:workspace deps) :ships dissoc :drawers :assembly-scroll))
+          (response deps (assoc result :selected-bundle (not-empty bundle)
                                 :selected-class (not-empty class))))))))
 
 (defn save! [deps {:keys [parameters]}]

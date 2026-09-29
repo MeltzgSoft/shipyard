@@ -111,7 +111,7 @@
                                                                                                "/workspace/ships?table=1" {} revision true))))
         (do
           (assembly/request! deps {:op :reset :revision revision} {})
-          (workspace/update-workspace! workspace :ships dissoc :drawers)
+          (workspace/update-workspace! workspace :ships dissoc :drawers :assembly-scroll)
           (workspace/update-workspace! workspace :ships assoc :needs-scene-reset? true)
           (ship-tab! deps {:path-params {:tab "assembly"} :params {}}))))))
 
@@ -134,6 +134,7 @@
           (if (:error result)
             (ships! deps {:params {"error" (get errors/messages (:error result) "This ship class is unavailable.")}})
             (do
+              (when-not same? (workspace/update-workspace! workspace :ships dissoc :drawers :assembly-scroll))
               (when ship (paint/select! deps {"id" id}))
               (when-not ship
                 (paint-db/transfer! deps (:assembly deps) (:scheme (workspace/workspace! workspace :ships))))
@@ -155,7 +156,9 @@
           (let [result (loadouts/transfer! deps (parse-uuid id) :duplicate)]
             (if (:error result)
               (ships! deps {:params {"error" (get errors/messages (:error result))}})
-              (ship-tab! deps {:path-params {:tab "assembly"} :params {}}))))))))
+              (do
+                (workspace/update-workspace! (:workspace deps) :ships dissoc :drawers :assembly-scroll)
+                (ship-tab! deps {:path-params {:tab "assembly"} :params {}})))))))))
 
 (defn transition! [{:keys [workspace library part-handler facets] :as deps} {:keys [path-params params headers]}]
   (workspace/outgoing! deps params)
