@@ -28,10 +28,11 @@ GLB touches one namespace.
 
 ### 1.2 One durable metadata database
 
-Datalevin owns authored metadata in `$XDG_DATA_HOME/shipyard/database` (normally
+Datalevin owns authored metadata, application-managed settings and the derived scan
+index in `$XDG_DATA_HOME/shipyard/database` (normally
 `~/.local/share/shipyard/database`). `:shipyard.store/db` owns the connection and
-accepts `:data-home` or an explicit `:directory`. Catalog, loadout and scheme
-components share it. Only one application process owns a database.
+accepts `:data-home` or an explicit `:directory`. Library-index, catalog, loadout and
+scheme components share it. Only one application process owns a database.
 
 All mutations run inside `datalevin.core/with-transaction`, under the store's lock.
 Validation, identity resolution, related changes and revision updates commit together.
@@ -41,9 +42,17 @@ handle: dereferencing a Datalevin connection is not a historical DataScript snap
 Old domain snapshots remain ordinary immutable Clojure values after later writes.
 
 Source STLs stay in their existing folders. Geometry and regenerable `.symesh` files
-remain outside the database. The mtime/size scan index remains a disposable EDN cache;
-configuration and the selected library location remain configuration files. None of
-these files owns mounts, orientations, shared layers, loadouts or paint schemes.
+remain outside the database, as do explicit report exports. System/bootstrap
+configuration stays in `config.edn`; Shipyard never rewrites that file. The selected
+library root and library-scoped scan entries are stored in Datalevin. Scan entries
+are derived data and can be rebuilt without deleting authored metadata.
+
+Explicit report exports use a temporary sibling followed by an exact-path rename.
+Directory targets are rejected; they cannot receive the temporary file and masquerade
+as a successful save. The writer retries transient filesystem errors and falls back
+to a non-atomic replacement when atomic moves are unsupported. Failed writes clean up
+their temporary files. Settings and scan-index persistence use database transactions;
+a failed scan-index cache write does not invalidate an already prepared mesh.
 
 ### 1.3 Source discovery and identities
 
@@ -120,8 +129,11 @@ no namespace exists to hold constants.
 ;; resources/config.edn - read with aero, which supplies #env / #or / #profile.
 ;; Component keys are namespaced to the namespace that implements them, so
 ;; integrant's load-namespaces finds each ig/init-key without a registry.
-{:shipyard.library/index
- {:root nil}                      ; no default - §7.3
+{:shipyard.store/db {}
+
+ :shipyard.library/index
+ {:root nil                       ; bootstrap fallback only - §7.3
+  :store #ig/ref :shipyard.store/db}
 
  :shipyard.mesh/cache
  {:crease-deg 35
@@ -150,20 +162,25 @@ shutdown hook.
 `load-config!` takes `:config-dir` and `:env` so the layering is testable without
 mutating the process environment.
 
-**Four layers, later winning over earlier:**
+**System configuration has three layers, later winning over earlier:**
 
 1. `resources/config.edn` - defaults, shipped in the jar.
-2. `$XDG_CONFIG_HOME/shipyard/config.edn` - user preferences, deep-merged if present.
-3. `$XDG_CONFIG_HOME/shipyard/library.edn` - the library root, written by the settings
-   form (§7.3).
-4. Environment variables - `PORT`.
+2. `$XDG_CONFIG_HOME/shipyard/config.edn` - hand-authored system preferences,
+   deep-merged if present.
+3. Environment variables - `PORT`.
 
-Layers 2 and 3 exist separately because **the library root is user data, not deployment
-configuration** - and because layer 3 is the only one Shipyard writes. Merging a saved
-root into the user's own `config.edn` would mean reading that file to rewrite it, and
-reading it means resolving it: aero would evaluate its `#env` and `#profile` tags and drop
-every comment, so saving a path from the UI would silently rewrite configuration the user
-hand-authored. A machine-owned file that nothing else edits cannot do that.
+The selected library is application state, restored from the shared Datalevin store
+before the library-index component scans. If the database has no selection yet, startup
+imports an existing `$XDG_CONFIG_HOME/shipyard/library.edn` selection. A configured
+`:shipyard.library/index :root` is a bootstrap fallback only when neither database nor
+legacy setting supplies a root. The initial selection is persisted, and the database
+wins on subsequent starts. `load-config!` passes the config directory to the index so
+normal application startup can find the legacy setting; isolated components without a
+config directory never read the user's legacy file.
+
+Shipyard neither writes `library.edn` nor rewrites the user's `config.edn`. Updating a
+selection cannot evaluate and discard that file's aero tags or comments. Change the
+selected folder through the settings form (§7.3), not by editing a legacy setting.
 
 **The library root is deliberately not an environment variable.** It was one, with
 `~/Documents/3D_models/BFG` behind it as a default, and both were wrong: the default is
@@ -256,7 +273,9 @@ also runs at the transactional boundary.
 
 | Entity | Identity and relationships |
 |---|---|
+| Application settings | Selected library root |
 | Library | UUID, root, shared-layer revision |
+| Scan entry | Library-scoped part identity, file stamps, mesh key, triangle count, escort analysis |
 | Part | UUID, unique `[library UUID, relative path]`, library ref, present flag, observed source facts, manual role/orientation |
 | Source/content | Source identity `[part UUID, variant]`, file stamps; shared content keyed by SHA-256 |
 | Mount | UUID, part-owned component, local mount ID, explicit order, frame, role profile, optional facet provenance |
@@ -519,15 +538,17 @@ Two keys, two purposes:
 - `:part/mesh-key` - SHA-256 of the source STL. Computed **only** when a part is first
   preprocessed, which is already lazy.
 
-`$XDG_CACHE_HOME/shipyard/index-<digest>.edn` maps `path → {:mtime :size :mesh-key :tris}`
-under a `:root` stamp. At scan, a part whose mtime and size are unchanged reuses its cached
-`mesh-key`; anything else has its entry invalidated and re-derives on next view. Re-pitting
-a hull changes mtime and size, so the cache self-invalidates.
+The shared Datalevin store holds scan entries scoped by library root and relative part
+identity: mtime, size, mesh key, triangle count and cached escort analysis. At scan,
+a part whose mtime and size are unchanged reuses its cached mesh key; anything else
+has its entry invalidated and re-derives on next view. Re-pitting a hull changes
+mtime and size, so the cache self-invalidates.
 
-`<digest>` is the first 16 hex of a SHA-256 of the library root - **one index per
-library**, because the root is a setting and can change (§7.3). Not one shared file: a
-part id is library-relative, so a shared index would have to be discarded on every switch,
-and re-hashing is precisely the cost this cache exists to avoid.
+Each library has its own entries because the root is a setting and can change (§7.3).
+Two roots containing the same relative part path cannot reuse one another's mesh keys
+or escort analysis. Switching back can reuse that library's unchanged entries. Legacy
+`index-<digest>.edn` files are not imported or written: this derived cache is rebuilt
+from source facts. Discarding derived scan entries never discards authored records.
 
 Budget: full scan of 1,661 folders, cold, **under 2 s**. It stats files and updates
 source metadata without opening meshes.
@@ -818,13 +839,10 @@ so the request never blocks on the pipeline.
 
 **A failed index write must not fail a good part.** Recording the mesh key is an
 optimisation: the mesh is on disk either way and the next run recomputes the key from the
-source hash. Windows CI caught this intermittently - `Files.move` answered
-`AccessDeniedException` on the index write that follows a preprocess, and a part that had
-preprocessed perfectly was reported to the user as failed. `write-atomically!` now retries
-a transient `FileSystemException` with a linear backoff before giving up (a file written
-moments ago can still be held by the search indexer or a virus scanner), and `jobs`
-swallows the failure if it does. This is exactly the class of bug §9 keeps the Windows job
-for.
+source hash. If the scan-entry database transaction fails, `jobs` logs that failure
+while retaining the successfully prepared mesh result. The failed write does not publish
+an uncommitted index entry. Library/source context is checked before publishing job
+completion, so a finished job cannot supply an old library's mesh to the active one.
 
 The work runs on a two-thread pool in `shipyard.http.jobs`. That is the bounded executor
 §6.5 said would earn its place once a UI existed prefetching distinct parts, and it lives
@@ -990,8 +1008,8 @@ the jar. `RoomEnvironment` through `PMREMGenerator` costs nothing at build time.
 
 Shipyard has exactly one thing it cannot infer: where the STL library is. Everything else
 in `config.edn` is a measured tunable with a defensible default; this is a fact about the
-user's machine. So it has no default, `POST /settings` sets it, and layer 3 of §2.1
-remembers it.
+user's machine. So it has no default, `POST /settings` sets it, and the shared database
+remembers it. Startup restores that selection before scanning (§2.1).
 
 **Relocating mutates three components in place; it does not rebuild them.** The route
 table closes over its dependencies at build time - `routes` is a tree of
@@ -999,13 +1017,13 @@ table closes over its dependencies at build time - `routes` is a tree of
 already holding the old one. `shipyard.http.settings/relocate!` therefore:
 
 1. scans the candidate root without changing the active library;
-2. refreshes its source metadata transactionally into the shared store;
-3. persists the selected root, then publishes the new library and catalog state;
+2. commits its scan entries, source metadata and selected root in one shared-store
+   transaction;
+3. publishes the new library and catalog state only after that commit succeeds;
 4. clears the job table (`jobs/clear!`).
 
-A failed database transaction or settings write leaves the active library and selection setting
-unchanged. A successfully scanned inactive library can remain in the database for
-later reuse.
+A failed preparation or database transaction leaves the active library and durable
+selection unchanged. Previously used libraries retain their records for later reuse.
 
 **A success answers `HX-Refresh: true`, not a fragment.** The library has been replaced
 wholesale: the filter facets in the shell were built from the old one, and so was every
@@ -1015,22 +1033,15 @@ would leave a page describing two libraries at once.
 **Two things outlive the root that created them**, and both are handled where they are
 observed rather than by trying to stop them:
 
-- *A preprocess job in flight.* Its part id is library-relative, so recording its result
-  after a relocation would file a mesh key under a different library's part.
-  `index/record-mesh-key!` drops results for part ids the current library does not
-  contain.
-- *The scan index on disk.* It is keyed by library-relative part id, which was unambiguous
-  only while there was one root. Two libraries can each hold `Cruiser/Hull`, and serving
-  one's cached mesh key for the other hands the viewport a mesh of the wrong ship. There
-  is therefore **one index file per library**, named by a digest of the root path (§5.4),
-  so switching between two libraries is free in both directions rather than re-hashing
-  both every time. Each file also carries a `:root` stamp and a mismatch reads as empty -
-  belt and braces, and it makes the file self-describing when you are looking at a cache
-  directory full of digests.
-
-  The cost is that index files for libraries you have stopped using are not collected.
-  One is a few hundred kilobytes against a mesh cache measured in gigabytes, so nothing
-  reclaims them yet; the `:root` stamp is what a future sweep would read.
+- *A preprocess job in flight.* Jobs capture the library root, source path and scanned
+  mtime/size when submitted. `index/record-mesh-key!` records a result only while that
+  context still matches the active index and the source file is still fresh. A late
+  completion cannot write a mesh key into another library's same relative part path
+  or overwrite metadata for a changed source.
+- *The stored scan index.* Part ids are library-relative: two libraries can each hold
+  `Cruiser/Hull`. Entries are scoped to their library in Datalevin (§5.4), so switching
+  roots never substitutes another library's mesh key or escort analysis. Unchanged
+  entries remain available when returning to an inactive library.
 
 **Whether the root is there is checked, not remembered.** A drive can be unmounted, or a
 folder renamed, under a running server. The cost of asking is one `stat` per `/library`
@@ -1168,7 +1179,8 @@ trip that the browser being one command away would have saved.
 ### 9.1 What `package` actually asserts
 
 Starting the jar and pinging `/healthz` proves almost nothing. The job instead walks the
-whole user path against a one-part fixture library: scan, catalog, preprocess through
+whole user path against a one-part fixture library: choose its folder through
+`POST /settings`, scan, catalog, preprocess through
 LWJGL, poll `/part/*id` the way the browser does, and fetch the `.symesh` the trigger
 names. That covers three things no other job does.
 
@@ -1344,10 +1356,11 @@ asked for explicitly - without `--enable-unsafe-swiftshader` the context is refu
 `webgl-works-in-this-browser` asserts `gl.VERSION` directly and runs before anything else,
 so a runner without software rendering says so rather than failing eight scene assertions.
 
-**The suite is hermetic, and that needed a change to two components.** `:shipyard.mesh/cache`
-and `:shipyard.library/index` take an optional `cache-home`, defaulting to the XDG
-location. Without it an E2E run evicts the developer's real mesh cache and files part ids
-from a temp tree into their scan index.
+**The suite is hermetic.** `:shipyard.mesh/cache` takes an isolated `cache-home`, and
+`:shipyard.store/db` takes an isolated database directory or `data-home`. The index
+receives that same store through `:store`. Libraries, authored metadata, settings,
+scan entries and mesh caches stay inside temporary test trees. Isolated index
+components omit `:config-dir` so legacy settings cannot import the developer's root.
 
 **Degraded mode is blocked at the server, not in the browser**: the suite starts a second
 Jetty whose handler 404s `/js/viewport.js`. That is what a failed frontend build or a

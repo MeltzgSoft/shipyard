@@ -6,7 +6,9 @@
             [shipyard.fixtures :as f]
             [shipyard.library.index :as index]
             [shipyard.mesh.cache :as cache]
-            [shipyard.system :as system])
+            [shipyard.system :as system]
+            [shipyard.store.db :as store]
+            [shipyard.store.scan-index :as scan-index])
   (:import [java.io File]
            [java.util.concurrent Executors TimeUnit]))
 
@@ -54,20 +56,26 @@
       (is (not (index/fresh-source?! (assoc e :mtime 1) src))))
     (is (not (index/fresh-source?! nil src)))))
 
-(deftest index-roundtrips-and-survives-corruption
-  (let [f       (io/file (temp-dir "shipyard-idx") "index.edn")
-        entries {"a/b" {:mtime 1 :size 2 :mesh-key "k"}}]
-    (index/save-index! f "/lib" entries)
-    (is (= entries (index/load-index! f "/lib")))
-    (testing "entries scanned from another root are not this library's"
-      ;; A part id is library-relative, so two libraries can hold the same one.
-      ;; Serving the stored mesh key would hand back a mesh of the wrong ship.
-      (is (= {} (index/load-index! f "/somewhere-else"))))
-    (testing "a corrupt index costs a rescan, never correctness"
-      (spit f "{{{not edn")
-      (is (= {} (index/load-index! f "/lib"))))
-    (testing "a missing index is empty, not an error"
-      (is (= {} (index/load-index! (io/file "/no/such/index.edn") "/lib"))))))
+(deftest index-roundtrips-through-the-shared-database
+  (let [dir (fs/create-temp-dir {:prefix "shipyard-index-db-"})
+        entries {"a/b" {:mtime 1 :size 2 :mesh-key "k" :tris 12
+                        :escort-analysis {:volume 42.0}}}]
+    (try
+      (let [database (store/open! dir)]
+        (try
+          (scan-index/replace! database "/lib" entries)
+          (is (= entries (scan-index/entries! database "/lib")))
+          (testing "the same relative part path in another library is independent"
+            (is (= {} (scan-index/entries! database "/somewhere-else"))))
+          (finally (store/close! database))))
+      (let [database (store/open! dir)]
+        (try
+          (testing "reopening the database retains each derived field"
+            (is (= entries (scan-index/entries! database "/lib"))))
+          (testing "equivalent normalized roots share one index identity"
+            (is (= entries (scan-index/entries! database "/lib/../lib"))))
+          (finally (store/close! database))))
+      (finally (fs/delete-tree dir)))))
 
 (deftest atomic-write-leaves-no-partial-file
   (let [target (io/file (temp-dir "shipyard-atomic") "out.edn")]

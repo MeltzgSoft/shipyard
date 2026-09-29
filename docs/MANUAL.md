@@ -42,13 +42,11 @@ To change it later, open **Library folder** at the top of the library panel. If 
 path is wrong - a typo, or a drive that is not mounted - Shipyard says so and keeps
 using the folder it already had.
 
-Your choice is stored in `$XDG_CONFIG_HOME/shipyard/library.edn` (usually
-`~/.config/shipyard/library.edn`). You can write it by hand if you prefer:
-
-```bash
-mkdir -p ~/.config/shipyard
-echo '{:root "/path/to/your/models"}' > ~/.config/shipyard/library.edn
-```
+Your choice is stored in Shipyard's database, alongside your authored metadata.
+When upgrading, Shipyard preserves a selection from the old
+`$XDG_CONFIG_HOME/shipyard/library.edn` file if the database has no saved selection.
+After that, use **Library folder** to change it; editing the old file does not change
+the database selection. Shipyard leaves your system `config.edn` untouched.
 
 ### How your library should be organised
 
@@ -479,6 +477,11 @@ on an older JDK. Install Java 25.
 
 **"My library is empty."** Check the path is right, and that your folders match the
 layout in section 2. Shipyard logs the root it is using at startup.
+
+**"Could not save the setting: …"** Shipyard could not commit the folder change to
+its database. The current library remains active and its saved selection is unchanged.
+Check that the database location is writable and has free space, then press
+**Use this folder** again.
 
 **"A part I own is not listed."** It probably has no `unsupported.stl`. Parts that ship
 only as `supported.stl` appear greyed out - look for them rather than assuming they are

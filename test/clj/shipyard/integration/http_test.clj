@@ -4,6 +4,7 @@
   everything §7 promises can be asserted by calling it (§10.2)."
   (:require [shipyard.persistence-fixture :as persisted]
             [shipyard.store.db :as metadata]
+            [shipyard.store.scan-index :as scan-index]
             [clojure.data.json :as json]
             [clojure.edn :as edn]
             [clojure.java.io :as io]
@@ -64,8 +65,8 @@
   (issue #35), and a hand-built stand-in would be free to drift out of the
   shape the handlers read."
   [root]
-  (let [library (ig/init-key :shipyard.library/index
-                             {:root (str root) :cache-home (temp-dir "shipyard-idx")})
+  (let [database (metadata/open! (temp-dir "shipyard-db"))
+        library (ig/init-key :shipyard.library/index {:root (str root) :store database})
         ;; Built by hand rather than through init-key: that one parks the cache
         ;; under XDG_CACHE_HOME, and a test must not evict the developer's real
         ;; cache to prove a point.
@@ -74,10 +75,10 @@
                  :facet-angle-deg 1.0
                  :facet-plane-epsilon-mm 0.01
                  :cap-bytes 64000000 :inflight (atom {}) :files-lock (Object.)}
-        catalog (ig/init-key :shipyard.catalog/db {:library library :store (metadata/open! (temp-dir "shipyard-db"))})
+        catalog (ig/init-key :shipyard.catalog/db {:library library :store database})
         jobs    (ig/init-key :shipyard.http/jobs {:library library :cache cache})
         system {:library library :catalog catalog :cache cache :jobs jobs
-     ;; Never the developer's real config dir: relocating writes a file.
+     ;; Keep all application configuration isolated from the developer.
                 :config-dir (temp-dir "shipyard-cfg")}]
     (swap! *opened-systems* conj system)
     system))
@@ -853,43 +854,17 @@
       (is (= 422 (:status (POST h "/orient/save" {"orientations" "{}"})))))))
 
 (deftest an-unwritable-index-does-not-fail-a-good-part
-  (testing "recording the mesh key is an optimisation. Windows CI caught this:
-            a transient AccessDeniedException on the index write reported a part
-            that had preprocessed perfectly as failed."
-    (let [sys (system (library-tree))
-          ;; An index path whose **parent** is a regular file, so
-          ;; `write-atomically!` fails on its opening `create-dirs`.
-          ;;
-          ;; Pointing the index at a directory - the obvious fixture, and what
-          ;; this test used to do - does not fail at all: `babashka.fs/move`
-          ;; moves a file *into* an existing directory rather than refusing, so
-          ;; the write quietly succeeded somewhere else and the test proved
-          ;; nothing. Empty or not makes no difference.
-          ;;
-          ;; Into the state atom, not onto the component map: the index file is
-          ;; part of the library's state now that the root can change, and an
-          ;; `assoc-in` on the component would leave this test passing without
-          ;; ever making a write fail.
-          bad (let [blocker (io/file (temp-dir "shipyard-not-a-file") "blocker")]
-                (spit blocker "")
-                (io/file blocker "index.edn"))
-          _   (swap! (:state (:library sys)) assoc :index-file bad)
-          ;; Pin the premise. This test passed for a while against a *writable*
-          ;; index, because it was reaching for a key that had moved - a guard
-          ;; that no longer guards looks exactly like one that does.
-          _   (is (thrown? Exception (index/save-index! bad "/lib" {}))
-                  "the index write must actually be failing")
-          h     (handler sys)
-          ready (await-ready h hull-id)]
-      (is (get (triggers ready) "shipyard:load-mesh"))
-      ;; `not= :failed` rather than `= :ready`, and the difference is not
-      ;; pedantry - Windows CI failed on the stronger form. `record-mesh-key!`
-      ;; updates the index atom before it writes the file, so the mesh URL can
-      ;; be served from the fast path while the worker is still inside its
-      ;; retry backoff and has not recorded its result yet. What this test is
-      ;; about is that the part is never reported failed; when the worker
-      ;; finishes is the executor's business.
-      (is (not= :failed (:state (jobs/status (:jobs sys) hull-id)))))))
+  (let [sys (system (library-tree))
+        attempts (atom 0)
+        h (handler sys)]
+    (with-redefs [scan-index/put-entry!
+                  (fn [& _]
+                    (swap! attempts inc)
+                    (throw (ex-info "Scan index database write failed" {})))]
+      (let [ready (await-ready h hull-id)]
+        (is (get (triggers ready) "shipyard:load-mesh"))
+        (is (= :ready (await-job-state (:jobs sys) hull-id :ready)))
+        (is (pos? @attempts) "the derived index write actually failed")))))
 
 (deftest missing-library-root-says-so
   (let [sys (system (library-tree))

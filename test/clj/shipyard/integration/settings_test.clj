@@ -7,7 +7,6 @@
   is still there after a restart."
   (:require [shipyard.store.db :as metadata]
             [babashka.fs :as fs]
-            [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing use-fixtures]]
@@ -16,7 +15,8 @@
             [shipyard.http.routes :as routes]
             [shipyard.http.settings :as settings]
             [shipyard.library.index :as index]
-            [shipyard.system :as system])
+            [shipyard.settings.db :as settings-db]
+            [shipyard.store.scan-index :as scan-index])
   (:import [java.io File]
            [java.net URLEncoder]
            [java.nio.charset StandardCharsets]))
@@ -49,11 +49,11 @@
   "A running application that has never been told where its library is - the
   state a fresh install starts in."
   []
-  (let [library (ig/init-key :shipyard.library/index
-                             {:root nil :cache-home (temp-dir "shipyard-idx")})
+  (let [database (metadata/open! (temp-dir "shipyard-db"))
+        library (ig/init-key :shipyard.library/index {:root nil :store database})
         cache   {:dir (temp-dir "shipyard-cache") :crease-deg 35
                  :lod-tiers [1.0 0.25 0.05] :cap-bytes 64000000 :inflight (atom {}) :files-lock (Object.)}
-        catalog (ig/init-key :shipyard.catalog/db {:library library :store (metadata/open! (temp-dir "shipyard-db"))})
+        catalog (ig/init-key :shipyard.catalog/db {:library library :store database})
         jobs    (ig/init-key :shipyard.http/jobs {:library library :cache cache})
         system {:library library :catalog catalog :cache cache :jobs jobs
                 :config-dir (temp-dir "shipyard-cfg")}]
@@ -111,9 +111,9 @@
     (testing "the catalog was re-ingested, so the shell's facets follow"
       (is (str/includes? (:body (GET h "/")) "Human Navy Fleet Bundle")))
 
-    (testing "and it survives a restart"
-      (let [cfg (system/load-config! {:config-dir (str (:config-dir sys)) :env {}})]
-        (is (= (str root) (get-in cfg [:shipyard.library/index :root])))))))
+    (testing "the selection is durable without a settings file"
+      (is (= (str root) (settings-db/library-root! (:store (:catalog sys)))))
+      (is (not (fs/exists? (io/file (:config-dir sys) "shipyard" "library.edn")))))))
 
 (deftest relocating-again-replaces-the-library
   (let [first-root  (library-tree "Bundle A/Cruiser/Hull")
@@ -152,8 +152,7 @@
       (is (str/includes? (:body (GET h "/library")) "Bundle/Cruiser/Hull")))
     (testing "and the saved setting was not overwritten"
       (is (= (str root)
-             (get-in (system/load-config! {:config-dir (str (:config-dir sys)) :env {}})
-                     [:shipyard.library/index :root]))))))
+             (settings-db/library-root! (:store (:catalog sys))))))))
 
 (deftest a-root-that-goes-away-under-a-running-server-reports-itself
   (let [root (library-tree "Bundle/Cruiser/Hull")
@@ -174,37 +173,60 @@
 
 ;; --- the scan index ---------------------------------------------------------
 
+(deftest a-failed-settings-transaction-refuses-relocation-and-allows-retry
+  (let [sys (system)
+        h (routes/handler sys)
+        root (library-tree "Original/Hull")
+        candidate (library-tree "Replacement/Hull")
+        database (:store (:catalog sys))]
+    (is (= 204 (:status (POST h "/settings" {:root (str root)}))))
+    (let [library-before @(:state (:library sys))
+          catalog-before @(:state (:catalog sys))
+          save-root! settings-db/save-library-root!
+          response (with-redefs [settings-db/save-library-root!
+                                 (fn [transaction value]
+                                   (save-root! transaction value)
+                                   (throw (ex-info "Database commit failed" {})))]
+                     (POST h "/settings" {:root (str candidate)}))]
+      (is (= 422 (:status response)))
+      (is (str/includes? (:body response) "Could not save the setting"))
+      (is (str/includes? (:body response) "Database commit failed"))
+      (is (nil? (get-in response [:headers "HX-Refresh"])))
+      (is (= library-before @(:state (:library sys))))
+      (is (= catalog-before @(:state (:catalog sys))))
+      (is (= (str root) (settings-db/library-root! database)))
+      (is (nil? (metadata/read! database #(metadata/library-id % (str candidate)))))
+      (is (empty? (scan-index/entries! database (str candidate)))
+          "candidate scan writes roll back with the setting")
+      (is (not (fs/exists? (io/file (:config-dir sys) "shipyard" "library.edn")))))
+    (is (= 204 (:status (POST h "/settings" {:root (str candidate)}))))
+    (is (= (str candidate) (index/root! (:library sys))))
+    (is (= (str candidate) (settings-db/library-root! database)))))
+
 (deftest the-scan-index-is-not-shared-between-libraries
   (let [part-id "Bundle/Cruiser/Hull"
-        a       (library-tree part-id)
-        b       (library-tree part-id)          ; same relative path, different files
-        cache   (temp-dir "shipyard-idx")
-        library (ig/init-key :shipyard.library/index {:root (str a) :cache-home cache})]
-    (index/record-mesh-key! library part-id "cafe" 12)
-    (is (= "cafe" (index/mesh-key! library part-id)))
-
-    (index/set-root! library (str b))
-    (is (nil? (index/mesh-key! library part-id))
-        "a part id is library-relative; serving the stored key would be the wrong mesh")
-    (index/record-mesh-key! library part-id "f00d" 34)
-
-    (testing "and each library keeps its own, so switching back is free"
-      ;; One index file per root. A single shared file would have to be thrown
-      ;; away on every switch, and re-hashing is the cost §5.4 exists to avoid.
-      (index/set-root! library (str a))
-      (is (= "cafe" (index/mesh-key! library part-id)))
-      (index/set-root! library (str b))
-      (is (= "f00d" (index/mesh-key! library part-id))))
-
-    (testing "the files are distinct, and each names the root it belongs to"
-      ;; Parsed, not grepped: `pr-str` escapes the backslashes in a Windows
-      ;; path, so the stamp on disk does not read back as the path that made
-      ;; it. The stamp is EDN and comparing it as anything else is a bug in
-      ;; the test.
-      (let [roots (->> (fs/list-dir (fs/file cache "shipyard"))
-                       (map (comp :root edn/read-string slurp fs/file))
-                       set)]
-        (is (= #{(str a) (str b)} roots))))))
+        a (library-tree part-id)
+        b (library-tree part-id)
+        database-dir (temp-dir "shipyard-index-db")
+        database (metadata/open! database-dir)]
+    (try
+      (let [library (ig/init-key :shipyard.library/index {:root (str a) :store database})]
+        (index/record-mesh-key! library part-id "cafe" 12)
+        (index/set-root! library (str b))
+        (is (nil? (index/mesh-key! library part-id)))
+        (index/record-mesh-key! library part-id "f00d" 34)
+        (index/set-root! library (str a))
+        (is (= "cafe" (index/mesh-key! library part-id))))
+      (finally (metadata/close! database)))
+    (let [reopened (metadata/open! database-dir)]
+      (try
+        (let [library (ig/init-key :shipyard.library/index {:root nil :store reopened})]
+          (is (= (str a) (index/root! library)))
+          (is (= "cafe" (index/mesh-key! library part-id)))
+          (index/set-root! library (str b))
+          (is (= "f00d" (index/mesh-key! library part-id)))
+          (is (= 34 (:tris (get (scan-index/entries! reopened (str b)) part-id)))))
+        (finally (metadata/close! reopened))))))
 
 ;; --- what the validator refuses ---------------------------------------------
 
@@ -224,9 +246,9 @@
     (is (nil? (settings/relocate! sys (str root))))
     (let [library-before @(:state (:library sys))
           catalog-before @(:state (:catalog sys))
-          setting-before (slurp (system/library-file (:config-dir sys)))]
+          setting-before (settings-db/library-root! (:store (:catalog sys)))]
       (with-redefs [metadata/scan! (fn [& _] (throw (ex-info "Database write failed" {})))]
         (is (str/includes? (settings/relocate! sys (str other)) "Database write failed")))
       (is (= library-before @(:state (:library sys))))
       (is (= catalog-before @(:state (:catalog sys))))
-      (is (= setting-before (slurp (system/library-file (:config-dir sys))))))))
+      (is (= setting-before (settings-db/library-root! (:store (:catalog sys))))))))

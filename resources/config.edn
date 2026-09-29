@@ -2,10 +2,9 @@
 ;;
 ;; Resolution order, later winning over earlier (see shipyard.system/load-config):
 ;;   1. this file, shipped in the jar
-;;   2. $XDG_CONFIG_HOME/shipyard/config.edn   - user preferences, deep-merged
-;;   3. $XDG_CONFIG_HOME/shipyard/library.edn  - the library root, written by
-;;                                               the settings form (issue #35)
-;;   4. environment variables                  - PORT
+;;   2. $XDG_CONFIG_HOME/shipyard/config.edn   - system overrides, deep-merged
+;;   3. environment variables               - PORT
+;; Application settings are read from Datalevin after this opens the store.
 ;;
 ;; Tunables here were measured, not derived (see TECHNICAL.md §6.2, §6.3, §6.5),
 ;; which is exactly why they are adjustable without a rebuild.
@@ -16,9 +15,9 @@
  ;; No default, deliberately. Every other value in this file is a measured
  ;; tunable; this one is a fact about the user's machine, and the only honest
  ;; default is to admit we do not know it and ask. Set from the settings form,
- ;; which writes library.edn - see shipyard.http.settings.
+ ;; which writes to the shared database - see shipyard.http.settings.
  :shipyard.library/index
- {:root nil}
+ {:root nil :store #ig/ref :shipyard.store/db}
 
  :shipyard.mesh/cache
  {:crease-deg 35                  ; §6.2 - shading quality knob; V/T moves only ~15% over 15-60°

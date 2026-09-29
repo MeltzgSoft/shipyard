@@ -122,8 +122,10 @@
                        :expected-layout parts}))))
   scanned)
 
-(defn- library! [root cache-home]
-  (ig/init-key :shipyard.library/index {:root root :cache-home cache-home}))
+(defn- library! [root database]
+  (let [library {:store database :state (atom {})}]
+    (index/set-root! library root)
+    library))
 
 (defn- catalog! [library store]
   (ig/init-key :shipyard.catalog/db {:library library :store store}))
@@ -255,30 +257,29 @@
   (let [root (str root)
         scanned (verify-parts! (vec (scan/scan! (fs/file root))))
         scanned-by-id (into {} (map (juxt :part/id identity)) scanned)
-        lib (library! root cache-home)
         database (store/open! (fs/path cache-home "proof-database"))
-        timings (try (save-authoring-with-times! (catalog! lib database))
+        timings (try (save-authoring-with-times! (catalog! (library! root database) database))
                      (finally (store/close! database)))
-        database (store/open! (fs/path cache-home "proof-database"))
-        reloaded (catalog! (library! root cache-home) database)
-        m3-assembly (m3-assembly-audit root scanned-by-id reloaded)]
+        database (store/open! (fs/path cache-home "proof-database"))]
     (try
-      {:root root
-       :ran-at (str (java.time.Instant/now))
-       :parts (into (sorted-map)
-                    (map (fn [[k id]] [k (merge {:part/id id} (bbox! root scanned-by-id id))]))
-                    parts)
-       :facet-tolerances facet/default-options
-       :authored (into (sorted-map)
-                       (map (partial part-summary! root scanned-by-id reloaded timings))
-                       authoring)
-       :totals (totals)
-       :m3-assembly m3-assembly
-       :ambiguous-roll-cases []
-       :notes (vec (concat ["Run against a temporary Shipyard-style copy of Human Navy/HN Cruiser.zip."
-                            "Metadata was written through shipyard.catalog.db/save-authoring! and reloaded through a fresh database connection."
-                            "The :m3-assembly audit checks legacy authoring before attempting a live Cruiser assembly."]
-                           notes))}
+      (let [reloaded (catalog! (library! root database) database)
+            m3-assembly (m3-assembly-audit root scanned-by-id reloaded)]
+        {:root root
+         :ran-at (str (java.time.Instant/now))
+         :parts (into (sorted-map)
+                      (map (fn [[k id]] [k (merge {:part/id id} (bbox! root scanned-by-id id))]))
+                      parts)
+         :facet-tolerances facet/default-options
+         :authored (into (sorted-map)
+                         (map (partial part-summary! root scanned-by-id reloaded timings))
+                         authoring)
+         :totals (totals)
+         :m3-assembly m3-assembly
+         :ambiguous-roll-cases []
+         :notes (vec (concat ["Run against a temporary Shipyard-style copy of Human Navy/HN Cruiser.zip."
+                              "Metadata was written through shipyard.catalog.db/save-authoring! and reloaded through a fresh database connection."
+                              "The :m3-assembly audit checks legacy authoring before attempting a live Cruiser assembly."]
+                             notes))})
       (finally (store/close! database)))))
 
 (defn- parse-args [args]

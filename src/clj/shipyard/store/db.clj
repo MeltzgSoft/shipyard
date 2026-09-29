@@ -32,7 +32,8 @@
 
 (defn open! [directory]
   (let [directory (str (fs/normalize (fs/absolutize directory)))
-        conn (d/get-conn directory schema/schema {:validate-data? true :closed-schema? true})
+        ;; Own this handle: closing a temporary lookup must not close a live app.
+        conn (d/create-conn directory schema/schema {:validate-data? true :closed-schema? true})
         store {:conn conn :lock conn :directory directory}]
     (try
       (let [version (:store/version (d/pull @conn '[*] [:store/key "shipyard"]))]

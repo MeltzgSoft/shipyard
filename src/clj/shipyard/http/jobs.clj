@@ -59,16 +59,17 @@
   (reset! facet-state {})
   nil)
 
-(defn- execute! [{:keys [state library cache]} part-id source]
-  (let [result (try
+(defn- execute! [{:keys [state library cache]} part-id source expected mine]
+  (let [library-lock (:state library)
+        result (try
                  (let [{:keys [mesh-key tris]} (cache/ensure! cache source)]
                    ;; Recording the key is an optimisation, not part of the
                    ;; result. The mesh is on disk either way and the next run
                    ;; recomputes the key from the source hash, so a part that
                    ;; preprocessed perfectly must never be reported as failed
-                   ;; because an index file could not be written.
+                   ;; because its derived database entry could not be written.
                    (try
-                     (index/record-mesh-key! library part-id mesh-key tris)
+                     (index/record-mesh-key! library part-id mesh-key tris expected)
                      (catch Throwable t
                        (log/warn "could not record the mesh key for" part-id "-"
                                  (ex-message t))))
@@ -76,7 +77,14 @@
                  (catch Throwable t
                    (log/warn t "preprocessing failed:" part-id)
                    {:state :failed :message (or (ex-message t) (str (class t)))}))]
-    (swap! state assoc part-id result)))
+    (locking library-lock
+      (let [current-source? (index/current-source?! library part-id expected)]
+        (swap! state (fn [current]
+                       (if (identical? mine (get current part-id))
+                         (if current-source?
+                           (assoc current part-id result)
+                           (dissoc current part-id))
+                         current)))))))
 
 (defn submit!
   "Start preprocessing `part-id` unless it is already running, ready or failed.
@@ -86,13 +94,20 @@
   the read above it: two Jetty threads can both see nothing recorded, and only
   the one whose own map survives the swap is allowed to submit. Reading the
   result of `swap!` rather than the atom afterwards is what makes that decision
-  a single point rather than a race."
-  [{:keys [^ExecutorService pool state] :as jobs} part-id source]
-  (let [mine  {:state :running}
-        after (swap! state claim-job part-id mine)]
-    (when (identical? mine (get after part-id))
-      (.submit pool ^Runnable #(execute! jobs part-id source)))
-    (get after part-id)))
+  a single point rather than a race. Library validation and claiming share the
+  activation lock, so a delayed caller cannot submit an old root's source."
+  [{:keys [^ExecutorService pool state library] :as jobs} part-id source]
+  (let [library-lock (:state library)]
+    (locking library-lock
+      (let [expected (assoc (index/part-state! library part-id) :source source)]
+        (when (index/current-source?! library part-id expected)
+          (let [;; A literal map can be reused by the compiler across calls. Each
+                ;; claim needs a distinct identity after clear! and resubmission.
+                mine (hash-map :state :running)
+                after (swap! state claim-job part-id mine)]
+            (when (identical? mine (get after part-id))
+              (.submit pool ^Runnable #(execute! jobs part-id source expected mine)))
+            (get after part-id)))))))
 
 (defn submit-facet-backfill!
   "Run `task` once for a mesh-key-scoped legacy mount recovery.

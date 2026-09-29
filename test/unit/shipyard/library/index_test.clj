@@ -18,7 +18,7 @@
         stored {"hull" {:mtime 10 :size 20 :mesh-key "keep" :tris 12
                         :escort-analysis {:volume 42.0}}
                 "prow" {:mtime 10 :size 20 :mesh-key "drop" :tris 6}
-                "supported-only" {:mesh-key "drop"}}
+                "supported-only" {:mesh-key "drop" :tris 6 :escort-analysis {:volume 42.0}}}
         stats {"hull" {:mtime 10 :size 20}
                "prow" {:mtime 11 :size 20}}
         result (index/refresh parts stored stats)]

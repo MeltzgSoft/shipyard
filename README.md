@@ -82,9 +82,9 @@ blocked report deliberately identifies mounts that need reauthoring rather than 
 their mating geometry.
 
 The benchmark is the on-demand, machine-labelled measurement behind TECHNICAL.md §11;
-it is deliberately not a CI gate. It creates fresh scan indexes and mesh caches under
-the system temp directory, drives a hardware Chromium window for ten seconds, runs the
-whole-library canary with four threads, and writes `benchmark.edn`. Build the dev viewport
+it is deliberately not a CI gate. It creates isolated databases for fresh scan indexes
+and mesh caches under the system temp directory, drives a hardware Chromium window
+for ten seconds, runs the whole-library canary with four threads, and writes `benchmark.edn`. Build the dev viewport
 bundle first (`npx shadow-cljs compile viewport`). Use `--viewport-mode swiftshader` only
 for a CPU-renderer comparison; it does not measure the hardware viewport budget.
 
@@ -143,14 +143,15 @@ It also needs both gitignored front-end assets in place: the viewport bundle fro
 assertions read - and htmx, which is copied out of `node_modules` rather than bundled.
 Without htmx the page renders and nothing ever loads the library, which reads exactly like
 a server bug; the suite checks for both up front and tells you which command to run. The
-suite is hermetic: its library, mesh cache and scan index all live in a temp directory, so
-it never touches your real one.
+suite is hermetic: its library, database (including settings and scan index), and mesh
+cache live in temporary directories, so it never touches your real data.
 
-Authored metadata uses one Datalevin database at `$XDG_DATA_HOME/shipyard/database`,
+Authored metadata, application-managed settings and the derived scan index use one
+Datalevin database at `$XDG_DATA_HOME/shipyard/database`,
 defaulting to `~/.local/share/shipyard/database`. Configure
 `:shipyard.store/db {:data-home "/path/to/data"}` or `{:directory "/exact/database"}`
-in user `config.edn`. Catalog, loadouts and schemes share this store; configure its
-location once. Run one Shipyard process per database. Stop the application before
+in user `config.edn`. The library index, catalog, loadouts and schemes share this store;
+configure its location once. Run one Shipyard process per database. Stop the application before
 copying the entire database directory for backup or restore.
 
 Datalevin's native library is pinned to 1.1.5 to fix a compressed overflow-page
@@ -158,9 +159,12 @@ deletion error (`MDB_PROBLEM`) that can prevent further painting. Its DLMDB form
 is v2.
 
 Back up both the database and source STLs;
-copying an STL folder alone no longer carries authored metadata. The scan index and
-mesh cache remain disposable. Database native binaries support Linux x86-64/ARM64,
-Windows x86-64 and macOS ARM64; this dependency does not ship macOS Intel binaries.
+copying an STL folder alone no longer carries authored metadata. Scan entries remain
+rebuildable derived data inside the database; the `.symesh` cache remains disposable
+files. System/bootstrap configuration stays in `config.edn`, and report exports remain
+files. An existing `library.edn` selection is imported only when the database has no
+selection; choose subsequent changes through **Library folder** in the application.
+Database native binaries support Linux x86-64/ARM64, Windows x86-64 and macOS ARM64; this dependency does not ship macOS Intel binaries.
 
 The Paint brush sends new faces during each drag at the interval configured by
 `:shipyard.paint/db {:paint/flush-interval-ms 120}` (milliseconds, positive integer).

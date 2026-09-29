@@ -1,10 +1,11 @@
 (ns shipyard.integration.escort-test
-  (:require [babashka.fs :as fs]
-            [clojure.java.io :as io]
+  (:require [clojure.java.io :as io]
             [clojure.test :refer [deftest is testing]]
             [integrant.core :as ig]
             [shipyard.fixtures :as f]
-            [shipyard.library.escort :as escort]))
+            [shipyard.library.escort :as escort]
+            [shipyard.store.db :as store]
+            [shipyard.store.scan-index :as scan-index]))
 
 (defn- temp-dir ^java.io.File [prefix]
   (doto (io/file (System/getProperty "java.io.tmpdir") (str prefix "-" (random-uuid)))
@@ -42,33 +43,35 @@
 
 (deftest analyze-library-classifies-escort-families
   (let [root (fixture-tree)
-        cache-home (temp-dir "shipyard-escort-cache")
-        library (ig/init-key :shipyard.library/index {:root (str root)
-                                                      :cache-home (str cache-home)})
-        first-report (escort/analyze-library! library)
-        second-report (escort/analyze-library! library)
-        report (by-id first-report)]
-    (testing "known whole-ship Human Navy-style families become geometry-sourced ships"
-      (let [row (report "Human Navy Fleet Bundle/Escort/Cyanide Prow Python")]
-        (is (= :whole-ship (get-in row [:classification :escort/classification])))
-        (is (= :ship (get-in row [:part :part/role-hint])))
-        (is (= :geometry (get-in row [:part :part/role-source])))))
-    (testing "known Pirate Elf-style kitbash components need a larger sibling anchor"
-      (is (= :kitbash-component
-             (get-in report ["Pirate Elves Fleet Bundle/Escort/Raider Prow"
-                             :classification :escort/classification]))))
-    (testing "mixed escort folders can contain both whole ships and components"
-      (is (= :whole-ship
-             (get-in report ["Hazard Stripe Fleet Bundle/Escort/IW Python"
-                             :classification :escort/classification])))
-      (is (= :kitbash-component
-             (get-in report ["Hazard Stripe Fleet Bundle/Escort/IW Barge Prow"
-                             :classification :escort/classification]))))
-    (testing "unresolved synthetic cases remain visible"
-      (is (= :unresolved
-             (get-in report ["Mystery Fleet Bundle/Escort/Lone Prow"
-                             :classification :escort/classification]))))
-    (testing "analysis is cached in the scan index"
-      (is (= (mapv :measurement first-report)
-             (mapv :measurement second-report)))
-      (is (fs/regular-file? (first (fs/glob cache-home "shipyard/index-*.edn")))))))
+        database (store/open! (temp-dir "shipyard-escort-db"))]
+    (try
+      (let [library (ig/init-key :shipyard.library/index {:root (str root)
+                                                          :store database})
+            first-report (escort/analyze-library! library)
+            second-report (escort/analyze-library! library)
+            report (by-id first-report)]
+        (testing "known whole-ship Human Navy-style families become geometry-sourced ships"
+          (let [row (report "Human Navy Fleet Bundle/Escort/Cyanide Prow Python")]
+            (is (= :whole-ship (get-in row [:classification :escort/classification])))
+            (is (= :ship (get-in row [:part :part/role-hint])))
+            (is (= :geometry (get-in row [:part :part/role-source])))))
+        (testing "known Pirate Elf-style kitbash components need a larger sibling anchor"
+          (is (= :kitbash-component
+                 (get-in report ["Pirate Elves Fleet Bundle/Escort/Raider Prow"
+                                 :classification :escort/classification]))))
+        (testing "mixed escort folders can contain both whole ships and components"
+          (is (= :whole-ship
+                 (get-in report ["Hazard Stripe Fleet Bundle/Escort/IW Python"
+                                 :classification :escort/classification])))
+          (is (= :kitbash-component
+                 (get-in report ["Hazard Stripe Fleet Bundle/Escort/IW Barge Prow"
+                                 :classification :escort/classification]))))
+        (testing "unresolved synthetic cases remain visible"
+          (is (= :unresolved
+                 (get-in report ["Mystery Fleet Bundle/Escort/Lone Prow"
+                                 :classification :escort/classification]))))
+        (testing "analysis is cached in the scan index"
+          (is (= (mapv :measurement first-report)
+                 (mapv :measurement second-report)))
+          (is (some :escort-analysis (vals (scan-index/entries! database (str root)))))))
+      (finally (store/close! database)))))

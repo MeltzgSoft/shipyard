@@ -65,7 +65,6 @@
          root (build-library! (fs/path temp "library"))
          cfg (-> (system/load-config! {:profile :test :config-dir (str (fs/path temp "config")) :env {}})
                  (assoc-in [:shipyard.library/index :root] (str root))
-                 (assoc-in [:shipyard.library/index :cache-home] (str (fs/path temp "cache")))
                  (assoc-in [:shipyard.mesh/cache :cache-home] (str (fs/path temp "cache")))
                  (assoc-in [:shipyard.store/db :data-home] (str (fs/path temp "data")))
                  (assoc-in [:shipyard.http/routes :config-dir] (str (fs/path temp "config")))

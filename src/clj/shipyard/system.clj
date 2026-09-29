@@ -2,14 +2,10 @@
   "Configuration loading and integrant lifecycle.
 
   Configuration is data (resources/config.edn); this namespace only resolves and
-  starts it. No constants live here.
-
-  It also owns the one piece of configuration Shipyard writes back: the library
-  root, set from the settings form. That lives in its own file rather than in
-  the user's `config.edn` - see `library-file`."
+  starts it. Application settings are resolved from the shared store after
+  bootstrap configuration has located and opened that store."
   (:require [aero.core :as aero]
             [babashka.fs :as fs]
-            [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
@@ -49,7 +45,7 @@
       (aero/read-config f))))
 
 (defn- env-overrides
-  "Layer 4. Applied explicitly rather than through `#or` inside config.edn,
+  "Layer 3. Applied explicitly rather than through `#or` inside config.edn,
   which would be silently discarded whenever a user config replaced the whole
   key.
 
@@ -83,9 +79,8 @@
   Windows job is there to find. The hold is short, so a few backed-off retries
   clear it.
 
-  It lives here rather than beside its first caller because the library index is
-  no longer the only thing Shipyard writes: `save-library-root!` needs the same
-  guarantee, and `shipyard.library.index` already depends on this namespace."
+  Used for explicit report exports. Application settings and scan metadata use
+  Datalevin transactions instead."
   [target ^String content]
   (let [target (fs/absolutize target)]
     (fs/create-dirs (fs/parent target))
@@ -109,45 +104,8 @@
             :retry    (do (Thread/sleep (* 50 (long attempt)))
                           (recur (inc attempt) atomic?))))))))
 
-;; --- the library root, the one setting Shipyard writes back -----------------
-
-(defn library-file
-  "Where the settings form persists the library root.
-
-  Its own file, deliberately. The alternative - merging into the user's
-  `config.edn` - means reading that file, and reading it means resolving it:
-  aero would evaluate `#env` and `#profile` tags and drop every comment, so
-  saving a path from the UI would quietly rewrite configuration the user hand
-  authored. A machine-written file nothing else edits cannot do that."
-  [config-dir]
-  (fs/file config-dir "shipyard" "library.edn"))
-
-(defn- library-setting!
-  "Layer 3. Absent until somebody sets a root, which is the state a fresh
-  install is in."
-  [config-dir]
-  (let [f (library-file config-dir)]
-    (when (fs/regular-file? f)
-      (try
-        (when-let [root (:root (edn/read-string (slurp (fs/file f))))]
-          {:shipyard.library/index {:root root}})
-        (catch Exception e
-          ;; Recoverable: the user sets the path again. Refusing to start
-          ;; because a settings file is corrupt is the worse failure.
-          (log/warn "ignoring unreadable library setting:" (ex-message e))
-          nil)))))
-
-(defn save-library-root!
-  "Persist `root` as the library location. Returns it."
-  ([root] (save-library-root! (config-home!) root))
-  ([config-dir root]
-   (let [f (library-file config-dir)]
-     (write-atomically! f (pr-str {:root (str root)}))
-     (log/info "library root saved to" (str f))
-     root)))
-
 (defn load-config!
-  "Resolve configuration from its four layers.
+  "Resolve bootstrap configuration from defaults, user config and environment.
 
   `config-dir` and `env` are injectable so the layering itself is testable
   without mutating the process environment."
@@ -158,8 +116,8 @@
          config-dir (or config-dir (config-home!))]
      (-> (aero/read-config (io/resource "config.edn") {:profile profile})
          (deep-merge (user-config! config-dir))
-         (deep-merge (library-setting! config-dir))
          (env-overrides env)
+         (assoc-in [:shipyard.library/index :config-dir] config-dir)
          (update-in [:shipyard.library/index :root]
                     #(expand-home (System/getProperty "user.home") %))))))
 

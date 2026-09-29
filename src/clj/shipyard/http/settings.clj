@@ -19,6 +19,8 @@
             [shipyard.catalog.db :as db]
             [shipyard.http.jobs :as jobs]
             [shipyard.library.index :as index]
+            [shipyard.settings.db :as settings]
+            [shipyard.store.db :as store]
             [shipyard.system :as system]))
 
 (defn normalise
@@ -60,20 +62,28 @@
 (defn relocate!
   "Validate and import a candidate library before persisting and activating it.
   Failed import or settings writes leave the running library unchanged."
-  [{:keys [library catalog jobs config-dir]} path]
+  [{:keys [library catalog jobs]} path]
   (or (problem! path)
       (let [root (normalise (System/getProperty "user.home") path)]
         (try
-          (let [candidate (index/prepare-root! library root)
-                staged (db/open! (:store catalog) (:parts candidate) root)]
-            (if config-dir
-              (system/save-library-root! config-dir root)
-              (system/save-library-root! root))
-            (reset! (:state library) candidate)
-            (reset! (:state catalog) @(:state staged))
-            (jobs/clear! jobs)
-            (log/info "library relocated to" root)
-            nil)
+          (let [database (:store catalog)
+                library-lock (:state library)
+                store-lock (:lock database)]
+            (locking library-lock
+              (locking store-lock
+                (let [{:keys [candidate staged]}
+                      (store/write! database
+                                    (fn [conn]
+                                      (let [transaction (assoc database :conn conn)
+                                            candidate (index/prepare-root! (assoc library :store transaction) root)
+                                            staged (db/open! transaction (:parts candidate) root)]
+                                        (settings/save-library-root! transaction root)
+                                        {:candidate candidate :staged @(:state staged)})))]
+                  (reset! (:state library) candidate)
+                  (reset! (:state catalog) staged)
+                  (jobs/clear! jobs)
+                  (log/info "library relocated to" root)
+                  nil))))
           (catch Exception e
             (log/warn e "could not activate the library")
             (str "Could not save the setting: " (ex-message e)))))))

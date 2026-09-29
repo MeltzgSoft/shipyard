@@ -2,10 +2,12 @@
   "Issue #7 acceptance: configuration resolves through its layers, later
   winning over earlier.
 
-  Four of them since issue #35: the library root moved out of the environment
-  and into a file Shipyard writes itself."
-  (:require [clojure.java.io :as io]
+  The selected library lives in Datalevin; bootstrap configuration remains a file."
+  (:require [babashka.fs :as fs]
+            [clojure.java.io :as io]
             [clojure.test :refer [deftest is testing]]
+            [shipyard.settings.db :as settings]
+            [shipyard.store.db :as store]
             [shipyard.system :as system]))
 
 (defn- with-user-config
@@ -18,11 +20,12 @@
     (spit f (pr-str edn))
     dir))
 
-(defn- with-library-setting
-  "Write the settings form's file into a temp XDG config dir, and return it."
-  [dir root]
-  (system/save-library-root! (str dir) root)
-  dir)
+(defn- with-store [dir f]
+  (let [database (store/open! (io/file dir "database"))]
+    (try (f database) (finally (store/close! database)))))
+
+(defn- legacy-setting! [dir value]
+  (spit (doto (io/file dir "shipyard" "library.edn") io/make-parents) value))
 
 (deftest layer-1-shipped-defaults
   (let [cfg (system/load-config! {:config-dir "/nonexistent" :env {}})]
@@ -41,15 +44,37 @@
     (testing "merge is deep - untouched sibling keys survive"
       (is (= "127.0.0.1" (get-in cfg [:shipyard.http/server :host]))))))
 
-(deftest layer-3-the-settings-form-beats-user-config
-  (let [dir (-> (with-user-config {:shipyard.library/index {:root "/from-user-config"}})
-                (with-library-setting "/from-the-form"))
-        cfg (system/load-config! {:config-dir (str dir) :env {}})]
-    (is (= "/from-the-form" (get-in cfg [:shipyard.library/index :root]))
-        "what the user set in the UI must beat what they once put in a file")
-    (testing "and it does not disturb the config file it overrides"
-      (is (= {:shipyard.library/index {:root "/from-user-config"}}
-             (read-string (slurp (io/file dir "shipyard" "config.edn"))))))))
+(deftest database-selection-beats-bootstrap-config-without-rewriting-it
+  (let [dir (with-user-config {:shipyard.library/index {:root "/from-user-config"}})
+        file (io/file dir "shipyard" "config.edn")
+        original (str "; keep this comment and formatting\n" (slurp file) "\n")]
+    (spit file original)
+    (with-store dir
+      (fn [database]
+        (settings/save-library-root! database "/from-the-form")
+        (let [cfg (system/load-config! {:config-dir (str dir) :env {}})]
+          (is (= "/from-user-config" (get-in cfg [:shipyard.library/index :root])))
+          (is (= "/from-the-form"
+                 (settings/initial-root! database (get-in cfg [:shipyard.library/index :root]) (str dir)))))))
+    (is (= original (slurp file)))
+    (is (not (fs/exists? (io/file dir "shipyard" "library.edn"))))))
+
+(deftest legacy-selection-is-imported-once-and-database-is-authoritative
+  (let [dir (with-user-config {})
+        legacy "{:root \"/legacy/models\"}\n"]
+    (legacy-setting! dir legacy)
+    (with-store dir
+      (fn [database]
+        (is (= "/legacy/models" (settings/initial-root! database "/configured/models" (str dir))))))
+    (is (= legacy (slurp (io/file dir "shipyard" "library.edn"))))
+    (legacy-setting! dir "{:root \"/changed/legacy\"}")
+    (with-store dir
+      (fn [database]
+        (is (= "/legacy/models" (settings/initial-root! database "/changed/config" (str dir))))
+        (settings/save-library-root! database "/from-the-form")))
+    (with-store dir
+      (fn [database]
+        (is (= "/from-the-form" (settings/initial-root! database nil (str dir))))))))
 
 (deftest layer-4-env-beats-user-config
   (let [dir (with-user-config {:shipyard.http/server {:port 9999}})
@@ -58,31 +83,27 @@
         "env var must beat a user config that set the same key")))
 
 (deftest the-library-root-is-not-an-environment-variable
-  ;; It is set from the settings form (issue #35). An env var outranking the
-  ;; form would make the form lie about what the application is using.
-  (let [dir (with-library-setting (with-user-config {}) "/from-the-form")
-        cfg (system/load-config! {:config-dir (str dir)
-                                  :env        {"SHIPYARD_LIBRARY" "/from-env"}})]
-    (is (= "/from-the-form" (get-in cfg [:shipyard.library/index :root])))))
+  (let [dir (with-user-config {})
+        cfg (system/load-config! {:config-dir (str dir) :env {"SHIPYARD_LIBRARY" "/from-env"}})]
+    (is (nil? (get-in cfg [:shipyard.library/index :root])))
+    (with-store dir
+      (fn [database]
+        (settings/save-library-root! database "/from-the-form")
+        (is (= "/from-the-form" (settings/initial-root! database nil (str dir))))))))
 
-(deftest a-saved-root-survives-a-restart
+(deftest a-bootstrap-root-is-persisted-without-creating-a-settings-file
   (let [dir (with-user-config {})]
-    (system/save-library-root! (str dir) "/somewhere/models")
-    (is (= "/somewhere/models"
-           (get-in (system/load-config! {:config-dir (str dir) :env {}})
-                   [:shipyard.library/index :root])))
-    (testing "and saving again replaces it rather than accumulating"
-      (system/save-library-root! (str dir) "/somewhere/else")
-      (is (= "/somewhere/else"
-             (get-in (system/load-config! {:config-dir (str dir) :env {}})
-                     [:shipyard.library/index :root]))))))
+    (with-store dir #(is (= "/configured/models" (settings/initial-root! % "/configured/models" (str dir)))))
+    (with-store dir #(is (= "/configured/models" (settings/initial-root! % "/different/models" (str dir)))))
+    (is (not (fs/exists? (io/file dir "shipyard" "library.edn"))))))
 
-(deftest an-unreadable-library-setting-does-not-stop-startup
+(deftest an-unreadable-legacy-setting-does-not-stop-startup
   (let [dir (with-user-config {})]
-    (spit (doto (io/file dir "shipyard" "library.edn") io/make-parents) "{{{ not edn")
-    (is (nil? (get-in (system/load-config! {:config-dir (str dir) :env {}})
-                      [:shipyard.library/index :root]))
-        "a corrupt setting costs you the setting, not the application")))
+    (legacy-setting! dir "{{{ not edn")
+    (with-store dir
+      (fn [database]
+        (is (nil? (settings/initial-root! database nil (str dir))))
+        (is (= "/configured/models" (settings/initial-root! database "/configured/models" (str dir))))))))
 
 (deftest test-profile-shrinks-the-cache
   (let [d (system/load-config! {:profile :default :config-dir "/nonexistent" :env {}})
@@ -96,3 +117,30 @@
         cfg (system/load-config! {:config-dir (str dir) :env {}})]
     (is (= (str (System/getProperty "user.home") "/models")
            (get-in cfg [:shipyard.library/index :root])))))
+
+(deftest command-line-root-lookup-is-read-only-and-prefers-the-database
+  (let [dir (with-user-config {})
+        database-dir (io/file dir "database")
+        cfg {:shipyard.store/db {:directory (str database-dir)}
+             :shipyard.library/index {:root "/configured/models" :config-dir (str dir)}}]
+    (is (= "/configured/models" (settings/configured-root! cfg)))
+    (is (not (fs/exists? database-dir)) "a read-only lookup must not create a database")
+    (legacy-setting! dir "{:root \"/legacy/models\"}")
+    (is (= "/legacy/models" (settings/configured-root! cfg)))
+    (is (not (fs/exists? database-dir)))
+    (with-store dir #(settings/save-library-root! % "/saved/models"))
+    (is (= "/saved/models" (settings/configured-root! cfg)))))
+
+(deftest command-line-root-lookup-does-not-close-a-running-application-store
+  (let [dir (with-user-config {})
+        cfg {:shipyard.store/db {:directory (str (io/file dir "database"))}
+             :shipyard.library/index {:config-dir (str dir)}}]
+    (with-store dir
+      (fn [database]
+        (settings/save-library-root! database "/saved/models")
+        (is (= "/saved/models" (settings/configured-root! cfg)))
+        (is (= "/saved/models" (settings/library-root! database))
+            "closing the lookup connection must leave the application's connection readable")
+        (settings/save-library-root! database "/changed/models")
+        (is (= "/changed/models" (settings/library-root! database)))
+        (is (= "/changed/models" (settings/configured-root! cfg)))))))

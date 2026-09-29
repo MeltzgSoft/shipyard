@@ -9,7 +9,8 @@
   **Read-only, absolutely.** It parses, welds and simplifies entirely in memory
   and never calls the mesh cache: filling a 10 GB cache as a side effect of
   auditing would evict everything the user actually looks at. Nothing here opens
-  a file for writing except the report, which is written outside the library.
+  a library file for writing. It reads the saved root from the application
+  database when --root is absent and writes its report outside the library.
 
   It is a report, not a gate. Every part is examined even when the one before it
   threw, because the whole point is the list."
@@ -22,6 +23,7 @@
             [shipyard.mesh.volume :as volume]
             [shipyard.mesh.weld :as weld]
             [shipyard.report :as report]
+            [shipyard.settings.db :as settings]
             [shipyard.system :as system])
   (:import [java.io File]
            [java.nio ByteBuffer ByteOrder]
@@ -212,7 +214,7 @@
 (defn -main [& args]
   (let [{:keys [out limit thread-count root]} (parse-args args)
         cfg   (system/load-config!)
-        root  (or root (get-in cfg [:shipyard.library/index :root]))
+        root  (or root (settings/configured-root! cfg))
         cache (get cfg :shipyard.mesh/cache)
         _     (when-not root
                 ;; There is no default library any more (issue #35), and the

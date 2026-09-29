@@ -6,58 +6,12 @@
   part is first preprocessed - hashing 19 GB at every start is exactly what this
   namespace exists to prevent."
   (:require [babashka.fs :as fs]
-            [clojure.edn :as edn]
-            [digest]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
             [integrant.core :as ig]
             [shipyard.library.scan :as scan]
-            [shipyard.system :as system]))
-
-(defn index-file
-  "The scan index for `root`.
-
-  **One file per library**, named by a digest of the root path. A single shared
-  file would have to be discarded every time the root changed, so alternating
-  between two libraries would re-hash both of them on every switch - and
-  re-hashing is the exact cost §5.4 exists to avoid. Per-root files make a
-  switch free in both directions.
-
-  The digest is of the path, not of anything in the library: it only has to be
-  stable across runs and safe as a filename, which a library-relative path full
-  of spaces is not.
-
-  `cache-home` is injectable so a test can be hermetic: an E2E run scanning a
-  fixture tree must not write part ids from a temp directory into the index the
-  developer's real library depends on."
-  [cache-home root]
-  (fs/file cache-home "shipyard"
-           (str "index-" (subs (digest/sha-256 (str root)) 0 16) ".edn")))
-
-(defn load-index!
-  "The stored entries, but only if they were scanned from `root`.
-
-  **The stamp is not decoration.** Entries are keyed by library-relative part
-  id, which identified a part uniquely only while there was one root. Now that
-  the root is a setting (issue #35), two libraries can each hold
-  `Cruiser/Hull`, and serving one's cached mesh key for the other would hand
-  the viewport a mesh of the wrong ship. A mismatch costs a rescan; the
-  alternative costs correctness."
-  [f root]
-  (if (and f (fs/regular-file? f))
-    (try
-      (let [stored (edn/read-string (slurp f))]
-        (if (= (str root) (:root stored))
-          (:entries stored)
-          {}))
-      (catch Exception e
-        ;; Derived data: a corrupt index costs a rescan, never correctness.
-        (log/warn "discarding unreadable scan index:" (ex-message e))
-        {}))
-    {}))
-
-(defn save-index! [f root entries]
-  (system/write-atomically! f (pr-str {:root (str root) :entries entries})))
+            [shipyard.settings.db :as settings]
+            [shipyard.store.scan-index :as scan-index]))
 
 (defn- stat! [f] {:mtime (fs/file-time->millis (fs/last-modified-time f)) :size (fs/size f)})
 
@@ -83,7 +37,7 @@
   (reduce
    (fn [acc {:part/keys [id source]}]
      (if-not source
-       (assoc acc id (dissoc (get stored id) :mesh-key))   ; nothing renderable
+       (assoc acc id {})   ; no source can justify retaining derived metadata
        (let [source-stat (get source-stats id)
              old         (get stored id)]
          (assoc acc id
@@ -103,32 +57,39 @@
                            parts)]
     (refresh parts stored source-stats)))
 
+(defn current-source?!
+  "Whether a captured preprocess context still identifies this library's source.
+  Callers coordinating publication hold the library state lock around this check."
+  [{:keys [state]} part-id expected]
+  (let [{:keys [root entries source-files]} @state
+        entry (get entries part-id)]
+    (and entry
+         (= root (:root expected))
+         (= (select-keys entry [:mtime :size])
+            (select-keys (:entry expected) [:mtime :size]))
+         (= (get source-files part-id) (:source expected))
+         (try (fresh-source?! entry (:source expected))
+              (catch Exception _ false)))))
+
 (defn record-mesh-key!
-  "Remember the mesh key a preprocess produced, and persist the index.
-
-  This is the half of §5.4 that `refresh` was already written for and nothing
-  yet fed: it carries `:mesh-key` forward for any part whose source file is
-  unchanged, so a restart can name a part's mesh URL without re-hashing the
-  file. Writing the whole map each time is cheap next to what it saves - the
-  alternative is a SHA-256 over a 20 MB STL on every part you open.
-
-  A part the current library does not contain is dropped rather than recorded.
-  A preprocess job outlives the root that started it - the pool is still
-  running when the settings form points the library somewhere else - and
-  writing its result into the new library's index would file a mesh key under
-  another library's part."
-  [{:keys [state]} part-id mesh-key tris]
-  (let [updated (swap! state
-                       (fn [{:keys [entries] :as st}]
-                         (if (contains? entries part-id)
-                           (update-in st [:entries part-id]
-                                      (fn [entry]
-                                        (cond-> (assoc entry :mesh-key mesh-key)
-                                          tris (assoc :tris tris))))
-                           st)))]
-    (when (contains? (:entries updated) part-id)
-      (save-index! (:index-file updated) (:root updated) (:entries updated)))
-    mesh-key))
+  "Remember a preprocess result for a part still present in the active library.
+  Persist only that entry, under the shared database transaction boundary.
+  Jobs supply their submission context so late results cannot cross libraries
+  or overwrite a changed source's metadata."
+  ([library part-id mesh-key tris]
+   (record-mesh-key! library part-id mesh-key tris nil))
+  ([{:keys [state store] :as library} part-id mesh-key tris expected]
+   (locking state
+     (let [{:keys [root entries] :as before} @state
+           entry (get entries part-id)]
+       (when (and entry
+                  (or (nil? expected)
+                      (current-source?! library part-id expected)))
+         (let [entry (cond-> (assoc entry :mesh-key mesh-key)
+                       tris (assoc :tris tris))]
+           (scan-index/put-entry! store root part-id entry)
+           (reset! state (assoc-in before [:entries part-id] entry))))))
+   mesh-key))
 
 (defn mesh-key!
   "The recorded mesh key for a part, or nil if it has never been preprocessed
@@ -157,15 +118,16 @@
     state))
 
 (defn record-escort-analysis!
-  "Persist on-demand escort analysis beside the scan index.
-
-  Startup still does not open STL geometry; this is called only by the explicit
-  escort probe/classifier path."
-  [{:keys [state]} part-id analysis]
-  (let [updated (swap! state with-escort-analysis part-id analysis)]
-    (when (contains? (:entries updated) part-id)
-      (save-index! (:index-file updated) (:root updated) (:entries updated)))
-    analysis))
+  "Persist on-demand escort analysis in this part's derived scan entry.
+  Startup still does not open STL geometry."
+  [{:keys [state store]} part-id analysis]
+  (locking state
+    (let [before @state
+          updated (with-escort-analysis before part-id analysis)]
+      (when (contains? (:entries updated) part-id)
+        (scan-index/put-entry! store (:root updated) part-id (get-in updated [:entries part-id]))
+        (reset! state updated))))
+  analysis)
 
 ;; --- the component, and the root it can be pointed at ------------------------
 
@@ -220,37 +182,33 @@
         parts))
 
 (defn- scan-state!
-  "Scan `root` and build the component's whole value. Pure enough to be the one
-  place that knows what a library's state consists of, so starting and
-  relocating cannot drift apart."
-  [root cache-home]
+  "Scan `root`, refresh its derived database entries, and build the complete
+  candidate snapshot shared by startup and relocation."
+  [root store]
   (if (str/blank? (str root))
     ;; Nothing set. Not a failure - the settings form exists for exactly this
-    ;; state, and there is nothing to scan, name a file for, or stamp until it
-    ;; is used.
-    {:root nil :parts [] :entries {} :source-files {} :index-file nil}
-    (let [f   (index-file cache-home root)
-          dir (fs/file root)]
+    ;; state, and there is nothing to scan or stamp until it is used.
+    {:root nil :parts [] :entries {} :source-files {}}
+    (let [dir (fs/file root)]
       (when-not (fs/directory? dir)
         ;; Not fatal: the app must still start so the user can point it
         ;; somewhere real. A hard failure here makes a fresh install unusable.
         (log/warn "library root does not exist:" root))
-      (let [stored (load-index! f root)
+      (let [stored (scan-index/entries! store root)
             parts  (or (scan/scan! dir) [])
             idx    (refresh! parts root stored)]
         (log/infof "library: %d parts, %d with a cached mesh key"
                    (count parts) (count (filter :mesh-key (vals idx))))
-        (when-not (= idx stored) (save-index! f root idx))
+        (when-not (= idx stored) (scan-index/replace! store root idx))
         {:root (str root)
          :parts parts
          :entries idx
-         :source-files (source-files root parts)
-         :index-file f}))))
+         :source-files (source-files root parts)}))))
 
 (defn prepare-root!
   "Scan a candidate root without publishing it as the active library."
-  [{:keys [cache-home]} root]
-  (scan-state! root cache-home))
+  [{:keys [store]} root]
+  (scan-state! root store))
 
 (defn set-root!
   "Point the library at `root` and rescan, in place.
@@ -260,10 +218,12 @@
   Swapping this atom is what lets a running server serve a different library
   without a restart; rebuilding the component would leave every handler holding
   the old one."
-  [{:keys [cache-home state]} root]
-  (reset! state (scan-state! root cache-home)))
+  [{:keys [store state]} root]
+  (locking state
+    (reset! state (scan-state! root store))))
 
-(defmethod ig/init-key :shipyard.library/index [_ {:keys [root cache-home]}]
-  (let [cache-home (or cache-home (system/cache-home!))]
-    {:cache-home cache-home
-     :state      (atom (scan-state! root cache-home))}))
+(defmethod ig/init-key :shipyard.library/index [_ {:keys [root store config-dir]}]
+  (when-not store
+    (throw (ex-info "Library index requires the shared application store" {})))
+  (let [root (settings/initial-root! store root config-dir)]
+    {:store store :state (atom (scan-state! root store))}))

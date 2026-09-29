@@ -7,7 +7,7 @@
   to the machine and model library they were measured on; the command records
   both beside the results so the numbers remain evidence rather than folklore.
 
-  Every cache and scan index is created below the JVM temp directory. The model
+  Every working database and mesh cache is created below the JVM temp directory. The model
   library is read-only."
   (:require [babashka.fs :as fs]
             [clojure.pprint :as pp]
@@ -18,7 +18,9 @@
             [shipyard.library.scan :as scan]
             [shipyard.mesh.cache :as cache]
             [shipyard.mesh.stl :as stl]
-            [shipyard.system :as system])
+            [shipyard.system :as system]
+            [shipyard.store.db :as store]
+            [shipyard.settings.db :as settings])
   (:import [com.microsoft.playwright Browser Browser$NewPageOptions
             BrowserType$LaunchOptions Page Playwright]
            [java.io File]
@@ -155,8 +157,13 @@
 
 ;; --- scan/index -------------------------------------------------------------
 
-(defn- init-library! [root cache-home]
-  (ig/init-key :shipyard.library/index {:root (str root) :cache-home (str cache-home)}))
+(defn- scan-parts! [root directory]
+  (let [database (store/open! directory)
+        library {:store database :state (atom {})}]
+    (try
+      (index/set-root! library (str root))
+      (index/parts! library)
+      (finally (store/close! database)))))
 
 (defn- measure-starts! [work root runs]
   (loop [i 0, cold [], warm [], parts nil]
@@ -164,13 +171,11 @@
       {:cold-ms (summarize cold)
        :warm-ms (summarize warm)
        :parts parts}
-      (let [cache-home (fs/file work "indexes" (str i))
-            cold-run   (atom nil)
-            cold-ms    (elapsed-ms! #(reset! cold-run (init-library! root cache-home)))
-            warm-run   (atom nil)
-            warm-ms    (elapsed-ms! #(reset! warm-run (init-library! root cache-home)))]
-        (recur (inc i) (conj cold cold-ms) (conj warm warm-ms)
-               (index/parts! @warm-run))))))
+      (let [directory (fs/file work "indexes" (str i))
+            cold-ms (elapsed-ms! #(scan-parts! root directory))
+            warm-run (atom nil)
+            warm-ms (elapsed-ms! #(reset! warm-run (scan-parts! root directory)))]
+        (recur (inc i) (conj cold cold-ms) (conj warm warm-ms) @warm-run)))))
 
 ;; --- preprocessing ---------------------------------------------------------
 
@@ -206,7 +211,7 @@
 ;; --- real HTTP serving -----------------------------------------------------
 
 (defn- system-config [root cache-home]
-  {:shipyard.library/index {:root (str root) :cache-home (str cache-home)}
+  {:shipyard.library/index {:root (str root) :store (ig/ref :shipyard.store/db)}
    :shipyard.mesh/cache    {:crease-deg 35 :lod-tiers [1.0 0.25 0.05]
                             :facet-angle-deg 1.0
                             :facet-plane-epsilon-mm 0.01
@@ -456,7 +461,7 @@
 
 (defn -main [& args]
   (let [{:keys [out root] :as opts} (parse-args args)
-        root (or root (get-in (system/load-config!) [:shipyard.library/index :root]))
+        root (or root (settings/configured-root! (system/load-config!)))
         report (run-benchmark! (assoc opts :root root))]
     (system/write-atomically! (fs/file out) (with-out-str (pp/pprint report)))
     (pp/pprint report)

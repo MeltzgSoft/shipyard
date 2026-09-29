@@ -318,15 +318,13 @@ jobs:
           mkdir -p "$lib/Test Bundle/Cruiser/Cube"
           cp test/fixtures/cube-ascii-crlf.stl "$lib/Test Bundle/Cruiser/Cube/unsupported.stl"
 
-          # There is no default library and no SHIPYARD_LIBRARY any more
-          # (issue #35). Point the jar at one the way the settings form does,
-          # by writing the file it writes - which makes this job a check on
-          # that format as well as on the jar.
+          # Start with isolated settings, database and mesh cache. Choose the
+          # fixture through the same endpoint as the user's settings form.
           cfg="$(mktemp -d)"
-          mkdir -p "$cfg/shipyard"
-          printf '{:root "%s"}\n' "$lib" > "$cfg/shipyard/library.edn"
-
-          XDG_CONFIG_HOME="$cfg" java -jar target/shipyard-0.1.0-SNAPSHOT.jar > run.log 2>&1 &
+          data="$(mktemp -d)"
+          cache="$(mktemp -d)"
+          XDG_CONFIG_HOME="$cfg" XDG_DATA_HOME="$data" XDG_CACHE_HOME="$cache" \
+            java -jar target/shipyard-0.1.0-SNAPSHOT.jar > run.log 2>&1 &
           jar_pid=$!
           trap 'kill "$jar_pid" 2>/dev/null || true' EXIT
 
@@ -335,6 +333,13 @@ jobs:
             sleep 1
           done
           curl -fsS http://127.0.0.1:8080/healthz
+          settings_status="$(curl -fsS -o settings-response.log -w '%{http_code}' \
+            --data-urlencode "root=$lib" http://127.0.0.1:8080/settings)"
+          if [[ "$settings_status" != "204" ]]; then
+            echo "::error::settings did not persist the fixture library (HTTP $settings_status)"
+            cat settings-response.log run.log
+            exit 1
+          fi
           curl -fsS http://127.0.0.1:8080/ | grep -q 'hx-preserve'
           curl -fsS http://127.0.0.1:8080/library | grep -q 'Cube'
 

@@ -12,6 +12,8 @@
             [shipyard.mesh.stl :as stl]
             [shipyard.mesh.volume :as volume]
             [shipyard.report :as report]
+            [shipyard.settings.db :as settings]
+            [shipyard.store.db :as store]
             [shipyard.system :as system]))
 
 (def ^:const bin-size-mm 0.5)
@@ -248,12 +250,16 @@
 (defn -main [& args]
   (let [{:keys [out root]} (parse-args args)
         cfg (system/load-config!)
-        root (or root (get-in cfg [:shipyard.library/index :root]))
+        root (or root (settings/configured-root! cfg))
         _ (when-not root
             (println "No library root. Pass --root, or set one in Shipyard first.")
             (System/exit 2))
-        library (ig/init-key :shipyard.library/index {:root root})
-        report (analyze-library! library)]
-    (println "escort classifications:" (count report))
-    (println "report written to" (str (report/write-report! out report)))
+        database (ig/init-key :shipyard.store/db (:shipyard.store/db cfg))]
+    (try
+      (let [library {:store database :state (atom {})}]
+        (index/set-root! library root)
+        (let [report (analyze-library! library)]
+          (println "escort classifications:" (count report))
+          (println "report written to" (str (report/write-report! out report)))))
+      (finally (store/close! database)))
     (System/exit 0)))

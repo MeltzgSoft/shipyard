@@ -392,11 +392,15 @@ modest, self-contained JVM code with no native dependency.
 
 ## 8. Domain model
 
-Authored metadata is stored in a shared Datalevin database. Shared concepts such as
+Authored metadata, application-managed settings and the derived scan index are stored
+in a shared Datalevin database. System/bootstrap configuration remains in `config.edn`;
+Shipyard never rewrites it. The selected library root is restored before scanning, and
+scan entries remain isolated by library. Shared concepts such as
 layers are entities referenced by parts and schemes. Owned children and shared refs
 have distinct lifecycles; related changes commit atomically. The maps below are domain
 projections, not serialized storage documents. Source STLs and derived mesh files stay
-outside the database. Authored metadata is created and edited in Datalevin.
+outside the database, as do explicit report exports. Authored metadata is created and
+edited in Datalevin.
 
 ### 8.1 Part
 

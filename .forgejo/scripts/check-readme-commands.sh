@@ -51,15 +51,14 @@ run() {
 
 # --- a library to point things at -------------------------------------------
 # There is no default library any more (#35), so the commands that read one need
-# somewhere to look. This also exercises the settings file the UI writes.
+# somewhere to look. The server smoke test chooses it through the real settings
+# endpoint, with an isolated database rather than a prewritten legacy setting.
 fixture="$(mktemp -d)/library"
 mkdir -p "$fixture/Test Bundle/Cruiser/Cube"
 cp test/fixtures/cube-ascii-crlf.stl "$fixture/Test Bundle/Cruiser/Cube/unsupported.stl"
 export XDG_CONFIG_HOME="$(mktemp -d)"
 export XDG_CACHE_HOME="$(mktemp -d)"
 export XDG_DATA_HOME="$(mktemp -d)"
-mkdir -p "$XDG_CONFIG_HOME/shipyard"
-printf '{:root "%s"}\n' "$fixture" > "$XDG_CONFIG_HOME/shipyard/library.edn"
 
 # --- the server, which is the one that fails quietly -------------------------
 # Starting is not the assertion. Both natives bugs let the process start, answer
@@ -104,6 +103,10 @@ smoke_test_server() {
 
   local part="Test%20Bundle/Cruiser/Cube"
   local problems=()
+  local settings_status
+  settings_status="$(curl -sS -o /tmp/readme-settings.log -w '%{http_code}' \
+    --data-urlencode "root=$fixture" "http://127.0.0.1:$port/settings")"
+  [[ "$settings_status" == "204" ]] || problems+=("/settings did not persist the fixture library (HTTP $settings_status)")
   curl -fsS "http://127.0.0.1:$port/healthz"        >/dev/null 2>&1 || problems+=("/healthz did not answer")
   curl -fsS "http://127.0.0.1:$port/"               >/dev/null 2>&1 || problems+=("/ did not answer")
   # #37: the page renders without this and the library silently never loads.

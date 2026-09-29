@@ -115,7 +115,7 @@
               {:bundle (str bundle) :source (str source)})))))
 
 (defn- config [root cache-home]
-  {:shipyard.library/index {:root (str root) :cache-home (str cache-home)}
+  {:shipyard.library/index {:root (str root) :store (ig/ref :shipyard.store/db)}
    :shipyard.mesh/cache    {:crease-deg 35 :lod-tiers [1.0 0.25 0.05]
                             :facet-angle-deg 1.0
                             :facet-plane-epsilon-mm 0.01
