@@ -64,7 +64,7 @@
       [:p.results__count (format "%d matches" (:total window))]
       (pagination/controls window "/orient/parts" "#bulk-orient-results" "#bulk-orient-filters")
       [:form.bulk-orient__table {:role "group" :aria-label "Parts"
-                                 :method "post" :action "/orient/selection" :hx-post "/orient/selection" :hx-trigger "change" :hx-include "#part-table-position, [data-part-page]" :hx-target "#bulk-selection"
+                                 :method "post" :action "/orient/selection" :hx-post "/orient/selection" :hx-trigger "change" :hx-include "#part-table-position, [data-part-page]" :hx-target "#bulk-orient-selection"
                                  :hx-swap "outerHTML" :hx-sync "this:replace"
                                  :hx-disabled-elt "[data-workspace-mode], [data-workspace-transition], .part-bulk-edit button"}
        [:input {:type "hidden" :name "visible" :value (pr-str (mapv :part/id parts))}]
@@ -75,32 +75,43 @@
          (map (partial orientation-row selected) parts)
          [:p.bulk-orient__empty "No parts match these filters."])]])))
 
-(defn selection-form [selection]
+(defn- selection-controls [selection]
   (let [ids (bulk/selected-ids selection)]
-    [:div#bulk-selection
-     [:form.bulk-orient__selection
-      (merge workspace-views/transition-attrs
-             {:method "post" :action "/orient/render" :hx-post "/orient/render" :hx-target "#detail"
-              :data-bulk-render "true" :hx-include "#bulk-orient-filters, #part-table-position, [data-part-page]"})
-      [:input {:type "hidden" :name "part-ids" :value (or selection "[]") :data-bulk-ids "true"}]
-      [:p [:strong {:data-bulk-count "true"} (str (count ids) " selected")]]
-      [:button {:type "submit" :disabled (empty? ids) :data-bulk-render-button "true" :data-workspace-transition "true"} "Orient selection →"]]
-     [:form.part-bulk-edit {:method "post" :action "/parts/metadata" :hx-post "/parts/metadata" :hx-target "#part-edit-status"
-                            :hx-include "#part-table-position, [data-part-page]" :hx-disabled-elt "find button"}
-      [:label "Field" [:select {:name "field"
-                                :hx-on:change "var input=this.form.querySelector('input[name=value]'); if(this.value==='role'){input.setAttribute('list','part-role-values');}else{input.removeAttribute('list');}"}
-                       (for [[value label] [["bundle" "Bundle / faction"] ["class" "Class"] ["role" "Role"] ["name" "Name"]]]
-                         [:option {:value value} label])]]
-      [:label.part-bulk-edit__name "Name operation" [:select {:name "operation"}
-                                                     [:option {:value "replace"} "Find and replace"]
-                                                     [:option {:value "prefix"} "Add prefix"]
-                                                     [:option {:value "suffix"} "Add suffix"]
-                                                     [:option {:value "set"} "Replace entire name"]]]
-      [:label.part-bulk-edit__find "Find" [:input {:name "find"}]]
-      [:label "Value" [:input {:name "value"}]]
-      [:datalist#part-role-values (for [role wizard/role-options] [:option {:value (name role)}])]
-      [:button {:type "submit" :disabled (empty? ids)} "Apply to selected"]]
-     [:p#part-edit-status {:role "status"}]]))
+    [:form#bulk-orient-selection.bulk-orient__selection
+     (merge workspace-views/transition-attrs
+            {:method "post" :action "/orient/render" :hx-post "/orient/render" :hx-target "#detail"
+             :data-bulk-render "true" :hx-include "#bulk-orient-filters, #part-table-position, [data-part-page]"})
+     [:input {:type "hidden" :name "part-ids" :value (or selection "[]") :data-bulk-ids "true"}]
+     [:p [:strong {:data-bulk-count "true"} (str (count ids) " selected")]]
+     [:button {:type "submit" :disabled (empty? ids) :data-bulk-render-button "true" :data-workspace-transition "true"} "Orient selection →"]]))
+
+(defn- apply-button [selection]
+  [:button#part-bulk-apply {:type "submit" :disabled (empty? (bulk/selected-ids selection))} "Apply to selected"])
+
+(defn selection-updates [selection]
+  (list (selection-controls selection)
+        (update (apply-button selection) 1 assoc :hx-swap-oob "outerHTML")
+        [:p#part-edit-status {:role "status" :hx-swap-oob "outerHTML"}]))
+
+(defn selection-form [selection]
+  [:div#bulk-selection
+   (selection-controls selection)
+   [:form.part-bulk-edit {:method "post" :action "/parts/metadata" :hx-post "/parts/metadata" :hx-target "#part-edit-status"
+                          :hx-include "#part-table-position, [data-part-page]" :hx-disabled-elt "find button"}
+    [:label "Field" [:select {:name "field"
+                              :hx-on:change "var input=this.form.querySelector('input[name=value]'); if(this.value==='role'){input.setAttribute('list','part-role-values');}else{input.removeAttribute('list');}"}
+                     (for [[value label] [["bundle" "Bundle / faction"] ["class" "Class"] ["role" "Role"] ["name" "Name"]]]
+                       [:option {:value value} label])]]
+    [:label.part-bulk-edit__name "Name operation" [:select {:name "operation"}
+                                                   [:option {:value "replace"} "Find and replace"]
+                                                   [:option {:value "prefix"} "Add prefix"]
+                                                   [:option {:value "suffix"} "Add suffix"]
+                                                   [:option {:value "set"} "Replace entire name"]]]
+    [:label.part-bulk-edit__find "Find" [:input {:name "find"}]]
+    [:label "Value" [:input {:name "value"}]]
+    [:datalist#part-role-values (for [role wizard/role-options] [:option {:value (name role)}])]
+    (apply-button selection)]
+   [:p#part-edit-status {:role "status"}]])
 
 (defn panel
   ([facets] (panel facets nil))

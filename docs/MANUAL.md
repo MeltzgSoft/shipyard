@@ -88,7 +88,9 @@ when a part has saved non-Primary face assignments; clearing them returns it to 
 Returning from the part editor refreshes its thumbnail and these columns. Tables show 50 rows per page; use Previous and Next to navigate. Selected parts stay selected across pages, and changing a filter returns to the first page. Filter by bundle/faction, class,
 role, name or orientation status. Check rows to select them; selection remains when
 filters hide rows. Choose a field, enter a value and click **Apply to selected** to
-edit bundle/faction, class, role or name. For names, choose find-and-replace, prefix,
+edit bundle/faction, class, role or name. Changing the row selection keeps your
+chosen field, name operation and entered values, including edits made while the
+selection is updating. For names, choose find-and-replace, prefix,
 suffix or set-name. These labels survive rescans and do not rename source files.
 
 Double-click a row, or focus it and press Enter, to open the individual editor with

@@ -1713,6 +1713,9 @@ The server holds the selected part ids independently of which filtered rows are
 currently visible. Checkbox changes submit the visible ids and checked values; the
 server replaces that visible subset and retains selected parts hidden by filters.
 Server-rendered table rows, selection counts and Render controls reflect this state.
+Selection responses replace only the count/Render controls and the metadata Apply
+button and status. The metadata field, name operation, find and value controls remain
+in place, preserving an in-progress edit and its focus/caret while selection updates.
 Render submissions sort the selection by id for stable card order. The server parses
 an EDN vector of string ids, removes duplicates while preserving order, resolves ids
 against the current catalog, and excludes unknown or unpreviewable parts. Empty/invalid

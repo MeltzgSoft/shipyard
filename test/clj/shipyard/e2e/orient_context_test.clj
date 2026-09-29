@@ -1,11 +1,14 @@
 (ns shipyard.e2e.orient-context-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [clojure.string :as str]
+            [clojure.test :refer [deftest is testing]]
             [shipyard.assembly-fixture :as fixture]
             [shipyard.bulk-orientation.save-state :as saves]
             [shipyard.e2e.orient-save-test :as orient]
             [shipyard.e2e.support :as s]
             [shipyard.part.orientation :as orientation])
-  (:import [java.util.concurrent CountDownLatch ExecutorService TimeUnit]))
+  (:import [com.microsoft.playwright APIResponse Page Route Route$FulfillOptions]
+           [java.util.function Consumer]
+           [java.util.concurrent CountDownLatch ExecutorService TimeUnit]))
 
 (defn- assert-step! [driver step]
   (let [buttons (s/js driver "() => Array.from(document.querySelectorAll('[data-bulk-step]'), b => ({step:Number(b.dataset.bulkStep),pressed:b.getAttribute('aria-pressed'),background:getComputedStyle(b).backgroundColor}))")
@@ -61,3 +64,46 @@
           (turn! driver id step)
           (is (nil? (orient/durable started id)))
           (finally (.countDown release) (s/quit! driver) (fixture/stop! started)))))))
+
+(deftest selection-response-preserves-pending-metadata-fields
+  (let [system (s/start-system!) driver (s/make-driver)
+        ^Page page (:page driver) held (atom nil)
+        fields #(s/js driver "() => Object.fromEntries(new FormData(document.querySelector('.part-bulk-edit')))")
+        expected {:field "name" :operation "prefix" :find "Prow" :value "Archived "}]
+    (try
+      (s/go! driver (s/base-url system))
+      (s/wait-visible! driver "[data-bulk-select]")
+      (.route page "**/orient/selection"
+              (reify Consumer
+                (accept [_ value]
+                  (let [^Route route value]
+                    (reset! held [route (.fetch route)])))))
+      (s/check! driver (str "[data-bulk-select][value='" s/supported-id "']"))
+      (is (s/wait-until #(do (s/text driver "[data-bulk-count]") (some? @held))))
+      (testing "enabled fields can be edited while the real selection response is pending"
+        (s/select-option! driver ".part-bulk-edit select[name=field]" "Name")
+        (s/fill-and-blur! driver ".part-bulk-edit input[name=find]" "Prow")
+        (s/select-option! driver ".part-bulk-edit select[name=operation]" "Add prefix")
+        (s/fill! driver ".part-bulk-edit input[name=value]" "Archived ")
+        (is (= expected (fields)))
+        (is (true? (s/js driver "() => document.querySelector('.part-bulk-edit button').disabled"))))
+      (let [[^Route route ^APIResponse response] @held]
+        (.fulfill route (doto (Route$FulfillOptions.) (.setResponse response))))
+      (testing "selection updates the count and Apply button without replacing the user's edit"
+        (is (s/wait-until #(= "1 selected" (s/text driver "[data-bulk-count]"))))
+        (is (= expected (fields)))
+        (is (= {:name "value" :start 9 :end 9}
+               (s/js driver "() => ({name:document.activeElement.name,start:document.activeElement.selectionStart,end:document.activeElement.selectionEnd})")))
+        (is (false? (s/js driver "() => document.querySelector('.part-bulk-edit button').disabled")))
+        (s/click! driver ".part-bulk-edit button")
+        (is (s/wait-until #(str/includes? (s/text driver "#bulk-orient-results") "Archived Supported Only Prow")))
+        (is (= expected (fields)))
+        (is (= "Human Navy Fleet Bundle"
+               (s/text driver (str "[data-part-row='" s/supported-id "'] .bulk-orient__bundle")))))
+      (.unroute page "**/orient/selection")
+      (testing "clearing the selection disables Apply while retaining the editable fields"
+        (.uncheck page (str "[data-bulk-select][value='" s/supported-id "']"))
+        (is (s/wait-until #(= "0 selected" (s/text driver "[data-bulk-count]"))))
+        (is (true? (s/js driver "() => document.querySelector('.part-bulk-edit button').disabled")))
+        (is (= expected (fields))))
+      (finally (s/quit! driver) (s/stop-system! system)))))

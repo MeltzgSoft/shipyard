@@ -51,7 +51,7 @@
         selection (pr-str (bulk/selection-after-change previous visible
                                                        (if (string? selected) [selected] selected)))]
     (workspace/update-workspace! workspace :browse assoc :bulk-selection selection)
-    (htmx/fragment (views/selection-form selection))))
+    (htmx/fragment (views/selection-updates selection))))
 
 (defn grid-entry! [{:keys [library cache jobs]} part]
   (let [part-id (:part/id part)
