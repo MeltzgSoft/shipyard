@@ -25,8 +25,8 @@
         renderable? (not (http-views/unrenderable-reason part))]
     [:div.bulk-orient__row
      {:tabindex "0" :data-workspace-transition "true" :data-part-row (:part/id part)
-      :hx-on:dblclick "if(!this.hasAttribute('disabled')&&event.target.tagName!=='INPUT'){document.getElementById('part-open-id').value=this.dataset.partRow; document.getElementById('part-open').requestSubmit();}"
-      :hx-on:keydown "if(!this.hasAttribute('disabled')&&event.key==='Enter'){event.preventDefault(); document.getElementById('part-open-id').value=this.dataset.partRow; document.getElementById('part-open').requestSubmit();}"}
+      :hx-on:dblclick (when-not (:import/source part) "if(!this.hasAttribute('disabled')&&event.target.tagName!=='INPUT'){document.getElementById('part-open-id').value=this.dataset.partRow; document.getElementById('part-open').requestSubmit();}")
+      :hx-on:keydown (when-not (:import/source part) "if(!this.hasAttribute('disabled')&&event.key==='Enter'){event.preventDefault(); document.getElementById('part-open-id').value=this.dataset.partRow; document.getElementById('part-open').requestSubmit();}")}
      [:input {:type "checkbox" :value (:part/id part) :aria-label (str "Select " (:part/name part))
               :data-bulk-select "true" :name "selected" :checked (contains? selected (:part/id part))}]
      [:span.part-thumbnail
@@ -38,9 +38,9 @@
      [:span.bulk-orient__bundle (:part/bundle part)]
      [:span.bulk-orient__role (name (or (:part/role-hint part) :unknown))]
      [:span.bulk-orient__class (or (:part/class part) "—")]
-     [:span.bulk-orient__mounts (mount-label (:part/mount-summary part))]
-     [:span.bulk-orient__regions {:data-has-regions (str (boolean (:part/has-regions? part)))}
-      (if (:part/has-regions? part) "Yes" "No")]
+     [:span.bulk-orient__mounts (if (:import/source part) (name (:import/variant part)) (mount-label (:part/mount-summary part)))]
+     [:span.bulk-orient__regions {:title (:import/source part) :data-has-regions (str (boolean (:part/has-regions? part)))}
+      (if (:import/source part) [:small (:import/source part)] (if (:part/has-regions? part) "Yes" "No"))]
      [:code (if (bulk/saved? part) (angle-label yaw) "—")]
      [:code (if (bulk/saved? part) (angle-label pitch) "—")]
      [:code (if (bulk/saved? part) (angle-label roll) "—")]
@@ -69,7 +69,7 @@
                                  :hx-disabled-elt "[data-workspace-mode], [data-workspace-transition], .part-bulk-edit button"}
        [:input {:type "hidden" :name "visible" :value (pr-str (mapv :part/id parts))}]
        [:div.bulk-orient__columns {:aria-hidden "true"}
-        [:span] [:span "Preview"] [:span "Part"] [:span "Bundle / faction"] [:span "Role"] [:span "Class"] [:span "Mount summary"] [:span "Regions"] [:span "Yaw"] [:span "Pitch"]
+        [:span] [:span "Preview"] [:span "Part"] [:span "Bundle / faction"] [:span "Role"] [:span "Class"] [:span (if (:import/source (first parts)) "Variant" "Mount summary")] [:span (if (:import/source (first parts)) "Archive source" "Regions")] [:span "Yaw"] [:span "Pitch"]
         [:span "Roll"] [:span "Orientation"]]
        (if (seq parts)
          (map (partial orientation-row selected) parts)
@@ -93,33 +93,58 @@
         (update (apply-button selection) 1 assoc :hx-swap-oob "outerHTML")
         [:p#part-edit-status {:role "status" :hx-swap-oob "outerHTML"}]))
 
-(defn selection-form [selection]
-  [:div#bulk-selection
-   (selection-controls selection)
-   [:form.part-bulk-edit {:method "post" :action "/parts/metadata" :hx-post "/parts/metadata" :hx-target "#part-edit-status"
-                          :hx-include "#part-table-position, [data-part-page]" :hx-disabled-elt "find button"}
-    [:label "Field" [:select {:name "field"
-                              :hx-on:change "var input=this.form.querySelector('input[name=value]'); if(this.value==='role'){input.setAttribute('list','part-role-values');}else{input.removeAttribute('list');}"}
-                     (for [[value label] [["bundle" "Bundle / faction"] ["class" "Class"] ["role" "Role"] ["name" "Name"]]]
-                       [:option {:value value} label])]]
-    [:label.part-bulk-edit__name "Name operation" [:select {:name "operation"}
-                                                   [:option {:value "replace"} "Find and replace"]
-                                                   [:option {:value "prefix"} "Add prefix"]
-                                                   [:option {:value "suffix"} "Add suffix"]
-                                                   [:option {:value "set"} "Replace entire name"]]]
-    [:label.part-bulk-edit__find "Find" [:input {:name "find"}]]
-    [:label "Value" [:input {:name "value"}]]
-    [:datalist#part-role-values (for [role wizard/role-options] [:option {:value (name role)}])]
-    (apply-button selection)]
-   [:p#part-edit-status {:role "status"}]])
+(defn selection-form
+  ([selection] (selection-form selection false))
+  ([selection importing?]
+   [:div#bulk-selection
+    (selection-controls selection)
+    [:form.part-bulk-edit {:method "post" :action "/parts/metadata" :hx-post "/parts/metadata" :hx-target "#part-edit-status"
+                           :hx-include "#part-table-position, [data-part-page]" :hx-disabled-elt (if importing? "find button, .import-review button" "find button")}
+     [:label "Field" [:select {:name "field"
+                               :hx-on:change "var input=this.form.querySelector('input[name=value]'); if(this.value==='role'){input.setAttribute('list','part-role-values');}else{input.removeAttribute('list');}"}
+                      (for [[value label] (cond-> [["bundle" "Bundle / faction"] ["class" "Class"] ["role" "Role"] ["name" "Name"]] importing? (conj ["variant" "Supported / unsupported"]))]
+                        [:option {:value value} label])]]
+     [:label.part-bulk-edit__name "Name operation" [:select {:name "operation"}
+                                                    [:option {:value "replace"} "Find and replace"]
+                                                    [:option {:value "prefix"} "Add prefix"]
+                                                    [:option {:value "suffix"} "Add suffix"]
+                                                    [:option {:value "set"} "Replace entire name"]]]
+     [:label.part-bulk-edit__find "Find" [:input {:name "find"}]]
+     [:label "Value" [:input {:name "value"}]]
+     [:datalist#part-role-values (for [role wizard/role-options] [:option {:value (name role)}])]
+     (apply-button selection)]
+    [:p#part-edit-status {:role "status"}]]))
 
 (defn panel
   ([facets] (panel facets nil))
   ([facets selection] (panel facets selection nil))
-  ([facets selection root]
+  ([facets selection root] (panel facets selection root nil))
+  ([facets selection root import-session]
    [:section#library.panel.bulk-orient
-    (http-views/settings-panel root)
-    [:header.bulk-orient__head [:h2 "Part Browser"] [:p "Select rows to edit fields or orient together. Double-click a part to open its editor."]]
+    (when-not import-session (http-views/settings-panel root))
+    [:header.bulk-orient__head [:h2 (if import-session "Part Browser · Import mode" "Part Browser")]
+     [:p (if import-session "Review inferred fields. Select rows for bulk edits and orientation. Mount authoring and region painting are disabled."
+             "Select rows to edit fields or orient together. Double-click a part to open its editor.")]]
+    (if import-session
+      [:div.import-review
+       [:p "Archive: " (:archive import-session)]
+       (for [[selection label] [["all" "Select entire import"] ["none" "Clear selection"]]]
+         [:form {:hx-post "/imports/selection" :hx-target "#bulk-orient-selection" :hx-swap "outerHTML"
+                 :hx-sync "#workspace-navigation:drop"
+                 :hx-disabled-elt "[data-workspace-mode], [data-workspace-transition], [data-bulk-select], [data-import-select], .part-bulk-edit button"}
+          [:input {:type "hidden" :name "selection" :value selection}]
+          [:button {:type "submit" :data-import-select selection} label]])
+       [:p "Original ZIP archives are kept. Only unsupported models have previews. Variant values: unsupported, supported, unsupported-pitted."]
+       [:form (merge workspace-views/transition-attrs {:hx-post "/imports/commit" :hx-target "#detail" :hx-disabled-elt "find button"})
+        [:button {:type "submit" :data-workspace-transition true} "Import into library"]]
+       [:form (merge workspace-views/transition-attrs {:hx-post "/imports/cancel" :hx-target "#detail"})
+        [:button {:type "submit" :data-workspace-transition true} "Cancel import"]]
+       [:p#import-status {:role "status"}]]
+      [:form.import-start (merge workspace-views/transition-attrs {:hx-post "/imports/start" :hx-target "#detail" :hx-disabled-elt "find button"})
+       [:label "ZIP archive" [:input {:name "archive" :placeholder "Path to a ZIP archive" :required true}]]
+       [:button {:type "submit" :disabled (nil? root)} "Review archive"]
+       [:span.htmx-indicator "Unpacking archive…"]
+       [:p#import-status {:role "status"}]])
     [:form#bulk-orient-filters.filters
      {:data-workspace-filters "true" :hx-get "/orient/parts" :hx-target "#bulk-orient-results" :hx-swap "outerHTML"
       :hx-vals "js:{page: event.type==='load' ? (document.querySelector('[data-part-page]')?.value || '1') : '1', 'table-scroll': event.type==='load' ? (document.querySelector('#part-table-position')?.value || '0') : '0'}"
@@ -140,7 +165,7 @@
      [:input {:type "hidden" :name "page" :value "1" :data-part-page true}]
      [:input {:id "part-table-position" :type "hidden" :name "table-scroll" :value "0"}]
      [:p.muted "Loading parts…"]]
-    (selection-form selection)]))
+    (selection-form selection (some? import-session))]))
 
 (defn filter-updates [facets filters]
   (for [[field key label] [["bundle" :bundles "All bundles"] ["class" :classes "All classes"] ["role" :roles "All roles"]]

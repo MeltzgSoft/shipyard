@@ -5,11 +5,12 @@
             [shipyard.http.htmx :as htmx]
             [shipyard.http.urls :as urls]
             [shipyard.mesh.cache :as cache]
+            [shipyard.importer.db :as importer]
             [shipyard.part-browser.thumbnail :as thumbnail]
             [shipyard.wire :as wire])
   (:import [java.nio.file Files]))
 
-(defn thumbnail! [{:keys [catalog cache] :as deps} {:keys [path-params]}]
+(defn- thumbnail-effective! [{:keys [catalog cache] :as deps} {:keys [path-params]}]
   (let [id (:id path-params)
         part (catalog/summary! catalog id)]
     (if-not (:part/renderable part)
@@ -31,3 +32,6 @@
           :preparing (htmx/fragment [:span {:hx-get (str "/thumbnails/" (urls/encode-id id))
                                             :hx-trigger "load delay:600ms" :hx-target "closest .part-thumbnail"} "…"])
           (htmx/fragment [:span "Preview unavailable"]))))))
+
+(defn thumbnail! [deps request]
+  (thumbnail-effective! (importer/effective! deps) request))

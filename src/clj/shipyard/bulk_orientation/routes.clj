@@ -9,7 +9,7 @@
   [["/thumbnails/*id" {:get {:handler (partial browser/thumbnail! deps)
                              :parameters {:path contracts/part-path} :responses contracts/html-responses}}]
    ["/parts/metadata" {:post {:handler (partial handlers/metadata! deps)
-                              :parameters {:form [:map [:field [:enum "bundle" "class" "role" "name"]]
+                              :parameters {:form [:map [:field [:enum "bundle" "class" "role" "name" "variant"]]
                                                   [:operation [:enum "set" "replace" "prefix" "suffix"]]
                                                   [:value string?] [:find {:optional true} string?]]}
                               :responses contracts/html-responses}}]
