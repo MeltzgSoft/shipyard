@@ -166,10 +166,13 @@
           [:input {:type "number" :disabled preparing? :step "1" :inputmode "decimal"
                    :placeholder "degrees" :aria-label (str "Set " label " degrees for selection")
                    :data-bulk-angle "true" :data-axis axis}]
-          [:button {:type "button" :disabled preparing? :data-bulk-rotate "true" :data-axis axis :data-direction "1"} "+"]])
-       [:span.bulk-grid__steps {:aria-label "Rotation step"}
-        (for [step [1 15 90]]
-          [:button {:type "button" :data-bulk-step step :aria-pressed (str (= 90 step))} (str step "°")])]
+          [:button {:type "button" :disabled preparing? :data-bulk-rotate "true" :data-axis axis :data-direction "1"} "+"]])]
+      ;; Step choices remain interactive while preparing; polling must not detach
+      ;; a pressed button before pointer-up can complete its click.
+      [:span.bulk-grid__steps {:aria-label "Rotation step"}
+       (for [step [1 15 90]]
+         [:button {:type "button" :data-bulk-step step :aria-pressed (str (= 90 step))} (str step "°")])]
+      [:span#bulk-grid-actions.bulk-grid__controls
        [:button {:type "button" :disabled preparing? :data-bulk-copy "true"} "Copy first"]
        [:button {:type "button" :disabled preparing? :data-bulk-reset "true"} "Reset"]]]
      [:div.bulk-grid__cards
@@ -177,7 +180,7 @@
         [:span.bulk-grid__poll
          {:hidden true :hx-post "/orient/render" :hx-trigger "load delay:400ms"
           :hx-target ".bulk-grid__cards" :hx-swap "outerHTML"
-          :hx-select ".bulk-grid__cards" :hx-select-oob "#bulk-grid-controls"
+          :hx-select ".bulk-grid__cards" :hx-select-oob "#bulk-grid-controls,#bulk-grid-actions"
           :hx-vals (json/write-str {"part-ids" (pr-str ids) "poll" "1"})}])
       (for [{:part/keys [id name orientation] :keys [mesh-url mesh-key state message]} entries]
         [:article.bulk-grid__card

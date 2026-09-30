@@ -1744,6 +1744,8 @@ background jobs. Cards carry `data-bulk-part`, `data-orientation` and, when read
 `poll=1` to retain that activation while
 any entry is preparing; polling stops once every entry is ready or failed. Rotation,
 angle, copy and reset controls are disabled while server preparation remains pending.
+Polls replace those server-owned controls separately from the rotation-step choices,
+whose stable DOM lets a press finish even when a preparation response arrives mid-click.
 Missing sources and preprocessing failures are reported per card. Each client mesh
 fetch has a token; a completion may install a mesh only if its entry still owns that
 token and activation. Each client entry has loading, ready or failed state. Network,

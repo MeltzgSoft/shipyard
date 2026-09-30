@@ -25,6 +25,44 @@
   (is (s/wait-until #(saves/same-pose? (orientation/from-euler-degrees step 0 0)
                                        (orient/preview driver id)))))
 
+(deftest preparation-poll-preserves-an-in-progress-step-click
+  (let [started (fixture/start! true) driver (s/make-driver)
+        ^Page page (:page driver) held (atom nil)
+        release (CountDownLatch. 1) occupied (CountDownLatch. 2)
+        ^ExecutorService pool (get-in started [:system :shipyard.http/jobs :pool])]
+    (try
+      (dotimes [_ 2]
+        (.submit pool ^Runnable (fn [] (.countDown occupied) (.await release))))
+      (is (.await occupied 10 TimeUnit/SECONDS))
+      (.route page "**/orient/render"
+              (reify Consumer
+                (accept [_ value]
+                  (let [^Route route value]
+                    (if (and (nil? @held) (str/includes? (or (.postData (.request route)) "") "poll=1"))
+                      (reset! held [route (.fetch route)])
+                      (.resume route))))))
+      (s/go! driver (s/base-url (:system started)))
+      (s/wait-visible! driver "[data-bulk-select]")
+      (s/check! driver (str "[data-bulk-select][value='" (:prow fixture/ids) "']"))
+      (s/click! driver "[data-bulk-render-button]")
+      (is (s/wait-until #(do (s/js driver "() => document.readyState") (some? @held))))
+      (s/js driver "() => { window.previousCards = document.querySelector('.bulk-grid__cards'); }")
+      (let [{:keys [x y width height]} (s/bounds driver "[data-bulk-step='1']")
+            mouse (.mouse page)]
+        (.move mouse (+ x (/ width 2)) (+ y (/ height 2)))
+        (.down mouse)
+        (let [[^Route route ^APIResponse response] @held]
+          (.fulfill route (doto (Route$FulfillOptions.) (.setResponse response))))
+        (is (s/wait-until #(s/js driver "() => window.previousCards !== document.querySelector('.bulk-grid__cards')")))
+        (.up mouse))
+      (assert-step! driver 1)
+      (is (s/js driver "() => [...document.querySelectorAll('[data-bulk-rotate], [data-bulk-angle], [data-bulk-copy], [data-bulk-reset]')].every(e => e.disabled)"))
+      (.countDown release)
+      (is (s/wait-until #(= 1 (get-in (s/stats driver) [:bulk :count]))))
+      (is (s/js driver "() => [...document.querySelectorAll('[data-bulk-rotate], [data-bulk-angle], [data-bulk-copy], [data-bulk-reset]')].every(e => !e.disabled)"))
+      (turn! driver (:prow fixture/ids) 1)
+      (finally (.countDown release) (s/quit! driver) (fixture/stop! started)))))
+
 (deftest rotation-step-survives-preparation-rebuild-and-workspace-return
   (doseq [step [1 15 90]]
     (testing (str step " degree step")
