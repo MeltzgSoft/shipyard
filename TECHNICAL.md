@@ -267,17 +267,18 @@ JVM stack viable.
 
 ### Domain validation
 
-`shipyard.domain.schemas` defines reusable Malli schemas in `.cljc` for names,
-part identities, slot and instance paths, finite materials, palettes, groups,
-classes/loadouts, named ships, custom paint, face masks and region registries.
-Predicates exposed by domain namespaces are compiled once with `malli/validator`;
-the JVM and ClojureScript use the same shapes. Malli is an explicit dependency,
-also used by the HTTP coercion layer.
+`shipyard.domain.schemas` defines Malli schemas in `.cljc` for structured domain
+values and their shared constraints. Named substructures describe materials,
+groups, classes/loadouts, named ships, paint and regions; a schema definition does
+not imply a separate persisted entity. Simple fragments used in only one enclosing
+shape remain inline. Live validation boundaries compile predicates once with
+`malli/validator`; the JVM and ClojureScript use the same shapes. Malli is an
+explicit dependency, also used by the HTTP coercion layer.
 
 Schemas preserve the boundary's existing defaults and openness: omitted glow and
-optional custom-paint collections stay omitted; durable records, materials and
-registry definitions reject extra keys; editor profiles and per-part layer
-definitions remain open. Focused predicates express finite numbers, distinct group
+optional custom-paint collections stay omitted; durable records and materials
+reject extra keys; per-part layer definitions remain open.
+Focused predicates express finite numbers, distinct group
 identities/orders/members, region ordering and within-record references. Structural
 validation neither normalizes records nor decides catalog compatibility, ownership,
 source freshness or reference availability.
@@ -291,6 +292,11 @@ Database-dependent references and revisions stay inside the existing transaction
 Datalevin's typed attributes, uniqueness constraints and rollback remain the final
 storage boundary. Rejected domain records leave persisted and published snapshots
 unchanged. These schemas do not replace Datalevin's schema below.
+
+Tests exercise Shipyard's business decisions and validation integration: malformed
+HTTP requests receive the application's error response, and rejected direct writes
+leave persisted and published state unchanged. They do not enumerate Malli's shape
+rules or repeat schema declarations as standalone validator tests.
 
 ### Storage constraints
 

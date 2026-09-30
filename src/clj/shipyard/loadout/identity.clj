@@ -4,5 +4,4 @@
             [shipyard.domain.schemas :as schemas]))
 
 (def name? (m/validator schemas/display-name))
-(def part-id? (m/validator schemas/part-id))
 (def slot-path? (m/validator schemas/slot-path))

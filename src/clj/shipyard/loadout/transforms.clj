@@ -4,14 +4,9 @@
             [shipyard.domain.schemas :as schemas]
             [shipyard.loadout.identity :as identity]))
 
-(def empty-store {:version 1 :loadouts {}})
-
 (def name? identity/name?)
-(def part-id? identity/part-id?)
-(def slot-path? identity/slot-path?)
 
 (def loadout? (m/validator schemas/loadout))
-(def store? (m/validator (schemas/record-store :loadouts :loadout/id schemas/loadout)))
 
 (defn put-record
   "Create and replace are explicit; names never select the record to update."

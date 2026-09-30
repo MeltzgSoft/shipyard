@@ -22,15 +22,12 @@
                                 (.padStart (.toString (aget bits 0) 16) 8 "0"))))))))
 
 (def key? (m/validator schemas/face-key))
-(def rgb? (m/validator schemas/rgb))
 (def paint? (m/validator schemas/detail-material))
 
 (defn resolve-material
   "A detail material overrides the inherited material's channels."
   [inherited detail]
   (if (map? detail) detail inherited))
-
-(def layer? (m/validator schemas/detail-layer))
 
 (defn stroke [layer part-id mesh-key keys paint erase?]
   (cond

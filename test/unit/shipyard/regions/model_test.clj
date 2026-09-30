@@ -3,14 +3,11 @@
             [shipyard.regions.model :as model]))
 (def mesh (apply str (repeat 64 "a")))
 (def face (apply str (repeat 72 "0")))
-(deftest region-validation
-  (is (model/valid? (model/empty-regions mesh)))
-  (is (not (model/valid? (assoc (model/empty-regions mesh) :layers ["Secondary" "Primary"])))))
+
 (deftest region-changes
   (let [empty (model/empty-regions mesh)
         painted (:regions (model/change empty mesh 0 "assign" "Secondary" nil [face]))]
     (is (= "Secondary" (get-in painted [:faces face])))
-    (is (model/valid? painted))
     (is (empty? (:faces (:regions (model/change painted mesh 1 "assign" "Primary" nil [face])))))
     (testing "stale, invalid and registry-only operations never write"
       (doseq [[revision action layer keys] [[1 "assign" "Secondary" [face]] [0 "add" nil nil]
@@ -37,7 +34,6 @@
     (is (= ["Primary" "Secondary" layer] (:layers result)))
     (is (= {face layer} (:faces result)))
     (is (= 1 (:revision result)))
-    (is (model/valid? result))
     (is (:error (model/change empty mesh 0 "assign" "Missing" nil [face] [layer])))
     (is (:error (model/change empty mesh 0 "delete" layer nil nil [layer])))
     (is (:error (model/change empty mesh 1 "assign" layer nil [face] [layer])))))

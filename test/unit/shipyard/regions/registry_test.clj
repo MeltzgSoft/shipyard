@@ -9,12 +9,10 @@
   (let [added (:registry (registry/change registry/empty-registry 0 "add" nil "Trim" id))
         renamed (:registry (registry/change added 1 "rename" id "Accent" nil))
         deleted (:registry (registry/change renamed 2 "delete" id nil nil))]
-    (is (registry/valid? added))
     (is (= ["Primary" "Secondary" id] (registry/ids added)))
     (is (= (assoc (get-in added [:layers id]) :name "Accent") (get-in renamed [:layers id])))
     (is (= ["Primary" "Secondary"] (registry/ids deleted)))
     (is (= #{id} (:deleted deleted)))
-    (is (registry/valid? deleted))
     (doseq [[rev action layer name new-id] [[0 "rename" id "Other" nil]
                                             [1 "rename" "Primary" "Other" nil]
                                             [1 "delete" "Secondary" nil nil]
@@ -29,5 +27,4 @@
         renamed (:registry (registry/change found 0 "rename" id "Accent" nil))
         deleted (:registry (registry/change found 0 "delete" id nil nil))]
     (is (= "Accent" (get-in (registry/discover renamed [region]) [:layers id :name])))
-    (is (empty? (:layers (registry/discover deleted [region])))))
-  (is (not (registry/valid? {:version 1 :revision 0 :layers {"Trim" {}} :deleted #{}}))))
+    (is (empty? (:layers (registry/discover deleted [region]))))))

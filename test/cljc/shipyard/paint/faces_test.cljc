@@ -6,18 +6,6 @@
 (def metal {:base [1 0.7 0.1] :metalness 1 :roughness 0.15})
 (def inherited {:base [0 0 1] :metalness 0 :roughness 0.9})
 
-(deftest paint?-test
-  (testing "only complete finite materials are supported"
-    (is (not (faces/paint? [1 0 0])))
-    (is (faces/paint? metal))
-    (doseq [glow [0 0.5 1]] (is (faces/paint? (assoc metal :glow glow))))
-    (doseq [glow [nil "1" -0.1 1.1 ##NaN ##Inf]] (is (not (faces/paint? (assoc metal :glow glow)))))
-    (doseq [value [nil {} [] (dissoc metal :roughness) (assoc metal :extra 1)
-                   (assoc metal :base [1 2 3]) (assoc metal :metalness ##NaN)
-                   (assoc metal :roughness ##Inf) (assoc metal :roughness -0.1)
-                   (assoc metal :metalness 1.01) (assoc metal :metalness "1")]]
-      (is (not (faces/paint? value))))))
-
 (deftest resolve-material-test
   (testing "details override all material channels"
     (is (= inherited (faces/resolve-material inherited nil)))
@@ -33,7 +21,6 @@
         hash (apply str (repeat 64 "a"))
         old (:layer (faces/stroke nil "part" hash [a] inherited false))
         updated (:layer (faces/stroke old "part" hash [b] metal false))]
-    (is (faces/layer? updated))
     (is (= {a inherited b metal} (:faces updated)))
     (is (= old (:layer (faces/stroke updated "part" hash [b] metal true))))
     (is (= :invalid-material (:error (faces/stroke old "part" hash [b] (assoc metal :roughness ##NaN) false))))))

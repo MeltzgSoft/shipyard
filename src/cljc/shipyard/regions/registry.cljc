@@ -1,16 +1,12 @@
 (ns shipyard.regions.registry
   "Shared layer entities. Identity is independent of labels and part usage."
-  (:require [malli.core :as m]
-            [shipyard.domain.schemas :as schemas]
-            [shipyard.regions.model :as model]
+  (:require [shipyard.regions.model :as model]
             [shipyard.regions.colors :as colors]))
 
 (def empty-registry {:version 1 :revision 0 :layers {} :deleted #{}})
 
 (defn id? [value]
   (model/detail-id? value))
-
-(def valid? (m/validator schemas/registry))
 
 (defn definitions [registry]
   (merge (into {} (map (fn [id] [id {:name id :preview-name id}]) model/builtins)) (:layers registry)))

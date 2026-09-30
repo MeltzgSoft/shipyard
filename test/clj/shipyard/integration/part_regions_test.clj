@@ -24,12 +24,13 @@
         registry! #(catalog/region-registry! cat)
         rescan! #(catalog/reingest! cat (index/parts! library) (str (:root started)))]
     (try
+      (workspace/update-workspace! (:shipyard.workspace/db sys) :browse assoc :selection id)
       (doseq [name ["Trim" "Lights" "Armor" "Engines" "Torpedo tube"]]
         (is (= 200 (:status (region-post (:handler started) cat
                                          {:part-id id :mesh-key (apply str (repeat 64 "a")) :revision "0" :action "add" :name name})))))
       (rescan!)
       (let [assigned (registry!) palette (mapv :preview-color (vals (:layers assigned)))]
-        (is (every? colors/valid? palette))
+        (is (= 5 (count (set palette))) "Each added layer receives a distinct persisted color")
         (doseq [a palette b palette :when (not= a b)] (is (> (colors/distance a b) 0.12)))
         (is (= assigned (:registry (persisted/catalog! cat))))
         (rescan!)

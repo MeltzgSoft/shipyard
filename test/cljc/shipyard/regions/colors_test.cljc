@@ -13,7 +13,6 @@
         assigned (registry/assign-colors legacy)
         palette (mapv :preview-color (vals (:layers assigned)))
         all (into colors/builtins palette)]
-    (is (registry/valid? assigned))
     (is (= assigned (registry/assign-colors assigned)))
     (is (= assigned (registry/assign-colors (update legacy :layers #(into (sorted-map) %)))))
     (doseq [a all b all :when (not= a b)]
@@ -32,8 +31,3 @@
 (deftest deterministic-allocation
   (is (= (colors/choose []) (colors/choose [])))
   (is (= (colors/choose colors/builtins) (colors/choose (reverse colors/builtins)))))
-
-(deftest valid-preview-color
-  (is (colors/valid? [0 0.5 1]))
-  (doseq [rgb [nil [0 1] [0 0 2] [0 "red" 1]]]
-    (is (not (colors/valid? rgb)))))

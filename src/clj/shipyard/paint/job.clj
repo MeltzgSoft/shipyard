@@ -1,9 +1,7 @@
 (ns shipyard.paint.job
   "Ship-owned paint values. Editor profiles reuse material operations without
   giving a ship's custom paint the identity or persistence of a shared scheme."
-  (:require [clojure.set :as set]
-            [malli.core :as m]
-            [shipyard.domain.schemas :as schemas]))
+  (:require [clojure.set :as set]))
 
 (def profile-keys
   {:paint/layers :scheme/layers
@@ -14,8 +12,6 @@
 
 (defn from-profile [record]
   (set/rename-keys (select-keys record (vals profile-keys)) (set/map-invert profile-keys)))
-
-(def valid? (m/validator schemas/paint-job))
 
 (defn palette [record]
   (select-keys record [:scheme/id :scheme/name :scheme/layers]))

@@ -1,11 +1,10 @@
 (ns shipyard.mount.facet-input
   "Bounded parsing and validation for durable facet selections."
   (:require [clojure.edn :as edn]
-            [malli.core :as m]
-            [shipyard.domain.schemas :as schemas]))
+            [malli.core :as m]))
 
-(def ^:const max-indices 4096)
-(def ^:private valid-indices? (m/validator schemas/facet-indices))
+(def ^:private valid-indices?
+  (m/validator [:vector {:min 1 :max 4096} [:and integer? [:>= 0] [:<= 2147483647]]]))
 
 (defn parse-indices [value]
   (try
