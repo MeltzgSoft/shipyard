@@ -21,9 +21,11 @@
     (try
       (s/go! driver (s/base-url (:system started)))
       (s/wait-visible! driver ".import-start")
+      (is (s/js driver "() => {const f=document.querySelector('.import-start');return f.method==='post' && f.getAttribute('action')===f.getAttribute('hx-post')}"))
       (s/fill-and-blur! driver ".import-start input[name=archive]" (str zip))
       (s/click! driver ".import-start button")
       (s/wait-visible! driver ".import-review")
+      (is (s/js driver "() => [...document.querySelectorAll('.import-review form')].every(f=>f.method==='post' && f.getAttribute('action')===f.getAttribute('hx-post'))"))
       (testing "all archive entries replace the normal browser and authoring stays unavailable"
         (is (s/wait-until #(= 3 (s/count-els driver ".bulk-orient__row"))))
         (is (= before (catalog/listing! cat)))
