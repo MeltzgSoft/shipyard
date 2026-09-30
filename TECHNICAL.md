@@ -589,6 +589,33 @@ source metadata without opening meshes.
 
 ---
 
+### 5.6 Archive import review
+
+`shipyard.importer` separates pure filename inference and destination planning from
+ZIP IO and Ring orchestration. ZIP entry names are evidence only: extraction writes
+UUID-named temporary files, never paths supplied by archive entries. Recursive extraction
+bounds depth, entry count and expanded bytes, ignores non-STL extras, and hashes each
+extracted STL for duplicate/collision planning.
+
+Part Browser owns the import session under its workspace state. The session contains a
+disposable Datalevin catalog and library index in a temporary tree, with its own mesh
+preparation workers using the existing shared content-addressed mesh cache. Browser
+listing, thumbnails, metadata edits and orientation saves resolve this staging context;
+Ship Browser continues to resolve the durable catalog. Workspace activation admission
+also covers import routes. Mount, region and direct single-part authoring routes are
+rejected during review. Normal Part Browser state is restored on commit or cancel.
+
+Publication preflights folder names, duplicate content and existing destinations,
+rejecting symbolic-link destinations/ancestors. It moves staged files without replacing
+existing files, rescans the destination library and publishes reviewed role/orientation
+metadata in one shared-store transaction before activating the new index and catalog.
+Adding a missing variant to an existing part preserves its authored metadata. Caught
+publication failures return moved files to staging before reporting an error. File movement and the
+Datalevin transaction are separate boundaries: abrupt process termination can leave a
+partial file import, which is discoverable by scanning on restart. There is no durable
+resume journal for an unfinished review. Cancel and normal shutdown stop staging workers,
+close its temporary store and remove the temporary tree; source ZIPs are never deleted.
+
 ## 6. Mesh pipeline
 
 ### 6.1 Parse
