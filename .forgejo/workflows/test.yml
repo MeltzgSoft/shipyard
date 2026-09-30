@@ -218,8 +218,16 @@ jobs:
     # but it silently gives back the saving this is here for.
     container:
       image: mcr.microsoft.com/playwright:v1.62.0-jammy
+      # Fixture databases and mesh caches are temporary; avoid overlay fsync
+      # latency in browser readiness checks. Native extraction needs exec.
+      options: "--tmpfs /shipyard-test-tmp:rw,exec,nosuid,nodev,size=2g,mode=1777"
     steps:
       - uses: actions/checkout@v4
+
+      - name: Verify E2E temporary storage
+        run: |
+          test "$(stat -f -c %T /shipyard-test-tmp)" = tmpfs
+          df -h /shipyard-test-tmp
 
       - name: Set up JDK 25
         uses: https://github.com/actions/setup-java@v5
@@ -266,7 +274,7 @@ jobs:
           cp node_modules/htmx.org/dist/htmx.min.js resources/public/js/
 
       - name: E2E tests
-        run: clojure -M:test:natives-linux --focus :e2e --reporter kaocha.report/documentation
+        run: clojure -J-Djava.io.tmpdir=/shipyard-test-tmp -M:test:natives-linux --focus :e2e --reporter kaocha.report/documentation
 
   package:
     # The release artifact, and the only job that proves one exists. Linux
