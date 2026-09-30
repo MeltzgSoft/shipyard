@@ -107,3 +107,41 @@
         (is (true? (s/js driver "() => document.querySelector('.part-bulk-edit button').disabled")))
         (is (= expected (fields))))
       (finally (s/quit! driver) (s/stop-system! system)))))
+
+(deftest selection-waits-for-a-pending-workspace-table
+  (doseq [viewport? [true false]]
+    (testing (if viewport? "with viewport" "without viewport bundle")
+      (let [system (s/start-system!) driver (s/make-driver)
+            ^Page page (:page driver) held (atom nil)]
+        (try
+          (when-not viewport?
+            (.route page "**/js/viewport.js" (reify Consumer (accept [_ route] (.abort ^Route route)))))
+          (.route page "**/workspace/browse*"
+                  (reify Consumer
+                    (accept [_ value]
+                      (let [^Route route value]
+                        (reset! held [route (.fetch route)])))))
+          (s/go! driver (s/base-url system))
+          (is (s/wait-until #(do (s/js driver "() => document.readyState") (some? @held))))
+          (is (zero? (s/count-els driver "[data-bulk-select]"))
+              "the first table is not actionable before workspace restoration arrives")
+          (let [[^Route route ^APIResponse response] @held]
+            (.fulfill route (doto (Route$FulfillOptions.) (.setResponse response))))
+          (s/wait-visible! driver "[data-bulk-select]")
+          (reset! held nil)
+          (s/click! driver "[data-workspace-mode=browse]")
+          (is (s/wait-until #(do (s/text driver "[data-bulk-count]") (some? @held))))
+          (is (s/js driver "() => [...document.querySelectorAll('[data-bulk-select]')].every(e => e.disabled)")
+              "selection cannot target a table that an accepted workspace transition will replace")
+          (let [[^Route route ^APIResponse response] @held]
+            (.fulfill route (doto (Route$FulfillOptions.) (.setResponse response))))
+          (doseq [id [s/hull-id s/prow-id]]
+            (s/check! driver (str "[data-bulk-select][value='" id "']")))
+          (is (s/wait-until #(= "2 selected" (s/text driver "[data-bulk-count]"))))
+          (is (= 2 (s/count-els driver "[data-bulk-select]:checked")))
+          (s/click! driver "[data-bulk-render-button]")
+          (s/wait-visible! driver "[data-bulk-grid]")
+          (is (= "2 selected" (s/text driver "[data-bulk-grid-count]")))
+          (when viewport?
+            (is (s/wait-until #(= 2 (get-in (s/stats driver) [:bulk :count])))))
+          (finally (s/quit! driver) (s/stop-system! system)))))))

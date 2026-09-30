@@ -85,7 +85,7 @@ available if the 3D view cannot load.
 Part Browser opens as a table with part thumbnails showing saved region colors.
 Mount summary lists plugs and socket capacity by accepted role. Regions shows Yes
 when a part has saved non-Primary face assignments; clearing them returns it to No.
-Returning from the part editor refreshes its thumbnail and these columns. Tables show 50 rows per page; use Previous and Next to navigate. Selected parts stay selected across pages, and changing a filter returns to the first page. Filter by bundle/faction, class,
+Returning from the part editor refreshes its thumbnail and these columns. Tables show 50 rows per page; use Previous and Next to navigate. Selection is briefly unavailable while a workspace navigation replaces the table. Selected parts stay selected across pages, and changing a filter returns to the first page. Filter by bundle/faction, class,
 role, name or orientation status. Check rows to select them; selection remains when
 filters hide rows. Choose a field, enter a value and click **Apply to selected** to
 edit bundle/faction, class, role or name. Changing the row selection keeps your

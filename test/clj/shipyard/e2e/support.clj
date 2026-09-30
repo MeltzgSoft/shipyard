@@ -249,7 +249,8 @@
 (defn open-part! [{:keys [^Page page] :as driver} part-name]
   (when (pos? (.count (.locator page "[data-part-back]")))
     (click! driver "[data-part-back]"))
-  (.dblclick (.locator page (str ".bulk-orient__part:text-is('" part-name "')")))
+  ;; Playwright does not treat a disabled div ancestor as a disabled control.
+  (.dblclick (.locator page (str ".bulk-orient__row:not([disabled]) .bulk-orient__part:text-is('" part-name "')")))
   (wait-visible! driver (str ".detail__name:text-is('" part-name "')")))
 
 (defn check! [{:keys [^Page page]} sel] (.check page sel))
@@ -372,7 +373,7 @@
   (when (pos? (count-els driver "[data-ship-back]"))
     (click! driver "[data-ship-back]"))
   (wait-visible! driver "#ship-filters")
-  (wait-until #(js driver "() => !document.querySelector('.htmx-swapping, .htmx-settling, #workspace-navigation.htmx-request')")))
+  (wait-until #(js driver "() => !document.querySelector('.htmx-swapping, .htmx-settling, [data-workspace-mode][disabled], [data-workspace-transition][disabled]')")))
 
 (defn open-assembly! [driver]
   (ship-table! driver)
@@ -381,7 +382,7 @@
 
 (defn open-class! [driver name]
   (ship-table! driver)
-  (.dblclick ^Page (:page driver) (str ".ship-table__row[aria-label='Open class " name "']"))
+  (.dblclick ^Page (:page driver) (str ".ship-table__row:not([disabled])[aria-label='Open class " name "']"))
   (wait-visible! driver ".assembly__save"))
 
 (defn open-named-ship! [driver id]

@@ -8,9 +8,10 @@
 (def transition-attrs
   ;; Keep an accepted transition in flight until its server context is displayed.
   ;; Aborting it could leave the browser holding the preceding generation.
+  ;; Disabling a row div does not disable its native selection checkbox.
   {:hx-swap "innerHTML settle:0ms"
    :hx-sync "#workspace-navigation:drop"
-   :hx-disabled-elt "[data-workspace-mode], [data-workspace-transition]"})
+   :hx-disabled-elt "[data-workspace-mode], [data-workspace-transition], [data-bulk-select]"})
 
 (def transport-attrs
   ;; HTMX reads the current server-rendered context when sending a request.
