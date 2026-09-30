@@ -88,6 +88,9 @@ for ten seconds, runs the whole-library canary with four threads, and writes `be
 bundle first (`npx shadow-cljs compile viewport`). Use `--viewport-mode swiftshader` only
 for a CPU-renderer comparison; it does not measure the hardware viewport budget.
 
+Report exports use ordinary file writes and create missing parent directories. An
+interrupted write can leave a partial report; rerun the command to regenerate it.
+
 **htmx is copied, not bundled** - `clojure -T:build uber` does it for you, but the dev
 commands above do not, so a fresh clone needs it once. The `mkdir` is not decoration:
 `resources/public/js/` is gitignored build output, so it does not exist until something

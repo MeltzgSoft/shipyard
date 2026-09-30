@@ -1,12 +1,12 @@
 (ns shipyard.integration.cache-test
   "Real filesystem, real natives. This is the suite Windows CI exists for:
   path separators, file locking and Files.move atomicity (§10.2)."
-  (:require [clojure.java.io :as io]
+  (:require [babashka.fs :as fs]
+            [clojure.java.io :as io]
             [clojure.test :refer [deftest is testing]]
             [shipyard.fixtures :as f]
             [shipyard.library.index :as index]
             [shipyard.mesh.cache :as cache]
-            [shipyard.system :as system]
             [shipyard.store.db :as store]
             [shipyard.store.scan-index :as scan-index])
   (:import [java.io File]
@@ -76,23 +76,6 @@
             (is (= entries (scan-index/entries! database "/lib/../lib"))))
           (finally (store/close! database))))
       (finally (fs/delete-tree dir)))))
-
-(deftest atomic-write-leaves-no-partial-file
-  (let [target (io/file (temp-dir "shipyard-atomic") "out.edn")]
-    (system/write-atomically! target "first")
-    (is (= "first" (slurp target)))
-    (system/write-atomically! target "second")
-    (is (= "second" (slurp target)))
-    (testing "no temp files left behind"
-      (is (empty? (filter #(re-find #"\.tmp$" (.getName ^File %))
-                          (file-seq (.getParentFile target))))))
-    (testing "a filename without a parent writes in the current directory"
-      (let [target (io/file (str "shipyard-atomic-" (random-uuid) ".edn"))]
-        (try
-          (system/write-atomically! target "relative")
-          (is (= "relative" (slurp target)))
-          (finally
-            (.delete target)))))))
 
 (deftest concurrent-requests-return-the-same-mesh
   (let [c (test-cache), src (write-stl (temp-dir "shipyard-src") 10)

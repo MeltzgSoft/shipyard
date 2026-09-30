@@ -115,7 +115,7 @@
   (testing "so runs can be diffed after acquiring a new bundle"
     (let [root (library-tree)
           r    (report root)
-          out  (io/file (temp-dir "shipyard-canary-out") "canary.edn")]
+          out  (io/file (temp-dir "shipyard-canary-out") "reports" "canary.edn")]
       (report/write-report! out r)
       (let [read-back (edn/read-string (slurp out))]
         (is (= (:totals r) (:totals read-back)))

@@ -1,11 +1,13 @@
 (ns shipyard.report
   "Persistence for EDN reports produced by command-line workflows."
   (:require [babashka.fs :as fs]
-            [clojure.pprint :as pp]
-            [shipyard.system :as system]))
+            [clojure.java.io :as io]
+            [clojure.pprint :as pp]))
 
 (defn write-report!
   "Write `report` as EDN and return `file`."
   [file report]
-  (system/write-atomically! (fs/file file) (with-out-str (pp/pprint report)))
+  (let [target (fs/file file)]
+    (io/make-parents target)
+    (spit target (with-out-str (pp/pprint report))))
   file)

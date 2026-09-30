@@ -18,6 +18,7 @@
             [shipyard.library.scan :as scan]
             [shipyard.mesh.cache :as cache]
             [shipyard.mesh.stl :as stl]
+            [shipyard.report :as report]
             [shipyard.system :as system]
             [shipyard.store.db :as store]
             [shipyard.settings.db :as settings])
@@ -463,6 +464,6 @@
   (let [{:keys [out root] :as opts} (parse-args args)
         root (or root (settings/configured-root! (system/load-config!)))
         report (run-benchmark! (assoc opts :root root))]
-    (system/write-atomically! (fs/file out) (with-out-str (pp/pprint report)))
+    (report/write-report! out report)
     (pp/pprint report)
     (println "benchmark report written to" out)))

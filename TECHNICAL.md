@@ -47,12 +47,11 @@ configuration stays in `config.edn`; Shipyard never rewrites that file. The sele
 library root and library-scoped scan entries are stored in Datalevin. Scan entries
 are derived data and can be rebuilt without deleting authored metadata.
 
-Explicit report exports use a temporary sibling followed by an exact-path rename.
-Directory targets are rejected; they cannot receive the temporary file and masquerade
-as a successful save. The writer retries transient filesystem errors and falls back
-to a non-atomic replacement when atomic moves are unsupported. Failed writes clean up
-their temporary files. Settings and scan-index persistence use database transactions;
-a failed scan-index cache write does not invalidate an already prepared mesh.
+Explicit report exports create their parent directories and use ordinary file writes.
+Filesystem errors propagate to the command-line caller; an interrupted write may
+leave a partial report that can be regenerated. Settings and scan-index persistence
+use database transactions; a failed scan-index cache write does not invalidate an
+already prepared mesh.
 
 ### 1.3 Source discovery and identities
 
