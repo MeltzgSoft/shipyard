@@ -129,18 +129,18 @@
       [:div.import-review
        [:p "Archive: " (:archive import-session)]
        (for [[selection label] [["all" "Select entire import"] ["none" "Clear selection"]]]
-         [:form {:hx-post "/imports/selection" :hx-target "#bulk-orient-selection" :hx-swap "outerHTML"
+         [:form {:method "post" :action "/imports/selection" :hx-post "/imports/selection" :hx-target "#bulk-orient-selection" :hx-swap "outerHTML"
                  :hx-sync "#workspace-navigation:drop"
                  :hx-disabled-elt "[data-workspace-mode], [data-workspace-transition], [data-bulk-select], [data-import-select], .part-bulk-edit button"}
           [:input {:type "hidden" :name "selection" :value selection}]
           [:button {:type "submit" :data-import-select selection} label]])
        [:p "Original ZIP archives are kept. Only unsupported models have previews. Variant values: unsupported, supported, unsupported-pitted."]
-       [:form (merge workspace-views/transition-attrs {:hx-post "/imports/commit" :hx-target "#detail" :hx-disabled-elt "find button"})
+       [:form (merge workspace-views/transition-attrs {:method "post" :action "/imports/commit" :hx-post "/imports/commit" :hx-target "#detail" :hx-disabled-elt "find button"})
         [:button {:type "submit" :data-workspace-transition true} "Import into library"]]
-       [:form (merge workspace-views/transition-attrs {:hx-post "/imports/cancel" :hx-target "#detail"})
+       [:form (merge workspace-views/transition-attrs {:method "post" :action "/imports/cancel" :hx-post "/imports/cancel" :hx-target "#detail"})
         [:button {:type "submit" :data-workspace-transition true} "Cancel import"]]
        [:p#import-status {:role "status"}]]
-      [:form.import-start (merge workspace-views/transition-attrs {:hx-post "/imports/start" :hx-target "#detail" :hx-disabled-elt "find button"})
+      [:form.import-start (merge workspace-views/transition-attrs {:method "post" :action "/imports/start" :hx-post "/imports/start" :hx-target "#detail" :hx-disabled-elt "find button"})
        [:label "ZIP archive" [:input {:name "archive" :placeholder "Path to a ZIP archive" :required true}]]
        [:button {:type "submit" :disabled (nil? root)} "Review archive"]
        [:span.htmx-indicator "Unpacking archive…"]
