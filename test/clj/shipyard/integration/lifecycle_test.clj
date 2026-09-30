@@ -9,6 +9,11 @@
             [shipyard.store.db :as store])
   (:import [java.util.concurrent CountDownLatch ExecutorService Future TimeUnit]))
 
+(def ^:private halt-completion-timeout-ms
+  ;; A hang guard for the whole shutdown, including database close/flush after
+  ;; the production worker termination budget (30 seconds) has elapsed.
+  60000)
+
 (defn- await-release! [^CountDownLatch release interrupted]
   (loop []
     (when-not (try
@@ -49,19 +54,34 @@
           "Integrant must not complete shutdown while a worker can still write")
       (is (not (d/closed? (:conn database))))
       (.countDown release)
-      (.get worker 5 TimeUnit/SECONDS)
-      (is (nil? (deref @stopping 5000 ::timeout)))
-      (is (.isTerminated pool))
-      (is (d/closed? (:conn database)))
-      (let [reopened (store/open! directory)]
-        (try
-          (is (= "/worker/finished" (settings/library-root! reopened)))
-          (finally (store/close! reopened))))
+      ;; Shutdown owns the completion boundary. A separate five-second get on
+      ;; the worker imposed an unrelated deadline on real transaction/flush I/O.
+      (let [halted (deref @stopping halt-completion-timeout-ms ::timeout)]
+        (is (nil? halted)
+            (str "shutdown did not complete: phase=" phase
+                 ", worker-done=" (.isDone worker)
+                 ", executor-terminated=" (.isTerminated pool)
+                 ", store-closed=" (d/closed? (:conn database))))
+        (when-not (= ::timeout halted)
+          (is (.isDone worker) "the worker must already be complete when shutdown returns")
+          (.get worker 0 TimeUnit/SECONDS)
+          (is (.isTerminated pool))
+          (is (d/closed? (:conn database)))
+          (let [reopened (store/open! directory)]
+            (try
+              (is (= "/worker/finished" (settings/library-root! reopened)))
+              (finally (store/close! reopened))))))
       (finally
         (.countDown release)
-        (when-let [halt @stopping] (deref halt 5000 nil))
-        (ig/halt! system)
-        (fs/delete-tree directory)))))
+        ;; Never issue a second shutdown or remove the database while the first
+        ;; halt is still using it. A failed completed halt can be retried now
+        ;; that the deliberately blocked worker has been released.
+        (when (or (nil? @stopping)
+                  (try
+                    (not= ::timeout (deref @stopping halt-completion-timeout-ms ::timeout))
+                    (catch Exception _ true)))
+          (ig/halt! system)
+          (fs/delete-tree directory))))))
 
 (deftest shutdown-finishes-workers-before-closing-the-store
   (doseq [phase [:before-write :in-transaction]]
