@@ -80,7 +80,10 @@ Bundle/faction, class, role and supported status are inferred from archive, fold
 file names. These are hints: review unknown or ambiguous values. An inner **Original
 Files** folder takes precedence over an outer archive labelled **Supported**. Files
 without a support marker default to unsupported. The table shows the variant and
-original archive path; hover over a long source path to read it in full.
+original archive path; hover over a long source path to read it in full. Each STL has
+its own review row. Supported and unsupported versions with matching reviewed bundle,
+class, role and cleaned name share one destination part folder. Support labels are
+removed from inferred names; unrelated filenames need a name correction to pair them.
 
 Select rows, or **Select entire import** across all pages, to apply bulk bundle,
 class, role and name edits. **Supported / unsupported** accepts `unsupported`,
