@@ -2,7 +2,7 @@
   (:require [shipyard.persistence-fixture :as persisted]
             [babashka.fs :as fs]
             [clojure.string :as str]
-            [clojure.test :refer [deftest is]]
+            [clojure.test :refer [deftest is testing]]
             [shipyard.assembly-fixture :as fixture]
             [shipyard.catalog.db :as catalog]
             [shipyard.e2e.support :as s]
@@ -302,3 +302,41 @@
       (is (s/wait-until #(= "1 selected" (s/text driver "[data-bulk-count]"))))
       (is (false? (s/js driver "() => document.querySelector('[data-bulk-render-button]').disabled")))
       (finally (s/quit! driver) (fixture/stop! started)))))
+
+(deftest workspace-navigation-preserves-filter-controls
+  (doseq [viewport? [true false]
+          [view form selector label expected results]
+          [["browse" "#bulk-orient-filters" "select[name=orientation]" "Orientation unset" "unset" "#bulk-orient-results"]
+           ["ships" "#ship-filters" "input[name=q]" "Cruiser" "Cruiser" "#ship-results"]
+           ["assembly" ".assembly__filters" "select[name=bundle]" "Synthetic Navy" "Synthetic Navy" "#detail"]]]
+    (testing (str view (when-not viewport? " without viewport"))
+      (let [started (fixture/start! true) driver (s/make-driver)
+            ^Page page (:page driver) held (atom nil)
+            mode (if (= view "assembly") "ships" view)
+            field (str form " " selector)
+            pattern (str "**/workspace/" mode "*")]
+        (try
+          (when-not viewport?
+            (.route page "**/js/viewport.js" (reify Consumer (accept [_ route] (.abort ^Route route)))))
+          (s/go! driver (s/base-url (:system started)))
+          (switch! driver view)
+          (s/wait-visible! driver field)
+          (s/js driver (str "() => {window.previousFilterResults=document.querySelector('" results "')"
+                            (when (= view "assembly") ".firstElementChild") ";}"))
+          (if (= view "ships")
+            (s/fill! driver field label)
+            (s/select-option! driver field label))
+          (is (s/wait-until #(s/js driver (str "() => window.previousFilterResults!==document.querySelector('" results "')"
+                                               (when (= view "assembly") ".firstElementChild")))))
+          (.route page pattern
+                  (reify Consumer
+                    (accept [_ route]
+                      (reset! held [route (.fetch ^Route route)]))))
+          (s/click! driver (str "[data-workspace-mode=" mode "]"))
+          (is (s/wait-until #(do (s/js driver "() => document.readyState") (some? @held))))
+          (is (s/js driver (str "() => [...document.querySelectorAll('" form " input, " form " select')].every(e=>e.disabled)")))
+          (let [[^Route route ^APIResponse response] @held]
+            (.fulfill route (doto (Route$FulfillOptions.) (.setResponse response))))
+          (is (s/wait-until #(s/js driver (str "() => {const e=document.querySelector('" field "');return e && !e.disabled;}"))))
+          (is (= expected (s/js driver (str "() => document.querySelector('" field "').value"))))
+          (finally (s/quit! driver) (fixture/stop! started)))))))

@@ -11,7 +11,7 @@
             [shipyard.workspace.db :as workspace]))
 
 (defmethod ig/init-key :shipyard.assembly/db [_ _]
-  {:state (atom {:draft transforms/empty-draft :sequence 0 :root nil :scene {}})})
+  {:state (atom {:draft transforms/empty-draft :sequence 0 :reset-sequence 0 :root nil :scene {}})})
 
 (defn- fresh-sources [library part-ids]
   (into {}
@@ -40,7 +40,10 @@
   "Serialize draft changes and responses. Polling advances event sequence, never draft revision."
   [{:keys [catalog library workspace] {state :state} :assembly :as deps} operation {:keys [resume? retry]}]
   (locking state
-    (let [{:keys [draft sequence root scene]} @state
+    (let [{:keys [draft sequence reset-sequence root scene]} @state
+          workspace-state (when (and workspace workspace/*context*)
+                            (workspace/workspace! workspace (:workspace workspace/*context*)))
+          reset-sequence (or (if workspace-state (:scene-reset-sequence workspace-state) reset-sequence) 0)
           sequence (if (and workspace workspace/*context*)
                      (or (:scene-sequence (workspace/workspace! workspace (:workspace workspace/*context*))) 0)
                      sequence)
@@ -84,15 +87,21 @@
           prepared (prepare! deps sources (map :part-id (vals after)) retry)
           mesh-keys (into {} (keep (fn [[id status]] (when (= :ready (:state status)) [id (:mesh-key status)]))) prepared)
           after (into {} (map (fn [[path placement]] [path (assoc placement :mesh-key (get mesh-keys (:part-id placement)))])) after)
-          reset? (or resume?
-                     (and (some? workspace/*scene-sequence*) (not= workspace/*scene-sequence* sequence))
-                     (and workspace (:needs-scene-reset? (workspace/workspace! workspace (:workspace workspace/*context*)))) (and operation (not (:error result)) (#{:hull :reset} (:op operation))))
+          intentional-reset? (or resume? (:needs-scene-reset? workspace-state)
+                                 (and operation (not (:error result)) (#{:hull :reset} (:op operation))))
+          reset-sequence (if intentional-reset? (inc sequence) reset-sequence)
+          reset? (or intentional-reset?
+                     (and (some? workspace/*scene-sequence*) (< workspace/*scene-sequence* reset-sequence)))
+          recovery? (and (some? workspace/*scene-sequence*) (not= workspace/*scene-sequence* sequence))
+          commands (if (and recovery? (not reset?))
+                     (transforms/snapshot-commands after mesh-keys)
+                     (transforms/commands scene after mesh-keys reset?))
           envelope (transforms/pack-regions (merge workspace/*context* {:revision (:revision draft) :sequence (inc sequence)
-                                                                        :commands (transforms/commands scene after mesh-keys reset?)
+                                                                        :commands commands
                                                                         :mount-markers (transforms/mount-markers database effective-draft)}) after)]
       (when (and workspace workspace/*context*)
-        (workspace/update-workspace! workspace (:workspace workspace/*context*) assoc :scene-sequence (inc sequence) :scene after :needs-scene-reset? false))
-      (reset! state {:draft effective-draft :sequence (inc sequence)
+        (workspace/update-workspace! workspace (:workspace workspace/*context*) assoc :scene-sequence (inc sequence) :scene-reset-sequence reset-sequence :scene after :needs-scene-reset? false))
+      (reset! state {:draft effective-draft :sequence (inc sequence) :reset-sequence reset-sequence
                      :root (if blocked-root? root current-root) :scene after})
       (merge result {:database database :prepared prepared :event envelope
                      :detail-warning (boolean (some (fn [[_ {:keys [part-id details]}]]

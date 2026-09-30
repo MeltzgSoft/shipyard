@@ -489,7 +489,8 @@
   caret in it while you type."
   [{:keys [bundles classes roles]}]
   [:form#filters.filters
-   {:hx-get     "/library"
+   {:data-workspace-filters "true"
+    :hx-get     "/library"
     :hx-target  "#library-results"
     :hx-swap    "outerHTML"
     ;; `load from:body` is what populates the list on first paint.

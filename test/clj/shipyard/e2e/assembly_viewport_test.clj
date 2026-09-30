@@ -3,7 +3,9 @@
             [clojure.test :refer [deftest is testing]]
             [shipyard.assembly-fixture :as fixture]
             [shipyard.http.urls :as urls]
-            [shipyard.e2e.support :as s]))
+            [shipyard.e2e.support :as s])
+  (:import [com.microsoft.playwright APIResponse Page Route Route$FulfillOptions]
+           [java.util.function Consumer]))
 
 (defn- request! [driver path params]
   (s/js driver
@@ -219,11 +221,31 @@
       (testing "nested placement and replacement preserve unrelated object identity"
         (request! driver "/assembly/assign" {"revision" "3" "slot" "[[:weapon 0] [:turret 0]]" "part-id" (:turret fixture/ids)})
         (is (await-count! driver 4))
-        (let [before (slots driver)]
+        (let [before (slots driver)
+              ^Page page (:page driver)
+              held (atom nil)]
+          ;; A poll can advance the server baseline before its response arrives.
+          ;; The replacement must recover that gap without rebuilding other slots.
+          (.route page "**/assembly?poll=1"
+                  (reify Consumer
+                    (accept [_ value]
+                      (let [^Route route value]
+                        (if (nil? @held)
+                          (reset! held [route (.fetch route)])
+                          (.resume route))))))
+          (s/js driver "() => { window.assemblyHeldPollSettled = false; const source = document.createElement('div'); document.body.append(source); htmx.ajax('GET', '/assembly?poll=1', {source, target:'#detail', swap:'innerHTML'}).then(() => { window.assemblyHeldPollSettled = true; }); }")
+          (is (s/wait-until #(do (s/js driver "() => document.readyState") (some? @held))))
           (request! driver "/assembly/assign" {"revision" "4" "slot" "[[:weapon 0]]" "part-id" (:weapon-alt fixture/ids)})
-          (is (await-count! driver 3))
+          (is (s/wait-until #(= (:weapon-alt fixture/ids) (get-in (slots driver) [[[:weapon 0]] :part-id]))))
+          (is (= 3 (count (slots driver))))
           (is (= (get-in before [[[:weapon 1]] :uuid]) (get-in (slots driver) [[[:weapon 1]] :uuid])))
-          (is (not= (get-in before [[[:weapon 0]] :uuid]) (get-in (slots driver) [[[:weapon 0]] :uuid])))))
+          (is (not= (get-in before [[[:weapon 0]] :uuid]) (get-in (slots driver) [[[:weapon 0]] :uuid])))
+          (let [recovered (update-vals (slots driver) :uuid)
+                [^Route route ^APIResponse response] @held]
+            (.fulfill route (doto (Route$FulfillOptions.) (.setResponse response)))
+            (.unroute page "**/assembly?poll=1")
+            (is (s/wait-until #(s/js driver "() => window.assemblyHeldPollSettled")))
+            (is (= recovered (update-vals (slots driver) :uuid))))))
       (testing "late fetch completion cannot resurrect a cleared slot"
         (s/js driver "() => { window.originalFetch = window.fetch; window.pendingMeshes = []; window.fetch = (url, opts) => String(url).startsWith('/mesh/') ? new Promise(resolve => window.pendingMeshes.push(() => window.originalFetch(url, opts).then(resolve))) : window.originalFetch(url, opts); }")
         (request! driver "/assembly/assign" {"revision" "5" "slot" "[[:weapon 0]]" "part-id" (:weapon fixture/ids)})

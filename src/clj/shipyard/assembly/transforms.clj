@@ -115,6 +115,12 @@
                    :mount-position mount-position :material material :role role :details details :regions regions :layers layers}))))
           (sort-by (comp pr-str key) after)))))
 
+(defn snapshot-commands
+  "Recover a missed baseline with complete ready slots, retaining matching client geometry."
+  [after mesh-keys]
+  (let [sets (subvec (commands {} after mesh-keys true) 1)]
+    (into [{:op :snapshot :slots (mapv :slot sets)}] sets)))
+
 (defn pack-regions
   "A source region mask is shared by all its mounted instances in one envelope."
   [event placements]

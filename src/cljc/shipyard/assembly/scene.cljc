@@ -51,6 +51,7 @@
      (fn [state [index {:keys [op slot] :as command}]]
        (case op
          :reset (-> state (assoc :slots {} :mode :assembly) (update :generation inc))
+         :snapshot (update state :slots select-keys (:slots command))
          :remove (update state :slots dissoc slot)
          :paint (if (get-in state [:slots slot])
                   (update-in state [:slots slot :payload]

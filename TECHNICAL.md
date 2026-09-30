@@ -1713,8 +1713,11 @@ The server holds the selected part ids independently of which filtered rows are
 currently visible. Checkbox changes submit the visible ids and checked values; the
 server replaces that visible subset and retains selected parts hidden by filters.
 Server-rendered table rows, selection counts and Render controls reflect this state.
-An accepted workspace transition disables native selection checkboxes along with row
-actions until its replacement table arrives, preventing edits to an outgoing table.
+An accepted workspace transition disables native selection checkboxes, row actions and
+enabled inputs/selects in `data-workspace-filters` forms until the response arrives.
+Part Browser, Ship Browser and assembly filter forms share this admission guard, so
+late responses cannot overwrite edits to outgoing filters. Already-disabled filter
+controls are excluded from the temporary guard and retain their disabled state.
 Selection responses replace only the count/Render controls and the metadata Apply
 button and status. The metadata field, name operation, find and value controls remain
 in place, preserving an in-progress edit and its focus/caret while selection updates.
@@ -2063,7 +2066,15 @@ commands for appearance fields, and carry shared source masks once in
 and explicitly send nil to clear a prior mask. Compact material and layer values are
 reasserted on responses to replace any unsaved local color preview. Polling must still send newly ready meshes. The browser echoes its last applied scene
 sequence in `X-Shipyard-Scene-Sequence`; a mismatch forces a full snapshot so canceled
-or missed responses cannot strand incremental state.
+or missed responses cannot strand incremental state. Recovery starts with `:snapshot`
+and its authoritative ready-slot paths, followed by complete `:set` payloads. The client
+prunes slots absent from that list, retains matching geometry and in-flight fetch tokens,
+and replaces changed geometry. Recovery does not reopen a workspace that has left assembly.
+Explicit hull, reset and resume operations still use `:reset` and invalidate every slot.
+Each workspace records the sequence of its last intentional reset. An acknowledgment
+older than that boundary receives another reset, so losing the original response cannot
+skip initialization or reuse geometry from before the reset. Retransmission does not
+advance that boundary.
 Paint detail changes use source-bound `:detail-delta` patches (sets/removals or a smaller
 replacement); the acknowledged scene sequence establishes their baseline. Initial scene
 loads and sequence recovery still include authoritative full details. Scheme selectors

@@ -86,7 +86,7 @@
       (map render-slot (get children-by-parent [])))))
 
 (defn- assembly-filters [database selected-bundle selected-class]
-  [:form.assembly__filters {:hx-get "/assembly" :hx-target "#detail" :hx-swap "innerHTML settle:0ms" :hx-trigger "change"}
+  [:form.assembly__filters {:data-workspace-filters "true" :hx-get "/assembly" :hx-target "#detail" :hx-swap "innerHTML settle:0ms" :hx-trigger "change"}
    [:label "Bundle" [:select {:name "bundle"}
                      [:option {:value ""} "All bundles"]
                      (for [value (catalog/bundles database)] [:option {:value value :selected (= value selected-bundle)} value])]]

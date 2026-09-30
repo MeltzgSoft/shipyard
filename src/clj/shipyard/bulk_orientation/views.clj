@@ -121,7 +121,7 @@
     (http-views/settings-panel root)
     [:header.bulk-orient__head [:h2 "Part Browser"] [:p "Select rows to edit fields or orient together. Double-click a part to open its editor."]]
     [:form#bulk-orient-filters.filters
-     {:hx-get "/orient/parts" :hx-target "#bulk-orient-results" :hx-swap "outerHTML"
+     {:data-workspace-filters "true" :hx-get "/orient/parts" :hx-target "#bulk-orient-results" :hx-swap "outerHTML"
       :hx-vals "js:{page: event.type==='load' ? (document.querySelector('[data-part-page]')?.value || '1') : '1', 'table-scroll': event.type==='load' ? (document.querySelector('#part-table-position')?.value || '0') : '0'}"
       :hx-trigger "load, change[target.tagName === 'SELECT'], search, keyup changed delay:300ms"}
      [:label.filters__field "Bundle" [:select {:name "bundle"} (http-views/options "All bundles" (:bundles facets))]]

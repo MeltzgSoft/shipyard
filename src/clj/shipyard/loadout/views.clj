@@ -105,7 +105,7 @@
      [:button (merge workspace-views/transition-attrs
                      {:type "button" :data-workspace-transition "true" :data-ship-new "true"
                       :hx-get "/ships/tab/assembly" :hx-target "#detail" :hx-include "#ship-filters, #ship-table-position, [data-ship-page]"}) "Resume assembly"]]
-    [:form#ship-filters.filters {:hx-get "/ships" :hx-target "#ship-results" :hx-swap "outerHTML"
+    [:form#ship-filters.filters {:data-workspace-filters "true" :hx-get "/ships" :hx-target "#ship-results" :hx-swap "outerHTML"
                                  :hx-trigger "change[target.tagName === 'SELECT'], search, keyup changed delay:300ms"
                                  :hx-include "#ship-table-position" :hx-vals "{\"page\":\"1\",\"table-scroll\":\"0\"}" :hx-sync "this:replace"}
      (for [[field label] [["bundle" "Bundle / faction"] ["class" "Class"]]]

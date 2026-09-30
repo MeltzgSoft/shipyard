@@ -101,3 +101,16 @@
     (is (= {:set {"0" [0 1 0]} :remove []} (get-in commands [0 :changes :detail-delta :patch])))
     (is (< (count (pr-str commands)) 500))
     (is (= faces (get-in (transforms/commands {} before {"hull" "hash"} true) [1 :details :faces])))))
+
+(deftest snapshot-commands-test
+  (testing "only ready slots are retained, with complete authoritative appearance"
+    (let [details {:part-id "weapon" :mesh-key "key" :faces {"face" [1 0 0]}}
+          after {[] {:part-id "hull" :mesh-key nil}
+                 [[:weapon 0]] {:part-id "weapon" :mesh-key "key" :material nil :details details}}
+          [snapshot payload] (transforms/snapshot-commands after {"weapon" "key"})]
+      (is (= {:op :snapshot :slots [[[:weapon 0]]]} snapshot))
+      (is (= :set (:op payload)))
+      (is (contains? payload :material))
+      (is (nil? (:material payload)))
+      (is (= details (:details payload)))
+      (is (= [{:op :snapshot :slots []}] (transforms/snapshot-commands after {}))))))

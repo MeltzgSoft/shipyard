@@ -4,7 +4,9 @@
             [clojure.test :refer [deftest is]]
             [shipyard.assembly-fixture :as fixture]
             [shipyard.e2e.orient-save-test :as orient]
-            [shipyard.e2e.support :as s]))
+            [shipyard.e2e.support :as s])
+  (:import [com.microsoft.playwright APIResponse Page Route Route$FulfillOptions]
+           [java.util.function Consumer]))
 
 (defn row [id] (str ".bulk-orient__row:has(input[value='" id "'])"))
 (defn filter! [driver label]
@@ -55,4 +57,38 @@
       (doseq [id [a b]]
         (is (= [0.0 0.0 0.0 1.0] (:part/orientation (persisted/authored! (:shipyard.catalog/db (:system started)) id)))))
       (is (= "2 selected" (s/text driver "[data-bulk-count]")))
+      (finally (s/quit! driver) (fixture/stop! started)))))
+
+(deftest navigation-cannot-discard-an-orientation-filter-change
+  (let [started (fixture/start! true) driver (s/make-driver)
+        ^Page page (:page driver) held (atom nil)
+        value #(s/js driver "() => document.querySelector('#bulk-orient-filters select[name=orientation]').value")]
+    (try
+      (s/go! driver (s/base-url (:system started)))
+      (s/wait-visible! driver "[data-bulk-select]")
+      (.route page "**/workspace/browse*"
+              (reify Consumer
+                (accept [_ route]
+                  (reset! held [route (.fetch ^Route route)]))))
+      (let [activation (s/js driver "() => document.querySelector('#workspace-context').dataset.activation")]
+        (s/click! driver "[data-workspace-mode=browse]")
+        (is (s/wait-until #(do (s/js driver "() => document.readyState") (some? @held))))
+        (is (s/js driver "() => document.querySelector('#bulk-orient-filters select[name=orientation]').disabled")
+            "the outgoing table cannot accept a filter that navigation would overwrite")
+        (let [[^Route route ^APIResponse response] @held]
+          (.fulfill route (doto (Route$FulfillOptions.) (.setResponse response))))
+        (is (s/wait-until #(not= activation (s/js driver "() => document.querySelector('#workspace-context').dataset.activation"))))
+        (filter! driver "Orientation unset")
+        (is (= "unset" (value)))
+        (.unroute page "**/workspace/browse*")
+        (s/check! driver (str "[data-bulk-select][value='" (:prow fixture/ids) "']"))
+        (s/click! driver "[data-bulk-render-button]")
+        (is (s/wait-until #(= 1 (get-in (s/stats driver) [:bulk :count]))))
+        (orient/set-yaw! driver 45)
+        (orient/save! driver)
+        (is (s/wait-until #(zero? (get-in (s/stats driver) [:bulk :dirty]))))
+        (s/click! driver "[data-bulk-back]")
+        (s/wait-visible! driver "#bulk-orient-filters")
+        (is (= "unset" (value)))
+        (is (s/wait-until #(zero? (s/count-els driver (row (:prow fixture/ids)))))))
       (finally (s/quit! driver) (fixture/stop! started)))))

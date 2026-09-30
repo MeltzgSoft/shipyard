@@ -9,9 +9,10 @@
   ;; Keep an accepted transition in flight until its server context is displayed.
   ;; Aborting it could leave the browser holding the preceding generation.
   ;; Disabling a row div does not disable its native selection checkbox.
+  ;; Freeze outgoing filter edits, preserving controls already disabled by the view.
   {:hx-swap "innerHTML settle:0ms"
    :hx-sync "#workspace-navigation:drop"
-   :hx-disabled-elt "[data-workspace-mode], [data-workspace-transition], [data-bulk-select]"})
+   :hx-disabled-elt "[data-workspace-mode], [data-workspace-transition], [data-bulk-select], [data-workspace-filters] input:enabled, [data-workspace-filters] select:enabled"})
 
 (def transport-attrs
   ;; HTMX reads the current server-rendered context when sending a request.

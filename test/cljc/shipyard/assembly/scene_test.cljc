@@ -82,3 +82,24 @@
     (is (= {"b" [0 1 0] "c" [0 0 1]} (get-in updated [:slots (:slot set-a) :payload :details :faces])))
     (is (= (get-in initial [:slots (:slot set-a) :token]) (get-in updated [:slots (:slot set-a) :token])))
     (is (= updated (scene/accept-event updated (event 2 [{:op :reset}]))))))
+
+(deftest recovery-snapshots-reconcile-complete-slots
+  (testing "unchanged geometry keeps pending tokens; replaced and absent slots invalidate them"
+    (let [nested (assoc set-a :slot [[:weapon 0] [:turret 0]])
+          painted (assoc set-b :material {:base [1 0 0]} :details {:faces {"face" [1 0 0]}}
+                         :regions {:faces {"face" "Primary"}} :layers [{:name "Primary"}])
+          cleared (assoc set-b :material nil :details nil :regions nil :layers nil)
+          initial (scene/accept-event scene/empty-state (event 1 [{:op :reset} set-a painted nested]))
+          replacement (assoc set-a :url "/mesh/new")
+          updated (scene/accept-event initial (event 3 [{:op :snapshot :slots [(:slot set-a) (:slot set-b)]}
+                                                        replacement cleared]))]
+      (is (scene/current? updated (:slot set-b) (get-in initial [:slots (:slot set-b) :token])))
+      (is (= (dissoc cleared :op) (get-in updated [:slots (:slot set-b) :payload])))
+      (is (not (scene/current? updated (:slot set-a) (get-in initial [:slots (:slot set-a) :token]))))
+      (is (not (scene/current? updated (:slot nested) (get-in initial [:slots (:slot nested) :token]))))
+      (is (= #{(:slot set-a) (:slot set-b)} (set (keys (:slots updated)))))
+      (is (= updated (scene/accept-event updated (event 2 [{:op :reset}]))))
+      (is (empty? (:slots (scene/accept-event updated (event 4 [{:op :snapshot :slots []}])))))))
+  (testing "a late recovery snapshot cannot reopen assembly after leaving"
+    (is (= scene/empty-state
+           (scene/accept-event scene/empty-state (event 3 [{:op :snapshot :slots [(:slot set-a)]} set-a]))))))
