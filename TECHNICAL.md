@@ -2150,6 +2150,9 @@ transitions and mutations and rejects stale or mismatched requests before effect
 handler. It renders the destination panels, selector, mount-color control and context
 in one HTMX response. HTMX disables transition controls until that response arrives;
 a later click cannot abort an accepted transition and strand the old context.
+Region mutations compose this same guard with their editor controls, keeping Back
+to table unavailable until the response arrives instead of silently dropping its
+navigation while the shared synchronization scope is busy.
 Ordinary navigation never transfers models. Filters and unsaved
 draft names accompany navigation using `hx-include`; Part Browser checkbox changes and drawer
 disclosure use ordinary HTTP operations. Mount-color changes are server operations.

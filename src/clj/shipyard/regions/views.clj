@@ -7,7 +7,8 @@
 
 (def attrs (merge workspace/transition-attrs {:method "post" :action "/parts/regions" :hx-post "/parts/regions" :hx-target "#part-regions" :hx-swap "outerHTML"
                                               :hx-include "#region-stroke input[name=mode], #region-stroke input[name=angle]"
-                                              :hx-disabled-elt "#part-regions input, #part-regions select, #part-regions button, #workspace-navigation button, #library button"}))
+                                              :hx-disabled-elt (str (:hx-disabled-elt workspace/transition-attrs)
+                                                                    ", #part-regions input:enabled, #part-regions select:enabled, #part-regions button:enabled, #library button:enabled")}))
 (defn fields [part-id mesh-key regions]
   (for [[k v] {"part-id" part-id "mesh-key" mesh-key "revision" (:revision regions)
                "layer-revision" (:layer-revision regions)}]

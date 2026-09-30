@@ -2,13 +2,16 @@
   (:require [clojure.test :refer [deftest is]]
             [shipyard.assembly-fixture :as fixture]
             [shipyard.catalog.db :as catalog]
-            [shipyard.e2e.support :as s]))
+            [shipyard.e2e.support :as s])
+  (:import [com.microsoft.playwright APIResponse Page Route Route$FulfillOptions]
+           [java.util.function Consumer]))
 
 (deftest region-thumbnails-and-summary-columns-follow-saved-edits
   (let [started (fixture/start! true) sys (:system started) driver (s/make-driver)
         cat (:shipyard.catalog/db sys) id (:weapon fixture/ids)
         row (str "[data-part-row='" id "']")
         image (str row " .part-thumbnail img")
+        ^Page page (:page driver) held (atom nil)
         image-src #(s/js driver (str "() => document.querySelector(\"" image "\").src"))
         saved #(get-in (catalog/part-context! cat id) [:part :part/paint-regions])]
     (try
@@ -24,8 +27,21 @@
         (s/fill-and-blur! driver "#region-add input[name=name]" "Thumbnail trim")
         (s/click! driver "button:text-is('Add layer')")
         (s/wait-visible! driver "button[aria-label='Paint Thumbnail trim']")
+        (.route page "**/parts/regions"
+                (reify Consumer
+                  (accept [_ route]
+                    (reset! held [route (.fetch ^Route route)]))))
         (s/click! driver "#region-fill button")
+        (is (s/wait-until #(do (s/js driver "() => document.readyState") (some? @held))))
         (is (s/wait-until #(seq (:faces (saved)))))
+        (is (s/js driver "() => document.querySelector('[data-part-back]').disabled")
+            "Back cannot submit a navigation that the pending region response would discard")
+        (is (s/js driver "() => [...document.querySelectorAll('[data-workspace-mode], [data-workspace-transition]')].every(e => e.disabled)")
+            "region mutations use the shared workspace admission guard")
+        (let [[^Route route ^APIResponse response] @held]
+          (.fulfill route (doto (Route$FulfillOptions.) (.setResponse response))))
+        (.unroute page "**/parts/regions")
+        (is (s/wait-until #(s/js driver "() => !document.querySelector('[data-part-back]').disabled")))
         (s/click! driver "[data-part-back]")
         (s/scroll-into-view! driver row)
         (s/wait-visible! driver image)
