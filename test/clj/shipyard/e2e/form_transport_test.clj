@@ -27,8 +27,7 @@
       (lf/save-class! sys)
       (s/go! driver (s/base-url sys))
       (testing "Part metadata, mounts, settings and region forms"
-        (s/open-part! driver "weapon")
-        (s/await-part driver (:weapon fixture/ids))
+        (s/open-prepared-part! driver sys "weapon" (:weapon fixture/ids))
         (assert-post-forms! driver ["/parts/role" "/parts/orientation" "/mounts/edit" "/mounts/delete" "/parts/regions"])
         (s/click! driver "[data-detail-tab=mounts]")
         (s/click! driver ".mounts__action button:text-is('Edit') >> nth=0")

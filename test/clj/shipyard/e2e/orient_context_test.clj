@@ -85,7 +85,7 @@
           (assert-step! driver step)
           (is (pos? (s/count-els driver "[data-preparing]")))
           (.countDown release)
-          (is (s/wait-until #(= 1 (get-in (s/stats driver) [:bulk :count]))))
+          (s/await-bulk-prepared! driver (:system started) [id])
           (assert-step! driver step)
           (turn! driver id step)
           (s/click! driver "[data-bulk-back]")

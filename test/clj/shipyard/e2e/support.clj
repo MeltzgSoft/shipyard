@@ -7,7 +7,6 @@
   mesh cache and file part ids from a temp tree into their scan index."
   (:require [babashka.fs :as fs]
             [clojure.java.io :as io]
-            [clojure.test :refer [is]]
             [integrant.core :as ig]
             [ring.adapter.jetty :as jetty]
             [shipyard.fixtures :as f])
@@ -246,11 +245,14 @@
 
 (defn click! [{:keys [^Page page]} sel] (.click page sel))
 
-(defn open-part! [{:keys [^Page page] :as driver} part-name]
+(defn- choose-part! [{:keys [^Page page] :as driver} part-name]
   (when (pos? (.count (.locator page "[data-part-back]")))
     (click! driver "[data-part-back]"))
   ;; Playwright does not treat a disabled div ancestor as a disabled control.
-  (.dblclick (.locator page (str ".bulk-orient__row:not([disabled]) .bulk-orient__part:text-is('" part-name "')")))
+  (.dblclick (.locator page (str ".bulk-orient__row:not([disabled]) .bulk-orient__part:text-is('" part-name "')"))))
+
+(defn open-part! [driver part-name]
+  (choose-part! driver part-name)
   (wait-visible! driver (str ".detail__name:text-is('" part-name "')")))
 
 (defn check! [{:keys [^Page page]} sel] (.check page sel))
@@ -359,13 +361,52 @@
 (defn loaded-parts [driver]
   (some-> (stats driver) :parts vec))
 
+(defn- await-preparation! [driver system expected ready?]
+  ;; Cold previews queue behind visible-row thumbnail work on two workers. CI's
+  ;; slow filesystem can exceed ordinary UI waits while this queue still advances.
+  (let [last-state (atom nil)
+        result (wait-until
+                #(let [state {:viewport (select-keys (stats driver) [:workspace :activation :parts :bulk :assembly :status])
+                              :jobs (when-let [jobs-state (get-in system [:shipyard.http/jobs :state])]
+                                      (select-keys @jobs-state (:parts expected)))
+                              :dom (js driver "() => ({context: {...document.querySelector('#workspace-context')?.dataset}, detail: document.querySelector('#detail')?.innerText.slice(0,4000), partId: document.querySelector('.detail__id')?.textContent, ready: !!document.querySelector('.detail--ready'), errors: [...document.querySelectorAll('.detail__error, [data-mesh-state=failed]')].map(e=>e.innerText)})")}]
+                   (reset! last-state state)
+                   (when (or (ready? state)
+                             (some (comp #{:failed} :state val) (:jobs state)))
+                     state))
+                90000)]
+    (when-not (and result (ready? result))
+      (throw (ex-info "Cold preview did not become ready"
+                      (assoc @last-state :expected expected :timeout-ms 90000))))
+    (:viewport result)))
+
+(defn open-prepared-part!
+  "Open a cold part and await both its ready inspector and rendered preview."
+  [driver system part-name part-id]
+  (choose-part! driver part-name)
+  (await-preparation! driver system {:parts [part-id]}
+                      #(and (get-in % [:dom :ready])
+                            (= part-id (get-in % [:dom :partId]))
+                            (some #{part-id} (get-in % [:viewport :parts])))))
+
+(defn await-bulk-prepared!
+  "Await the selected cold previews, reporting server and browser state on failure."
+  [driver system ids]
+  (await-preparation! driver system {:parts ids}
+                      #(= (set (map keyword ids)) (set (keys (get-in % [:viewport :bulk :orientations]))))))
+
+(defn await-assembly-prepared!
+  "Await cold assembly geometry without extending ordinary interaction waits."
+  [driver slot-count]
+  (await-preparation! driver nil {:assembly-slots slot-count}
+                      #(= slot-count (count (get-in % [:viewport :assembly :slots])))))
+
 (defn await-part
   "Wait for `part-id` to be on the GPU, and return the stats that prove it."
   [driver part-id]
-  (let [s (wait-until #(let [s (stats driver)]
-                         (when (some #{part-id} (:parts s)) s)))]
-    (is (some? s) (str "part never reached the viewport: " part-id))
-    s))
+  (await-preparation! driver nil {:parts [part-id]}
+                      #(some #{part-id} (get-in % [:viewport :parts])))
+  (stats driver))
 
 (defn ship-table! [driver]
   (click! driver "[data-workspace-mode=ships]")

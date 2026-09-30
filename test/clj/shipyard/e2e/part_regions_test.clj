@@ -228,8 +228,7 @@
     (try
       (swap! (:state (:shipyard.assembly/db sys)) assoc :draft lf/draft :root (str (:root started)))
       (s/go! driver (s/base-url sys))
-      (s/open-part! driver "weapon")
-      (s/wait-visible! driver ".detail--ready")
+      (s/open-prepared-part! driver sys "weapon" id)
       (is (s/wait-until #(seq (:region-faces (s/stats driver)))))
       (s/click! driver "[data-detail-tab=regions]")
       (s/fill-and-blur! driver "#region-add input[name=name]" "Trim")

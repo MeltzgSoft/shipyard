@@ -23,7 +23,7 @@
         (throw (ex-info "Workspace navigation did not complete" {:mode mode}))))))
 
 (defn await-ship! [driver]
-  (is (s/wait-until #(= 13 (count (get-in (s/stats driver) [:assembly :slots]))))))
+  (s/await-assembly-prepared! driver 13))
 
 (deftest saved-class-edit-duplicate-and-workspace-isolation
   (let [started (fixture/start! true) driver (s/make-driver) deps (lf/deps started)
