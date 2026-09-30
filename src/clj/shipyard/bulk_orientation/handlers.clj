@@ -11,37 +11,38 @@
             [shipyard.http.urls :as urls]
             [shipyard.http.views :as http-views]
             [shipyard.library.index :as index]
+            [shipyard.importer.db :as importer]
             [shipyard.mesh.cache :as cache]
             [shipyard.workspace.db :as workspace]))
 
 (defn- blank->nil [x]
   (when-not (or (nil? x) (= "" x)) x))
 
-(defn- facets! [catalog]
-  (let [database (db/listing! catalog)]
+(defn- facets! [deps]
+  (let [database (importer/listing! deps)]
     {:bundles (db/bundles database)
      :classes (db/classes database)
      :roles (db/roles database)}))
 
-(defn- orientation-parts [catalog params]
-  (->> (db/browse (db/listing! catalog)
+(defn- orientation-parts [deps params]
+  (->> (db/browse (importer/listing! deps)
                   {:bundle (blank->nil (get params "bundle"))
                    :class (blank->nil (get params "class"))
                    :role (some-> (get params "role") blank->nil keyword)
                    :q (blank->nil (get params "q"))})
        (filter #(bulk/matches-orientation? (blank->nil (get params "orientation")) %))))
 
-(defn orient! [{:keys [catalog]} _]
-  (htmx/fragment (views/panel (facets! catalog))))
+(defn orient! [deps _]
+  (htmx/fragment (views/panel (facets! (importer/effective! deps)))))
 
-(defn- parts-view! [{:keys [catalog workspace]} params]
+(defn- parts-view! [{:keys [workspace] :as deps} params]
   (when workspace (workspace/remember! workspace :browse params))
   (let [{:keys [bulk-selection filters]} (when workspace (workspace/workspace! workspace :browse))]
-    (views/results (orientation-parts catalog (merge filters params))
+    (views/results (orientation-parts deps (merge filters params))
                    (set (bulk/selected-ids bulk-selection)) (get filters "table-scroll") (get filters "page"))))
 
 (defn parts! [deps {:keys [params]}]
-  (htmx/fragment (parts-view! deps params)))
+  (htmx/fragment (parts-view! (importer/effective! deps) params)))
 
 (defn selection! [{:keys [workspace]} {:keys [params]}]
   (workspace/remember! workspace :browse params)
@@ -72,7 +73,7 @@
       :else
       {:part part :state :preparing :message "Preparing…"})))
 
-(defn render! [{:keys [catalog] :as deps} {:keys [params]}]
+(defn- render-effective! [{:keys [catalog] :as deps} {:keys [params]}]
   (let [part-ids (bulk/selected-ids (get params "part-ids"))]
     (if-not (seq part-ids)
       (htmx/fragment [:p.detail__error "Select at least one previewable part."] {:status 422})
@@ -105,7 +106,7 @@
     (htmx/fragment (views/save-result (assoc result :request request :activation activation))
                    {:status (if (seq (:failed result)) 422 200)})))
 
-(defn save! [{:keys [workspace] :as deps} {:keys [params parameters]}]
+(defn- save-effective! [{:keys [workspace] :as deps} {:keys [params parameters]}]
   (if-let [orientations (bulk/orientations-request params)]
     (let [request (get-in parameters [:form :request])
           activation (:activation workspace/*context*)
@@ -118,7 +119,7 @@
           (persist! deps orientations request activation))))
     (htmx/fragment [:p.detail__error "The bulk orientation data was invalid."] {:status 422})))
 
-(defn metadata! [{:keys [catalog workspace] :as deps} {:keys [params]}]
+(defn- metadata-effective! [{:keys [catalog workspace] :as deps} {:keys [params]}]
   (workspace/remember! workspace :browse params)
   (let [ids (bulk/selected-ids (:bulk-selection (workspace/workspace! workspace :browse)))
         database (db/listing! catalog)
@@ -132,5 +133,31 @@
         (htmx/fragment
          (list [:span (str "Updated " (count ids) " part" (when (not= 1 (count ids)) "s") ".")]
                (update (parts-view! deps {}) 1 assoc :hx-swap-oob "outerHTML")
-               (views/filter-updates (facets! catalog) (:filters (workspace/workspace! workspace :browse)))))
+               (views/filter-updates (facets! deps) (:filters (workspace/workspace! workspace :browse)))))
         (catch Exception e (htmx/fragment [:span.detail__error (.getMessage e)] {:status 422}))))))
+
+(defn render! [deps request]
+  (render-effective! (importer/effective! deps) request))
+
+(defn save! [deps request]
+  (save-effective! (importer/effective! deps) request))
+
+(defn metadata! [deps {:keys [params] :as request}]
+  (let [deps (importer/effective! deps)]
+    (if (= "variant" (get params "field"))
+      (try
+        (if-let [session (:import-session deps)]
+          (let [ids (bulk/selected-ids (:bulk-selection (workspace/workspace! (:workspace deps) :browse)))]
+            (importer/variants! session ids (keyword (get params "value")))
+            (htmx/fragment (list [:span "Updated variants."]
+                                 (update (parts-view! deps {}) 1 assoc :hx-swap-oob "outerHTML"))))
+          (htmx/fragment [:span "Variant edits are available during import only."] {:status 422}))
+        (catch Exception e (htmx/fragment [:span.detail__error (.getMessage e)] {:status 422})))
+      (metadata-effective! deps request))))
+
+(defn select-ids! [{:keys [workspace] :as deps} ids]
+  (let [selection (pr-str (vec (sort ids)))
+        deps (importer/effective! deps)]
+    (workspace/update-workspace! workspace :browse assoc :bulk-selection selection)
+    (htmx/fragment (list (views/selection-updates selection)
+                         (update (parts-view! deps {}) 1 assoc :hx-swap-oob "outerHTML")))))

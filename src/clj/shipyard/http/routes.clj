@@ -29,6 +29,7 @@
             [shipyard.http.validation :as validation]
             [shipyard.http.views :as views]
             [shipyard.library.index :as index]
+            [shipyard.importer.routes :as import-routes]
             [shipyard.mesh.cache :as cache]
             [shipyard.mesh.facet :as facet]
             [shipyard.mount.facet-input :as facet-input]
@@ -595,6 +596,7 @@
     (ring/router
      (into (routes deps)
            (concat (bulk-routes/routes deps)
+                   (when (:workspace deps) (import-routes/routes deps))
                    (when (:assembly deps) (assembly-routes/routes deps))
                    (when (:workspace deps)
                      (workspace-routes/routes deps))))

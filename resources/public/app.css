@@ -1061,3 +1061,27 @@ body:has(#workspace-context[data-workspace="ships"]) #library[data-ship-view="ed
 
 .bulk-orient__mounts { color: var(--ink-dim); overflow-wrap: anywhere; }
 .bulk-orient__regions[data-has-regions="true"] { color: var(--accent); }
+
+.import-start { display: flex; align-items: end; gap: .75rem; flex-wrap: wrap; padding: .65rem 1rem; }
+.import-start label { display: flex; flex: 1; min-width: 18rem; flex-direction: column; gap: .25rem; }
+.import-start input { width: 100%; }
+.import-start #import-status { flex-basis: 100%; margin: 0; }
+.import-review { padding: .5rem 1rem; border-bottom: 1px solid var(--line); }
+.import-review p { margin: .35rem 0; }
+.import-review form { display: inline-block; margin-right: .75rem; }
+.bulk-orient__regions small { display: block; max-height: 4rem; overflow: hidden; overflow-wrap: anywhere; }
+
+#library:has(.import-review) .bulk-orient__columns,
+#library:has(.import-review) .bulk-orient__row {
+  grid-template-columns: 28px 96px minmax(150px, 2fr) minmax(100px, 1fr) 75px minmax(75px, 1fr) 100px minmax(170px, 1.5fr) 44px 44px 44px 72px;
+}
+
+.import-start button, .import-review button {
+  border: 1px solid var(--line); border-radius: 5px; background: var(--panel-2);
+  color: var(--ink); padding: 7px 10px; font: 600 11px/1 system-ui, sans-serif; cursor: pointer;
+}
+.import-start input { box-sizing: border-box; border: 1px solid var(--line); border-radius: 5px; background: var(--bg); color: var(--ink); padding: 7px; }
+.import-start label, .import-review { font-size: 12px; }
+.import-start button:disabled { opacity: .5; cursor: not-allowed; }
+.import-review button:hover, .import-start button:hover { border-color: var(--accent); }
+.import-review button[value=none] { margin-left: .4rem; }

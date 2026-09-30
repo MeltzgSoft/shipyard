@@ -815,6 +815,22 @@ for this workflow, including workspace-session restoration under §9.2.
 
 ---
 
+### 9.5 Archive import
+
+Part Browser can enter an import review mode for a local ZIP, including recursively
+nested ZIPs with arbitrary source layouts. All discovered STLs are listed. Bundle,
+class, role and supported status are editable filename/path hints, with explicit inner
+source markers taking precedence over outer archive labels. Uncertain classifications
+remain reviewable. Bulk label edits and the orientation grid operate on the staged
+import; mount authoring and region painting are unavailable. Switching workspaces
+preserves the review, without changing Ship Browser's catalog or draft.
+
+Commit moves extracted models into the canonical library hierarchy and names variants
+according to §4, persisting the reviewed roles and orientations. The original ZIPs
+remain intact. Identical entries sharing a destination can coalesce; different content
+and existing destinations must never be silently overwritten. Failed validation retains
+the review for correction, and cancel discards it without changing library parts.
+
 ## 10. Delivery planning
 
 Milestone scope, progress, and outstanding work live in the

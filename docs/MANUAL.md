@@ -68,6 +68,41 @@ it still appears in the library, greyed out with the reason, rather than silentl
 vanishing. You should be able to see everything you own, even parts Shipyard cannot
 render without showing pits or print scaffolding.
 
+### Importing a ZIP archive
+
+Choose your library folder first. In **Part Browser**, enter the local path to a ZIP
+archive (a leading `~/` is supported) and choose **Review archive**. Shipyard unpacks
+nested ZIPs and switches the table to **Import mode**, listing every STL in that
+archive. Non-STL extras, including Lychee projects and incomplete `.part` downloads,
+are ignored. The original archives are always kept.
+
+Bundle/faction, class, role and supported status are inferred from archive, folder and
+file names. These are hints: review unknown or ambiguous values. An inner **Original
+Files** folder takes precedence over an outer archive labelled **Supported**. Files
+without a support marker default to unsupported. The table shows the variant and
+original archive path; hover over a long source path to read it in full.
+
+Select rows, or **Select entire import** across all pages, to apply bulk bundle,
+class, role and name edits. **Supported / unsupported** accepts `unsupported`,
+`supported` or `unsupported-pitted`. Use **Orient selection** for the usual rotation
+grid, then **Save orientations** and **Back to table**. Supported and pitted models
+remain listed but have no preview. Mount authoring and region painting are disabled
+throughout import. Switching to Ship Browser and back retains the import review and
+its orientation previews.
+
+**Import into library** moves the extracted models into
+`<Bundle>/[<Class>/][weapons/[turrets/]]<Part Name>/`, naming variants
+`unsupported.stl`, `supported.stl` or `unsupported-pitted.stl`. Reviewed orientations
+and roles are saved with the imported parts. Identical repeated entries sharing a
+destination are imported once. Different files targeting the same destination, invalid
+folder names and existing library files stop the import with an error; correct the
+reviewed names and retry. Existing files are never overwritten.
+
+**Cancel import** discards the temporary review. Import edits do not change the library
+until **Import into library** succeeds. The review is temporary and does not survive
+an application restart. ZIP extraction is limited to 12 nested levels, 100,000 entries
+and 64 GiB of expanded data; large bundles need corresponding temporary disk space.
+
 ## 3. Browsing your library
 
 Use **Part Browser** and **Ship Browser** in the masthead

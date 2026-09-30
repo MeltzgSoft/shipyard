@@ -11,6 +11,7 @@
             [shipyard.http.htmx :as htmx]
             [shipyard.http.views :as views]
             [shipyard.library.index :as index]
+            [shipyard.importer.db :as importer]
             [shipyard.loadout.operations :as loadouts]
             [shipyard.loadout.views :as ship-views]
             [shipyard.paint.db :as paint-db]
@@ -176,7 +177,7 @@
       (workspace/update-workspace! workspace :ships assoc :view :table))
     (when (and (= mode :browse) (= "1" (get params "table")))
       (workspace/update-workspace! workspace mode assoc :view :table))
-    (when (and (= mode :browse) (get params "part-id"))
+    (when (and (= mode :browse) (not (importer/session! deps)) (get params "part-id"))
       (workspace/update-workspace! workspace :browse assoc :view :part :selection (get params "part-id")))
     (workspace/update-workspace! workspace :ships dissoc :brush-pending)
     (binding [workspace/*context* context]
@@ -195,7 +196,10 @@
                     (append [:section#library.panel {:hx-swap-oob "outerHTML" :data-part-view "part"}])
                     (append [:section#bulk-orient.bulk-orient__stage {:hx-swap-oob "innerHTML"}]))
                 (let [grid (when (= view :grid) (orient/render! deps {:params {"part-ids" bulk-selection}}))
-                      panel (transforms/selected-filters (orient-views/panel (facets) bulk-selection (index/root! library)) filters)]
+                      panel (transforms/selected-filters (orient-views/panel (if (importer/session! deps)
+                                                                               (let [db (importer/listing! (importer/effective! deps))]
+                                                                                 {:bundles (catalog/bundles db) :classes (catalog/classes db) :roles (catalog/roles db)}) (facets))
+                                                                             bulk-selection (index/root! library) (importer/session! deps)) filters)]
                   (-> (htmx/fragment (views/detail-empty) (when-not grid {:events {:clear nil}}))
                       (append (into [(first panel) {:hx-swap-oob "outerHTML"}] (rest panel)))
                       (append [:section#bulk-orient.bulk-orient__stage {:hx-swap-oob "innerHTML"}
