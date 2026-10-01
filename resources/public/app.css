@@ -437,6 +437,19 @@ body:has(.stage__mount-colors-toggle[aria-pressed="false"]) .assembly__candidate
   padding: 0 0.25rem;
 }
 .mount-wizard__mirror .mount-wizard__check { grid-column: 1 / -1; }
+.mount-wizard__cut {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  margin: 0;
+  padding: 0.35rem 0.45rem;
+}
+.mount-wizard__cut legend { font-size: 0.78rem; color: var(--ink-dim); }
+.mount-wizard__cut .mount-wizard__check, .mount-wizard__cut .muted { grid-column: 1 / -1; }
+.mount-wizard__cut .muted { margin: 0; font-size: 0.72rem; }
 .mount-wizard__check {
   display: inline-flex;
   align-items: center;

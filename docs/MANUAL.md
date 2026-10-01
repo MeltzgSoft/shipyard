@@ -175,6 +175,30 @@ and arrows show each section's center. Capacity and Twist changes update the pre
 Saved splits are stored with the mount in the database, including when mirrored. Older
 capacity-only mounts need their face picked again to define the split.
 
+To make a printable variant, enable **Create pitted version** in the mount form.
+Plugs initially offer **Recess**; sockets offer **Pit**, and either choice can be changed.
+All cut measurements are in millimetres. A pit uses **Depth** and **Diameter** and
+is centered on the mount. For capacity above one, each section gets its own pit.
+A recess uses **Depth** and **Border**: it follows the selected face's boundary,
+leaving that border between the face edge and the recess. Border may be zero;
+depth and diameter must be positive. Mirrored pairs mirror their cuts too.
+
+Yellow wireframes show the cut opening, floor and walls through the model,
+including its hidden side, even when Mount colors is off. Measurement changes
+update the preview immediately. **Save mount** or **Save changes** rebuilds the
+variant from the original source with all saved cuts. It writes a sibling file
+with the **`-pitted.stl`** suffix: `unsupported.stl` produces
+`unsupported-pitted.stl`. The original source stays intact, and the viewport
+continues displaying it with the wireframes. Cut settings survive restart.
+Saving overwrites an existing pitted variant with the newly generated result.
+Disabling a cut or deleting its mount rebuilds the variant with the remaining
+cuts; removing the last cut restores the original geometry in the pitted file.
+Failed generation retains the prior file and saved mount definitions. Reduce a
+border that consumes the face; if the source has changed, reopen the part and
+pick its mount faces again before generating.
+Generation requires a closed source mesh with consistently oriented faces;
+repair an open or malformed STL in your mesh tool before generating cuts.
+
 Part-level metadata is edited outside the mount picker. Use **Part metadata** in the
 detail panel to set the role Shipyard should trust for that part from now on. It
 replaces the inferred role shown by browsing.

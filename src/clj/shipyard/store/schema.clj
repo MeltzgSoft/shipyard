@@ -28,7 +28,7 @@
                 :mount/origin :mount/mirror-id :source/variant])
    (attributes :db.type/data
                [:scan/escort-analysis :part/orientation :mount/pos :mount/axis :mount/roll :mount/magnet
-                :mount/facet :mount/split :mount/mirror-plane :mount/mirror-offset :chunk/payload
+                :mount/facet :mount/split :mount/cut :mount/outline :mount/mirror-plane :mount/mirror-offset :chunk/payload
                 :slot/path :target/path :layer/preview-color :material/base :material/metalness
                 :material/roughness :material/glow :material/paint :paint/fields])
    (attributes :db.type/ref

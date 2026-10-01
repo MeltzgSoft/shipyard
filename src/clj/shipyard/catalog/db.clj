@@ -85,9 +85,11 @@
                       (d/transact! conn [{:db/id ref :part/revision (inc (or (:part/revision entity) 0))}])
                       result)))))
 
-(defn save-authoring! [catalog part-id {:keys [mounts part-role] :as value}]
+(defn save-authoring! [catalog part-id {:keys [mounts part-role expected-revision] :as value}]
   (mutate! catalog part-id
            (fn [conn _ ref entity]
+             (when (and (contains? value :expected-revision) (not= expected-revision (:part/revision entity)))
+               (throw (ex-info "This part changed while generating cuts. Reopen the mount editor and retry." {})))
              (let [ids (into {} (map (juxt :mount/id :mount/uid)) (:part/mounts entity))
                    mounts (mapv (fn [order mount] (assoc (dissoc mount :db/id) :mount/order order :mount/uid (or (ids (:mount/id mount)) (random-uuid)))) (range) mounts)]
                (d/transact! conn (store/retract-children @conn ref [:part/mounts]))

@@ -38,12 +38,9 @@ Shipyard closes that loop. Pick parts, see the assembled ship, decide before pri
 
 Explicitly out of scope. These are deliberate exclusions, not deferred work.
 
-- **No merged STL / 3MF export.** Shipyard does not produce printable files. Parts are
-  printed separately and magnet-assembled physically; there is no digital kitbash output.
+- **No merged STL / 3MF export.** Parts are printed separately and magnet-assembled
+  physically; there is no digital kitbash output. Per-part pitted variants are supported (§5.2).
 - **No print plate layout, support generation, or slicer integration.**
-- **No automatic magnet pitting.** Deferred, not rejected - see §5.2. Because mounts are
-  now defined by face picking rather than derived from pits, alignment no longer depends
-  on it, so it buys nothing on the critical path. Pitting continues via `/stl-modify`.
 - **No game rules.** No points values, weapon stats, fleet legality, or army lists.
 - **No mesh repair as a feature.** Meshes are read as they are. Repair only happens
   incidentally where a boolean operation demands it.
@@ -155,7 +152,15 @@ facet's bounding-box midpoint that the frame already records.
 
 That removes the dependency on the 4 currently-pitted files, unblocks the other ~1,588
 parts immediately, and means alignment work no longer has to wait on boolean geometry.
-Automatic pitting is consequently out of scope for now (§3).
+Mount authoring optionally generates physical cuts independently of assembly alignment.
+Plugs default to recesses; sockets default to pits. A pit is a cylinder defined by
+depth and diameter, centered on the mount or on each capacity section. A recess
+follows the selected face's actual edge, inset by its border, and extends inward
+by its depth. All dimensions are millimetres. Mirrored mounts mirror the complete
+cut definition and face outline. Wireframes remain visible through the source
+model regardless of mount-color display settings. Dimension edits update the
+preview; saving cut or mount changes regenerates a sibling `-pitted.stl` variant
+from the original source and all enabled cuts. Original sources stay intact.
 
 Where both pitted and unpitted variants of a hull exist, the boolean difference between
 them still isolates the cut volumes and can *seed* socket positions automatically. That
@@ -377,12 +382,12 @@ parallelism across cores is a substantial advantage. LWJGL 3 ships meshoptimizer
 with prebuilt natives for all three platforms, covering simplification, vertex-cache
 optimization and the meshopt encoder - no FFI work required. JOML covers transform math.
 
-**No CSG boolean is required.** Earlier drafts needed it for pit derivation and for
-in-app pitting; face picking eliminates the first and §3 defers the second. This removes
-the only dependency the JVM was genuinely weak at - pure-Java CSG is BSP-based and would
-have been slow and fragile on a 133k-triangle hull. Should the optional `:seeded` path
-(§5.2) be built later, bind manifold3d through its C API using Java 22's FFM, or shell
-out to a small Python sidecar reusing the existing tooling.
+Face picking and assembly do not require CSG. Optional physical cut generation
+uses JVM solid subtraction scoped to polygons whose bounds overlap each cutter,
+retaining the rest of the source directly. It remains independent of display
+preprocessing and assembly transforms. Generation failures retain saved cut
+definitions and the previous output. Automatic mount seeding from existing pitted
+models remains a separate optional path (§5.2).
 
 What the wizard needs instead is **coplanar facet grouping** - a flood fill over adjacent
 triangles with a normal-dot threshold - plus a 2D convex hull for the roll axis. Both are

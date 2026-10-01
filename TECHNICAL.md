@@ -258,8 +258,10 @@ temp dir** - override with `-Dorg.lwjgl.librarypath` where that does not hold. I
 `Failed to instantiate memory allocator: JEmallocAllocator` log line is harmless; it
 falls back to the stdlib allocator.
 
-No CSG dependency - face picking (SPEC §5) removed the need, which is what makes the pure
-JVM stack viable.
+Physical mount cuts use JCSG for JVM solid subtraction and JTS for face-boundary
+insets and triangulation. JavaFX classes satisfy JCSG's public signatures;
+generation is headless and requires no additional runtime beyond the JVM.
+The browser uses Clipper for matching live polygon insets.
 
 ---
 
@@ -1628,6 +1630,35 @@ all three directions. Computation uses doubles; only the final durable vectors a
 ordinary EDN numbers.
 
 ### 12.4 Symmetry plane and mirroring
+
+Physical cut settings are optional `:mount/cut` data, with `:kind :pit|:recess`,
+`:depth`, `:diameter` (pit) or `:border` (recess), and the authoring `:mesh-key`.
+`:mount/outline` contains oriented source-space boundary loops, including holes.
+The server derives them from authoritative tier-0 triangles before generating;
+it does not trust a posted outline for subtraction. Reflection reverses loop winding
+and reflects every source point while preserving the stored right-handed frame.
+Pit positions come from the shared capacity-section contract.
+
+`pitting.geometry` uses JTS even-odd polygons, a negative mitered buffer and polygon
+triangulation for recesses; pits use 64 circular segments. Both extrude from 0.02 mm
+outside the face to the requested inward depth. JCSG's polygon-bound optimization
+limits BSP subtraction to source polygons overlapping each cutter. The browser's
+Clipper mitered inset uses 0.00001 mm coordinates and displays opening, floor and
+wall wireframes with depth testing/writes disabled and render order 1000. Saved cuts
+remain visible independently of mount colors, and live form edits use the same
+source-space frames and section centers.
+
+`pitting.db/save!` serializes generation with the library-relocation lock, checks
+source freshness and all cut mesh keys, requires a closed source with consistent
+winding and positive signed volume, generates from the original STL, and stages the complete binary
+result beside its source. It saves definitions then atomically replaces the sibling
+`-pitted.stl`; publication failure restores prior mount definitions. Removing the
+last cut writes the original bytes to that sibling. An expected part revision guards
+the commit against concurrent authoring changes; save/publication/rollback hold the
+shared store lock. Datalevin and filesystem writes
+are separate transactions: a process interruption between them can leave the old
+output beside newer definitions; saving again regenerates it. Neither generation nor
+publication overwrites the original source.
 
 M2 supports the three axis-aligned planes in the part's canonical coordinates. A plane is the
 transient pair `{:axis :x|:y|:z :offset number}`. The UI defaults the offset to the dense

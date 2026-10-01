@@ -25,6 +25,8 @@
             [shipyard.interface-colors :as interface-colors]
             [shipyard.math :as math]
             [shipyard.mount.split :as split]
+            [shipyard.mount.cut :as cut]
+            [shipyard.mount.cut-render :as cut-render]
             [shipyard.part.orientation :as orientation]
             [shipyard.paint.render :as paint-render]
             [shipyard.paint.glow :as glow]
@@ -453,7 +455,9 @@
                          part-id mesh-key]
   (when (and (get @parts part-id)
              (current-part? {:current current} part-id mesh-key))
-    (clear-authoring-preview! sys)
+    ;; Large authoring events travel in the response body and arrive after the
+    ;; swap. Preserve the freshly rendered form while replacing GPU preview.
+    (clear-preview! sys)
     (reset! authoring {:part-id part-id :mesh-key mesh-key})
     (.add (.-classList canvas) "stage__canvas--authoring")))
 
@@ -491,9 +495,19 @@
     (set! (.-emissiveIntensity surface) (if colors? 0 glow))
     (paint-render/apply-details! object (or value paint-material/neutral) colors?)))
 
+(defn- interface-colors! [^js object enabled?]
+  (set! (.-visible object)
+        (boolean (or enabled?
+                     (some (fn [^js group]
+                             (some (fn [^js child] (= "mount-cut" (.-name child))) (array-seq (.-children group))))
+                           (array-seq (.-children object))))))
+  (doseq [^js group (array-seq (.-children object))
+          ^js child (array-seq (.-children group))]
+    (set! (.-visible child) (or (= "mount-cut" (.-name child)) enabled?))))
+
 (defn- set-mount-colors! [{:keys [parts mount-markers mount-colors-enabled interfaces]} enabled?]
   (reset! mount-colors-enabled enabled?)
-  (when-let [object (:object @interfaces)] (set! (.-visible object) enabled?))
+  (when-let [object (:object @interfaces)] (interface-colors! object enabled?))
   (doseq [[_ ^js object] @parts]
     (when (some? (.. object -userData -mountColor))
       (apply-material! object (.. object -userData -paintMaterial) enabled?)))
@@ -566,18 +580,22 @@
         facet-indices (or (saved-facet-indices mesh-key mount)
                           (some-> (interface-facet obj mount) :indices seq))
         split-guide (split-guide-object mount color)
-        group (three/Group.)]
+        group (three/Group.)
+        cut-mount (if (= mesh-key (get-in mount [:mount/cut :mesh-key])) mount (dissoc mount :mount/cut))
+        cutting (cut-render/object! cut-mount)]
     (when facet-indices
       (.add group (face-highlight obj facet-indices mount nil color 0.42)))
     (when-let [split-object (:object split-guide)]
       (.add group split-object))
+    (when cutting (.add group cutting))
     {:type interface-type
      :mount-id (:mount/id mount)
      :triangles (count facet-indices)
      :candidates (count facet-indices)
      :split-lines (or (:split-lines split-guide) [])
      :split-centers (or (:split-centers split-guide) [])
-     :object (when (or facet-indices split-guide) group)}))
+     :cut-lines (cut-render/lines cut-mount)
+     :object (when (or facet-indices split-guide cutting) group)}))
 
 (defn- interface-highlights [^js obj mesh-key mounts]
   (let [items (keep #(interface-highlight-object obj mesh-key %) mounts)
@@ -627,6 +645,20 @@
                                       (* length 0.65) 0xffffff (* length 0.14) (* length 0.05))))
     {:split-lines lines :split-centers (mapv :mount/pos frames)}))
 
+(defn- cut-preview-mount [frame]
+  (when-let [form (.querySelector js/document ".mount-wizard__form")]
+    (when (checked? form "input[name=create-pitted]")
+      (let [params (into {"create-pitted" "true"}
+                         (map (fn [field] [field (input-value form (str "[name=" field "]"))])
+                              ["cut-kind" "cut-depth" "cut-diameter" "cut-border"]))
+            cutting (cut/request params (keyword (input-value form "[name=kind]")))
+            source (edn/read-string (input-value form "[name=frame]"))
+            capacity (or (math/parse-finite-double (input-value form "[name=capacity]")) 1)]
+        (when (:cut cutting)
+          (assoc frame :mount/cut (:cut cutting) :mount/outline (:mount/outline source)
+                 :mount/capacity (if (= "socket" (input-value form "[name=kind]")) capacity 1)
+                 :mount/split (split/metadata-for source frame (keyword (or (input-value form "[name=split-direction]") "vertical")))))))))
+
 (defn- preview-object [^js obj {:keys [facet-indices frame]} mirror]
   (let [frame (assoc frame :mount/roll (roll-for-preview frame))
         axis (:mount/axis frame)
@@ -645,6 +677,17 @@
                 (.add axis-line)
                 (.add roll-line)
                 (.add up-line))]
+    (when-let [mount (cut-preview-mount frame)]
+      (when-let [cutting (cut-render/object! mount)] (.add group cutting))
+      (when mirrored-frame
+        (let [mirrored (assoc mount :mount/pos (:mount/pos mirrored-frame)
+                              :mount/axis (:mount/axis mirrored-frame) :mount/roll (:mount/roll mirrored-frame)
+                              :mount/outline (mapv (fn [ring]
+                                                     (mapv #(orientation/reflect-position (:orientation mirror) (:plane-keyword mirror) (:offset mirror) %)
+                                                           (reverse ring))) (:mount/outline mount)))
+              mirrored (cond-> mirrored (:mount/split mount)
+                               (update-in [:mount/split :bounds] (fn [[[xmin ymin] [xmax ymax]]] [[xmin (- ymax)] [xmax (- ymin)]])))]
+          (when-let [cutting (cut-render/object! mirrored)] (.add group cutting)))))
     (when highlight
       (.add group highlight))
     (when mirrored-frame
@@ -723,7 +766,7 @@
           (try
             (let [{:keys [^js object items misses]} (interface-highlights obj mesh-key mounts)]
               (orient-object! object orientation)
-              (set! (.-visible object) @(:mount-colors-enabled sys))
+              (interface-colors! object @(:mount-colors-enabled sys))
               (when (seq items) (.add scene object))
               (reset! interfaces {:object object :source source
                                   :part-id part-id :mesh-key mesh-key
@@ -818,7 +861,23 @@
   "Keep socket-only controls in the DOM while a plug is selected so choosing
   socket does not discard their values, but hide and disable them until then."
   [^js form]
-  (let [socket? (= "socket" (input-value form "select[name=kind]"))]
+  (let [socket? (= "socket" (input-value form "select[name=kind]"))
+        kind (input-value form "select[name=kind]")
+        selector (.querySelector form "select[name=cut-kind]")
+        enabled? (checked? form "input[name=create-pitted]")]
+    (when selector
+      (when (not= kind (.getAttribute selector "data-cut-kind"))
+        (set! (.-value selector) (name (cut/default-kind (keyword kind))))
+        (.setAttribute selector "data-cut-kind" kind))
+      (doseq [^js control (array-seq (.querySelectorAll form ".mount-wizard__cut select, .mount-wizard__cut input[type=number]"))]
+        (set! (.-disabled control) (not enabled?)))
+      (doseq [^js field (array-seq (.querySelectorAll form ".mount-wizard__cut .mount-wizard__field, .mount-wizard__cut .muted"))]
+        (set! (.-hidden field) (not enabled?)))
+      (doseq [^js field (array-seq (.querySelectorAll form "[data-cut-field]"))]
+        (let [active? (= (.getAttribute field "data-cut-field") (.-value selector))]
+          (set! (.-hidden field) (not (and active? enabled?)))
+          (doseq [^js control (array-seq (.querySelectorAll field "input"))]
+            (set! (.-disabled control) (not (and active? enabled?)))))))
     (doseq [^js field (array-seq (.querySelectorAll form "[data-socket-only]"))]
       (set! (.-hidden field) (not socket?))
       (set! (.-disabled field) (not socket?))
@@ -1324,6 +1383,21 @@
 
 ;; --- test hook --------------------------------------------------------------
 
+(defn- cut-stats [^js object]
+  (let [items (atom [])]
+    (when object
+      (.traverse object
+                 (fn [^js child]
+                   (when (= "mount-cut" (.-name child))
+                     (let [position (.getAttribute (.-geometry child) "position")]
+                       (swap! items conj {:depth-test (.. child -material -depthTest)
+                                          :depth-write (.. child -material -depthWrite)
+                                          :render-order (.-renderOrder child)
+                                          :visible (.-visible child)
+                                          :points (mapv (fn [i] [(.getX position i) (.getY position i) (.getZ position i)])
+                                                        (range (.-count position)))}))))))
+    @items))
+
 (defn- preview-stats [{:keys [preview]}]
   (when-let [{:keys [^js object revision part-id mesh-key facet-indices frame
                      mirror mirror-frame roll-ambiguous? roll-source split-lines split-centers]} @preview]
@@ -1332,6 +1406,7 @@
               :mesh-key mesh-key
               :facet-indices facet-indices
               :triangles (count facet-indices)
+              :cuts (cut-stats object)
               :position (:mount/pos frame)
               :split-lines split-lines
               :split-centers split-centers
@@ -1349,19 +1424,22 @@
               :roll-source (some-> roll-source name)
               :geometries (object-geometry-count object)})))
 
-(defn- interface-stats [{:keys [interfaces]}]
+(defn- interface-stats [{:keys [interfaces mount-colors-enabled]}]
   (when-let [{:keys [^js object part-id mesh-key items misses error]} @interfaces]
-    (let [item-stats (fn [{:keys [type mount-id triangles candidates split-lines split-centers]}]
+    (let [item-stats (fn [{:keys [type mount-id triangles candidates split-lines split-centers cut-lines]}]
                        {:type (name type)
                         :mount-id (name mount-id)
                         :triangles triangles
                         :candidates candidates
                         :split-lines split-lines
-                        :split-centers split-centers})]
+                        :split-centers split-centers
+                        :cut-lines cut-lines})]
       (clj->js {:part-id part-id
+                :cuts (cut-stats object)
                 :mesh-key mesh-key
                 :object-id (when object (.-uuid object))
-                :visible (boolean (some-> @interfaces :object .-visible))
+                :visible (boolean (some-> object .-visible))
+                :colors-visible @mount-colors-enabled
                 :count (count items)
                 :misses (count misses)
                 :error error
@@ -1663,10 +1741,10 @@
                                       (refresh-orientation-from-form! sys e)))
     (listen-event! body sys "change" (fn [e]
                                        (when-let [form (event-form e)]
+                                         (sync-socket-fields! form)
                                          (when (= "accepts" (.-name (.-target e)))
                                            (update-mount-id-prefix! form))
                                          (when (= "kind" (.-name (.-target e)))
-                                           (sync-socket-fields! form)
                                            (update-mount-id-prefix! form)))
                                        (refresh-preview-from-form! sys e)
                                        (refresh-orientation-from-form! sys e)
