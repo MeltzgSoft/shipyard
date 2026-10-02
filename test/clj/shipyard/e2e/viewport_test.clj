@@ -174,7 +174,7 @@
 
 (deftest bulk-orientation-renders-rotates-and-saves-a-selection
   (let [entered (CountDownLatch. 2) release (CountDownLatch. 1)
-        ^ExecutorService pool (get-in *system* [:shipyard.http/jobs :pool])]
+        ^ExecutorService pool (get-in *system* [:shipyard.jobs/pool :pool])]
     (try
       ;; Hold the real workers so the browser must survive multiple preparing
       ;; grid replacements before any mesh can finish. No handlers are replaced.
