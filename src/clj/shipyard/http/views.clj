@@ -339,7 +339,9 @@
                       (some-> mount-id (keyword) (wizard/suggest-mirror-id) (name)))
         mirror-plane (or (:mirror-plane values) :x)
         mirror-offset (or (:mirror-offset values) 0)
-        edit? (= :edit mode)]
+        edit? (= :edit mode)
+        cut-kind (if (#{:pit :recess} (:cut-kind values)) (:cut-kind values) (cut/default-kind kind))
+        cut-enabled? (boolean (and (:cut-kind values) (not= :none (:cut-kind values))))]
     [:form.mount-wizard__form
      {:method "post" :action "/mounts" :hx-post "/mounts"
       :hx-target "#detail"
@@ -380,25 +382,6 @@
      [:label.mount-wizard__field "Twist"
       [:input {:type "number" :name "twist-deg" :value (or (:twist-deg values) "0")
                :step "1"}]]
-     [:fieldset.mount-wizard__cut
-      [:legend "Pitted STL"]
-      [:label.mount-wizard__check
-       [:input {:type "checkbox" :name "create-pitted" :checked (and (:cut-kind values) (not= :none (:cut-kind values)))}]
-       "Create pitted version"]
-      [:label.mount-wizard__field "Cut"
-       [:select {:name "cut-kind" :data-cut-kind (name kind)}
-        (for [[k label] [[:pit "Pit"] [:recess "Recess"]]]
-          [:option {:value (name k) :selected (= k (if (#{:pit :recess} (:cut-kind values)) (:cut-kind values) (cut/default-kind kind)))} label])]]
-      [:label.mount-wizard__field "Depth (mm)"
-       [:input {:type "number" :name "cut-depth" :value (or (:cut-depth values) 1)
-                :min "0" :step "any"}]]
-      [:label.mount-wizard__field {:data-cut-field "pit"} "Diameter (mm)"
-       [:input {:type "number" :name "cut-diameter" :value (or (:cut-diameter values) 2)
-                :min "0" :step "any"}]]
-      [:label.mount-wizard__field {:data-cut-field "recess"} "Border (mm)"
-       [:input {:type "number" :name "cut-border" :value (or (:cut-border values) 0.5)
-                :min "0" :step "any"}]]
-      [:p.muted "Save regenerates the source model’s -pitted.stl variant. The original stays intact."]]
      (when (or (not edit?) mirror?)
        [:fieldset.mount-wizard__mirror (socket-only-attrs kind)
         [:legend "Mirror"]
@@ -425,6 +408,25 @@
       [:li [:span.mount-wizard__swatch.mount-wizard__swatch--axis] "Normal (+Z)"]
       [:li [:span.mount-wizard__swatch.mount-wizard__swatch--roll] "Twist reference (+X)"]
       [:li [:span.mount-wizard__swatch.mount-wizard__swatch--up] "Up (+Y)"]]
+     [:fieldset.mount-wizard__cut
+      [:legend "Pitted STL"]
+      [:label.mount-wizard__check
+       [:input {:type "checkbox" :name "create-pitted" :checked cut-enabled?}]
+       "Create pitted version"]
+      [:label.mount-wizard__field {:hidden (not cut-enabled?)} "Cut"
+       [:select {:name "cut-kind" :data-cut-kind (name kind) :disabled (not cut-enabled?)}
+        (for [[k label] [[:pit "Pit"] [:recess "Recess"]]]
+          [:option {:value (name k) :selected (= k cut-kind)} label])]]
+      [:label.mount-wizard__field {:hidden (not cut-enabled?)} "Depth (mm)"
+       [:input {:type "number" :name "cut-depth" :disabled (not cut-enabled?) :value (or (:cut-depth values) 1)
+                :min "0" :step "any"}]]
+      [:label.mount-wizard__field {:data-cut-field "pit" :hidden (not (and cut-enabled? (= :pit cut-kind)))} "Diameter (mm)"
+       [:input {:type "number" :name "cut-diameter" :disabled (not (and cut-enabled? (= :pit cut-kind))) :value (or (:cut-diameter values) 2)
+                :min "0" :step "any"}]]
+      [:label.mount-wizard__field {:data-cut-field "recess" :hidden (not (and cut-enabled? (= :recess cut-kind)))} "Border (mm)"
+       [:input {:type "number" :name "cut-border" :disabled (not (and cut-enabled? (= :recess cut-kind))) :value (or (:cut-border values) 0.5)
+                :min "0" :step "any"}]]
+      [:p.muted {:hidden (not cut-enabled?)} "Save regenerates the source model’s -pitted.stl variant. The original stays intact."]]
      [:div.mount-wizard__actions
       (if edit?
         [:button {:type "submit" :name "action" :value "update"} "Save changes"]
