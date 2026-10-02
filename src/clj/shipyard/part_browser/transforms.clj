@@ -3,6 +3,15 @@
   (:require [clojure.string :as str]
             [shipyard.vocabulary.transforms :as vocabulary]))
 
+(defn listed? [part importing?]
+  (or importing?
+      (contains? (set (:part/variants part)) :unsupported)
+      (not (contains? (set (:part/variants part)) :supported))))
+
+(defn thumbnail? [part importing?]
+  (boolean (or (:part/renderable part)
+               (and importing? (= :supported (:part/source part))))))
+
 (def fields
   {"bundle" [:part/bundle :part/bundle-override]
    "class" [:part/class :part/class-override]

@@ -1,4 +1,4 @@
-// List transport and progress; workspace and selection state remain server-owned.
+// List transport; workspace and selection state remain server-owned.
 (() => {
   const thumbnails = '.part-thumbnail[hx-get], .ship-thumbnail[hx-get]';
   let scheduled = false;
@@ -6,26 +6,15 @@
     scheduled = false;
     const library = document.querySelector('#library');
     if (!library) return;
+    const matching = library.querySelector('#part-select-matching');
+    if (matching) matching.indeterminate = matching.dataset.indeterminate === 'true';
     for (const root of library.querySelectorAll('#bulk-orient-results, #ship-results')) {
       const pages = [...root.querySelectorAll('[data-list-page]')].map(e => Number(e.dataset.listPage));
       const input = root.querySelector('[data-part-page], [data-ship-page]');
       if (input && pages.length) input.value = String(Math.max(...pages));
     }
-    const progress = library.querySelector('[data-thumbnail-progress]');
-    if (!progress) return;
-    const counts = {ready: 0, generating: 0, waiting: 0, unavailable: 0, skipped: 0};
-    for (const el of library.querySelectorAll('.part-thumbnail, .ship-thumbnail')) {
-      const state = !el.hasAttribute('hx-get') ? 'skipped'
-        : el.querySelector('img') ? 'ready'
-        : el.querySelector('[hx-get]') || el.classList.contains('htmx-request') ? 'generating'
-        : el.textContent.includes('…') ? 'waiting' : 'unavailable';
-      counts[state]++;
-    }
-    const text = `Loaded thumbnails: ${counts.ready} ready · ${counts.generating} generating · ${counts.waiting} waiting`
-      + (counts.unavailable ? ` · ${counts.unavailable} unavailable` : '')
-      + (counts.skipped ? ` · ${counts.skipped} no preview` : '');
-    if (progress.textContent !== text) progress.textContent = text;
   }
+
   function schedule() {
     if (!scheduled) { scheduled = true; requestAnimationFrame(refresh); }
   }

@@ -65,8 +65,9 @@ user says where theirs is (TECHNICAL.md §7.3).
 
 - **The folder name is the part identity.** No parsing a part name out of a filename.
 - **Variant selection is a filename lookup**, not path archaeology: read
-  `unsupported.stl` only. Record but never display `unsupported-pitted.stl` or
-  `supported.stl`.
+  `unsupported.stl` only for editing and assembly. Record the other variants;
+  import-review thumbnails may display `supported.stl` with its print scaffolding.
+  Supported-only parts do not appear in the regular Part Browser.
 - `<Class>` is absent in the four single-ship bundles, which are one ship each.
 - `weapons/` is a role hint the scanner can trust.
 - 1,661 part folders. 173 of them hold a single file, because those parts ship in only
@@ -351,7 +352,8 @@ Stages, all server-side:
 
 1. **Scan.** Walk the library root for part folders. Bundle, class and `weapons/` come
    straight from the path; the folder name is the part name. Within a folder, read only
-   `unsupported.stl`; record but never display `unsupported-pitted.stl` or `supported.stl`.
+   `unsupported.stl`; record other variants. Supported geometry is previewed only in
+   import-review thumbnails, never in editing or assembly.
    Skip `other/`. Produce part records. Cheap; no mesh parsing.
 2. **Preprocess**, lazily on first view of a part:
    - Parse binary STL via `ByteBuffer` - an 84-byte header plus 50 bytes per triangle.
@@ -686,9 +688,10 @@ ships show their scheme and compatible custom paint. Previews require no prior v
 to the editor and never change a workspace draft. Use the lowest cached mesh tier
 except where source-bound region or detail colors require the original tier. Lighting
 is simplified; the editor remains the reference for metallic and roughness finishes.
-Missing sources show an unavailable placeholder. Browser lists show counts of ready,
-generating, waiting, unavailable and no-preview counts for loaded rows; generation remains
-lazy. Skipped rows expose the reason they cannot be previewed.
+Missing sources show an unavailable placeholder. Browser lists show actual running
+and queued thumbnail jobs across the shared generator, independent of loaded row counts,
+cache downloads and unrequested rows. Generation remains lazy. Skipped rows expose the
+reason they cannot be previewed.
 All part, import, class and named-ship PNGs use a shared bounded background rendering
 pool and a disposable disk cache that survives application restarts. Identical visual
 inputs share an image. Source geometry, saved orientation, assembly placements, region
@@ -696,9 +699,11 @@ colors, shared schemes and custom paint determine image identity, so returning t
 after editing resolves the current preview automatically. Nonvisual metadata changes
 reuse existing images. Content-addressed image URLs allow browser caching without stale
 previews, and clearing or evicting cached images safely regenerates them on demand.
+Cached part and ship previews resolve without materializing or hashing dense region assignments
+on each page refresh; resolving changed inputs happens on background workers.
 Thumbnail rendering, library/import mesh preparation and mount recovery share one
 bounded application background pool, separate from HTTP request workers. Missing worker
-and queue limits default to 2 and 32 respectively. Canceling an import drains its work
+and queue limits default to 2 and 128 respectively. Canceling an import drains its work
 before discarding staging data and leaves the common pool available to other jobs.
 
 ### 9.2 Independent workspace state
@@ -781,12 +786,14 @@ pose counts as Saved; a part without saved orientation is Unset. Parts that cann
 previewed remain visible as No preview and can still be selected for metadata edits. No matches produces
 an explicit empty state. Tables load successive batches of 50 rows as the user scrolls.
 Selections persist across batches; changing filters restarts loading, and Back from an
-editor restores the loaded rows and scroll position. Select all matching parts selects
-every filtered result, including unloaded rows; Clear selection clears the entire selection.
-Both controls are available during import review.
+editor restores the loaded rows and scroll position. The table header checkbox selects
+or deselects every filtered result, including unloaded rows, retaining hidden selections.
+It reflects all, some or no matching rows selected. Clear selection beside the filters
+clears the entire selection. Both controls are available during import review.
 
-Users can add shared faction/bundle, class and role values during normal browsing or
-import review. Explicitly added values persist across restarts and library changes.
+Users enter new faction/bundle, class and role values ad hoc while editing parts in
+normal browsing or import review. Saved values become available as editing suggestions
+and filter choices; import values remain staged until publication.
 Custom roles are available to metadata editing and socket acceptance, with the same
 role matching rules as built-in roles; weapon sockets remain turret-only.
 
@@ -839,9 +846,21 @@ for this workflow, including workspace-session restoration under §9.2.
 
 Part Browser can enter an import review mode for a local ZIP, including recursively
 nested ZIPs with arbitrary source layouts. Library folders and ZIP archives are selected
-with Swing desktop selectors on the computer running Shipyard; direct path entry remains
-available without a desktop. All discovered STLs remain accessible in review.
+with Swing desktop selectors on the computer running Shipyard. The ZIP chooser accepts
+a typed path in its filename field and approval immediately starts review, without a
+separate web path field or review button. ZIP import requires a graphical desktop;
+library-folder path entry remains available without one. All discovered STLs remain accessible in review.
 Unambiguous supported/unsupported versions with matching inferred labels share a row.
+Review thumbnails prefer an unambiguous unsupported source and fall back to an
+unambiguous supported source when no unsupported file exists. Supported thumbnails
+include print scaffolding; they do not enable orientation editing. A variant filter
+offers all variants, unsupported, supported and unsupported-pitted. Grouped rows match
+each variant they contain. The filter applies across batches and select-all-matching,
+and survives workspace switches. Supported-only rows remain available throughout
+review and publication but are hidden in the regular Part Browser.
+Expanding Files / variants lazily previews each original file independently, including
+supported and pitted variants. Reassigning a variant label does not change the file's
+thumbnail. These images use the shared bounded generator and content cache.
 Users can split inferred groups, explicitly group selected rows and assign each file's
 supported/unsupported variant. Splits receive distinct editable names; publication
 never silently combines separate review groups. Changing a group's unsupported source

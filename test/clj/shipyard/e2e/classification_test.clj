@@ -10,19 +10,8 @@
         cat (:shipyard.catalog/db sys) id (:prow fixture/ids)]
     (try
       (s/go! driver (s/base-url sys))
-      (s/wait-visible! driver ".classification-editor summary")
-      (s/click! driver ".classification-editor summary")
-      (doseq [[label value saved] [["Faction / bundle" "Custom Fleet" "Custom Fleet"]
-                                   ["Class" "Custom Carrier" "Custom Carrier"]
-                                   ["Role" "Sensor Array" "sensor-array"]]]
-        (s/select-option! driver ".classification-editor select" label)
-        (s/fill-and-blur! driver ".classification-editor input" value)
-        (s/click! driver ".classification-editor button")
-        (is (s/wait-until #(.contains (s/text driver "#classification-status") (str "Added “" saved "”")))))
-      (s/click! driver ".classification-editor summary")
-      (is (= 1 (s/count-els driver "#bulk-orient-filters option[value='Custom Fleet']")))
-      (is (= 1 (s/count-els driver "#bulk-orient-filters option[value='Custom Carrier']")))
-      (is (= 1 (s/count-els driver "#bulk-orient-filters option[value='sensor-array']")))
+      (s/wait-visible! driver "[data-bulk-select]")
+      (is (zero? (s/count-els driver ".classification-editor")))
       (s/check! driver (str "[data-bulk-select][value='" id "']"))
       (s/wait-visible! driver "[data-bulk-count]:text-is('1 selected')")
       (doseq [[label value] [["Bundle / faction" "Custom Fleet"] ["Class" "Custom Carrier"] ["Role" "Sensor Array"]]]
@@ -30,6 +19,9 @@
         (s/fill-and-blur! driver ".part-bulk-edit input[name=value]" value)
         (s/click! driver ".part-bulk-edit button")
         (is (s/wait-until #(not (s/js driver "() => document.querySelector('.part-bulk-edit button').disabled")))))
+      (is (= 1 (s/count-els driver "#bulk-orient-filters option[value='Custom Fleet']")))
+      (is (= 1 (s/count-els driver "#bulk-orient-filters option[value='Custom Carrier']")))
+      (is (= 1 (s/count-els driver "#bulk-orient-filters option[value='sensor-array']")))
       (is (= :sensor-array (:part/role-hint (catalog/summary! cat id))))
       (s/select-option! driver "#bulk-orient-filters select[name=role]" "sensor-array")
       (is (s/wait-until #(= 1 (s/count-els driver ".bulk-orient__row"))))

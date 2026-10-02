@@ -18,7 +18,7 @@
                                                     [:selected {:optional true} [:or string? [:vector string?]]]]}
                                 :responses contracts/html-responses}}]
    ["/orient/select-all" {:post {:handler (partial handlers/select-all! deps)
-                                 :parameters {:form [:map [:selection [:enum "all" "none"]]]}
+                                 :parameters {:form [:map [:selection [:enum "all" "matching-none" "none"]]]}
                                  :responses contracts/html-responses}}]
    ["/orient" {:get {:handler (partial handlers/orient! deps)
                      :responses contracts/html-responses}}]

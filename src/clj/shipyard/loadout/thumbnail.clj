@@ -1,21 +1,20 @@
 (ns shipyard.loadout.thumbnail
   "Read-only assembled previews, independent of workspace drafts and viewport state."
   (:require [babashka.fs :as fs]
+            [clojure.tools.logging :as log]
             [shipyard.assembly.transforms :as assembly]
             [shipyard.bulk-orientation.handlers :as bulk]
             [shipyard.catalog.db :as catalog]
             [shipyard.geom :as geom]
             [shipyard.http.htmx :as htmx]
-            [shipyard.loadout.db :as loadouts]
             [shipyard.loadout.model :as model]
             [shipyard.mesh.cache :as cache]
             [shipyard.paint.faces :as faces]
             [shipyard.paint.job :as job]
             [shipyard.part-browser.thumbnail :as thumbnail]
-            [shipyard.scheme.db :as schemes]
             [shipyard.scheme.material :as material]
-            [shipyard.ship.db :as ships]
             [shipyard.thumbnail.cache :as previews]
+            [shipyard.thumbnail.db :as sources]
             [shipyard.thumbnail.views :as preview-views]
             [shipyard.wire :as wire])
   (:import [java.nio.file Files]))
@@ -55,19 +54,37 @@
         ^java.io.File file (first (filter fs/regular-file? (map #(cache/tier-file cache mesh-key %) tiers)))]
     file))
 
-(defn thumbnail! [{:keys [catalog loadouts named-ships schemes cache thumbnails] :as deps} {:keys [path-params]}]
+(defn- prepare-preview! [deps kind id stamp mesh-keys]
+  (let [{:keys [database record ship scheme]} (sources/assembly-context! deps kind id stamp)
+        placements (assembly/placements database (model/from-record record 0 :preview))
+        profile (material/effective-profile (if ship (job/editor-record ship scheme) scheme))
+        instances (mapv (fn [[path {:keys [part-id] :as placement}]]
+                          (let [mesh-key (get mesh-keys part-id)
+                                appearance (appearance (catalog/part database part-id) profile path mesh-key)]
+                            (assoc placement :appearance appearance :mesh-key mesh-key
+                                   :exact? (boolean (or (seq (:regions appearance)) (seq (:details appearance)))))))
+                        (sort-by (comp pr-str key) placements))
+        files (into {} (for [[key exact? :as k] (distinct (map (juxt :mesh-key :exact?) instances))]
+                         [k (mesh-file! (:cache deps) key exact?)]))
+        inputs (mapv (fn [instance]
+                       (assoc (select-keys instance [:matrix :appearance :mesh-key])
+                              :tier (str (fs/file-name (files [(:mesh-key instance) (:exact? instance)]))))) instances)]
+    {:inputs {:assembly inputs}
+     :render! #(let [meshes (update-vals files (fn [^java.io.File file]
+                                                 (wire/decode (Files/readAllBytes (.toPath file)))))
+                     mesh (assembled-mesh (map (fn [instance]
+                                                 (assoc instance :mesh (meshes [(:mesh-key instance) (:exact? instance)]))) instances))]
+                 (thumbnail/png! mesh nil))}))
+
+(defn thumbnail! [{:keys [cache thumbnails] :as deps} {:keys [path-params]}]
   (try
     (let [{:keys [kind id]} path-params
           id (parse-uuid id)
-          ship (when (= kind "ship") (ships/record! named-ships id))
-          record (loadouts/record! loadouts (if (= kind "ship") (:ship/class ship) id))]
-      (if-not record
+          context (sources/assembly-context! deps kind id)]
+      (if-not context
         (htmx/fragment [:span "No preview"])
-        (let [part-ids (distinct (cons (:loadout/hull record) (vals (:loadout/slots record))))
-              database (catalog/from-parts (keep #(-> (catalog/part-context! catalog %) :part) part-ids))
+        (let [{:keys [database record stamp label]} context
               placements (assembly/placements database (model/from-record record 0 :preview))
-              scheme (when ship (schemes/record! schemes (:ship/scheme ship)))
-              profile (material/effective-profile (if ship (job/editor-record ship scheme) scheme))
               prepared (into {} (for [id (distinct (map :part-id (vals placements)))]
                                   [id (bulk/grid-entry! deps (catalog/part database id))]))]
           (cond
@@ -79,24 +96,12 @@
                                    :hx-trigger "load delay:600ms" :hx-target "closest .ship-thumbnail"} "…"])
 
             :else
-            (let [instances (mapv (fn [[path {:keys [part-id] :as placement}]]
-                                    (let [mesh-key (get-in prepared [part-id :mesh-key])
-                                          appearance (appearance (catalog/part database part-id) profile path mesh-key)]
-                                      (assoc placement :appearance appearance :mesh-key mesh-key
-                                             :exact? (boolean (or (seq (:regions appearance)) (seq (:details appearance)))))))
-                                  (sort-by (comp pr-str key) placements))
-                  files (into {} (for [[key exact? :as k] (distinct (map (juxt :mesh-key :exact?) instances))]
-                                   [k (mesh-file! cache key exact?)]))
-                  inputs (mapv (fn [instance]
-                                 (assoc (select-keys instance [:matrix :appearance :mesh-key])
-                                        :tier (str (fs/file-name (files [(:mesh-key instance) (:exact? instance)]))))) instances)
-                  result (previews/request!
-                          thumbnails {:assembly inputs}
-                          #(let [meshes (update-vals files (fn [^java.io.File file]
-                                                             (wire/decode (Files/readAllBytes (.toPath file)))))
-                                 mesh (assembled-mesh (map (fn [instance]
-                                                             (assoc instance :mesh (meshes [(:mesh-key instance) (:exact? instance)]))) instances))]
-                             (thumbnail/png! mesh nil)))]
+            (let [mesh-keys (update-vals prepared :mesh-key)
+                  result (previews/request-derived!
+                          thumbnails {:assembly stamp :meshes mesh-keys :tiers (:lod-tiers cache)}
+                          #(prepare-preview! deps kind id stamp mesh-keys))]
               (htmx/fragment (preview-views/preview result (str "/ship-thumbnails/" kind "/" id)
-                                                    "closest .ship-thumbnail" (or (:ship/name ship) (:loadout/name record)))))))))
-    (catch Exception _ (htmx/fragment [:span "Preview unavailable"]))))
+                                                    "closest .ship-thumbnail" label)))))))
+    (catch Exception e
+      (log/warn e "Could not prepare ship thumbnail")
+      (htmx/fragment [:span "Preview unavailable"]))))

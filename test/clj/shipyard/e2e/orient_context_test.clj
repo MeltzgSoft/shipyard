@@ -116,7 +116,7 @@
                 (accept [_ value]
                   (let [^Route route value]
                     (reset! held [route (.fetch route)])))))
-      (s/check! driver (str "[data-bulk-select][value='" s/supported-id "']"))
+      (s/check! driver (str "[data-bulk-select][value='" s/pitted-id "']"))
       (is (s/wait-until #(do (s/text driver "[data-bulk-count]") (some? @held))))
       (testing "enabled fields can be edited while the real selection response is pending"
         (s/select-option! driver ".part-bulk-edit select[name=field]" "Name")
@@ -134,13 +134,13 @@
                (s/js driver "() => ({name:document.activeElement.name,start:document.activeElement.selectionStart,end:document.activeElement.selectionEnd})")))
         (is (false? (s/js driver "() => document.querySelector('.part-bulk-edit button').disabled")))
         (s/click! driver ".part-bulk-edit button")
-        (is (s/wait-until #(str/includes? (s/text driver "#bulk-orient-results") "Archived Supported Only Prow")))
+        (is (s/wait-until #(str/includes? (s/text driver "#bulk-orient-results") "Archived Pitted Only Prow")))
         (is (= expected (fields)))
         (is (= "Human Navy Fleet Bundle"
-               (s/text driver (str "[data-part-row='" s/supported-id "'] .bulk-orient__bundle")))))
+               (s/text driver (str "[data-part-row='" s/pitted-id "'] .bulk-orient__bundle")))))
       (.unroute page "**/orient/selection")
       (testing "clearing the selection disables Apply while retaining the editable fields"
-        (.uncheck page (str "[data-bulk-select][value='" s/supported-id "']"))
+        (.uncheck page (str "[data-bulk-select][value='" s/pitted-id "']"))
         (is (s/wait-until #(= "0 selected" (s/text driver "[data-bulk-count]"))))
         (is (true? (s/js driver "() => document.querySelector('.part-bulk-edit button').disabled")))
         (is (= expected (fields))))

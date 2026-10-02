@@ -3,8 +3,7 @@
 
 (def fields
   {"settings-root" {:id "settings-root" :name "root" :label "Library folder" :kind "directory"}
-   "setup-root" {:id "setup-root" :name "root" :label "Library folder" :kind "directory"}
-   "import-archive" {:id "import-archive" :name "archive" :label "ZIP archive" :kind "zip"}})
+   "setup-root" {:id "setup-root" :name "root" :label "Library folder" :kind "directory"}})
 
 (defn path-input [{:keys [id name kind]} value]
   [:input {:id id :name name :value (or value "") :type "text" :data-picker-value true

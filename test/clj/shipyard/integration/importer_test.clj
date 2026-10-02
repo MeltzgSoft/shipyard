@@ -185,6 +185,11 @@
             ids! #(vec (keys (parts!)))]
         (is (= 1 (count (parts!))))
         (is (= #{:supported :unsupported} (set (:part/variants (get (parts!) group)))))
+        (testing "variant filters validate input and reject stale scroll batches"
+          (is (= 400 (:status (handler (mock/request :get "/orient/parts?variant=invalid")))))
+          (is (= 200 (:status (handler (mock/request :get "/orient/parts?variant=supported")))))
+          (is (= 204 (:status (handler (mock/request :get "/orient/parts?variant=unsupported&chunk=1&page=2")))))
+          (handler (mock/request :get "/orient/parts?variant=")))
         (catalog/save-part-orientation! (:catalog session) group [0 1 0 0])
         (testing "changing a pair swaps assignments, changes the source and clears its old pose"
           (check! 200 "/imports/variant" {"file" supported-id "variant" "unsupported"})

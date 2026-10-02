@@ -17,6 +17,13 @@
     (swap! state update :tasks dissoc token)
     (.notifyAll ^Object state)))
 
+(defn progress!
+  "Actual executing and admitted queued tasks owned by this scope."
+  [{:keys [state]}]
+  (let [tasks (vals (:tasks @state))
+        running (count (filter :thread tasks))]
+    {:running running :queued (- (count tasks) running)}))
+
 (defn submit!
   "Admit work without blocking or executing on the caller. False means full/closed.
   A task remains tracked until its actual body exits, even if it ignores interruption."

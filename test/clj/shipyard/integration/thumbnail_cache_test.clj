@@ -8,6 +8,7 @@
             [shipyard.catalog.db :as catalog]
             [shipyard.fixtures :as fixtures]
             [shipyard.http.jobs :as jobs]
+            [shipyard.jobs :as workers]
             [shipyard.library.index :as index]
             [shipyard.loadout.db :as classes]
             [shipyard.loadout-fixture :as lf]
@@ -44,9 +45,11 @@
       (doseq [id [1 2 3 1]] (cache/request! previews {:test id} (render id)))
       (is (.await entered 5 TimeUnit/SECONDS) "Two distinct PNGs render concurrently")
       (is (= #{1 2} (set @calls)) "The third render queues; duplicates share work")
+      (is (= {:running 2 :queued 1} (workers/progress! (:scope previews))))
       (.countDown release)
       (doseq [id [1 2 3]] (await! #(cache/file! previews (t/cache-key {:test id}))))
       (is (= [1 2 3] (sort @calls)))
+      (await! #(= {:running 0 :queued 0} (workers/progress! (:scope previews))))
       (let [reopened (ig/init-key :shipyard.thumbnail/cache {:cache (:shipyard.mesh/cache sys) :workers (:shipyard.jobs/pool sys) :cap-bytes 134217728})]
         (try
           (doseq [id [1 2 3]]
@@ -54,6 +57,28 @@
           (is (= 128 (.getWidth (ImageIO/read (cache/file! reopened (t/cache-key {:test 1}))))))
           (finally (ig/halt-key! :shipyard.thumbnail/cache reopened))))
       (finally (.countDown release) (fixture/stop! started)))))
+
+(deftest cheap-references-reuse-content-images-and-survive-restart
+  (let [started (fixture/start!) sys (:system started) previews (:shipyard.thumbnail/cache sys)
+        png (renderer/png! triangle nil) inputs {:test :existing-png} calls (atom 0)
+        prepare! #(do (swap! calls inc) {:inputs inputs :render! (fn [] (throw (ex-info "Must reuse PNG" {})))})
+        ready! (fn [cache stamp]
+                 (await! #(let [r (cache/request-derived! cache stamp prepare!)]
+                            (when (= :ready (:state r)) r))))]
+    (try
+      (cache/request! previews inputs (constantly png))
+      (await! #(cache/file! previews (t/cache-key inputs)))
+      (is (= (t/cache-key inputs) (:key (ready! previews {:stamp 1}))))
+      (is (= 1 @calls))
+      (let [reopened (ig/init-key :shipyard.thumbnail/cache {:cache (:shipyard.mesh/cache sys)
+                                                             :workers (:shipyard.jobs/pool sys) :cap-bytes 134217728})]
+        (try
+          (is (= :ready (:state (cache/request-derived! reopened {:stamp 1} prepare!))))
+          (is (= 1 @calls) "Reload and restart avoid both dense input reads and rendering")
+          (is (= (t/cache-key inputs) (:key (ready! reopened {:stamp 2}))))
+          (is (= 2 @calls) "A changed stamp resolves content again, reusing identical pixels")
+          (finally (ig/halt-key! :shipyard.thumbnail/cache reopened))))
+      (finally (fixture/stop! started)))))
 
 (deftest disk-images-have-immutable-urls-and-invalidate-after-part-edits
   (let [started (fixture/start!) handler (:handler started) sys (:system started)
@@ -90,6 +115,29 @@
         (is (not= url (image-url! handler path)) "Rescanning a changed STL invalidates the PNG"))
       (finally (fixture/stop! started)))))
 
+(deftest dense-regions-use-small-cache-stamps-and-invalidate-on-replacement
+  (let [started (fixture/start!) handler (:handler started) sys (:system started)
+        cat (:shipyard.catalog/db sys) id (:prow fixture/ids)
+        path (str "/thumbnails/" (urls/encode-id id))]
+    (try
+      (image-url! handler path)
+      (let [mesh-key (index/mesh-key! (:shipyard.library/index sys) id)
+            regions {:version 2 :mesh-key mesh-key :revision 0 :layer-definitions {}
+                     :layers ["Primary" "Secondary"]
+                     :faces (zipmap (map #(format "%072x" %) (range 10000)) (repeat "Secondary"))}]
+        (catalog/save-regions! cat id regions)
+        (let [stamp (:stamp (catalog/thumbnail-context! cat id))
+              url (image-url! handler path)]
+          (is (< (count (pr-str stamp)) 1000) "Cache lookups do not materialize face assignments")
+          (is (= url (second (re-find #"src=\"([^\"]+)\"" (:body (handler (mock/request :get path))))))
+              "An unchanged preview returns its cached image immediately")
+          (catalog/save-regions! cat id (assoc regions :faces {}))
+          (is (not= stamp (:stamp (catalog/thumbnail-context! cat id))))
+          (is (thrown-with-msg? clojure.lang.ExceptionInfo #"source changed"
+                                (catalog/thumbnail-context! cat id stamp)))
+          (is (not= url (image-url! handler path)))))
+      (finally (fixture/stop! started)))))
+
 (deftest assembly-dependencies-invalidate-class-and-named-ship-previews
   (let [started (fixture/start!) handler (:handler started) sys (:system started)
         cat (:shipyard.catalog/db sys) class-db (:shipyard.loadout/db sys)
@@ -118,6 +166,10 @@
         (is (= class-url (image-url! handler class-path)))
         (schemes/put! scheme-db (assoc-in scheme [:scheme/layers "Primary" :base] [0.0 0.0 1.0]) :update)
         (is (not= ship-url (image-url! handler ship-path)) "Shared scheme edits invalidate named ships")
+        (let [scheme-url (image-url! handler ship-path)]
+          (ships/put! ship-db (assoc-in ship [:ship/paint :paint/layers "Primary"]
+                                        {:base [0.0 1.0 0.0] :metalness 0.2 :roughness 0.6}) :update)
+          (is (not= scheme-url (image-url! handler ship-path)) "Custom paint invalidates the compact ship stamp"))
         (is (= class-url (image-url! handler class-path)) "Unpainted class image remains reusable"))
       (finally (fixture/stop! started)))))
 

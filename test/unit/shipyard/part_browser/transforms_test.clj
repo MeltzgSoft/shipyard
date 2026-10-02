@@ -3,6 +3,18 @@
             [shipyard.part-browser.transforms :as t]
             [shipyard.part-browser.thumbnail :as thumbnail]))
 
+(deftest listed-test
+  (is (not (t/listed? {:part/variants [:supported]} false)))
+  (is (t/listed? {:part/variants [:supported]} true))
+  (is (t/listed? {:part/variants [:unsupported :supported]} false))
+  (is (t/listed? {:part/variants [:unsupported-pitted]} false)))
+
+(deftest thumbnail-test
+  (is (t/thumbnail? {:part/renderable true} false))
+  (is (t/thumbnail? {:part/renderable false :part/source :supported} true))
+  (is (not (t/thumbnail? {:part/renderable false :part/source :supported} false)))
+  (is (not (t/thumbnail? {:part/renderable false} true))))
+
 (deftest edits-test
   (let [parts [{:part/id "fixed/id" :part/name "Old Hull"}]
         edit #(t/edits parts (merge {"field" "name" "operation" "set" "value" "New"} %))]

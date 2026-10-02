@@ -64,8 +64,9 @@
 (defn recover!
   "Submit one mesh-key-scoped recovery when this detail response needs it."
   [{:keys [jobs] :as deps} part mesh-key]
-  (let [mounts (catalog-part/durable-mounts (:part/mounts part))]
+  (let [part-id (:part/id part)
+        mounts (catalog-part/durable-mounts (:part/mounts part))]
     (when (seq (legacy-mounts mesh-key mounts))
       (jobs/submit-facet-backfill!
-       jobs [(:part/id part) mesh-key]
-       #(backfill! deps (:part/id part) mesh-key mounts)))))
+       jobs [part-id mesh-key]
+       #(backfill! deps part-id mesh-key mounts)))))

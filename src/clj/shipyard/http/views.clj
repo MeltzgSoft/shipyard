@@ -21,10 +21,8 @@
 ;; --- parts ------------------------------------------------------------------
 
 (defn unrenderable-reason
-  "Why a part cannot be previewed, in the user's terms, or nil when it can.
-
-  Never a reason to hide it. Some folders lack an unpitted `unsupported.stl`;
-  a browser that omits what you own is lying to you (§5.3)."
+  "Why a part cannot use editing/assembly previews, or nil when it can.
+  Import thumbnails may independently preview supported geometry."
   [{:part/keys [renderable variants]}]
   (when-not renderable
     (let [variants (set variants)]

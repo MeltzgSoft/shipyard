@@ -140,7 +140,7 @@ no namespace exists to hold constants.
   :cap-bytes  #profile {:default 4294967296 :test 67108864}}
 
  :shipyard.jobs/pool
- {:store #ig/ref :shipyard.store/db :threads 2 :queue-size 32}
+ {:store #ig/ref :shipyard.store/db :threads 2 :queue-size 128}
 
  :shipyard.http/jobs
  {:library #ig/ref :shipyard.library/index :cache #ig/ref :shipyard.mesh/cache
@@ -560,12 +560,13 @@ scan. Until that analysis exists, escort-class parts remain renderable with
 ```clojure
 (defn source-stl [part-dir]
   (existing part-dir "unsupported.stl"))
-;; pitted and supported variants are catalogued but never displayed
+;; library editing/assembly use plain unsupported geometry only
 ```
 
 A part with only `supported.stl` (73 exist) is catalogued with `:part/variants
-#{:supported}` and no renderable source. The UI shows it greyed with a reason rather than
-hiding it, so the library stays a truthful inventory.
+#{:supported}` and no renderable source. It remains in the catalog but is hidden from
+the regular Part Browser. Import review may use a supported file for a thumbnail;
+that staging-only source does not make the part eligible for orientation or assembly.
 
 ### 5.4 Incremental index
 
@@ -605,6 +606,11 @@ extracted STL for duplicate/collision planning. Zero-byte nested ZIP placeholder
 skipped, with their source chains retained in the review session for display. Invalid
 nonempty ZIPs abort extraction with the offending archive chain in the error.
 
+`POST /imports/choose` opens the ZIP selector and starts review on approval through
+the same start and workspace transition handlers as `POST /imports/start`. Cancellation
+returns 204; chooser and extraction failures report in the import status without
+replacing the table. The route uses Part Browser's workspace admission guard.
+
 Part Browser owns the import session under its workspace state. The session contains a
 disposable Datalevin catalog and library index in a temporary tree, with its own mesh
 preparation workers using the existing shared content-addressed mesh cache. Browser
@@ -625,6 +631,18 @@ Split rows inherit reviewed labels with distinct editable names. Manual groups i
 one selected row's labels; orientations survive only when the unsupported source stays
 the same. Publication rejects competing variant contents and separate groups sharing
 a destination folder. The member selectors can swap a clear pair's variant assignments.
+Staging thumbnail source selection prefers the unambiguous unsupported file, falling
+back to an unambiguous supported file only when no unsupported file exists. Its actual
+variant is retained in the staging index and catalog source; `:part/renderable` still
+means unsupported geometry is available for orientation. The import variant filter
+matches membership, participates in pagination's stale-response checks and is stored
+with Part Browser's workspace filters. Selection operates on all filtered rows.
+Expanded file cells request `/imports/thumbnails/:file` only on intersection after
+opening. Each archive entry has a stable, prefixed derived-index id independent of
+its group. These ids are not catalog parts. File mesh preparation belongs to the
+import's existing cancelable job scope; PNG workers only read the shared mesh cache.
+Supported, unsupported and pitted files share the normal content-addressed thumbnail
+cache, preserving image identity through grouping and variant reassignment.
 
 Publication preflights folder names, duplicate content and existing destinations,
 rejecting symbolic-link destinations/ancestors. It moves staged files without replacing
@@ -1389,7 +1407,7 @@ user's library.
 | Subject | Asserts |
 |---|---|
 | Scanner | Fixture tree yields expected ids, roles, variants; `other/` skipped; supported-only flagged not dropped |
-| Variant selection | Plain `unsupported.stl` only; pitted and supported variants never display (§5.3) |
+| Variant selection | Plain `unsupported.stl` for editing/assembly; supported import thumbnails only (§5.3) |
 | Cache lifecycle | Miss -> generate -> hit; touching an STL invalidates its `mesh-key`; LRU evicts at the cap |
 | Atomic writes | A concurrent reader never observes a partial `.symesh` |
 | Concurrent preprocess | Two requests for one part produce one job, not two (§6.5) |
@@ -1836,7 +1854,10 @@ Saved means a valid saved quaternion exists, including identity. Missing/invalid
 metadata is treated as unset and previews at identity at this boundary (§12.6).
 
 The server holds the selected part ids independently of which filtered rows are
-currently visible. Checkbox changes submit the visible ids and checked values; the
+currently visible. The table header checkbox adds or removes the complete matching
+set, preserving selected nonmatches; Clear selection clears the whole set. Its checked,
+mixed and disabled states are projected from all matching ids, including unloaded rows,
+and refreshed after individual selection changes. Checkbox changes submit the visible ids and checked values; the
 server replaces that visible subset and retains selected parts hidden by filters.
 Server-rendered table rows, selection counts and Render controls reflect this state.
 An accepted workspace transition disables native selection checkboxes, row actions and
@@ -2175,16 +2196,16 @@ and role override attributes in one Datalevin transaction; scan observations rem
 separate. Source identity and downstream references do not change. Thumbnails use
 lazy intersection-triggered HTMX requests, existing preparation jobs and the lowest
 cached mesh LOD, except part regions require tier 0 for stable face identities.
-Part thumbnail requests load only their own region map and use persisted region-type
-preview colors before applying the saved pose. Incompatible source masks are ignored.
+Part thumbnail workers load only their own region map on a cache miss and use persisted
+region-type preview colors before applying the saved pose. Incompatible source masks are ignored.
 A small software renderer produces shaded PNGs from saved poses;
 there is no per-row WebGL context or new durable thumbnail entity. Ship previews
 compose saved class placements independently of workspace model cells. Named-ship
 previews resolve the current scheme and compatible paint against each source mesh.
 Use tier 0 when projecting source-bound face masks, otherwise the lowest cached tier;
 repeated instances share decoded geometry within a render job. Thumbnail requests are
-read-only and do not take the workspace transition lock. They resolve current durable
-values into immutable render inputs on each request. A canonical SHA-256 over these
+read-only and do not take the workspace transition lock. Workers resolve current durable
+values into immutable render inputs when a source reference is missing. A canonical SHA-256 over these
 inputs and an explicit renderer version identifies each derived PNG. Part inputs include
 source mesh key, tier, normalized pose and effective region colors; assembly inputs
 include every reachable instance's source key, tier, placement matrix and resolved
@@ -2197,7 +2218,18 @@ mount recovery. When the common queue is full, the normal 600 ms placeholder pol
 admission. Failed renders show unavailable; a later request may retry after 30 seconds.
 PNG files live beside the mesh cache in `shipyard/thumbnails`, survive restarts and use
 atomic publication plus LRU eviction (default 128 MiB, retaining at least the newest
-entry). They are disposable derived files, not catalog records. `/thumbnail-images/:key`
+entry). Small `.ref` files map part and assembly thumbnail source stamps to existing content keys.
+Stamps contain library identity, pose, region entity/revision references and the used
+palette, plus mesh identity and tier configuration; they never load face chunks. On a
+reference miss, a worker verifies the stamp, materializes immutable rendering inputs,
+reuses any existing content PNG and atomically publishes the reference. References share
+the cache budget; a missing PNG is a miss even if its reference remains. Concurrent
+requests resolving the same image share its render. No durable catalog schema changes
+are needed. Assembly stamps add class, named-ship and scheme revisions plus dependency
+metadata. HTTP preparation loads attachment metadata only; queued thumbnail closures
+retain stamps and mesh keys, while workers read the coherent paint/region snapshot and
+decode meshes. Mount-recovery closures retain part ids and mounts, not entire part records.
+PNGs and references are disposable derived files, not catalog records. `/thumbnail-images/:key`
 validates a 64-hex content key and serves PNGs with immutable HTTP cache headers. Old
 jobs can only publish their own immutable key, so they cannot overwrite newer previews.
 
@@ -2233,9 +2265,12 @@ Append requests must match the current workspace filters, and the list transport
 rejects responses whose originating element was detached. Named hulls load on expansion
 through `/ships/hulls/:id` and fetch independent batches; their loaded counts survive
 leaving and returning to the table. Table and hull responses never
-embed named-ship paint maps. The small independent `browser-lists.js` asset projects
-loaded-page markers and thumbnail progress from rendered HTML; it owns no workspace
-or selection state and does not require the viewport bundle.
+embed named-ship paint maps. The small independent `browser-lists.js` asset projects loaded-page markers and the
+server-rendered selection checkbox's indeterminate property; it owns no workspace or
+selection state and does not require the viewport bundle. `GET /thumbnail-progress`
+polls the shared thumbnail worker scope for actual executing and admitted queued task
+counts. It excludes browser requests, cached downloads, failures and unloaded rows;
+mesh preprocessing and mount recovery are separate work, not PNG-generation counts.
 
 The shared store keeps explicitly added classifications as vocabulary entities keyed by
 `[field value]`, with a keyword field and string value. Choice projections combine these

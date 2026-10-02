@@ -6,7 +6,9 @@
             [shipyard.http.urls :as urls]
             [shipyard.mesh.cache :as cache]
             [shipyard.importer.db :as importer]
+            [shipyard.importer.transforms :as imports]
             [shipyard.part-browser.thumbnail :as thumbnail]
+            [shipyard.part-browser.transforms :as t]
             [shipyard.part.orientation :as orientation]
             [shipyard.thumbnail.cache :as previews]
             [shipyard.thumbnail.views :as preview-views]
@@ -16,23 +18,25 @@
 (defn- thumbnail-effective! [{:keys [catalog cache thumbnails] :as deps} {:keys [path-params]}]
   (let [id (:id path-params)
         part (catalog/summary! catalog id)]
-    (if-not (:part/renderable part)
+    (if-not (t/thumbnail? part (:import-session deps))
       (htmx/fragment [:span "No preview"])
       (let [{:keys [state mesh-key]} (bulk/grid-entry! deps part)]
         (case state
           :ready
           (try
-            (let [part (:part (catalog/part-context! catalog id))
-                  regions (thumbnail/source-regions (:part/paint-regions part) mesh-key)
-                  ;; Face identities refer to the original mesh, never a simplified LOD.
-                  tiers (if (seq (:faces regions)) [0] (reverse (range (count (:lod-tiers cache)))))
-                  ^java.io.File file (first (filter fs/regular-file? (map #(cache/tier-file cache mesh-key %) tiers)))
-                  pose (orientation/orientation-of (:part/orientation part))
-                  result (previews/request! thumbnails
-                                            {:mesh mesh-key :tier (str (fs/file-name file)) :pose pose
-                                             :regions (thumbnail/region-style regions)}
-                                            #(thumbnail/png! (-> (wire/decode (Files/readAllBytes (.toPath file)))
-                                                                 (thumbnail/region-mesh regions)) pose))]
+            (let [stamp (:stamp (catalog/thumbnail-context! catalog id))
+                  result (previews/request-derived!
+                          thumbnails {:part stamp :mesh mesh-key :tiers (:lod-tiers cache)}
+                          #(let [part (:part (catalog/thumbnail-context! catalog id stamp))
+                                 regions (thumbnail/source-regions (:part/paint-regions part) mesh-key)
+                                 ;; Face identities require the original mesh.
+                                 tiers (if (seq (:faces regions)) [0] (reverse (range (count (:lod-tiers cache)))))
+                                 ^java.io.File file (first (filter fs/regular-file? (map (fn [tier] (cache/tier-file cache mesh-key tier)) tiers)))
+                                 pose (orientation/orientation-of (:part/orientation part))]
+                             {:inputs {:mesh mesh-key :tier (str (fs/file-name file)) :pose pose
+                                       :regions (thumbnail/region-style regions)}
+                              :render! (fn [] (thumbnail/png! (-> (wire/decode (Files/readAllBytes (.toPath file)))
+                                                                  (thumbnail/region-mesh regions)) pose))}))]
               (htmx/fragment (preview-views/preview result (str "/thumbnails/" (urls/encode-id id))
                                                     "closest .part-thumbnail" (:part/name part))))
             (catch Exception _ (htmx/fragment [:span "Preview unavailable"])))
@@ -42,3 +46,27 @@
 
 (defn thumbnail! [deps request]
   (thumbnail-effective! (importer/effective! deps) request))
+
+(defn file-thumbnail!
+  "Preview one original import file, independent of its group or assigned variant."
+  [deps {:keys [path-params]}]
+  (let [{:keys [import-session cache thumbnails] :as deps} (importer/effective! deps)
+        key (:file path-params)
+        entry (when import-session (get @(:entries import-session) key))
+        url (str "/imports/thumbnails/" key)
+        target "closest .import-file-thumbnail"]
+    (if-not entry
+      (htmx/fragment [:span "Preview unavailable"])
+      (let [{:keys [state mesh-key]} (bulk/grid-entry! deps {:part/id (imports/file-preview-id key)})]
+        (case state
+          :ready
+          (let [^java.io.File file (first (filter fs/regular-file?
+                                                  (map #(cache/tier-file cache mesh-key %)
+                                                       (reverse (range (count (:lod-tiers cache)))))))
+                pose orientation/identity-quaternion
+                result (previews/request! thumbnails
+                                          {:mesh mesh-key :tier (str (fs/file-name file)) :pose pose :regions nil}
+                                          #(thumbnail/png! (wire/decode (Files/readAllBytes (.toPath file))) pose))]
+            (htmx/fragment (preview-views/preview result url target (last (:chain entry)))))
+          :preparing (htmx/fragment [:span {:hx-get url :hx-trigger "load delay:600ms" :hx-target target} "…"])
+          (htmx/fragment [:span "Preview unavailable"]))))))

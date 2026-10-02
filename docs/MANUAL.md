@@ -45,10 +45,10 @@ using the folder it already had.
 
 The Swing selectors open on the desktop of the computer running Shipyard. Use the
 browser on that same computer. **Cancel** leaves the previous selection unchanged;
-choosing a folder does not apply it until you press **Use this folder**. If a selector
-is unavailable, you can type or paste the path directly (`~` works). Selectors need
+choosing a folder does not apply it until you press **Use this folder**. If the folder selector
+is unavailable, you can type or paste the library path directly (`~` works). Selectors need
 a Java runtime with desktop support and access to the graphical session; no separate
-file-dialog packages are required. A headless server still accepts paths.
+file-dialog packages are required. A headless server still accepts library folder paths.
 
 Your choice is stored in Shipyard's database, alongside your authored metadata.
 When upgrading, Shipyard preserves a selection from the old
@@ -63,24 +63,25 @@ Shipyard expects **one folder per part**, holding that part's variants:
 ```
 <Bundle>/[<Class>/][weapons/]<Part Name>/
     unsupported.stl              <- what Shipyard displays
-    unsupported-pitted.stl       <- recorded, but never displayed (magnet pits cut)
-    supported.stl                <- print scaffolding; never read
+    unsupported-pitted.stl       <- magnet pits; file thumbnail during import only
+    supported.stl                <- print scaffolding; thumbnail during import only
 ```
 
 A folder counts as a part if it holds at least one of those three files. Folders named
 `other` are skipped, so slicer projects and README files can live alongside your models
 without confusing anything.
 
-If a part lacks `unsupported.stl` - because it only ships as a pitted or supported STL -
-it still appears in the library, greyed out with the reason, rather than silently
-vanishing. You should be able to see everything you own, even parts Shipyard cannot
-render without showing pits or print scaffolding.
+Supported-only parts remain catalogued but do not appear in the regular Part Browser.
+Parts with both supported and unsupported files appear once, using the unsupported
+geometry. Pitted-only parts remain listed with no preview.
 
 ### Importing a ZIP archive
 
-Choose your library folder first. In **Part Browser**, click **Browse…** beside
-**ZIP archive**, and choose your archive in the desktop file selector,
-which filters for ZIP files. Then choose **Review archive**. Shipyard unpacks
+Choose your library folder first. In **Part Browser**, click **Import ZIP…**.
+Browse for the archive or type/paste its full path in the desktop selector's
+**File name** field, then choose **Open**. Approval immediately starts import review;
+canceling leaves the table unchanged. ZIP import requires a graphical desktop.
+Shipyard unpacks
 nested ZIPs and switches the table to **Import mode**, listing every STL in that
 archive. Non-STL extras, including Lychee projects and incomplete `.part` downloads,
 are ignored. Zero-byte nested ZIP files are skipped and listed in the review;
@@ -95,10 +96,19 @@ original archive paths. Matching names, bundle, class and role are grouped into 
 row when each variant has unambiguous content. Identical repeated files can share a
 row; competing files with the same variant remain separate for review.
 
-Expand **Files / variants** in a row to see its source files and choose **Supported**,
+Expand **Files / variants** in a row to see a thumbnail of each original source file
+and choose **Supported**,
 **Unsupported**, or **Unsupported (pitted)** for each. Changing one side of a clear
 pair swaps the other side automatically. Changing the unsupported source clears its
 saved orientation so the new geometry can be reviewed.
+File thumbnails load as the expanded entries come into view, including supported and
+pitted files. Each image stays with its original file when you change its variant label.
+
+Use **Variant** to show all variants, **Unsupported**, **Supported**, or
+**Unsupported (pitted)**. A grouped row matches every variant it contains. Filtering
+also applies to select-all-matching and further scroll batches, and is retained when
+switching workspaces. Thumbnails prefer the unsupported file; supported-only rows get
+thumbnails showing their print supports. Pitted-only rows have no preview.
 
 If an inferred group is wrong, choose **Split into separate rows**. Split rows receive
 distinct names, which you can edit. To combine missed matches, select their rows,
@@ -108,13 +118,13 @@ after grouping. Different files assigned the same variant show **Assign variants
 and must be corrected or split before import. Separate rows targeting the same part
 folder must be renamed or explicitly grouped.
 
-Select rows, use **Select all matching parts** for every filtered result (including
-rows not loaded yet), or **Select entire import** to ignore filters, to apply bulk bundle,
+Select rows or use the table header checkbox for every filtered result (including
+rows not loaded yet) to apply bulk bundle,
 class, role and name edits. The bulk **Supported / unsupported** field applies to
 single-file rows; use the per-file selectors for grouped rows.
 Use **Orient selection** for the usual rotation
-grid, then **Save orientations** and **Back to table**. Supported and pitted models
-remain listed but have no preview. Mount authoring and region painting are disabled
+grid, then **Save orientations** and **Back to table**. Orientation editing requires
+an unsupported file. Mount authoring and region painting are disabled
 throughout import. Switching to Ship Browser and back retains the import review and
 its orientation previews.
 
@@ -152,18 +162,20 @@ retry. Changing a filter starts a new list; returning from an editor restores th
 loaded rows and scroll position. Selection and workspace filters are briefly unavailable
 while navigation restores the destination view. Filter by bundle/faction, class,
 role, name or orientation status. Check rows to select them; selection remains when
-filters hide rows. **Select all matching parts** replaces the selection with every
-filtered result, including unloaded rows. **Clear selection** clears the whole selection.
+filters hide rows. The checkbox in the table header selects or deselects every
+filtered result, including unloaded rows, while retaining selections hidden by filters.
+It shows a mixed state when some matches are selected. **Clear selection**, beside
+the filter dropdowns, clears the whole selection. These controls also work in import review.
 Choose a field, enter a value and click **Apply to selected** to
 edit bundle/faction, class, role or name. Changing the row selection keeps your
 chosen field, name operation and entered values, including edits made while the
 selection is updating. For names, choose find-and-replace, prefix,
 suffix or set-name. These labels survive rescans and do not rename source files.
 
-Expand **Add faction, class or role** below the editing controls to create a reusable
-value. The shared choices persist across restarts and library changes, including values
-created during an import that is later canceled. Bulk edit inputs suggest these values
-and also accept new text. Role names become lowercase identifiers with spaces replaced
+Enter new faction/bundle, class or role values directly in the bulk edit **Value**
+field and choose **Apply to selected**. Existing values appear as suggestions; new
+values become available in the current library's filters and editors after saving.
+Values authored in import review remain staged until the import is committed. Role names become lowercase identifiers with spaces replaced
 by hyphens (for example, **Sensor Array** becomes **sensor-array**). Custom roles are
 available in the individual editor and socket acceptance choices, and participate in
 assembly compatibility. Weapon sockets retain their turret-only restriction.
@@ -175,17 +187,22 @@ with mesh preparation and mount recovery. By default, two background jobs run at
 across the whole app, including import review. The cache removes older images as it fills; missing images
 are recreated automatically. After replacing STL files externally, rescan the library.
 
-To change background concurrency, add `:shipyard.jobs/pool {:threads 2 :queue-size 32}`
+To change background concurrency, add `:shipyard.jobs/pool {:threads 2 :queue-size 128}`
 to your application `config.edn` and restart the app. Omitted or nil limits use these
 defaults; they do not mean unlimited or follow CPU count. Both values must be positive
 integers. A full queue leaves previews preparing until a later poll can admit the work.
 Canceling an import stops only its jobs; browsing and thumbnails continue using the pool.
 
-The **Loaded thumbnails** indicator shows ready, generating, waiting, unavailable and
-no-preview counts for loaded rows. Hover over **No preview** for the reason a row is
-skipped. Thumbnails are generated as rows enter view; waiting rows do
-not cause the entire library to be preprocessed. Unsupported geometry is required for
-a part preview.
+The **Thumbnail generation** indicator shows actual running and queued thumbnail
+jobs across Part Browser, import review and Ship Browser. Cached image downloads,
+unrequested rows and unavailable previews do not count as generation work. Thumbnails
+are requested as rows enter view; opening a list does not generate the whole library.
+Hover over **No preview** for the reason a row is skipped. Import review also previews
+supported geometry; editing still requires unsupported geometry. Part and ship thumbnail cache lookups use small persistent references, so refreshing
+a cached preview does not reread its region face assignments or custom paint.
+Queued thumbnail jobs carry identifiers and version metadata; workers load geometry
+and paint when they execute. Queue capacity bounds pending work, while worker count
+controls simultaneous heavy rendering. A larger queue does not increase parallelism.
 
 Double-click a row, or focus it and press Enter, to open the individual editor with
 its floating inspector. **Back to table** restores filters, selection and scroll position.
@@ -583,9 +600,9 @@ its database. The current library remains active and its saved selection is unch
 Check that the database location is writable and has free space, then press
 **Use this folder** again.
 
-**"A part I own is not listed."** It probably has no `unsupported.stl`. Parts that ship
-only as `supported.stl` appear greyed out - look for them rather than assuming they are
-missing.
+**"A part I own is not listed."** Parts that ship only as `supported.stl` are hidden
+from the regular Part Browser. Their files remain in the library and can be previewed
+during import review.
 
 **"A part will not open."** A small number of STL files in circulation are malformed or
 in an unexpected format. Shipyard logs which file and carries on rather than failing

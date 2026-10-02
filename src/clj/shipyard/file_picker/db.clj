@@ -8,7 +8,7 @@
   {:lock (ReentrantLock.)})
 
 (defn- unavailable [cause]
-  (ex-info "The desktop file selector is unavailable. Check that Java has desktop support and access to your display, or enter the path directly."
+  (ex-info "The desktop file selector is unavailable. Check that Java has desktop support and access to your display."
            {} cause))
 
 (defn choose!

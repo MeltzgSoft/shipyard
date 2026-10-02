@@ -23,7 +23,7 @@
       (dotimes [_ 2]
         (is (workers/submit! blockers #(do (.countDown entered) (.await release)))))
       (is (.await entered 5 TimeUnit/SECONDS))
-      (dotimes [_ 32] (is (workers/submit! blockers (fn []))))
+      (dotimes [_ (:queue-size shared)] (is (workers/submit! blockers (fn []))))
       (is (false? (workers/submit! blockers #(throw (ex-info "Must not run inline" {})))))
       (is (= 2 (.getLargestPoolSize pool)))
       (is (= :running (:state (mesh-jobs/submit! jobs id (index/fresh-source-file! library id)))))

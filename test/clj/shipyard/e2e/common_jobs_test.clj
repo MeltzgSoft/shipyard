@@ -13,10 +13,10 @@
       (s/go! driver (s/base-url sys))
       (s/wait-visible! driver ".part-thumbnail img")
       (s/choose-path! driver ".import-start" zip)
-      (s/click! driver ".import-start button[type=submit]")
       (s/wait-visible! driver ".import-review")
       (is (s/wait-until #(= 2 (s/count-els driver ".part-thumbnail img"))))
-      (is (s/wait-until #(.contains (s/text driver "[data-thumbnail-progress]") "0 generating")))
+      (is (s/wait-until #(= "Thumbnail generation: 0 running · 0 queued"
+                            (s/text driver "[data-thumbnail-progress]"))))
       (s/click! driver "form[hx-post='/imports/cancel'] button")
       (s/wait-visible! driver ".import-start")
       (s/open-part! driver "hull")

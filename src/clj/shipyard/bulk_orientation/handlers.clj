@@ -1,6 +1,7 @@
 (ns shipyard.bulk-orientation.handlers
   "Ring orchestration for filtering, preparing, and saving orientation sets."
   (:require [babashka.fs :as fs]
+            [clojure.set :as set]
             [shipyard.bulk-orientation.transforms :as bulk]
             [shipyard.bulk-orientation.save-state :as saves]
             [shipyard.bulk-orientation.views :as views]
@@ -13,6 +14,7 @@
             [shipyard.http.views :as http-views]
             [shipyard.library.index :as index]
             [shipyard.importer.db :as importer]
+            [shipyard.importer.transforms :as imports]
             [shipyard.mesh.cache :as cache]
             [shipyard.vocabulary.db :as vocabulary]
             [shipyard.vocabulary.views :as vocabulary-views]
@@ -33,6 +35,8 @@
                    :class (blank->nil (get params "class"))
                    :role (some-> (get params "role") blank->nil keyword)
                    :q (blank->nil (get params "q"))})
+       (filter #(edits/listed? % (:import-session deps)))
+       (filter #(or (not (:import-session deps)) (imports/matches-variant? (get params "variant") %)))
        (filter #(bulk/matches-orientation? (blank->nil (get params "orientation")) %))))
 
 (defn orient! [deps _]
@@ -50,7 +54,7 @@
     {:status 204 :headers {} :body ""}
     (htmx/fragment (parts-view! (importer/effective! deps) params))))
 
-(defn selection! [{:keys [workspace]} {:keys [params]}]
+(defn selection! [{:keys [workspace] :as deps} {:keys [params]}]
   (workspace/remember! workspace :browse params)
   (let [previous (set (bulk/selected-ids (:bulk-selection (workspace/workspace! workspace :browse))))
         visible (set (bulk/selected-ids (get params "visible")))
@@ -58,7 +62,12 @@
         selection (pr-str (bulk/selection-after-change previous visible
                                                        (if (string? selected) [selected] selected)))]
     (workspace/update-workspace! workspace :browse assoc :bulk-selection selection)
-    (htmx/fragment (views/selection-updates selection))))
+    (htmx/fragment
+     (list (views/selection-updates selection)
+           (update (views/matching-checkbox
+                    (orientation-parts (importer/effective! deps) (:filters (workspace/workspace! workspace :browse)))
+                    (set (bulk/selected-ids selection)))
+                   1 assoc :hx-swap-oob "outerHTML")))))
 
 (defn grid-entry! [{:keys [library cache jobs]} part]
   (let [part-id (:part/id part)
@@ -172,7 +181,10 @@
 
 (defn select-all! [{:keys [workspace] :as deps} {:keys [params]}]
   (workspace/remember! workspace :browse params)
-  (select-ids! deps (if (= "all" (get params "selection"))
-                      (map :part/id (orientation-parts (importer/effective! deps)
-                                                       (:filters (workspace/workspace! workspace :browse))))
-                      [])))
+  (let [{:keys [filters bulk-selection]} (workspace/workspace! workspace :browse)
+        previous (set (bulk/selected-ids bulk-selection))
+        matching (set (map :part/id (orientation-parts (importer/effective! deps) filters)))]
+    (select-ids! deps (case (get params "selection")
+                        "all" (set/union previous matching)
+                        "matching-none" (set/difference previous matching)
+                        "none" #{}))))
