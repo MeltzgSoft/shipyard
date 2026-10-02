@@ -22,6 +22,7 @@
             [shipyard.regions.handlers :as regions]
             [shipyard.regions.transport :as region-transport]
             [shipyard.http.contracts :as contracts]
+            [shipyard.file-picker.routes :as file-picker]
             [shipyard.http.htmx :as htmx]
             [shipyard.http.jobs :as jobs]
             [shipyard.http.settings :as settings]
@@ -595,7 +596,8 @@
                     :database #(db/snapshot! (:catalog deps)))]
     (ring/router
      (into (routes deps)
-           (concat (bulk-routes/routes deps)
+           (concat (file-picker/routes deps)
+                   (bulk-routes/routes deps)
                    (when (:workspace deps) (import-routes/routes deps))
                    (when (:assembly deps) (assembly-routes/routes deps))
                    (when (:workspace deps)

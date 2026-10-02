@@ -5,6 +5,7 @@
             [shipyard.bulk-orientation.transforms :as bulk]
             [shipyard.http.views :as http-views]
             [shipyard.http.urls :as urls]
+            [shipyard.file-picker.views :as file-picker]
             [shipyard.http.pagination :as pagination]
             [shipyard.mount.wizard :as wizard]
             [shipyard.part.orientation :as orientation]
@@ -20,9 +21,33 @@
                                (str (if (seq accepts) (str/join "/" (sort (map name accepts))) "any") " ×" capacity))))]
     (if (seq labels) (str/join " · " labels) "None")))
 
+(defn- import-files [part]
+  (let [files (:import/files part)]
+    [:details.import-files
+     [:summary (str (count files) (if (= 1 (count files)) " file" " files"))]
+     (for [{:keys [key chain variant]} files]
+       [:label.import-files__file
+        [:span {:title (str/join " → " chain)} (str/join " → " chain)]
+        [:select {:aria-label (str "Variant for " (last chain)) :data-import-file key
+                  :hx-post "/imports/variant" :hx-trigger "change"
+                  :hx-vals (str "js:{file:" (json/write-str key) ",variant:this.value}")
+                  :hx-params "file,variant" :hx-target "#bulk-orient-selection" :hx-swap "outerHTML"
+                  :hx-sync "#workspace-navigation:drop"
+                  :hx-disabled-elt "#library button, #library select, [data-bulk-select]"}
+         (for [[value label] [[:unsupported "Unsupported"] [:supported "Supported"] [:unsupported-pitted "Unsupported (pitted)"]]]
+           [:option {:value (name value) :selected (= variant value)} label])]])
+     (when (> (count files) 1)
+       [:button {:type "button" :data-import-split (:part/id part)
+                 :hx-post "/imports/split" :hx-vals (json/write-str {"group" (:part/id part)})
+                 :hx-params "group" :hx-target "#bulk-orient-selection" :hx-swap "outerHTML"
+                 :hx-sync "#workspace-navigation:drop"
+                 :hx-disabled-elt "#library button, #library select, [data-bulk-select]"}
+        "Split into separate rows"])]))
+
 (defn- orientation-row [selected part]
   (let [[yaw pitch roll] (orientation/to-euler-degrees (:part/orientation part))
-        renderable? (not (http-views/unrenderable-reason part))]
+        reason (http-views/unrenderable-reason part)
+        renderable? (nil? reason)]
     [:div.bulk-orient__row
      {:tabindex "0" :data-workspace-transition "true" :data-part-row (:part/id part)
       :hx-on:dblclick (when-not (:import/source part) "if(!this.hasAttribute('disabled')&&event.target.tagName!=='INPUT'){document.getElementById('part-open-id').value=this.dataset.partRow; document.getElementById('part-open').requestSubmit();}")
@@ -30,17 +55,21 @@
      [:input {:type "checkbox" :value (:part/id part) :aria-label (str "Select " (:part/name part))
               :data-bulk-select "true" :name "selected" :checked (contains? selected (:part/id part))}]
      [:span.part-thumbnail
-      (when renderable?
+      (if renderable?
         {:hx-get (str "/thumbnails/" (urls/encode-id (:part/id part)))
-         :hx-trigger "intersect once root:#bulk-orient-results" :hx-sync "this:drop" :hx-disabled-elt "this" :hx-target "this" :hx-swap "innerHTML"})
+         :hx-trigger "intersect once root:#bulk-orient-results" :hx-sync "this:drop" :hx-disabled-elt "this" :hx-target "this" :hx-swap "innerHTML"}
+        {:title reason})
       (if renderable? "…" "No preview")]
      [:span.bulk-orient__part (:part/name part)]
      [:span.bulk-orient__bundle (:part/bundle part)]
      [:span.bulk-orient__role (name (or (:part/role-hint part) :unknown))]
      [:span.bulk-orient__class (or (:part/class part) "—")]
-     [:span.bulk-orient__mounts (if (:import/source part) (name (:import/variant part)) (mount-label (:part/mount-summary part)))]
+     [:span.bulk-orient__mounts (if (:import/source part)
+                                  (if (:import/conflict? part) [:strong.detail__error "Assign variants"]
+                                      (str/join " + " (sort (map name (:part/variants part)))))
+                                  (mount-label (:part/mount-summary part)))]
      [:span.bulk-orient__regions {:title (:import/source part) :data-has-regions (str (boolean (:part/has-regions? part)))}
-      (if (:import/source part) [:small (:import/source part)] (if (:part/has-regions? part) "Yes" "No"))]
+      (if (:import/source part) (import-files part) (if (:part/has-regions? part) "Yes" "No"))]
      [:code (if (bulk/saved? part) (angle-label yaw) "—")]
      [:code (if (bulk/saved? part) (angle-label pitch) "—")]
      [:code (if (bulk/saved? part) (angle-label roll) "—")]
@@ -64,12 +93,12 @@
       [:p.results__count (format "%d matches" (:total window))]
       (pagination/controls window "/orient/parts" "#bulk-orient-results" "#bulk-orient-filters")
       [:form.bulk-orient__table {:role "group" :aria-label "Parts"
-                                 :method "post" :action "/orient/selection" :hx-post "/orient/selection" :hx-trigger "change" :hx-include "#part-table-position, [data-part-page]" :hx-target "#bulk-orient-selection"
+                                 :method "post" :action "/orient/selection" :hx-post "/orient/selection" :hx-trigger "change[target.matches('[data-bulk-select]')]" :hx-include "#part-table-position, [data-part-page]" :hx-target "#bulk-orient-selection"
                                  :hx-swap "outerHTML" :hx-sync "this:replace"
                                  :hx-disabled-elt "[data-workspace-mode], [data-workspace-transition], .part-bulk-edit button"}
        [:input {:type "hidden" :name "visible" :value (pr-str (mapv :part/id parts))}]
        [:div.bulk-orient__columns {:aria-hidden "true"}
-        [:span] [:span "Preview"] [:span "Part"] [:span "Bundle / faction"] [:span "Role"] [:span "Class"] [:span (if (:import/source (first parts)) "Variant" "Mount summary")] [:span (if (:import/source (first parts)) "Archive source" "Regions")] [:span "Yaw"] [:span "Pitch"]
+        [:span] [:span "Preview"] [:span "Part"] [:span "Bundle / faction"] [:span "Role"] [:span "Class"] [:span (if (:import/source (first parts)) "Variant" "Mount summary")] [:span (if (:import/source (first parts)) "Files / variants" "Regions")] [:span "Yaw"] [:span "Pitch"]
         [:span "Roll"] [:span "Orientation"]]
        (if (seq parts)
          (map (partial orientation-row selected) parts)
@@ -128,20 +157,31 @@
     (if import-session
       [:div.import-review
        [:p "Archive: " (:archive import-session)]
+       (when-let [skipped (seq (:skipped-empty-archives import-session))]
+         [:details.import-warnings
+          [:summary (str "Skipped " (count skipped) " empty nested ZIP " (if (= 1 (count skipped)) "file" "files"))]
+          [:ul (for [chain skipped] [:li (str/join " → " chain)])]])
        (for [[selection label] [["all" "Select entire import"] ["none" "Clear selection"]]]
          [:form {:method "post" :action "/imports/selection" :hx-post "/imports/selection" :hx-target "#bulk-orient-selection" :hx-swap "outerHTML"
                  :hx-sync "#workspace-navigation:drop"
                  :hx-disabled-elt "[data-workspace-mode], [data-workspace-transition], [data-bulk-select], [data-import-select], .part-bulk-edit button"}
           [:input {:type "hidden" :name "selection" :value selection}]
           [:button {:type "submit" :data-import-select selection} label]])
-       [:p "Original ZIP archives are kept. Only unsupported models have previews. Variant values: unsupported, supported, unsupported-pitted."]
+       [:form {:method "post" :action "/imports/group" :hx-post "/imports/group"
+               :hx-target "#bulk-orient-selection" :hx-swap "outerHTML"
+               :hx-sync "#workspace-navigation:drop"
+               :hx-disabled-elt "#library button, #library select, [data-bulk-select]"}
+        [:input {:name "name" :placeholder "Optional group name" :aria-label "Grouped part name"}]
+        [:button {:type "submit" :data-import-group true} "Group selected rows"]]
+       [:p "Matching versions share a row. Expand Files / variants to assign each file or split a group. Select rows to group missed matches; the resulting row shares its labels and orientation."]
+       [:p "Original ZIP archives are kept. Only unambiguous unsupported models have previews."]
        [:form (merge workspace-views/transition-attrs {:method "post" :action "/imports/commit" :hx-post "/imports/commit" :hx-target "#detail" :hx-disabled-elt "find button"})
         [:button {:type "submit" :data-workspace-transition true} "Import into library"]]
        [:form (merge workspace-views/transition-attrs {:method "post" :action "/imports/cancel" :hx-post "/imports/cancel" :hx-target "#detail"})
         [:button {:type "submit" :data-workspace-transition true} "Cancel import"]]
        [:p#import-status {:role "status"}]]
       [:form.import-start (merge workspace-views/transition-attrs {:method "post" :action "/imports/start" :hx-post "/imports/start" :hx-target "#detail" :hx-disabled-elt "find button"})
-       [:label "ZIP archive" [:input {:name "archive" :placeholder "Path to a ZIP archive" :required true}]]
+       (file-picker/field {:id "import-archive"})
        [:button {:type "submit" :disabled (nil? root)} "Review archive"]
        [:span.htmx-indicator "Unpacking archive…"]
        [:p#import-status {:role "status"}]])

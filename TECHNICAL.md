@@ -595,7 +595,9 @@ source metadata without opening meshes.
 ZIP IO and Ring orchestration. ZIP entry names are evidence only: extraction writes
 UUID-named temporary files, never paths supplied by archive entries. Recursive extraction
 bounds depth, entry count and expanded bytes, ignores non-STL extras, and hashes each
-extracted STL for duplicate/collision planning.
+extracted STL for duplicate/collision planning. Zero-byte nested ZIP placeholders are
+skipped, with their source chains retained in the review session for display. Invalid
+nonempty ZIPs abort extraction with the offending archive chain in the error.
 
 Part Browser owns the import session under its workspace state. The session contains a
 disposable Datalevin catalog and library index in a temporary tree, with its own mesh
@@ -604,6 +606,19 @@ listing, thumbnails, metadata edits and orientation saves resolve this staging c
 Ship Browser continues to resolve the durable catalog. Workspace activation admission
 also covers import routes. Mount, region and direct single-part authoring routes are
 rejected during review. Normal Part Browser state is restored on commit or cancel.
+
+Archive import keeps source files as stable entries and assigns them to review groups.
+Each group is a catalog part in the disposable Datalevin store. Inference groups matching
+bundle/class/role/name labels only when each variant identifies one content hash.
+Group/split/variant edits transact the catalog labels and source assignments before
+publishing the corresponding library index and entry membership. Preview sources are
+explicit index-owned file references. The shared scan contract accepts optional
+`:part/source-paths` (variant to root-relative path) for staged files; ordinary library
+scans retain canonical variant paths. Group membership never renames the original files.
+Split rows inherit reviewed labels with distinct editable names. Manual groups inherit
+one selected row's labels; orientations survive only when the unsupported source stays
+the same. Publication rejects competing variant contents and separate groups sharing
+a destination folder. The member selectors can swap a clear pair's variant assignments.
 
 Publication preflights folder names, duplicate content and existing destinations,
 rejecting symbolic-link destinations/ancestors. It moves staged files without replacing
@@ -1078,6 +1093,22 @@ Shipyard has exactly one thing it cannot infer: where the STL library is. Everyt
 in `config.edn` is a measured tunable with a defensible default; this is a fact about the
 user's machine. So it has no default, `POST /settings` sets it, and the shared database
 remembers it. Startup restores that selection before scanning (§2.1).
+
+Library and archive inputs use Swing `JFileChooser`, opened by
+`POST /files/choose/:field`. The field is restricted to library setup/settings
+inputs and the ZIP archive input. The Integrant-owned `:shipyard.file-picker/db`
+serializes desktop access; concurrent requests are refused instead of queued.
+Swing classes load on demand. Choosers are constructed, displayed and disposed on
+Swing's event dispatch thread; the request waits for the result without releasing
+the dialog lock on interruption. Library selection uses `DIRECTORIES_ONLY`; archive
+selection uses `FILES_ONLY` and a case-insensitive ZIP extension filter.
+The runtime needs `java.desktop`, its desktop libraries and a graphical session.
+Headless or unavailable desktop support reports a recoverable manual-entry message.
+No external dialog helper or additional JNI dependency is required.
+Selection updates only the owning input through an htmx out-of-band swap; cancel is
+204. Applying the choice still goes through the settings/import POST validation.
+The dialogs open on the server's local desktop. Manual path entry remains available
+without a desktop. No browser upload or copy of the source library is involved.
 
 **Relocating mutates three components in place; it does not rebuild them.** The route
 table closes over its dependencies at build time - `routes` is a tree of

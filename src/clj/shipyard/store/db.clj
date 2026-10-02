@@ -142,8 +142,11 @@
                     (doseq [source (:part/sources old)]
                       (d/transact! conn [{:db/id (:db/id source) :source/present? false}]))
                     (doseq [variant (:part/variants part)]
-                      (let [source (fs/path root path (str (name variant) ".stl"))]
-                        (when (fs/regular-file? source)
+                      (let [relative (if (contains? part :part/source-paths)
+                                       (get-in part [:part/source-paths variant])
+                                       (str (fs/path path (str (name variant) ".stl"))))
+                            source (when relative (fs/path root relative))]
+                        (when (and source (fs/regular-file? source))
                           (let [key [(:part/uid old) variant]
                                 sha (when (= variant (:part/source part)) (:part/mesh-key part))]
                             (when sha (content! conn sha))
@@ -151,7 +154,7 @@
                               (d/transact! conn [[:db.fn/retractAttribute [:source/key key] :source/content]]))
                             (d/transact! conn [{:db/id ref
                                                 :part/sources [(cond-> {:source/key key :source/part ref :source/present? true
-                                                                        :source/variant variant :source/path (str (fs/path path (str (name variant) ".stl")))
+                                                                        :source/variant variant :source/path relative
                                                                         :source/size (fs/size source)
                                                                         :source/mtime (.toMillis ^java.nio.file.attribute.FileTime (fs/last-modified-time source))}
                                                                  sha (assoc :source/content [:mesh/sha sha]))]}])))))))
