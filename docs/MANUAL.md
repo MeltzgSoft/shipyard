@@ -9,7 +9,7 @@ This manual covers supported behavior. Planned work lives in the
 ## 1. Installing
 
 Download the desktop package for your platform from
-[Releases](https://forgejo.tail943578.ts.net/MeltzgSoft/shipyard/releases):
+[Releases](https://github.com/MeltzgSoft/shipyard/releases):
 
 - Linux x64: make the AppImage executable and open it, or install the `.deb`.
 - Windows x64: run the `.exe` installer. Install the

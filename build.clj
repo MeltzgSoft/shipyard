@@ -104,22 +104,43 @@
     (sh (str (io/file runtime "bin" (if (windows?) "java.exe" "java"))) "--version")
     (println "staged desktop payload in" desktop-root)))
 
-(defn desktop
-  "Build the native Electron release, with a bundled Java 25 runtime.
-
-  Install shell tools with `npm ci --prefix electron` first. `:dir true` emits
-  the unpacked app for real-window smoke tests; otherwise native installers are
-  written to electron/dist. The existing uber task remains available."
-  [{:keys [dir] :as opts}]
+(defn- validate-desktop-host! []
   (let [target (desktop-target)]
     (desktop-version)
     (when-not (= 25 (.feature (Runtime/version)))
       (throw (ex-info "Desktop packaging requires the canonical JDK 25" {})))
-    (uber opts)
-    (sh "npx" "shadow-cljs" "release" "desktop")
+    target))
+
+(defn package-desktop
+  "Package the prebuilt versioned uberjar and released Electron main bundle.
+
+  This task performs no AOT or frontend compilation. Native CI jobs download the
+  same payload built once, install shell tools with `npm ci --prefix electron`,
+  then link their Java 25 runtime and run electron-builder. `:dir true` emits an
+  unpacked app instead of installers. Inputs are preserved byte for byte."
+  [{:keys [dir]}]
+  (let [target (validate-desktop-host!)]
+    (doseq [file [uber-file "electron/compiled/main.js"]]
+      (when-not (.isFile (io/file file))
+        (throw (ex-info (str "Missing prebuilt desktop payload: " file
+                             " — build or download the payload before packaging")
+                        {:file file :version version}))))
+    (println "Packaging prebuilt desktop payload" uber-file "for" (str/join " " target))
     (stage-desktop!)
     (let [command (into [(npm-command "npm") "exec" "--" "electron-builder" "--publish" "never"]
                         (concat target (when dir ["--dir"])))
           {:keys [exit]} (b/process {:dir "electron" :command-args command})]
       (when-not (zero? exit)
         (throw (ex-info "Electron packaging failed" {:exit exit}))))))
+
+(defn desktop
+  "Build and package the native Electron release with its Java 25 runtime.
+
+  Install shell tools with `npm ci --prefix electron` first. This full local task
+  compiles the uberjar and released Electron main before calling package-desktop.
+  `:dir true` emits an unpacked app; installers are written to electron/dist."
+  [opts]
+  (validate-desktop-host!)
+  (uber opts)
+  (sh "npx" "shadow-cljs" "release" "desktop")
+  (package-desktop opts))

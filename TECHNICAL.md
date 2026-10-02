@@ -1170,7 +1170,9 @@ window; tests use isolated data profiles. BrowserWindow disables Node integratio
 and enables context isolation and sandboxing. Navigation is restricted to the
 owned origin; external HTTP(S) links use the system browser.
 
-`clojure -T:build desktop` builds the uberjar and shell, stages app metadata under
+`clojure -T:build desktop` builds the uberjar and shell, then delegates to
+`package-desktop`. That packaging task consumes the exact versioned jar and
+compiled shell without rebuilding them, stages app metadata under
 `target/desktop/app`, and puts `shipyard.jar` plus a `jlink` runtime under
 `target/desktop/resources`. electron-builder copies the payload outside ASAR,
 where the JVM can open real files. The runtime includes Java SE,
@@ -1199,8 +1201,8 @@ build runners as well.
 
 They still earn their place - running the pipeline against each platform's natives is the
 only way to catch a platform-specific failure before a user does - but if CI capacity gets
-tight, keep their desktop packaging jobs: cutting those would remove supported
-platforms from the desktop release.
+tight, retain native coverage on Forgejo and the separate GitHub packaging matrix
+for supported desktop platforms.
 
 **Java 25, not 21.** The `:run` and `:test` aliases pass
 `--sun-misc-unsafe-memory-access=allow`, which does not exist before JDK 23 - an older
@@ -1220,12 +1222,16 @@ on `edited`), and `test.yml`, which holds seven jobs:
 | `readme` | linux | runs README's own Development commands (§9.2) |
 | `package` | linux | the uberjar, and the only proof one runs |
 
-`desktop.yml` additionally packages installers on all three native runners,
-checks the owned-child protocol against the bundled runtime, and drives the
-packaged Electron window on Linux. Workflow artifacts retain installers for PR
-review and manual runs. Tag pushes create the desktop release only after all
-three builds pass, including a checksum file; no jar is attached as the end-user
-release artifact. Forgejo artifact upload/download uses its compatible v3 actions.
+Desktop packaging runs separately in `.github/workflows/desktop.yml` on
+GitHub-hosted runners. One Linux build validates JVM/CLJS unit tests and produces
+the universal jar plus released shell; the native matrix downloads those same
+bytes and calls `package-desktop`, linking a Java runtime on each target OS.
+Each leg checks the owned-child protocol against its bundled runtime, and Linux
+drives the packaged Electron window. Branch pushes and installer-only manual
+runs retain installers as GitHub Actions artifacts without publishing. A version
+tag attaches all four installers and `SHA256SUMS` to a GitHub Release only after
+the entire matrix succeeds. Only that release job has `contents: write`; the
+end-user release assets are desktop packages. Forgejo retains ordinary CI.
 
 Level mapping (§10): **unit and integration run on all three platforms**, since those are
 what exercise natives and filesystem semantics. **E2E runs on Linux only** - it tests

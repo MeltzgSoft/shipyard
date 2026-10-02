@@ -1,0 +1,190 @@
+name: Desktop
+
+# Mirror branch pushes smoke-test packaging without creating a release.
+# Version tags publish only after the complete native matrix succeeds.
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      installers_only:
+        description: 'Build downloadable installers without publishing a release'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+env:
+  CLJ_JVM_OPTS: '-Daether.syncContext.named.factory=noop'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          java-version: '25'
+          distribution: temurin
+      - uses: DeLaGuardo/setup-clojure@13.6.1
+        with:
+          cli: '1.12.4.1618'
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.m2/repository
+            ~/.gitlibs
+            .cpcache
+          key: cljdeps-linux-${{ hashFiles('deps.edn') }}
+          restore-keys: cljdeps-linux-
+      - name: Resolve the shared payload version
+        id: version
+        shell: bash
+        run: |
+          version=0.1.0-SNAPSHOT
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] \
+              || { echo '::error::desktop releases require a semantic-version tag'; exit 1; }
+            version=${GITHUB_REF_NAME#v}
+          fi
+          echo "SHIPYARD_VERSION=$version" >> "$GITHUB_ENV"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: JVM unit tests
+        run: clojure -M:test --focus :unit
+      - name: Build the universal backend and released CLJS shell once
+        run: |
+          clojure -T:build uber
+          npx shadow-cljs release desktop
+      - name: CLJS unit tests
+        run: |
+          npx shadow-cljs compile test
+          node target/js/node-tests.js
+          npx shadow-cljs release desktop-support
+      - uses: actions/upload-artifact@v7
+        with:
+          name: desktop-payload
+          path: |
+            target/shipyard-*.jar
+            electron/compiled/main.js
+            electron/compiled/backend-tests.js
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+  package:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: linux-x64
+            artifacts: |
+              electron/dist/*.AppImage
+              electron/dist/*.deb
+          - os: windows-latest
+            name: windows-x64
+            artifacts: electron/dist/*.exe
+          - os: macos-latest
+            name: macos-arm64
+            artifacts: electron/dist/*.dmg
+    runs-on: ${{ matrix.os }}
+    env:
+      SHIPYARD_VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          java-version: '25'
+          distribution: temurin
+      - uses: DeLaGuardo/setup-clojure@13.6.1
+        with:
+          cli: '1.12.4.1618'
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            electron/package-lock.json
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.m2/repository
+            ~/.gitlibs
+            .cpcache
+          key: cljdeps-${{ matrix.name }}-${{ hashFiles('deps.edn') }}
+          restore-keys: cljdeps-${{ matrix.name }}-
+      - name: Install Linux packaging and window-test tools
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends binutils xz-utils xvfb libgtk-3-0 libnss3 libasound2t64
+      - name: Prepare Windows Datalevin native runtime
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./.forgejo/scripts/prepare-windows-natives.ps1
+      - uses: actions/download-artifact@v8
+        with:
+          name: desktop-payload
+          path: .
+      - name: Install desktop and test tools
+        run: npm ci --prefix electron
+      - name: Package the shared payload with this OS's runtime
+        run: clojure -T:build package-desktop
+      - name: Child-process protocol and bundled runtime tests
+        env:
+          SHIPYARD_TEST_RESOURCES: target/desktop/resources
+        run: npm test --prefix electron
+      - name: Real packaged Electron window
+        if: runner.os == 'Linux'
+        env:
+          SHIPYARD_TEST_ELECTRON: dist/linux-unpacked/shipyard
+        run: xvfb-run -a npm run test:e2e --prefix electron
+      - uses: actions/upload-artifact@v7
+        with:
+          name: installers-${{ matrix.name }}
+          path: ${{ matrix.artifacts }}
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+  release:
+    # Branch pushes and installer-only dispatches never publish.
+    if: startsWith(github.ref, 'refs/tags/v') && (github.event_name == 'push' || !inputs.installers_only)
+    needs: [build, package]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: installers-*
+          path: installers
+      - name: Collect the complete desktop release
+        run: |
+          mkdir -p release
+          find installers -type f \( -name '*.AppImage' -o -name '*.deb' -o -name '*.exe' -o -name '*.dmg' \) -exec cp {} release/ \;
+          test "$(find release -type f | wc -l)" -eq 4
+          cd release
+          sha256sum * > SHA256SUMS
+      - name: Attach desktop installers and checksums to the GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: release/*
+          fail_on_unmatched_files: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true

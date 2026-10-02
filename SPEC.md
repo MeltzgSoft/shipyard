@@ -826,7 +826,9 @@ Milestone scope, progress, and outstanding work live in the
 
 ## 10.1 CI
 
-Forgejo Actions, Linux, Windows and Apple Silicon macOS runners.
+Forgejo Actions runs ordinary CI on Linux, Windows and Apple Silicon macOS.
+GitHub Actions builds native desktop packages on those platforms and attaches
+them to a GitHub Release after all packaging and desktop tests pass.
 
 The JVM is portable but **the native dependencies are not** - LWJGL ships
 platform-specific meshoptimizer natives, and that is precisely the layer most likely to
