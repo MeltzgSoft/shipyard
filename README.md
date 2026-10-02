@@ -72,6 +72,10 @@ without a restart. See the [user manual](docs/MANUAL.md).
 
 ## Desktop development and release
 
+Linux desktop builds need `binutils` (`sudo apt-get install binutils` on
+Debian/Ubuntu). Java's `jlink --strip-debug` uses its `objcopy` utility while
+packaging the bundled runtime.
+
 On a supported native build platform, install the desktop tools and build:
 
 ```bash
