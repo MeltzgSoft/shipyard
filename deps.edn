@@ -27,6 +27,11 @@
   babashka/fs                    {:mvn/version "0.5.34"}
   ;; sha256 of a file, streamed. Replaces a hand-rolled MessageDigest loop.
   digest/digest                  {:mvn/version "1.4.10"}
+  eu.mihosoft.vrl.jcsg/jcsg      {:mvn/version "0.5.7"
+                                 :exclusions [org.slf4j/slf4j-simple]}
+  org.locationtech.jts/jts-core  {:mvn/version "1.20.0"}
+  ;; JCSG signatures reference JavaFX types even for headless solid operations.
+  org.openjfx/javafx-graphics    {:mvn/version "25.0.2"}
   ch.qos.logback/logback-classic {:mvn/version "1.5.13"}
   org.lwjgl/lwjgl                {:mvn/version "3.3.6"}
   org.lwjgl/lwjgl-meshoptimizer  {:mvn/version "3.3.6"}}
