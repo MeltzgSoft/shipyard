@@ -264,8 +264,10 @@ temp dir** - override with `-Dorg.lwjgl.librarypath` where that does not hold. I
 `Failed to instantiate memory allocator: JEmallocAllocator` log line is harmless; it
 falls back to the stdlib allocator.
 
-No CSG dependency - face picking (SPEC §5) removed the need, which is what makes the pure
-JVM stack viable.
+Physical cut geometry uses JCSG for JVM solid subtraction and JTS for face-boundary
+insets and triangulation. JavaFX classes satisfy JCSG's public signatures;
+these operations are headless and require no additional runtime beyond the JVM.
+Browser cut geometry uses Clipper for matching polygon insets.
 
 ---
 
@@ -1731,6 +1733,22 @@ are unit length within `1e-9`, and `abs(dot(axis, roll)) <= 1e-9`. The derived +
 `axis × roll`, making `(roll, +Y, axis)` a right-handed frame; the authoring preview draws
 all three directions. Computation uses doubles; only the final durable vectors are
 ordinary EDN numbers.
+
+Physical cut geometry is implemented independently of mount authoring. Optional
+`:mount/cut` definitions use `:kind :pit|:recess`, `:depth`, `:diameter` (pit) or
+`:border` (recess), with all dimensions in millimetres. `mount.cut` validates
+cut dimensions, recovers oriented boundary loops from face triangles, projects
+source-space frames and derives cylinder wireframes at capacity-section centers.
+
+`pitting.geometry` validates closed, consistently wound positive-volume source
+meshes and subtracts cuts using JCSG. JTS even-odd polygons, a negative mitered
+buffer and polygon triangulation produce recesses that preserve concave face
+boundaries and holes; pits use 64 circular segments. Cutters extend from 0.02 mm
+outside the face to the requested inward depth. JCSG's polygon-bound optimization
+limits BSP subtraction to source polygons overlapping each cutter.
+`mount.cut-render` uses Clipper mitered insets at 0.00001 mm precision and constructs
+opening, floor and wall wireframe geometry. These functions return geometry;
+mount authoring, durable definitions and STL publication are separate concerns.
 
 ### 12.4 Symmetry plane and mirroring
 
