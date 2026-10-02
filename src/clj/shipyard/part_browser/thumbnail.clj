@@ -7,23 +7,27 @@
   (:import [java.awt Color RenderingHints]
            [java.awt.image BufferedImage]
            [java.io ByteArrayOutputStream]
-           [java.util Base64]
            [javax.imageio ImageIO]))
 
 (defn source-regions [saved mesh-key]
   (when (= mesh-key (:mesh-key saved)) saved))
 
+(defn region-style [saved]
+  (let [palette (regions/preview-materials (or saved {:layers regions/builtins}))]
+    {:primary (get-in palette ["Primary" :base])
+     :faces (or (:faces saved) {})
+     :colors (into {} (for [layer (distinct (vals (:faces saved)))]
+                        [layer (get-in palette [layer :base])]))}))
+
 (defn region-mesh
   "Color source triangles before orientation, using the same palette as the Regions tab."
   [mesh saved]
-  (let [palette (regions/preview-materials (or saved {:layers regions/builtins}))
-        primary (get-in palette ["Primary" :base])
-        assignments (:faces saved)
+  (let [{:keys [primary colors] assignments :faces} (region-style saved)
         vertices (when (seq assignments) (mapv vec (partition 3 (:positions mesh))))]
     (assoc mesh :colors
            (mapv (fn [ids]
                    (let [layer (when vertices (get assignments (faces/face-key (mapv vertices ids))))]
-                     (get-in palette [layer :base] primary)))
+                     (get colors layer primary)))
                  (partition 3 (:indices mesh))))))
 
 (defn triangles [{:keys [positions indices colors]} pose]
@@ -49,7 +53,7 @@
                            :points (mapv (fn [[x y]] [(+ 64 (* scale (- x cx))) (+ 44 (* scale (- y cy)))]) vertices)})))
          (sort-by :depth))))
 
-(defn image! [mesh pose]
+(defn png! [mesh pose]
   (let [image (BufferedImage. 128 88 BufferedImage/TYPE_INT_RGB)
         graphics (.createGraphics image)
         output (ByteArrayOutputStream.)]
@@ -63,5 +67,5 @@
                               (Color. (int (* shade 0.85)) (int (* shade 0.93)) (int shade))))
         (.fillPolygon graphics (int-array (map first points)) (int-array (map second points)) 3))
       (ImageIO/write image "png" output)
-      (str "data:image/png;base64," (.encodeToString (Base64/getEncoder) (.toByteArray output)))
+      (.toByteArray output)
       (finally (.dispose graphics)))))

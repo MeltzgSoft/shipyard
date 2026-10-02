@@ -103,6 +103,14 @@
                  "--sun-misc-unsafe-memory-access=allow"
                  "-Xmx1g"]}
 
+  ;; --- On-demand background job memory benchmark ---------------------------
+  :jobs-benchmark
+  {:extra-paths ["test/clj"]
+   :main-opts ["-m" "shipyard.jobs-benchmark"]
+   :jvm-opts ["--enable-native-access=ALL-UNNAMED"
+              "--sun-misc-unsafe-memory-access=allow"
+              "-Djava.awt.headless=true"]}
+
   ;; --- M2 real Cruiser proof -----------------------------------------------
   ;; On-demand because the Human Navy Cruiser STLs are user-owned data, not test
   ;; fixtures. Run it against a temporary copy; it uses an isolated proof database.

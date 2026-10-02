@@ -60,17 +60,17 @@
   (let [part-id (:part/id part)
         mesh-key (index/mesh-key! library part-id)
         cached? (and mesh-key (fs/regular-file? (cache/tier-file cache mesh-key 0)))
-        source (when-not cached? (index/fresh-source-file! library part-id))
-        job (when source (jobs/submit! jobs part-id source))]
+        source (index/fresh-source-file! library part-id)
+        job (when (and source (not cached?)) (jobs/submit! jobs part-id source))]
     (cond
+      (nil? source)
+      {:part part :state :failed :message "The source mesh is unavailable or changed. Rescan the library."}
+
       cached?
       {:part part :state :ready :mesh-key mesh-key :mesh-url (urls/mesh-url mesh-key 0)}
 
       (= :failed (:state job))
       {:part part :state :failed :message "Could not prepare this part."}
-
-      (nil? source)
-      {:part part :state :failed :message "The source mesh is no longer available."}
 
       :else
       {:part part :state :preparing :message "Preparing…"})))

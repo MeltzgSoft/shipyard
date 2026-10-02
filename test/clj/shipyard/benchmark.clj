@@ -218,10 +218,14 @@
                             :facet-plane-epsilon-mm 0.01
                             :cap-bytes 4294967296 :cache-home (str cache-home)}
    :shipyard.store/db {:data-home (str cache-home)}
+   :shipyard.jobs/pool {:store (ig/ref :shipyard.store/db)}
+   :shipyard.thumbnail/cache {:cache (ig/ref :shipyard.mesh/cache) :workers (ig/ref :shipyard.jobs/pool) :cap-bytes 134217728}
    :shipyard.catalog/db    {:library (ig/ref :shipyard.library/index) :store (ig/ref :shipyard.store/db)}
-   :shipyard.http/jobs     {:library (ig/ref :shipyard.library/index)
+   :shipyard.http/jobs     {:workers (ig/ref :shipyard.jobs/pool)
+                            :library (ig/ref :shipyard.library/index)
                             :cache   (ig/ref :shipyard.mesh/cache)}
-   :shipyard.http/routes   {:library (ig/ref :shipyard.library/index)
+   :shipyard.http/routes   {:thumbnails (ig/ref :shipyard.thumbnail/cache)
+                            :library (ig/ref :shipyard.library/index)
                             :catalog (ig/ref :shipyard.catalog/db)
                             :cache   (ig/ref :shipyard.mesh/cache)
                             :jobs    (ig/ref :shipyard.http/jobs)}

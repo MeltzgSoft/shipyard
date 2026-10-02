@@ -4,6 +4,10 @@
             [shipyard.part-browser.thumbnail :as thumbnail]
             [shipyard.regions.model :as regions]))
 
+(deftest region-style-ignores-unused-layers-and-revisions
+  (is (= (thumbnail/region-style nil)
+         (thumbnail/region-style {:revision 4 :layers ["Primary" "Unused"] :faces {}}))))
+
 (deftest source-regions-use-the-editor-palette
   (let [points [[0 0 0] [1 0 0] [0 1 0] [0 0 1]]
         mesh {:positions (vec (mapcat identity points)) :indices [0 1 2 0 2 3 0 1 3]}

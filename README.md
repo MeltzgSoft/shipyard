@@ -93,6 +93,25 @@ for ten seconds, runs the whole-library canary with four threads, and writes `be
 bundle first (`npx shadow-cljs compile viewport`). Use `--viewport-mode swiftshader` only
 for a CPU-renderer comparison; it does not measure the hardware viewport budget.
 
+The on-demand job-memory benchmark uses a separate JVM and temporary stores. Choose
+an explicit heap limit. It reports retained queue heap after GC, sampled rendering
+heap peaks, GC time, elapsed time and worker errors as EDN records; these are machine-
+and workload-specific measurements, not CI thresholds.
+
+```bash
+clojure -J-Xmx2g -M:natives-linux:jobs-benchmark thumbnail-queue '{:faces 50000 :counts [32 128]}'
+clojure -J-Xmx2g -M:natives-linux:jobs-benchmark queue '{:faces 50000 :counts [1 4 16 32]}'
+clojure -J-Xmx2g -M:natives-linux:jobs-benchmark active '{:file "/path/to/mesh.0.symesh" :painted? true :threads [1 2 4] :jobs 4 :runs 2}'
+```
+
+`thumbnail-queue` drives the actual class-thumbnail handler with synthetic region data;
+`queue` models closures retaining face maps (`:faces 0` models lightweight work).
+`active` reads an existing mesh cache file without modifying it and renders independent
+copies with synthetic face assignments. Its heap peaks include uncollected garbage;
+use repeated runs and worker errors alongside the timing rather than treating peaks
+as retained memory. Deliberately testing a small heap can produce OOMs in this isolated
+benchmark process.
+
 Report exports use ordinary file writes and create missing parent directories. An
 interrupted write can leave a partial report; rerun the command to regenerate it.
 

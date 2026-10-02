@@ -51,7 +51,7 @@
   (when store (store/close! store))
   (when directory (fs/delete-tree directory)))
 
-(defn prepare! [{:keys [cache library]} path]
+(defn prepare! [{:keys [cache library jobs]} path]
   (when-not (index/available?! library)
     (throw (ex-info "Choose an existing library folder before importing." {})))
   (let [directory (fs/create-temp-dir {:prefix "shipyard-import-"})
@@ -71,7 +71,7 @@
             _ (swap! opened assoc :store store)
             lib {:store store :state (atom (library-state! parts root entries {}))}
             cat (catalog/open! store (:parts @(:state lib)) root)
-            workers (ig/init-key :shipyard.http/jobs {:library lib :cache cache})]
+            workers (ig/init-key :shipyard.http/jobs {:library lib :cache cache :workers (:workers jobs)})]
         (merge @opened {:library lib :catalog cat :jobs workers :entries (atom entries)
                         :skipped-empty-archives skipped-empty-archives
                         :archive (str path) :target-root (index/root! library)}))

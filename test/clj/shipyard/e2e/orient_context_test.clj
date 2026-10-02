@@ -29,7 +29,7 @@
   (let [started (fixture/start! true) driver (s/make-driver)
         ^Page page (:page driver) held (atom nil)
         release (CountDownLatch. 1) occupied (CountDownLatch. 2)
-        ^ExecutorService pool (get-in started [:system :shipyard.http/jobs :pool])]
+        ^ExecutorService pool (get-in started [:system :shipyard.jobs/pool :pool])]
     (try
       (dotimes [_ 2]
         (.submit pool ^Runnable (fn [] (.countDown occupied) (.await release))))
@@ -69,7 +69,7 @@
       (let [started (fixture/start! true) driver (s/make-driver)
             id (:prow fixture/ids)
             release (CountDownLatch. 1) occupied (CountDownLatch. 2)
-            ^ExecutorService pool (get-in started [:system :shipyard.http/jobs :pool])]
+            ^ExecutorService pool (get-in started [:system :shipyard.jobs/pool :pool])]
         (try
           ;; Hold real preprocessing so the browser necessarily sees a preparation poll.
           (dotimes [_ 2]

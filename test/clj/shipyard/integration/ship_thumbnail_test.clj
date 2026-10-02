@@ -18,6 +18,6 @@
       (let [state @(:state (:shipyard.workspace/db sys))
             response (get! (str "/ship-thumbnails/class/" id))]
         (is (= 200 (:status response)))
-        (is (or (str/includes? (:body response) "delay:600ms") (str/includes? (:body response) "data:image/png")))
+        (is (or (str/includes? (:body response) "delay:600ms") (str/includes? (:body response) "/thumbnail-images/")))
         (is (= state @(:state (:shipyard.workspace/db sys)))))
       (finally (fixture/stop! started)))))

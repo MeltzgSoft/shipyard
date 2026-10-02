@@ -6,10 +6,11 @@
             [shipyard.library.index :as index]
             [shipyard.fixtures :as fixtures]
             [shipyard.http.jobs :as jobs]
+            [shipyard.jobs :as workers]
             [shipyard.mesh.cache :as cache]
             [shipyard.store.db :as store]
             [shipyard.store.scan-index :as scan-index])
-  (:import [java.util.concurrent Callable CountDownLatch Executors TimeUnit]))
+  (:import [java.util.concurrent Callable CountDownLatch TimeUnit]))
 
 (defn- temp-dir ^java.io.File [prefix]
   (doto (io/file (System/getProperty "java.io.tmpdir") (str prefix "-" (random-uuid)))
@@ -131,8 +132,9 @@
             mesh-cache (ig/init-key :shipyard.mesh/cache {:cache-home (str (fs/path dir "cache"))
                                                           :cap-bytes 64000000 :crease-deg 35
                                                           :lod-tiers [1.0 0.25 0.05]})
-            pool (Executors/newSingleThreadExecutor)
-            pending {:state (atom {}) :facet-state (atom {}) :library library :cache mesh-cache :pool pool}
+            shared (ig/init-key :shipyard.jobs/pool {:threads 1})
+            pool (:pool shared)
+            pending {:state (atom {}) :facet-state (atom {}) :library library :cache mesh-cache :scope (workers/scope! shared)}
             release-old (CountDownLatch. 1) old-finished (CountDownLatch. 1)
             release-new (CountDownLatch. 1)]
         (try
@@ -157,8 +159,7 @@
           (finally
             (.countDown release-old)
             (.countDown release-new)
-            (.shutdownNow pool)
-            (.awaitTermination pool 30 TimeUnit/SECONDS)))))))
+            (ig/halt-key! :shipyard.jobs/pool shared)))))))
 
 (deftest delayed-old-source-submission-cannot-claim-the-new-library
   (with-database!
@@ -168,8 +169,9 @@
             source-a (source! a id) _ (source! b id)
             library (ig/init-key :shipyard.library/index {:store database :root (str a)})
             library-lock (:state library)
-            pool (Executors/newSingleThreadExecutor)
-            pending {:state (atom {}) :facet-state (atom {}) :library library :pool pool}
+            shared (ig/init-key :shipyard.jobs/pool {:threads 1})
+            pool (:pool shared)
+            pending {:state (atom {}) :facet-state (atom {}) :library library :scope (workers/scope! shared)}
             release (CountDownLatch. 1)]
         (try
           ;; The caller already selected A's source but has not entered submit!.
@@ -187,8 +189,7 @@
             (is (nil? (get-in (scan-index/entries! database b) [id :mesh-key]))))
           (finally
             (.countDown release)
-            (.shutdownNow pool)
-            (.awaitTermination pool 30 TimeUnit/SECONDS)))))))
+            (ig/halt-key! :shipyard.jobs/pool shared)))))))
 
 (deftest a-changed-source-cannot-publish-a-ready-job
   (with-database!
@@ -201,8 +202,9 @@
             mesh-cache (ig/init-key :shipyard.mesh/cache {:cache-home (str (fs/path dir "cache"))
                                                           :cap-bytes 64000000 :crease-deg 35
                                                           :lod-tiers [1.0 0.25 0.05]})
-            pool (Executors/newSingleThreadExecutor)
-            pending {:state (atom {}) :facet-state (atom {}) :library library :cache mesh-cache :pool pool}
+            shared (ig/init-key :shipyard.jobs/pool {:threads 1})
+            pool (:pool shared)
+            pending {:state (atom {}) :facet-state (atom {}) :library library :cache mesh-cache :scope (workers/scope! shared)}
             release (CountDownLatch. 1)]
         (try
           (.submit pool ^Runnable #(.await release))
@@ -217,5 +219,4 @@
           (is (nil? (get-in (scan-index/entries! database root) [id :mesh-key])))
           (finally
             (.countDown release)
-            (.shutdownNow pool)
-            (.awaitTermination pool 30 TimeUnit/SECONDS)))))))
+            (ig/halt-key! :shipyard.jobs/pool shared)))))))

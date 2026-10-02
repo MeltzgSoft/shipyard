@@ -13,6 +13,7 @@
             [integrant.core :as ig]
             [shipyard.fixtures :as f]
             [shipyard.http.routes :as routes]
+            [shipyard.jobs]
             [shipyard.http.settings :as settings]
             [shipyard.library.index :as index]
             [shipyard.settings.db :as settings-db]
@@ -41,8 +42,9 @@
     (binding [*opened-systems* (atom [])]
       (try (f)
            (finally
-             (doseq [{:keys [jobs catalog]} @*opened-systems*]
+             (doseq [{:keys [jobs workers catalog]} @*opened-systems*]
                (ig/halt-key! :shipyard.http/jobs jobs)
+               (ig/halt-key! :shipyard.jobs/pool workers)
                (metadata/close! (:store catalog))))))))
 
 (defn- system
@@ -54,8 +56,9 @@
         cache   {:dir (temp-dir "shipyard-cache") :crease-deg 35
                  :lod-tiers [1.0 0.25 0.05] :cap-bytes 64000000 :inflight (atom {}) :files-lock (Object.)}
         catalog (ig/init-key :shipyard.catalog/db {:library library :store database})
-        jobs    (ig/init-key :shipyard.http/jobs {:library library :cache cache})
-        system {:library library :catalog catalog :cache cache :jobs jobs
+        workers (ig/init-key :shipyard.jobs/pool {})
+        jobs    (ig/init-key :shipyard.http/jobs {:library library :cache cache :workers workers})
+        system {:workers workers :library library :catalog catalog :cache cache :jobs jobs
                 :config-dir (temp-dir "shipyard-cfg")}]
     (swap! *opened-systems* conj system)
     system))

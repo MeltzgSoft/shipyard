@@ -30,6 +30,7 @@
             [shipyard.http.validation :as validation]
             [shipyard.http.views :as views]
             [shipyard.vocabulary.routes :as vocabulary-routes]
+            [shipyard.thumbnail.routes :as thumbnail-routes]
             [shipyard.vocabulary.db :as vocabulary]
             [shipyard.library.index :as index]
             [shipyard.importer.routes :as import-routes]
@@ -593,6 +594,7 @@
     (ring/router
      (into (routes deps)
            (concat (file-picker/routes deps)
+                   (thumbnail-routes/routes deps)
                    (vocabulary-routes/routes deps)
                    (bulk-routes/routes deps)
                    (when (:workspace deps) (import-routes/routes deps))

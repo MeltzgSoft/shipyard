@@ -9,6 +9,7 @@
             [shipyard.http.pagination :as pagination]
             [shipyard.vocabulary.views :as vocabulary]
             [shipyard.part.orientation :as orientation]
+            [shipyard.thumbnail.views :as thumbnails]
             [shipyard.workspace.views :as workspace-views]
             [shipyard.workspace.transforms :as workspace-transforms]))
 
@@ -149,6 +150,7 @@
   ([facets selection root import-session]
    [:section#library.panel.bulk-orient
     (when-not import-session (http-views/settings-panel root))
+    (thumbnails/progress)
     [:header.bulk-orient__head [:h2 (if import-session "Part Browser · Import mode" "Part Browser")]
      [:p (if import-session "Review inferred fields. Select rows for bulk edits and orientation. Mount authoring and region painting are disabled."
              "Select rows to edit fields or orient together. Double-click a part to open its editor.")]]

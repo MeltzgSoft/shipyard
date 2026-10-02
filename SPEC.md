@@ -686,7 +686,23 @@ ships show their scheme and compatible custom paint. Previews require no prior v
 to the editor and never change a workspace draft. Use the lowest cached mesh tier
 except where source-bound region or detail colors require the original tier. Lighting
 is simplified; the editor remains the reference for metallic and roughness finishes.
-Missing sources show an unavailable placeholder.
+Missing sources show an unavailable placeholder. Browser lists show actual running
+and queued thumbnail jobs across the shared generator, independent of loaded row counts,
+cache downloads and unrequested rows. Generation remains lazy. Skipped rows expose the
+reason they cannot be previewed.
+All part, import, class and named-ship PNGs use a shared bounded background rendering
+pool and a disposable disk cache that survives application restarts. Identical visual
+inputs share an image. Source geometry, saved orientation, assembly placements, region
+colors, shared schemes and custom paint determine image identity, so returning to a list
+after editing resolves the current preview automatically. Nonvisual metadata changes
+reuse existing images. Content-addressed image URLs allow browser caching without stale
+previews, and clearing or evicting cached images safely regenerates them on demand.
+Cached part and ship previews resolve without materializing or hashing dense region assignments
+on each page refresh; resolving changed inputs happens on background workers.
+Thumbnail rendering, library/import mesh preparation and mount recovery share one
+bounded application background pool, separate from HTTP request workers. Missing worker
+and queue limits default to 2 and 128 respectively. Canceling an import drains its work
+before discarding staging data and leaves the common pool available to other jobs.
 
 ### 9.2 Independent workspace state
 
