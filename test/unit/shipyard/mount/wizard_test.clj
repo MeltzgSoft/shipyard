@@ -236,9 +236,10 @@
 (deftest part-role-request-test
   (testing "parses a valid part role separately from mount authoring"
     (is (= {:part-role :hull} (wizard/part-role-request {"part-role" "hull"}))))
-  (testing "rejects missing or unsupported part roles"
+  (testing "custom role names are accepted; missing and malformed roles are rejected"
+    (is (= {:part-role :sensor-array} (wizard/part-role-request {"part-role" "Sensor Array"})))
     (is (:error (wizard/part-role-request {})))
-    (is (:error (wizard/part-role-request {"part-role" "spaceship"})))))
+    (is (:error (wizard/part-role-request {"part-role" "bad/role"})))))
 
 (deftest suggest-mirror-id-test
   (testing "uses the original mount id as the mirror prefix"

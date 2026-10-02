@@ -156,6 +156,14 @@ chosen field, name operation and entered values, including edits made while the
 selection is updating. For names, choose find-and-replace, prefix,
 suffix or set-name. These labels survive rescans and do not rename source files.
 
+Enter new faction/bundle, class or role values directly in the bulk edit **Value**
+field and choose **Apply to selected**. Existing values appear as suggestions; new
+values become available in the current library's filters and editors after saving.
+Values authored in import review remain staged until the import is committed. Role names become lowercase identifiers with spaces replaced
+by hyphens (for example, **Sensor Array** becomes **sensor-array**). Custom roles are
+available in the individual editor and socket acceptance choices, and participate in
+assembly compatibility. Weapon sockets retain their turret-only restriction.
+
 Double-click a row, or focus it and press Enter, to open the individual editor with
 its floating inspector. **Back to table** restores filters, selection and scroll position.
 The individual editor has no listing sidebar.

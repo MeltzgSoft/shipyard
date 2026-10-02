@@ -6,11 +6,10 @@
             [shipyard.domain.schemas :as schemas]
             [shipyard.math :as math]
             [shipyard.mount.split :as split]
-            [shipyard.part.orientation :as orientation]))
+            [shipyard.part.orientation :as orientation]
+            [shipyard.vocabulary.transforms :as vocabulary]))
 
-(def role-options
-  [:hull :hull-section :prow :bridge :antenna :engine :weapon :turret
-   :stern :fin :section :detail :ordinance :terrain :unknown])
+(def role-options vocabulary/roles)
 
 (def kind-options [:plug :socket])
 (def symmetry-plane-options [:x :y :z])
@@ -32,19 +31,20 @@
 (defn acceptance-profiles
   "The one choice a socket author makes. Hulls may expose the single shared
   hardpoint profile; weapons are deliberately limited to turret pits."
-  [part-role]
-  (let [singleton-profiles (mapv (fn [role] {:id role :label (name role) :accepts #{role}})
-                                 role-options)]
-    (cond
-      (= :weapon part-role)
-      [{:id :turret :label "Turret pit" :accepts #{:turret}}]
+  ([part-role] (acceptance-profiles part-role role-options))
+  ([part-role roles]
+   (let [singleton-profiles (mapv (fn [role] {:id role :label (name role) :accepts #{role}})
+                                  roles)]
+     (cond
+       (= :weapon part-role)
+       [{:id :turret :label "Turret pit" :accepts #{:turret}}]
 
-      (#{:hull :hull-section} part-role)
-      (conj singleton-profiles {:id :turret-or-antenna
-                                :label "Turret or antenna hardpoint"
-                                :accepts #{:turret :antenna}})
+       (#{:hull :hull-section} part-role)
+       (conj singleton-profiles {:id :turret-or-antenna
+                                 :label "Turret or antenna hardpoint"
+                                 :accepts #{:turret :antenna}})
 
-      :else singleton-profiles)))
+       :else singleton-profiles))))
 
 (defn acceptance-profile
   "The named profile matching a durable accepts set, if this host permits it."
@@ -56,11 +56,14 @@
         profiles (into {} (map (juxt :id identity) (acceptance-profiles part-role)))]
     (if (and (= 1 (count values)) (string? (first values)))
       (or (:accepts (get profiles (keyword (first values))))
+          (when-let [role (vocabulary/role (first values))] #{role})
           #{})
-      (set (keep #(parse-keyword % role-options) values)))))
+      (set (keep #(vocabulary/role (if (keyword? %) (name %) %)) values)))))
 
 (defn- accepted-by-host? [part-role accepts]
-  (contains? (set (map :accepts (acceptance-profiles part-role))) accepts))
+  (or (contains? (set (map :accepts (acceptance-profiles part-role))) accepts)
+      (and (not= :weapon part-role) (= 1 (count accepts))
+           (vocabulary/role (name (first accepts))))))
 
 (defn- acceptance-error [part-role]
   (case part-role
@@ -276,7 +279,7 @@
                                 :mirror-locked? true))})))
 
 (defn part-role-request [params]
-  (if-let [role (parse-keyword (get params "part-role") role-options)]
+  (if-let [role (vocabulary/role (get params "part-role"))]
     {:part-role role}
     {:error "Choose the role this part should use from now on."}))
 

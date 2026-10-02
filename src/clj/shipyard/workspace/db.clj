@@ -22,7 +22,7 @@
 
 (defn owner [uri]
   (cond
-    (or (str/starts-with? uri "/orient") (str/starts-with? uri "/imports")) :browse
+    (or (str/starts-with? uri "/orient") (str/starts-with? uri "/imports") (= uri "/classifications")) :browse
     (str/starts-with? uri "/assembly") :ships
     (str/starts-with? uri "/ships") :ships
     (or (= uri "/library") (str/starts-with? uri "/part/")

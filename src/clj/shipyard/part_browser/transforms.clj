@@ -1,7 +1,7 @@
 (ns shipyard.part-browser.transforms
   "Pure edits to authored catalog labels; source identity never changes."
   (:require [clojure.string :as str]
-            [shipyard.mount.wizard :as wizard]))
+            [shipyard.vocabulary.transforms :as vocabulary]))
 
 (def fields
   {"bundle" [:part/bundle :part/bundle-override]
@@ -22,12 +22,12 @@
                                                   "replace" (str/replace old (or find "") value)
                                                   value))]
                             {:id (:part/id part) :attribute target
-                             :value (if (= field "role") (keyword value) value)})) parts))]
+                             :value (if (= field "role") (vocabulary/role value) value)})) parts))]
     (cond
       (empty? parts) {:error "Select at least one part."}
       (nil? target) {:error "Choose a field to edit."}
       (and (= operation "replace") (str/blank? find)) {:error "Enter the text to find."}
-      (and (= field "role") (not (contains? (set wizard/role-options) (keyword value))))
+      (and (= field "role") (nil? (vocabulary/role value)))
       {:error "Choose a valid role."}
       (some #(and (string? (:value %)) (str/blank? (:value %))) changes)
       {:error "Names, bundles and classes cannot be blank."}

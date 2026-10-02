@@ -2209,6 +2209,12 @@ Tables render at most 50 rows per page. Part selection remains server-owned acro
 filter changes reset the page, while returning from an editor restores it. Named hulls
 load on expansion through `/ships/hulls/:id` and have independent pages. Table and hull
 responses never embed named-ship paint maps.
+The shared store keeps explicitly added classifications as vocabulary entities keyed by
+`[field value]`, with a keyword field and string value. Choice projections combine these
+application-wide values with observed/authored labels in the selected library and, during
+review, the staging catalog. Role identifiers are normalized by a pure transform.
+Custom singleton roles participate in socket acceptance and existing assembly matching;
+the built-in weapon/turret and shared hull hardpoint constraints remain in force.
 Variable-size viewport events exceeding 2 KiB are carried in escaped
 `data-viewport-events` body nodes instead of HX-Trigger headers. The viewport consumes
 and removes these nodes after an admitted swap, preserving existing event payloads.

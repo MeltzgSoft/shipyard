@@ -7,7 +7,7 @@
             [shipyard.http.urls :as urls]
             [shipyard.file-picker.views :as file-picker]
             [shipyard.http.pagination :as pagination]
-            [shipyard.mount.wizard :as wizard]
+            [shipyard.vocabulary.views :as vocabulary]
             [shipyard.part.orientation :as orientation]
             [shipyard.workspace.views :as workspace-views]
             [shipyard.workspace.transforms :as workspace-transforms]))
@@ -130,7 +130,7 @@
     [:form.part-bulk-edit {:method "post" :action "/parts/metadata" :hx-post "/parts/metadata" :hx-target "#part-edit-status"
                            :hx-include "#part-table-position, [data-part-page]" :hx-disabled-elt (if importing? "find button, .import-review button" "find button")}
      [:label "Field" [:select {:name "field"
-                               :hx-on:change "var input=this.form.querySelector('input[name=value]'); if(this.value==='role'){input.setAttribute('list','part-role-values');}else{input.removeAttribute('list');}"}
+                               :hx-on:change "var input=this.form.querySelector('input[name=value]'); if(['bundle','class','role'].includes(this.value)){input.setAttribute('list','part-'+this.value+'-values');}else{input.removeAttribute('list');}"}
                       (for [[value label] (cond-> [["bundle" "Bundle / faction"] ["class" "Class"] ["role" "Role"] ["name" "Name"]] importing? (conj ["variant" "Supported / unsupported"]))]
                         [:option {:value value} label])]]
      [:label.part-bulk-edit__name "Name operation" [:select {:name "operation"}
@@ -139,8 +139,7 @@
                                                     [:option {:value "suffix"} "Add suffix"]
                                                     [:option {:value "set"} "Replace entire name"]]]
      [:label.part-bulk-edit__find "Find" [:input {:name "find"}]]
-     [:label "Value" [:input {:name "value"}]]
-     [:datalist#part-role-values (for [role wizard/role-options] [:option {:value (name role)}])]
+     [:label "Value" [:input {:name "value" :list "part-bundle-values"}]]
      (apply-button selection)]
     [:p#part-edit-status {:role "status"}]]))
 
@@ -205,7 +204,8 @@
      [:input {:type "hidden" :name "page" :value "1" :data-part-page true}]
      [:input {:id "part-table-position" :type "hidden" :name "table-scroll" :value "0"}]
      [:p.muted "Loading parts…"]]
-    (selection-form selection (some? import-session))]))
+    (selection-form selection (some? import-session))
+    (vocabulary/choices (:values facets))]))
 
 (defn filter-updates [facets filters]
   (for [[field key label] [["bundle" :bundles "All bundles"] ["class" :classes "All classes"] ["role" :roles "All roles"]]

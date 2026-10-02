@@ -770,6 +770,12 @@ previewed remain visible as No preview and can still be selected for metadata ed
 an explicit empty state. Tables show 50 rows per page. Selections persist across pages;
 changing filters returns to the first page, and Back from an editor restores the page.
 
+Users enter new faction/bundle, class and role values ad hoc while editing parts in
+normal browsing or import review. Saved values become available as editing suggestions
+and filter choices; import values remain staged until publication.
+Custom roles are available to metadata editing and socket acceptance, with the same
+role matching rules as built-in roles; weapon sockets remain turret-only.
+
 Selection persists across filter changes, including selected parts hidden by the
 current filters. The selected count describes the whole selection. **Orient selection**
 is enabled only for a nonempty selection and replaces the table with a workspace-width
