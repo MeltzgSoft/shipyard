@@ -135,6 +135,24 @@
     (s/fill! *driver* "input[name=q]" "Ram")
     (is (s/wait-until #(= 2 (s/count-els *driver* "#bulk-orient-results .bulk-orient__row"))))))
 
+(deftest edited-source-is-rejected-by-authoring
+  (open-app!)
+  (s/open-prepared-part! *driver* *system* "Mount Test Plate" s/mount-plate-id)
+  (is (enter-authoring! s/mount-plate-id))
+  (let [library (:shipyard.library/index *system*)
+        source (get (index/source-files! library) s/mount-plate-id)]
+    (testing "an external edit can overwrite an STL after its viewport loads"
+      (with-open [out (io/output-stream source)]
+        (.write out ^bytes (f/->binary-stl (f/cube 2.0)))))
+    (testing "picking the displayed old mesh rejects the changed source"
+      (s/js *driver* "() => document.body.addEventListener('shipyard:facet-error', event => { window.sourceEditError = event.detail; }, {once: true})")
+      (let [{:keys [x y]} (viewport-center)]
+        (s/click-point! *driver* x y))
+      (let [error (s/wait-until #(s/js *driver* "() => window.sourceEditError || null"))]
+        (is (str/includes? (:value error) "source STL changed")))
+      (is (nil? (:preview (s/stats *driver*))))
+      (is (= [s/mount-plate-id] (s/loaded-parts *driver*))))))
+
 (deftest browser-results-scroll-within-the-library-panel
   (try
     (s/resize! *driver* 1280 360)
