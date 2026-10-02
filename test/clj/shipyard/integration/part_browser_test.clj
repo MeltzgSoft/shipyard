@@ -15,7 +15,7 @@
       (swap! state assoc-in [:workspaces :browse :bulk-selection] (pr-str [a b]))
       (is (= 400 (:status (post! {"field" "orientation" "operation" "set" "value" "45"}))))
       (is (= 422 (:status (post! {"field" "name" "operation" "set" "value" " "}))))
-      (is (= 422 (:status (post! {"field" "role" "operation" "set" "value" "bogus"}))))
+      (is (= 422 (:status (post! {"field" "role" "operation" "set" "value" "bad/role"}))))
       (is (= initial (catalog/snapshot! cat)))
       (swap! state assoc-in [:workspaces :browse :bulk-selection] (pr-str [a "missing"]))
       (is (= 422 (:status (post! {"field" "bundle" "operation" "set" "value" "New"}))))
