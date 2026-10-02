@@ -15,6 +15,7 @@
             [shipyard.http.pagination :as pagination]
             [shipyard.interface-colors :as interface-colors]
             [shipyard.mount.wizard :as wizard]
+            [shipyard.mount.cut :as cut]
             [shipyard.part.orientation :as orientation]
             [shipyard.workspace.views :as workspace-views]))
 
@@ -379,6 +380,25 @@
      [:label.mount-wizard__field "Twist"
       [:input {:type "number" :name "twist-deg" :value (or (:twist-deg values) "0")
                :step "1"}]]
+     [:fieldset.mount-wizard__cut
+      [:legend "Pitted STL"]
+      [:label.mount-wizard__check
+       [:input {:type "checkbox" :name "create-pitted" :checked (and (:cut-kind values) (not= :none (:cut-kind values)))}]
+       "Create pitted version"]
+      [:label.mount-wizard__field "Cut"
+       [:select {:name "cut-kind" :data-cut-kind (name kind)}
+        (for [[k label] [[:pit "Pit"] [:recess "Recess"]]]
+          [:option {:value (name k) :selected (= k (if (#{:pit :recess} (:cut-kind values)) (:cut-kind values) (cut/default-kind kind)))} label])]]
+      [:label.mount-wizard__field "Depth (mm)"
+       [:input {:type "number" :name "cut-depth" :value (or (:cut-depth values) 1)
+                :min "0" :step "any"}]]
+      [:label.mount-wizard__field {:data-cut-field "pit"} "Diameter (mm)"
+       [:input {:type "number" :name "cut-diameter" :value (or (:cut-diameter values) 2)
+                :min "0" :step "any"}]]
+      [:label.mount-wizard__field {:data-cut-field "recess"} "Border (mm)"
+       [:input {:type "number" :name "cut-border" :value (or (:cut-border values) 0.5)
+                :min "0" :step "any"}]]
+      [:p.muted "Save regenerates the source model’s -pitted.stl variant. The original stays intact."]]
      (when (or (not edit?) mirror?)
        [:fieldset.mount-wizard__mirror (socket-only-attrs kind)
         [:legend "Mirror"]

@@ -264,10 +264,10 @@ temp dir** - override with `-Dorg.lwjgl.librarypath` where that does not hold. I
 `Failed to instantiate memory allocator: JEmallocAllocator` log line is harmless; it
 falls back to the stdlib allocator.
 
-Physical cut geometry uses JCSG for JVM solid subtraction and JTS for face-boundary
+Physical mount cuts use JCSG for JVM solid subtraction and JTS for face-boundary
 insets and triangulation. JavaFX classes satisfy JCSG's public signatures;
-these operations are headless and require no additional runtime beyond the JVM.
-Browser cut geometry uses Clipper for matching polygon insets.
+generation is headless and requires no additional runtime beyond the JVM.
+The browser uses Clipper for matching live polygon insets.
 
 ---
 
@@ -1723,23 +1723,36 @@ are unit length within `1e-9`, and `abs(dot(axis, roll)) <= 1e-9`. The derived +
 all three directions. Computation uses doubles; only the final durable vectors are
 ordinary EDN numbers.
 
-Physical cut geometry is implemented independently of mount authoring. Optional
-`:mount/cut` definitions use `:kind :pit|:recess`, `:depth`, `:diameter` (pit) or
-`:border` (recess), with all dimensions in millimetres. `mount.cut` validates
-cut dimensions, recovers oriented boundary loops from face triangles, projects
-source-space frames and derives cylinder wireframes at capacity-section centers.
-
-`pitting.geometry` validates closed, consistently wound positive-volume source
-meshes and subtracts cuts using JCSG. JTS even-odd polygons, a negative mitered
-buffer and polygon triangulation produce recesses that preserve concave face
-boundaries and holes; pits use 64 circular segments. Cutters extend from 0.02 mm
-outside the face to the requested inward depth. JCSG's polygon-bound optimization
-limits BSP subtraction to source polygons overlapping each cutter.
-`mount.cut-render` uses Clipper mitered insets at 0.00001 mm precision and constructs
-opening, floor and wall wireframe geometry. These functions return geometry;
-mount authoring, durable definitions and STL publication are separate concerns.
-
 ### 12.4 Symmetry plane and mirroring
+
+Physical cut settings are optional `:mount/cut` data, with `:kind :pit|:recess`,
+`:depth`, `:diameter` (pit) or `:border` (recess), and the authoring `:mesh-key`.
+`:mount/outline` contains oriented source-space boundary loops, including holes.
+The server derives them from authoritative tier-0 triangles before generating;
+it does not trust a posted outline for subtraction. Reflection reverses loop winding
+and reflects every source point while preserving the stored right-handed frame.
+Pit positions come from the shared capacity-section contract.
+
+`pitting.geometry` uses JTS even-odd polygons, a negative mitered buffer and polygon
+triangulation for recesses; pits use 64 circular segments. Both extrude from 0.02 mm
+outside the face to the requested inward depth. JCSG's polygon-bound optimization
+limits BSP subtraction to source polygons overlapping each cutter. The browser's
+Clipper mitered inset uses 0.00001 mm coordinates and displays opening, floor and
+wall wireframes with depth testing/writes disabled and render order 1000. Saved cuts
+remain visible independently of mount colors, and live form edits use the same
+source-space frames and section centers.
+
+`pitting.db/save!` serializes generation with the library-relocation lock, checks
+source freshness and all cut mesh keys, requires a closed source with consistent
+winding and positive signed volume, generates from the original STL, and stages the complete binary
+result beside its source. It saves definitions then atomically replaces the sibling
+`-pitted.stl`; publication failure restores prior mount definitions. Removing the
+last cut writes the original bytes to that sibling. An expected part revision guards
+the commit against concurrent authoring changes; save/publication/rollback hold the
+shared store lock. Datalevin and filesystem writes
+are separate transactions: a process interruption between them can leave the old
+output beside newer definitions; saving again regenerates it. Neither generation nor
+publication overwrites the original source.
 
 M2 supports the three axis-aligned planes in the part's canonical coordinates. A plane is the
 transient pair `{:axis :x|:y|:z :offset number}`. The UI defaults the offset to the dense
