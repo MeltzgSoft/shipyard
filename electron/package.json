@@ -1,0 +1,22 @@
+{
+  "name": "shipyard-desktop",
+  "private": true,
+  "version": "0.1.0-snapshot",
+  "description": "Shipyard desktop model browser and assembly workbench",
+  "author": "Gregory Meltzer <gregory.m.meltzer@gmail.com>",
+  "homepage": "https://forgejo.tail943578.ts.net/MeltzgSoft/shipyard",
+  "license": "UNLICENSED",
+  "main": "compiled/main.js",
+  "desktopName": "shipyard.desktop",
+  "scripts": {
+    "postinstall": "install-electron",
+    "start": "electron .",
+    "test": "node --test test/*.test.cjs",
+    "test:e2e": "node --test test/*.e2e.cjs"
+  },
+  "devDependencies": {
+    "electron": "44.5.1",
+    "electron-builder": "26.15.3",
+    "playwright": "1.63.0"
+  }
+}

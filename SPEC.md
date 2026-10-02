@@ -281,9 +281,15 @@ browser
 └─ viewport.js - three.js island, driven by HX-Trigger events
 ```
 
-Cross-platform by construction: run the jar, open localhost. Identical on Linux, macOS
-and Windows, with no packaging story to maintain. A thin webview wrapper can be added
-later for an app-like window without changing anything below it.
+The desktop release is a thin Electron window over the same local web UI, with a
+ClojureScript main process and bundled Java 25 backend runtime. Native release
+packages target Linux x64, Windows x64 and Apple Silicon macOS. The backend binds
+the first available loopback port at or above 8080 and reports its actual bound
+port to its owning shell before a window opens; the shell never assumes a fixed
+port. Closing the app gracefully stops that backend. A second desktop launch
+focuses the existing instance. The renderer has no Node access and stays on the
+owned backend's origin. Ordinary jar/browser execution remains a supported
+development workflow.
 
 ### 6.1 Why the viewport is an island
 

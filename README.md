@@ -14,6 +14,9 @@ Current work and delivery planning live in the
 
 ## Requirements
 
+These tools are needed to build from source. Desktop packages include Java 25
+and do not require Java, Clojure or Node to be installed separately.
+
 | | version | why |
 |---|---|---|
 | **JDK** | **25** | Canonical. Not optional - see below. |
@@ -33,6 +36,22 @@ meshoptimizer bindings without warnings. CI pins 25 on every job and the uberjar
 
 ## Quick start
 
+For the desktop app, download the package for your platform from
+[Releases](https://forgejo.tail943578.ts.net/MeltzgSoft/shipyard/releases):
+
+| Platform | Package |
+|---|---|
+| Linux x64 | AppImage or Debian package |
+| Windows x64 | NSIS `.exe` installer |
+| Apple Silicon macOS | `.dmg` containing `Shipyard.app` |
+
+Launch Shipyard. Its backend binds the first available loopback port starting
+at 8080 and opens the desktop window at the reported address. Closing the window
+stops the backend; launching the app again focuses the existing instance.
+Windows still needs the x64 Visual C++ runtime described above.
+
+To run the backend from source instead:
+
 ```bash
 git clone ssh://git@forgejo.tail943578.ts.net/MeltzgSoft/shipyard.git
 cd shipyard
@@ -44,6 +63,46 @@ java -jar target/shipyard-0.1.0-SNAPSHOT.jar
 Then open <http://127.0.0.1:8080>. It has no library until you give it one: the
 library panel asks for the folder your models are in, remembers it, and scans it
 without a restart. See the [user manual](docs/MANUAL.md).
+
+## Desktop development and release
+
+On a supported native build platform, install the desktop tools and build:
+
+```bash
+npm ci --prefix electron
+clojure -T:build desktop
+```
+
+This builds the release frontend, uberjar and CLJS Electron main process, links
+a Java 25 runtime, and produces installers in `electron/dist/`. Use
+`clojure -T:build desktop :dir true` for an unpacked app. Packaging stages metadata
+under `target/desktop/`; it does not rewrite tracked npm files. The host must match
+the target because the bundled runtime is native code.
+
+For a checkout window, build the jar and shell first:
+
+```bash
+clojure -T:build uber
+npx shadow-cljs release desktop
+npm start --prefix electron
+```
+
+The checkout shell uses the exact default jar path, not whichever jar was built
+most recently. The installed shell requires its bundled jar and runtime.
+Run one backend per database; stop a separate CLI server before opening the
+desktop app with the same data directory.
+
+`.forgejo/workflows/desktop.yml` builds native packages on all three CI runners,
+tests the owned-child startup/shutdown protocol using the bundled runtime, and
+drives a real packaged Electron window on Linux. PR and manual runs retain
+installers as workflow artifacts and publish nothing. A `vX.Y.Z` tag sets
+`SHIPYARD_VERSION`, and only after every platform build succeeds does the workflow
+attach the four desktop packages and `SHA256SUMS` to a Forgejo release.
+The development uberjar remains available as a build task.
+
+Signing uses electron-builder's signing environment configuration when supplied.
+Without signing credentials, packages are unsigned; macOS and Windows apply
+their normal checks for unsigned downloaded apps.
 
 ## Development
 

@@ -24,3 +24,8 @@
 
 # CI smoke-test output, when the package job is run locally
 /run.log
+
+# Electron tools and generated desktop payloads
+/electron/node_modules/
+/electron/compiled/
+/electron/dist/

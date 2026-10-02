@@ -8,8 +8,26 @@ This manual covers supported behavior. Planned work lives in the
 
 ## 1. Installing
 
-You need **Java 25**. Check with `java -version`. Shipyard is developed and tested
-against 25 and relies on JVM options that do not exist in earlier releases.
+Download the desktop package for your platform from
+[Releases](https://forgejo.tail943578.ts.net/MeltzgSoft/shipyard/releases):
+
+- Linux x64: make the AppImage executable and open it, or install the `.deb`.
+- Windows x64: run the `.exe` installer. Install the
+  [x64 Visual C++ Redistributable](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)
+  if it is not already installed.
+- Apple Silicon macOS: open the `.dmg` and drag Shipyard to Applications.
+
+The desktop app includes Java 25. Launch Shipyard to open its window. It starts
+its own local backend on the first free port starting at 8080, so another app
+using 8080 does not prevent startup. Closing the window stops that backend.
+Launching Shipyard a second time focuses the existing window.
+
+Shipyard runs entirely on your own machine: your models stay on your disk.
+Run only one Shipyard backend per database. Stop a separately started browser
+server before opening the desktop app with the same data directory.
+
+For the browser-based developer workflow, install **Java 25** and check it with
+`java -version`. Earlier releases do not support the required JVM options.
 
 Download the jar, or build it (see the README), then:
 

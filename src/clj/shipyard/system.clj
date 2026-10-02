@@ -78,6 +78,15 @@
   ([] (start! (load-config!)))
   ([cfg]
    (ig/load-namespaces cfg)
-   (ig/init cfg)))
+   (try
+     (ig/init cfg)
+     (catch Exception error
+       ;; A failed server bind still follows opened database/worker components.
+       ;; Integrant includes that partial system in its build exception.
+       (when-let [started (:system (ex-data error))]
+         (try (ig/halt! started)
+              (catch Exception cleanup-error
+                (.addSuppressed error cleanup-error))))
+       (throw error)))))
 
 (defn stop! [system] (when system (ig/halt! system)))

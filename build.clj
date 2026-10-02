@@ -1,8 +1,10 @@
 (ns build
-  (:require [clojure.tools.build.api :as b]))
+  (:require [clojure.java.io :as io]
+            [clojure.string :as str]
+            [clojure.tools.build.api :as b]))
 
 (def lib 'meltzgsoft/shipyard)
-(def version "0.1.0-SNAPSHOT")
+(def version (or (not-empty (System/getenv "SHIPYARD_VERSION")) "0.1.0-SNAPSHOT"))
 (def class-dir "target/classes")
 (def uber-file (format "target/%s-%s.jar" (name lib) version))
 
@@ -11,8 +13,16 @@
 ;; platform - see TECHNICAL.md §9.
 (def natives [:natives-linux :natives-windows :natives-macos :natives-macos-arm64])
 
+(defn- windows? []
+  (str/includes? (str/lower-case (System/getProperty "os.name")) "windows"))
+
+(defn- npm-command [command]
+  (if (windows?) (str command ".cmd") command))
+
 (defn- sh [& args]
-  (let [{:keys [exit]} (b/process {:command-args (vec args)})]
+  (let [args (cond-> (vec args)
+               (#{"npm" "npx"} (first args)) (update 0 npm-command))
+        {:keys [exit]} (b/process {:command-args args})]
     (when-not (zero? exit)
       (throw (ex-info (str "command failed: " (pr-str args)) {:exit exit})))))
 
@@ -56,3 +66,60 @@
              ;; flag on the command line (Java 25, issue #6).
              :manifest  {"Enable-Native-Access" "ALL-UNNAMED"}}))
   (println "built" uber-file))
+
+(def desktop-root "target/desktop")
+
+(defn- desktop-version []
+  (let [v (str/lower-case version)]
+    (when-not (re-matches #"\d+\.\d+\.\d+(?:-[0-9a-z.-]+)?" v)
+      (throw (ex-info "SHIPYARD_VERSION must be a semantic release version" {:version version})))
+    v))
+
+(defn- desktop-target []
+  (let [os (str/lower-case (System/getProperty "os.name"))
+        arch (System/getProperty "os.arch")]
+    (cond
+      (and (str/includes? os "linux") (#{"amd64" "x86_64"} arch)) ["--linux" "--x64"]
+      (and (str/includes? os "windows") (#{"amd64" "x86_64"} arch)) ["--win" "--x64"]
+      (and (str/includes? os "mac") (#{"aarch64" "arm64"} arch)) ["--mac" "--arm64"]
+      :else (throw (ex-info "Desktop packages must be built on a supported native runner"
+                            {:os os :arch arch})))))
+
+(defn- stage-desktop! []
+  (let [app (str desktop-root "/app")
+        resources (str desktop-root "/resources")
+        java-home (System/getProperty "java.home")
+        jlink (str (io/file java-home "bin" (if (windows?) "jlink.exe" "jlink")))
+        runtime (str resources "/runtime")]
+    (b/delete {:path desktop-root})
+    (b/copy-file {:src "electron/package.json" :target (str app "/package.json")})
+    (b/copy-file {:src "electron/compiled/main.js" :target (str app "/compiled/main.js")})
+    ;; Change only staged metadata; packaging must not rewrite tracked npm files.
+    (sh "npm" "pkg" "set" "--prefix" app (str "version=" (desktop-version)))
+    (b/copy-file {:src uber-file :target (str resources "/shipyard.jar")})
+    ;; Reflection and native loaders make jdeps under-report runtime use. Keep
+    ;; Java SE plus the modules needed by Clojure, JNI, TLS and resource loading.
+    (sh jlink "--add-modules" "java.se,jdk.management,jdk.unsupported,jdk.crypto.ec,jdk.zipfs,jdk.localedata"
+        "--strip-debug" "--no-header-files" "--no-man-pages" "--compress" "zip-6" "--output" runtime)
+    (sh (str (io/file runtime "bin" (if (windows?) "java.exe" "java"))) "--version")
+    (println "staged desktop payload in" desktop-root)))
+
+(defn desktop
+  "Build the native Electron release, with a bundled Java 25 runtime.
+
+  Install shell tools with `npm ci --prefix electron` first. `:dir true` emits
+  the unpacked app for real-window smoke tests; otherwise native installers are
+  written to electron/dist. The existing uber task remains available."
+  [{:keys [dir] :as opts}]
+  (let [target (desktop-target)]
+    (desktop-version)
+    (when-not (= 25 (.feature (Runtime/version)))
+      (throw (ex-info "Desktop packaging requires the canonical JDK 25" {})))
+    (uber opts)
+    (sh "npx" "shadow-cljs" "release" "desktop")
+    (stage-desktop!)
+    (let [command (into [(npm-command "npm") "exec" "--" "electron-builder" "--publish" "never"]
+                        (concat target (when dir ["--dir"])))
+          {:keys [exit]} (b/process {:dir "electron" :command-args command})]
+      (when-not (zero? exit)
+        (throw (ex-info "Electron packaging failed" {:exit exit}))))))
