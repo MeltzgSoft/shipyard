@@ -494,14 +494,7 @@
     (paint-render/apply-details! object (or value paint-material/neutral) colors?)))
 
 (defn- interface-colors! [^js object enabled?]
-  (set! (.-visible object)
-        (boolean (or enabled?
-                     (some (fn [^js group]
-                             (some (fn [^js child] (= "mount-cut" (.-name child))) (array-seq (.-children group))))
-                           (array-seq (.-children object))))))
-  (doseq [^js group (array-seq (.-children object))
-          ^js child (array-seq (.-children group))]
-    (set! (.-visible child) (or (= "mount-cut" (.-name child)) enabled?))))
+  (set! (.-visible object) enabled?))
 
 (defn- set-mount-colors! [{:keys [parts mount-markers mount-colors-enabled interfaces]} enabled?]
   (reset! mount-colors-enabled enabled?)
@@ -1404,7 +1397,7 @@
                        (swap! items conj {:depth-test (.. child -material -depthTest)
                                           :depth-write (.. child -material -depthWrite)
                                           :render-order (.-renderOrder child)
-                                          :visible (.-visible child)
+                                          :visible (and (.-visible object) (.-visible child))
                                           :points (mapv (fn [i] [(.getX position i) (.getY position i) (.getZ position i)])
                                                         (range (.-count position)))}))))))
     @items))

@@ -1757,7 +1757,7 @@ outside the face to the requested inward depth. JCSG's polygon-bound optimizatio
 limits BSP subtraction to source polygons overlapping each cutter. The browser's
 Clipper mitered inset uses 0.00001 mm coordinates and displays opening, floor and
 wall wireframes with depth testing/writes disabled and render order 1000. Saved cuts
-remain visible independently of mount colors, and live form edits use the same
+follow the mount-color display flag across Part Browser inspector tabs, and live form edits use the same
 source-space frames and section centers.
 
 `pitting.db/save!` serializes generation with the library-relocation lock, checks

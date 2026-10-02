@@ -159,7 +159,9 @@ depth and diameter, centered on the mount or on each capacity section. A recess
 follows the selected face's actual edge, inset by its border, and extends inward
 by its depth. All dimensions are millimetres. Mirrored mounts mirror the complete
 cut definition and face outline. Wireframes remain visible through the source
-model regardless of mount-color display settings. Dimension edits update the
+model whenever mount-color display is enabled, across Part Browser inspector tabs.
+Disabling mount colors hides saved cut wireframes. Cut controls appear last before
+the mount save actions; pits show diameter and recesses show border. Dimension edits update the
 preview; saving cut or mount changes regenerates a sibling `-pitted.stl` variant
 from the original source and all enabled cuts. Original sources stay intact.
 

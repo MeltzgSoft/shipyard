@@ -304,8 +304,11 @@ and arrows show each section's center. Capacity and Twist changes update the pre
 Saved splits are stored with the mount in the database, including when mirrored. Older
 capacity-only mounts need their face picked again to define the split.
 
-To make a printable variant, enable **Create pitted version** in the mount form.
+To make a printable variant, enable **Create pitted version** in the last section
+of the mount form, just above its save buttons.
 Plugs initially offer **Recess**; sockets offer **Pit**, and either choice can be changed.
+The form shows **Diameter** for pits and **Border** for recesses. Switching the
+cut type keeps the measurements available when you switch back.
 All cut measurements are in millimetres. A pit uses **Depth** and **Diameter** and
 is centered on the mount. For capacity above one, each section gets its own pit.
 A recess uses **Depth** and **Border**: it follows the selected face's boundary,
@@ -313,7 +316,8 @@ leaving that border between the face edge and the recess. Border may be zero;
 depth and diameter must be positive. Mirrored pairs mirror their cuts too.
 
 Yellow wireframes show the cut opening, floor and walls through the model,
-including its hidden side, even when Mount colors is off. Measurement changes
+including its hidden side, whenever **Mount colors** is enabled, across all Part Browser
+inspector tabs. Turning Mount colors off hides saved cut wireframes. Measurement changes
 update the preview immediately. **Save mount** or **Save changes** rebuilds the
 variant from the original source with all saved cuts. It writes a sibling file
 with the **`-pitted.stl`** suffix: `unsupported.stl` produces

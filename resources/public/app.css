@@ -407,6 +407,7 @@ body:has(.stage__mount-colors-toggle[aria-pressed="false"]) .assembly__candidate
   gap: 0.45rem;
   margin-top: 0.55rem;
 }
+.mount-wizard__form [hidden] { display: none; }
 .mount-wizard__field { display: grid; gap: 0.2rem; font-size: 0.78rem; color: var(--ink-dim); }
 .mount-wizard__field input, .mount-wizard__field select {
   min-width: 0;
