@@ -9,7 +9,8 @@
             [clojure.java.io :as io]
             [integrant.core :as ig]
             [ring.adapter.jetty :as jetty]
-            [shipyard.fixtures :as f])
+            [shipyard.fixtures :as f]
+            [shipyard.file-picker.db :as picker])
   (:import [com.microsoft.playwright Browser Browser$NewPageOptions BrowserType$LaunchOptions
             Locator$ScreenshotOptions Page Page$WaitForSelectorOptions
             Playwright]
@@ -121,6 +122,7 @@
                             :facet-plane-epsilon-mm 0.01
                             :cap-bytes 64000000 :cache-home (str cache-home)}
    :shipyard.store/db {:data-home (str cache-home)}
+   :shipyard.file-picker/db {}
    :shipyard.catalog/db    {:library (ig/ref :shipyard.library/index) :store (ig/ref :shipyard.store/db)}
    :shipyard.http/jobs     {:library (ig/ref :shipyard.library/index)
                             :cache   (ig/ref :shipyard.mesh/cache)}
@@ -131,7 +133,8 @@
    :shipyard.loadout.operations/preview {}
    :shipyard.workspace/db {:assembly (ig/ref :shipyard.assembly/db)
                            :preview (ig/ref :shipyard.loadout.operations/preview)}
-   :shipyard.http/routes   {:workspace (ig/ref :shipyard.workspace/db)
+   :shipyard.http/routes   {:file-picker (ig/ref :shipyard.file-picker/db)
+                            :workspace (ig/ref :shipyard.workspace/db)
                             :assembly (ig/ref :shipyard.assembly/db)
                             :loadouts (ig/ref :shipyard.loadout/db)
                             :schemes (ig/ref :shipyard.scheme/db)
@@ -289,6 +292,15 @@
   (let [input (.locator page sel)]
     (.fill input value)
     (.blur input)))
+
+(defn choose-path!
+  "Drive the real browser/HTTP workflow; replace only the external desktop dialog."
+  [{:keys [^Page page] :as driver} selector path]
+  (with-redefs [picker/choose! (fn [_ _] (str path))]
+    (click! driver (str selector " [data-picker-browse]"))
+    (.waitForFunction page
+                      "([selector,path]) => document.querySelector(selector + ' [data-picker-value]').value === path"
+                      (to-array [selector (str path)]))))
 
 (defn select-option!
   "Pick an option by its **label**, not its value.

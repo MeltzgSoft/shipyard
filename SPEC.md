@@ -816,7 +816,14 @@ for this workflow, including workspace-session restoration under §9.2.
 ### 9.5 Archive import
 
 Part Browser can enter an import review mode for a local ZIP, including recursively
-nested ZIPs with arbitrary source layouts. All discovered STLs are listed. Bundle,
+nested ZIPs with arbitrary source layouts. Library folders and ZIP archives are selected
+with Swing desktop selectors on the computer running Shipyard; direct path entry remains
+available without a desktop. All discovered STLs remain accessible in review.
+Unambiguous supported/unsupported versions with matching inferred labels share a row.
+Users can split inferred groups, explicitly group selected rows and assign each file's
+supported/unsupported variant. Splits receive distinct editable names; publication
+never silently combines separate review groups. Changing a group's unsupported source
+invalidates its saved orientation. Bundle,
 class, role and supported status are editable filename/path hints, with explicit inner
 source markers taking precedence over outer archive labels. Uncertain classifications
 remain reviewable. Bulk label edits and the orientation grid operate on the staged

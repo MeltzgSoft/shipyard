@@ -25,9 +25,26 @@
             (update database :parts
                     (fn [parts]
                       (into {} (map (fn [[id part]]
-                                      (let [entry (get @(:entries import-session) id)]
-                                        [id (assoc part :import/source (str/join " → " (:chain entry))
-                                                   :import/variant (:variant entry))]))) parts))))))
+                                      (let [files (t/members @(:entries import-session) id)]
+                                        [id (assoc part :import/source (str/join " • " (map #(str/join " → " (:chain %)) files))
+                                                   :import/files (mapv #(select-keys % [:key :chain :variant]) files)
+                                                   :import/conflict? (some #(> (count (set (map :sha %))) 1)
+                                                                           (vals (group-by :variant files))))]))) parts))))))
+
+(defn- library-state! [parts root entries previous]
+  (let [groups (group-by :group (sort-by :key (vals entries)))
+        parts (mapv (fn [part]
+                      (assoc part :part/source-paths
+                             (into {} (for [[variant files] (group-by :variant (get groups (:part/id part)))
+                                            :when (= 1 (count (set (map :sha files))))]
+                                        [variant (str (fs/relativize root (:file (first files))))])))) parts)
+        sources (into {} (keep (fn [part]
+                                 (when-let [source (t/preview-entry (get groups (:part/id part)))]
+                                   [(:part/id part) (:file source)]))) parts)
+        stored (select-keys (:entries previous)
+                            (for [[id file] sources :when (= file (get-in previous [:source-files id]))] id))
+        stats (update-vals sources #(hash-map :mtime (fs/file-time->millis (fs/last-modified-time %)) :size (fs/size %)))]
+    {:root root :parts parts :entries (index/refresh parts stored stats) :source-files sources}))
 
 (defn close! [{:keys [jobs store directory]}]
   (when jobs (ig/halt-key! :shipyard.http/jobs jobs))
@@ -40,7 +57,7 @@
   (let [directory (fs/create-temp-dir {:prefix "shipyard-import-"})
         opened (atom {:directory directory})]
     (try
-      (let [raw (archive/extract! path directory)
+      (let [{raw :entries :keys [skipped-empty-archives]} (archive/extract! path directory)
             _ (when (empty? raw) (throw (ex-info "This archive contains no STL files." {})))
             root (str (fs/create-dirs (fs/path directory "models")))
             entries (into {} (for [{:keys [key file] :as entry} raw
@@ -48,41 +65,78 @@
                                (do (fs/create-dirs (fs/parent target))
                                    (fs/move file target)
                                    [key (assoc entry :file target)])))
-            parts (mapv (fn [[id {:keys [chain]}]] (t/infer id chain)) entries)
+            entries (t/inferred-entries entries)
+            parts (t/review-parts entries {} {})
             store (store/open! (fs/path directory "database"))
             _ (swap! opened assoc :store store)
-            lib {:store store :state (atom {:root root :parts parts
-                                            :entries (index/refresh! parts root {})
-                                            :source-files (into {} (for [part parts :when (:part/renderable part)]
-                                                                     [(:part/id part) (:file (get entries (:part/id part)))]))})}
-            cat (catalog/open! store parts root)
+            lib {:store store :state (atom (library-state! parts root entries {}))}
+            cat (catalog/open! store (:parts @(:state lib)) root)
             workers (ig/init-key :shipyard.http/jobs {:library lib :cache cache})]
         (merge @opened {:library lib :catalog cat :jobs workers :entries (atom entries)
+                        :skipped-empty-archives skipped-empty-archives
                         :archive (str path) :target-root (index/root! library)}))
       (catch Exception e (close! @opened) (throw e)))))
 
-(defn variants! [{:keys [library catalog entries jobs]} ids variant]
-  (when-not (#{:supported :unsupported :unsupported-pitted} variant)
+(defn- apply-review!
+  [{:keys [catalog entries jobs] {:keys [state] :as library} :library} {:keys [labels selected] updated :entries}]
+  (locking state
+    (let [parts (t/review-parts updated @entries labels)
+          root (index/root! library)
+          candidate (library-state! parts root updated @state)
+          parts (:parts candidate)
+          database (:store catalog)
+          staged (store/write! database
+                               (fn [conn]
+                                 (let [cat (assoc catalog :store (assoc database :conn conn) :state (atom @(:state catalog)))]
+                                   (catalog/reingest! cat parts root)
+                                   ;; New, merged and revived rows inherit reviewed labels. A pose
+                                   ;; survives only while its unsupported source remains the same.
+                                   (doseq [part parts
+                                           :let [ref [:part/key [(:library @(:state cat)) (:part/id part)]]]]
+                                     (d/transact! conn
+                                                  (mapv (fn [[attribute source]]
+                                                          (if-some [value (get part source)]
+                                                            [:db/add ref attribute value]
+                                                            [:db.fn/retractAttribute ref attribute]))
+                                                        [[:part/name-override :part/name]
+                                                         [:part/bundle-override :part/bundle]
+                                                         [:part/class-override :part/class]
+                                                         [:part/role-override :part/role-hint]
+                                                         [:part/orientation :part/orientation]])))
+                                   @(:state cat))))]
+      (reset! (:state catalog) staged)
+      (reset! (:state library) candidate)
+      (reset! entries updated)
+      (jobs/clear! jobs)
+      selected)))
+
+(defn- reviewed-parts! [catalog]
+  (into {} (map (juxt :part/id identity)) (catalog/browse (catalog/listing! catalog) {})))
+
+(defn group! [{:keys [catalog entries] :as session} ids group-name]
+  (apply-review! session (t/group-selection @entries (reviewed-parts! catalog) ids group-name)))
+
+(defn split! [{:keys [catalog entries] :as session} id]
+  (apply-review! session (t/split-group @entries (reviewed-parts! catalog) id)))
+
+(defn assign-variant! [{:keys [catalog entries] :as session} file-id variant]
+  (apply-review! session {:entries (t/assign-variant @entries file-id variant)
+                          :labels (reviewed-parts! catalog)}))
+
+(defn variants! [{:keys [catalog entries] :as session} ids variant]
+  (when-not (t/variants variant)
     (throw (ex-info "Choose supported, unsupported or unsupported-pitted." {})))
-  (when (or (empty? ids) (some #(not (contains? @entries %)) ids))
-    (throw (ex-info "Select available imported parts." {})))
-  (swap! entries #(reduce (fn [m id] (assoc-in m [id :variant] variant)) % ids))
-  (let [selected (set ids)
-        parts (mapv (fn [part]
-                      (if (selected (:part/id part))
-                        (assoc part :part/variants #{variant} :part/renderable (= variant :unsupported)
-                               :part/source (when (= variant :unsupported) :unsupported)) part)) (index/parts! library))
-        root (index/root! library)
-        state (:state library)]
-    (locking state
-      (reset! (:state library) {:root root :parts parts :entries (index/refresh! parts root {})
-                                :source-files (into {} (for [part parts :when (:part/renderable part)]
-                                                         [(:part/id part) (:file (get @entries (:part/id part)))]))}))
-    (jobs/clear! jobs)
-    (catalog/reingest! catalog parts root)))
+  (let [parts (reviewed-parts! catalog)
+        files (mapv #(t/members @entries %) ids)]
+    (when (or (empty? ids) (some empty? files))
+      (throw (ex-info "Select available imported parts." {})))
+    (when (some #(> (count %) 1) files)
+      (throw (ex-info "Choose each file's supported/unsupported variant in the grouped row." {})))
+    (apply-review! session {:entries (reduce #(assoc-in %1 [(:key (first %2)) :variant] variant) @entries files)
+                            :labels parts})))
 
 (defn plan! [session]
-  (t/plan (vals (:parts (catalog/listing! (:catalog session)))) @(:entries session)))
+  (t/plan (vals (reviewed-parts! (:catalog session))) @(:entries session)))
 
 (defn- target! [root path]
   (let [target (fs/path root path)]
@@ -110,7 +164,7 @@
 (defn- publish! [{:keys [library catalog] :as deps} root plan]
   (let [database (:store catalog) state (:state library)]
     (locking state
-      (let [existing-ids (keys (:parts (catalog/listing! catalog)))
+      (let [existing-ids (keys (reviewed-parts! catalog))
             {:keys [candidate staged]}
             (store/write! database
                           (fn [conn]

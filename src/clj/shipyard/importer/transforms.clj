@@ -70,15 +70,99 @@
      :path (str (str/join "/" segments) "/" (name variant) ".stl")}))
 
 (defn plan [parts entries]
-  (let [files (mapv (fn [part]
-                      (let [{:keys [variant] :as entry} (get entries (:part/id part))]
-                        (merge entry (destination part variant) {:part part}))) parts)
+  (let [parts (into {} (map (juxt :part/id identity)) parts)
+        files (mapv (fn [{:keys [group variant] :as entry}]
+                      (let [part (get parts group)]
+                        (when-not part (throw (ex-info "An imported file has no review row. Restart the import." {})))
+                        (merge entry (destination part variant) {:part part}))) (vals entries))
         groups (group-by #(str/lower-case (:path %)) files)]
+    (doseq [[id files] (group-by #(str/lower-case (:id %)) files)]
+      (when (> (count (set (map :group files))) 1)
+        (throw (ex-info (str "Separate rows share a destination: " id ". Rename them or group them before importing.") {}))))
     (doseq [[path group] groups]
-      (when (or (> (count (set (map :sha group))) 1)
-                (> (count (set (keep #(get-in % [:part :part/orientation]) group))) 1)
-                (> (count (set (map #(get-in % [:part :part/role-hint]) group))) 1))
-        (throw (ex-info (str "Different files or reviewed values share a destination: " path ". Rename the conflicting parts before importing.") {}))))
-    (->> groups (vals)
-         (map #(or (some (fn [entry] (when (get-in entry [:part :part/orientation]) entry)) %) (first %)))
-         (sort-by :path) (vec))))
+      (when (> (count (set (map :sha group))) 1)
+        (throw (ex-info (str "Different files share a variant destination: " path
+                             ". Assign a different supported/unsupported variant or split the group before importing.") {}))))
+    (->> groups (vals) (map first) (sort-by :path) (vec))))
+
+(def variants #{:supported :unsupported :unsupported-pitted})
+
+(defn members [entries group-id]
+  (->> (vals entries) (filter #(= group-id (:group %))) (sort-by :key) (vec)))
+
+(defn preview-entry [files]
+  (let [unsupported (filter #(= :unsupported (:variant %)) files)]
+    (when (= 1 (count (set (map :sha unsupported)))) (first unsupported))))
+
+(defn inferred-entries
+  "Pair matching inferred labels only when each variant has unambiguous content.
+  Identical repeated downloads can share a row; ambiguous candidates stay separate."
+  [entries]
+  (->> (vals entries)
+       (group-by #(-> (infer (:key %) (:chain %))
+                      (select-keys [:part/name :part/bundle :part/class :part/role-hint])
+                      (update-vals (fn [v] (if (string? v) (str/lower-case v) v)))))
+       (vals)
+       (mapcat (fn [files]
+                 (let [unambiguous? (every? #(= 1 (count (set (map :sha %))))
+                                            (vals (group-by :variant files)))
+                       group-id (:key (or (preview-entry (sort-by :key files)) (first (sort-by :key files))))]
+                   (map #(assoc % :group (if unambiguous? group-id (:key %))) files))))
+       (map (juxt :key identity))
+       (into {})))
+
+(defn review-parts
+  "Project file membership into catalog parts, retaining labels and only a pose
+  that still belongs to the same unsupported source. Labels may seed new groups."
+  [entries previous-entries labels]
+  (mapv (fn [[id files]]
+          (let [source (preview-entry files)
+                seed (or (get labels id)
+                         (infer id (:chain (or source (first files)))))
+                old-source (preview-entry (members previous-entries (:part/id seed)))]
+            (cond-> (assoc seed :part/id id
+                           :part/variants (set (map :variant files))
+                           :part/renderable (boolean source)
+                           :part/source (when source :unsupported))
+              (not (and source old-source (= (:key source) (:key old-source))))
+              (dissoc :part/orientation))))
+        (sort-by key (group-by :group (sort-by :key (vals entries))))))
+
+(defn group-selection [entries parts ids group-name]
+  (let [ids (set ids)
+        selected (filter #(ids (:group %)) (vals entries))
+        seed-id (:group (or (preview-entry (sort-by :key selected)) (first (sort-by :key selected))))
+        seed (get parts seed-id)]
+    (when (or (< (count ids) 2) (some #(not (contains? parts %)) ids)
+              (not= ids (set (map :group selected))))
+      (throw (ex-info "Select at least two available rows to group." {})))
+    (when (and (not (str/blank? group-name)) (not (safe-segment? group-name)))
+      (throw (ex-info "The group name must be a valid folder name." {})))
+    {:entries (update-vals entries #(cond-> % (ids (:group %)) (assoc :group seed-id)))
+     :labels (cond-> parts (not (str/blank? group-name)) (assoc seed-id (assoc seed :part/name group-name)))
+     :selected [seed-id]}))
+
+(defn split-group [entries parts id]
+  (let [files (members entries id)
+        part (get parts id)]
+    (when (or (nil? part) (< (count files) 2))
+      (throw (ex-info "Choose a grouped row to split." {})))
+    {:entries (reduce #(assoc-in %1 [(:key %2) :group] (:key %2)) entries files)
+     :labels (reduce (fn [labels [i file]]
+                       (assoc labels (:key file)
+                              (assoc part :part/name (str (:part/name part) " (" (name (:variant file)) " " (inc i) ")"))))
+                     parts (map-indexed vector files))
+     :selected (mapv :key files)}))
+
+(defn assign-variant
+  "Changing one side of an unambiguous pair swaps the occupied variant, so the
+  user can reverse a pair in one action. Ambiguous groups remain editable."
+  [entries file-id variant]
+  (when-not (and (contains? entries file-id) (variants variant))
+    (throw (ex-info "Choose an available file and a valid supported/unsupported variant." {})))
+  (let [{:keys [group] old :variant} (get entries file-id)
+        files (members entries group)
+        occupied (filter #(and (not= file-id (:key %)) (= variant (:variant %))) files)
+        unique? (= (count files) (count (set (map :variant files))))]
+    (cond-> (assoc-in entries [file-id :variant] variant)
+      (and unique? (= 1 (count occupied))) (assoc-in [(:key (first occupied)) :variant] old))))

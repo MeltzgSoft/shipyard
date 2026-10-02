@@ -1,5 +1,6 @@
 (ns shipyard.importer.handlers
   (:require [shipyard.bulk-orientation.handlers :as bulk]
+            [shipyard.bulk-orientation.transforms :as selection]
             [shipyard.http.htmx :as htmx]
             [shipyard.importer.db :as db]
             [shipyard.system :as system]
@@ -48,6 +49,19 @@
 (defn selection! [deps {:keys [params]}]
   (try
     (if-let [session (db/session! deps)]
-      (bulk/select-ids! deps (if (= "all" (get params "selection")) (keys @(:entries session)) []))
+      (bulk/select-ids! deps (if (= "all" (get params "selection")) (distinct (map :group (vals @(:entries session)))) []))
+      (throw (ex-info "No import is active." {})))
+    (catch Exception e (error-response e))))
+
+(defn edit-group! [deps {:keys [params]} action]
+  (try
+    (if-let [session (db/session! deps)]
+      (let [before (selection/selected-ids (:bulk-selection (workspace/workspace! (:workspace deps) :browse)))
+            selected (case action
+                       :group (db/group! session before (get params "name"))
+                       :split (db/split! session (get params "group"))
+                       :variant (do (db/assign-variant! session (get params "file") (keyword (get params "variant"))) before))]
+        (update (bulk/select-ids! deps selected) :body str
+                (:body (htmx/fragment [:p#import-status {:hx-swap-oob "outerHTML" :role "status"}]))))
       (throw (ex-info "No import is active." {})))
     (catch Exception e (error-response e))))
