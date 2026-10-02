@@ -20,6 +20,28 @@
     (is (= (count tris) (:triangle-count m)))
     (is (= (* 9 (count tris)) (alength ^floats (:positions m))))))
 
+(deftest source-mapping-is-released-after-parsing
+  (doseq [[label bytes valid?]
+          [["binary source" (f/->binary-stl (f/cube 2.0)) true]
+           ["ASCII source" (java.nio.file.Files/readAllBytes (.toPath (io/file "test/fixtures/cube-ascii-crlf.stl"))) true]
+           ["corrupt source" (byte-array 100) false]]]
+    (testing label
+      (let [file (temp-stl bytes ".stl")
+            triangles (f/uv-sphere 1.0 12 16)
+            replacement (f/->binary-stl triangles)]
+        (try
+          (if valid?
+            (is (= 12 (:triangle-count (stl/parse-file! file))))
+            (is (thrown-with-msg? clojure.lang.ExceptionInfo #"truncated or corrupt"
+                                  (stl/parse-file! file))))
+          ;; Truncation fails on Windows if even a closed channel's mapping is
+          ;; still alive. Do not trigger GC: release is part of the read contract.
+          (with-open [out (io/output-stream file)] (.write out ^bytes replacement))
+          (is (= (count triangles) (:triangle-count (stl/parse-file! file))))
+          (java.nio.file.Files/delete (.toPath file))
+          (is (not (.exists file)))
+          (finally (java.nio.file.Files/deleteIfExists (.toPath file))))))))
+
 (deftest committed-ascii-fixture
   (testing "an ASCII STL with CRLF endings, as found in the real library"
     (let [m (stl/parse-file! (io/file "test/fixtures/cube-ascii-crlf.stl"))]

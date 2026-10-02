@@ -597,7 +597,9 @@ Binary STL: 80-byte header, `uint32` little-endian triangle count, then 50 bytes
 triangle - 3 floats face normal, 3x3 floats vertices, `uint16` attribute count.
 
 Read via a memory-mapped `ByteBuffer` in `LITTLE_ENDIAN` order. No per-triangle object
-allocation; write straight into primitive `float[]`.
+allocation; write straight into primitive `float[]`. The mapping belongs to a confined
+Java arena closed before parsing returns or throws. Windows source files can therefore
+be edited or removed immediately after a read, without waiting for garbage collection.
 
 **One ASCII STL exists** and must be handled:
 `Toaster Mechanics Fleet Bundle/Escort/Toaster Stalker Prow/

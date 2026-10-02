@@ -12,6 +12,7 @@
   (:require [clojure.java.io :as io]
             [clojure.string :as str])
   (:import [java.io File]
+           [java.lang.foreign Arena]
            [java.nio ByteBuffer ByteOrder]
            [java.nio.channels FileChannel]
            [java.nio.file StandardOpenOption]))
@@ -151,15 +152,14 @@
   "Parse an STL from disk, memory-mapped so the largest hull in the library
   (57.8 MB) costs no heap.
 
-  Note for anything that writes near the library: on Windows a mapping keeps the
-  file locked until the buffer is collected, whatever the channel does. Harmless
-  here because library files are only ever read, but worth remembering if the
-  cache (#13) ever writes back."
+  The confined arena releases the mapping before returning, including on parse
+  failures, so Windows does not keep a source file locked until a later GC."
   [path]
   (let [f    (io/file path)
         size (.length ^File f)]
     (with-open [ch (FileChannel/open (.toPath f)
-                                     (into-array StandardOpenOption [StandardOpenOption/READ]))]
-      (let [buf (doto (.map ch java.nio.channels.FileChannel$MapMode/READ_ONLY 0 size)
+                                     (into-array StandardOpenOption [StandardOpenOption/READ]))
+                arena (Arena/ofConfined)]
+      (let [buf (doto (.asByteBuffer (.map ch java.nio.channels.FileChannel$MapMode/READ_ONLY 0 size arena))
                   (.order ByteOrder/LITTLE_ENDIAN))]
         (parse-buffer buf size f)))))
