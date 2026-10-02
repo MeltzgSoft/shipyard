@@ -149,10 +149,13 @@ jobs:
         env:
           SHIPYARD_TEST_RESOURCES: target/desktop/resources
         run: npm test --prefix electron
+      - name: Install the actual Debian desktop package
+        if: runner.os == 'Linux'
+        run: sudo apt-get install -y ./electron/dist/*.deb
       - name: Real packaged Electron window
         if: runner.os == 'Linux'
         env:
-          SHIPYARD_TEST_ELECTRON: dist/linux-unpacked/shipyard
+          SHIPYARD_TEST_ELECTRON: /opt/Shipyard/shipyard
         run: xvfb-run -a npm run test:e2e --prefix electron
       - uses: actions/upload-artifact@v7
         with:

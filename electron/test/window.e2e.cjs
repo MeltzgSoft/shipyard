@@ -13,7 +13,8 @@ const configured = process.env.SHIPYARD_TEST_ELECTRON;
 const executablePath = configured ? path.resolve(ELECTRON_ROOT, configured) : require('electron');
 // Chromium cannot start as root in the CI container with its OS sandbox.
 // This flag is confined to the test harness; normal installed launches keep it.
-const args = [...(process.getuid?.() === 0 ? ['--no-sandbox'] : []), ...(configured ? [] : [ELECTRON_ROOT])];
+const chromiumSandbox = process.getuid?.() !== 0;
+const args = [...(!chromiumSandbox ? ['--no-sandbox'] : []), ...(configured ? [] : [ELECTRON_ROOT])];
 const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 async function waitFor(check, message) {
   for (let attempt = 0; attempt < 100; attempt++) {
@@ -37,7 +38,7 @@ test('real window owns a dynamic backend, is sandboxed, focuses a second launch,
     await once(foreign, 'listening');
     let application;
     try {
-      application = await _electron.launch({executablePath, args, env, timeout: 120000});
+      application = await _electron.launch({executablePath, args, env, chromiumSandbox, timeout: 120000});
       const page = await application.firstWindow({timeout: 120000});
       await page.waitForLoadState('domcontentloaded');
       const origin = new URL(page.url()).origin;
@@ -46,6 +47,8 @@ test('real window owns a dynamic backend, is sandboxed, focuses a second launch,
       assert.deepEqual(await (await fetch(`${origin}/healthz`)).json(), {status: 'ok'});
       assert.deepEqual(await page.evaluate(() => ({require: typeof require, process: typeof process})),
         {require: 'undefined', process: 'undefined'});
+      assert.equal(await application.evaluate(({app}) => app.commandLine.hasSwitch('no-sandbox')),
+        !chromiumSandbox, 'ordinary-user launch must keep the OS sandbox enabled');
       const preferences = await application.evaluate(({BrowserWindow}) => {
         const p = BrowserWindow.getAllWindows()[0].webContents.getLastWebPreferences();
         return {sandbox: p.sandbox, contextIsolation: p.contextIsolation, nodeIntegration: p.nodeIntegration};
@@ -78,8 +81,12 @@ test('real window owns a dynamic backend, is sandboxed, focuses a second launch,
       await page.waitForURL(`${origin}/healthz`);
       await application.evaluate(({BrowserWindow}) => BrowserWindow.getAllWindows()[0].minimize());
       const second = spawn(executablePath, args, {env, stdio: 'pipe'});
-      const [secondCode] = await once(second, 'exit');
-      assert.equal(secondCode, 0);
+      let secondStderr = '';
+      second.stderr.on('data', chunk => { secondStderr = (secondStderr + chunk).slice(-16384); });
+      const [secondCode, secondSignal] = await once(second, 'exit');
+      const diagnostic = `second launch exited with code=${secondCode}, signal=${secondSignal}\n${secondStderr || '<empty stderr>'}`;
+      assert.equal(secondCode, 0, diagnostic);
+      assert.equal(secondSignal, null, diagnostic);
       await waitFor(() => application.evaluate(({BrowserWindow}) => {
         const windows = BrowserWindow.getAllWindows();
         return windows.length === 1 && !windows[0].isMinimized();
@@ -92,7 +99,7 @@ test('real window owns a dynamic backend, is sandboxed, focuses a second launch,
       assert.equal(closeSignal, null);
       application = null;
       await assert.rejects(fetch(`${origin}/healthz`), 'window close must await backend shutdown');
-      application = await _electron.launch({executablePath, args, env, timeout: 120000});
+      application = await _electron.launch({executablePath, args, env, chromiumSandbox, timeout: 120000});
       const reopened = await application.firstWindow({timeout: 120000});
       await reopened.waitForLoadState('domcontentloaded');
       assert.ok(await reopened.evaluate(async id => (await (await fetch('/library')).text()).includes(id), PART_ID),
