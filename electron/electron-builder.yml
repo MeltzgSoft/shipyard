@@ -1,0 +1,40 @@
+appId: net.meltzgsoft.shipyard
+productName: Shipyard
+executableName: shipyard
+copyright: Copyright © MeltzgSoft
+directories:
+  app: ../target/desktop/app
+  output: dist
+  buildResources: build
+files:
+  - compiled/main.js
+  - package.json
+# The JVM needs real filesystem paths, outside the application's ASAR archive.
+extraResources:
+  - from: ../target/desktop/resources
+    to: .
+asar: true
+npmRebuild: false
+artifactName: Shipyard-${version}-${os}-${arch}.${ext}
+linux:
+  category: Graphics
+  synopsis: Browse and assemble miniature starship models
+  syncDesktopName: true
+  target:
+    - AppImage
+    - deb
+win:
+  target:
+    - nsis
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: false
+mac:
+  category: public.app-category.graphics-design
+  target:
+    - dmg
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+publish: null

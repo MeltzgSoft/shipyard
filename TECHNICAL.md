@@ -1238,6 +1238,48 @@ JVM server for HTML and meshes. Only the JVM process is needed to serve a releas
 
 `resources/public/js/` is gitignored.
 
+### 8.1 Desktop shell and native packages
+
+The Electron main process is CLJS, compiled by shadow-cljs's `:desktop`
+`:node-script` target to `electron/compiled/main.js`. Electron and its builder
+have a separate pinned npm manifest and lockfile under `electron/`; ordinary
+frontend installs do not download the desktop tooling. The shell displays the
+existing server-rendered application rather than introducing renderer state,
+preload bridges or a second frontend.
+
+Desktop startup passes `--desktop` and a unique launch token to an owned JVM
+child. Jetty binds ports in ascending order from 8080, retrying only bind
+collisions and releasing each failed server. Once startup completes, the JVM
+emits `SHIPYARD_DESKTOP_READY <token> <actual-port>` on stdout; application logs
+use stderr. The shell validates that message on its own child's bounded output
+stream before checking `/healthz` and opening its loopback origin. This eliminates
+the check-then-bind race and prevents another local server's health response from
+being mistaken for the owned backend's readiness.
+
+The private stdin command `SHIPYARD_DESKTOP_STOP`, or pipe EOF if the parent
+disappears, stops the Integrant system once. Electron waits for exit on quit and
+uses forced termination only after its grace period. This works on Windows
+without relying on POSIX signals. Single-instance locking focuses the existing
+window; tests use isolated data profiles. BrowserWindow disables Node integration
+and enables context isolation and sandboxing. Navigation is restricted to the
+owned origin; external HTTP(S) links use the system browser.
+
+`clojure -T:build desktop` builds the uberjar and shell, stages app metadata under
+`target/desktop/app`, and puts `shipyard.jar` plus a `jlink` runtime under
+`target/desktop/resources`. electron-builder copies the payload outside ASAR,
+where the JVM can open real files. The runtime includes Java SE,
+`jdk.management` (Datalevin's GC notifications), `jdk.unsupported`,
+`jdk.crypto.ec`, `jdk.zipfs` and `jdk.localedata`; reflection
+and native loading make static `jdeps` minimization insufficient. Installed
+startup fails explicitly if its bundled payload is missing, without selecting a
+system Java or an unrelated development jar.
+
+Native outputs are AppImage and deb on Linux x64, NSIS on Windows x64, and DMG on
+macOS arm64. `SHIPYARD_VERSION` stamps only staged metadata and jar output names.
+Each package is built on its target OS with that runner's Java 25 runtime;
+`desktop :dir true` emits unpacked output for smoke testing. Signing credentials
+can be supplied through electron-builder's usual environment variables.
+
 ## 9. CI
 
 Forgejo Actions, matrix over the `linux`, `windows` and `macos` runner labels.
@@ -1245,12 +1287,14 @@ Forgejo Actions, matrix over the `linux`, `windows` and `macos` runner labels.
 The JVM is portable; **LWJGL natives are not**. The natives are prebuilt jars on Maven
 Central, so a Linux
 runner can resolve and package the Windows and macOS classifiers without trouble.
-**Windows and macOS CI are needed only to *execute* tests on those platforms, never to
-build or release.**
+The backend jar can still be built on Linux for all platforms. Desktop installers
+bundle a native Java runtime and therefore require the matching Windows and macOS
+build runners as well.
 
 They still earn their place - running the pipeline against each platform's natives is the
 only way to catch a platform-specific failure before a user does - but if CI capacity gets
-tight, these are the jobs to cut, and cutting them does not endanger the release artifact.
+tight, keep their desktop packaging jobs: cutting those would remove supported
+platforms from the desktop release.
 
 **Java 25, not 21.** The `:run` and `:test` aliases pass
 `--sun-misc-unsafe-memory-access=allow`, which does not exist before JDK 23 - an older
@@ -1269,6 +1313,13 @@ on `edited`), and `test.yml`, which holds seven jobs:
 | `test-e2e` | linux | headless Chrome (§10.3) |
 | `readme` | linux | runs README's own Development commands (§9.2) |
 | `package` | linux | the uberjar, and the only proof one runs |
+
+`desktop.yml` additionally packages installers on all three native runners,
+checks the owned-child protocol against the bundled runtime, and drives the
+packaged Electron window on Linux. Workflow artifacts retain installers for PR
+review and manual runs. Tag pushes create the desktop release only after all
+three builds pass, including a checksum file; no jar is attached as the end-user
+release artifact. Forgejo artifact upload/download uses its compatible v3 actions.
 
 Level mapping (§10): **unit and integration run on all three platforms**, since those are
 what exercise natives and filesystem semantics. **E2E runs on Linux only** - it tests

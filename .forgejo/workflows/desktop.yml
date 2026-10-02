@@ -1,0 +1,179 @@
+name: desktop
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+env:
+  CLJ_JVM_OPTS: "-Daether.syncContext.named.factory=noop"
+
+jobs:
+  package-linux:
+    runs-on: linux
+    container:
+      image: mcr.microsoft.com/playwright:v1.62.0-jammy
+    steps:
+      - uses: actions/checkout@v4
+      - uses: https://github.com/actions/setup-java@v5
+        with:
+          java-version: '25'
+          distribution: temurin
+      - uses: https://github.com/actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install Clojure CLI
+        run: |
+          curl -sLO https://download.clojure.org/install/linux-install-1.12.4.1618.sh
+          chmod +x linux-install-1.12.4.1618.sh
+          ./linux-install-1.12.4.1618.sh --prefix "$HOME/clojure"
+          echo "$HOME/clojure/bin" >> "$GITHUB_PATH"
+      - name: Resolve release version
+        env:
+          RELEASE_REF: ${{ github.ref }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if [[ "$RELEASE_REF" == refs/tags/v* ]]; then
+            echo "SHIPYARD_VERSION=${RELEASE_TAG#v}" >> "$GITHUB_ENV"
+          fi
+      - name: Install desktop tools
+        run: npm ci --prefix electron
+      - name: Build native desktop packages
+        run: clojure -T:build desktop
+      - name: Child-process protocol and bundled runtime tests
+        env:
+          SHIPYARD_TEST_RESOURCES: target/desktop/resources
+        run: |
+          npx shadow-cljs compile desktop-support
+          npm test --prefix electron
+      - name: Real packaged Electron window
+        env:
+          SHIPYARD_TEST_ELECTRON: dist/linux-unpacked/shipyard
+        run: xvfb-run -a npm run test:e2e --prefix electron
+      - uses: https://code.forgejo.org/actions/upload-artifact@v3
+        with:
+          name: desktop-linux-x64
+          path: |
+            electron/dist/*.AppImage
+            electron/dist/*.deb
+          if-no-files-found: error
+
+  package-windows:
+    runs-on: windows
+    steps:
+      - uses: actions/checkout@v4
+      - uses: https://github.com/actions/setup-java@v5
+        with:
+          java-version: '25'
+          distribution: temurin
+      - uses: https://github.com/actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install Clojure CLI
+        shell: pwsh
+        run: |
+          $ver = '1.12.4.1618'
+          Invoke-WebRequest "https://github.com/clojure/brew-install/releases/download/$ver/clojure-tools.zip" -OutFile clojure-tools.zip
+          $dest = Join-Path $HOME 'Documents\PowerShell\Modules'
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          Expand-Archive clojure-tools.zip -DestinationPath $dest -Force
+          Remove-Item clojure-tools.zip
+          Import-Module ClojureTools
+          clojure -Sdescribe
+      - name: Prepare Datalevin native runtime
+        shell: pwsh
+        run: ./.forgejo/scripts/prepare-windows-natives.ps1
+      - name: Resolve release version
+        env:
+          RELEASE_REF: ${{ github.ref }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: pwsh
+        run: |
+          if ($env:RELEASE_REF.StartsWith('refs/tags/v')) {
+            "SHIPYARD_VERSION=$($env:RELEASE_TAG.Substring(1))" >> $env:GITHUB_ENV
+          }
+      - name: Install desktop tools
+        shell: pwsh
+        run: npm ci --prefix electron
+      - name: Build native desktop packages
+        shell: pwsh
+        run: clojure -T:build desktop
+      - name: Child-process protocol and bundled runtime tests
+        env:
+          SHIPYARD_TEST_RESOURCES: target/desktop/resources
+        shell: pwsh
+        run: |
+          npx shadow-cljs compile desktop-support
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm test --prefix electron
+      - uses: https://code.forgejo.org/actions/upload-artifact@v3
+        with:
+          name: desktop-windows-x64
+          path: electron/dist/*.exe
+          if-no-files-found: error
+
+  package-macos:
+    runs-on: macos
+    steps:
+      - uses: actions/checkout@v4
+      - uses: https://github.com/actions/setup-java@v5
+        with:
+          java-version: '25'
+          distribution: temurin
+      - uses: https://github.com/actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Check the provisioned Clojure CLI
+        run: clojure -Sdescribe
+      - name: Resolve release version
+        env:
+          RELEASE_REF: ${{ github.ref }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if [[ "$RELEASE_REF" == refs/tags/v* ]]; then
+            echo "SHIPYARD_VERSION=${RELEASE_TAG#v}" >> "$GITHUB_ENV"
+          fi
+      - name: Install desktop tools
+        run: npm ci --prefix electron
+      - name: Build native desktop packages
+        run: clojure -T:build desktop
+      - name: Child-process protocol and bundled runtime tests
+        env:
+          SHIPYARD_TEST_RESOURCES: target/desktop/resources
+        run: |
+          npx shadow-cljs compile desktop-support
+          npm test --prefix electron
+      - uses: https://code.forgejo.org/actions/upload-artifact@v3
+        with:
+          name: desktop-macos-arm64
+          path: electron/dist/*.dmg
+          if-no-files-found: error
+
+  release:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [package-linux, package-windows, package-macos]
+    runs-on: linux
+    steps:
+      - uses: https://code.forgejo.org/actions/download-artifact@v3
+        with:
+          path: installers
+      - name: Collect complete desktop release
+        run: |
+          mkdir -p release
+          find installers -type f \( -name '*.AppImage' -o -name '*.deb' -o -name '*.exe' -o -name '*.dmg' \) -exec cp {} release/ \;
+          test "$(find release -type f | wc -l)" -eq 4
+          cd release
+          sha256sum * > SHA256SUMS
+      - uses: https://code.forgejo.org/actions/forgejo-release@v2.13.4
+        with:
+          direction: upload
+          url: ${{ github.server_url }}
+          repo: ${{ github.repository }}
+          token: ${{ github.token }}
+          tag: ${{ github.ref_name }}
+          sha: ${{ github.sha }}
+          release-dir: release
+          release-notes: "Shipyard desktop packages with a bundled Java 25 runtime."
+          prerelease: ${{ contains(github.ref_name, '-') }}

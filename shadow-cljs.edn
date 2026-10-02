@@ -2,7 +2,18 @@
 ;; the deps.edn :cljs alias (:extra-paths ["src/cljs" "src/cljc"]) and ignores
 ;; any :source-paths set in this file.
 {:deps   {:aliases [:cljs]}
- :builds {;; The cljc tests run here as well as on the JVM. That cross-runtime
+ :builds {:desktop
+          {:target :node-script
+           :output-to "electron/compiled/main.js"
+           :main shipyard.desktop.main/main!}
+
+          :desktop-support
+          {:target :node-library
+           :output-to "electron/compiled/backend-tests.js"
+           :exports {:startBackend shipyard.desktop.backend/start-backend
+                     :spawnBackend shipyard.desktop.backend/spawn-backend}}
+
+          ;; The cljc tests run here as well as on the JVM. That cross-runtime
           ;; run is what proves encoder and decoder agree on the binary layout.
           :test
           {:target     :node-test
