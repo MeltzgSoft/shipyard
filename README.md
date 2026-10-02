@@ -31,6 +31,11 @@ and `--enable-native-access=ALL-UNNAMED`, which LWJGL needs to load its native
 meshoptimizer bindings without warnings. CI pins 25 on every job and the uberjar declares
 `Enable-Native-Access` in its manifest. Develop on 25.
 
+The **Browse…** buttons open Swing folder and ZIP selectors on Shipyard's local
+desktop using Java's `java.desktop` module; no separate dialog packages are needed.
+Use a browser on that same computer. A desktop-capable Java runtime and access to
+the graphical session are required; direct path entry also works on headless servers.
+
 ## Quick start
 
 ```bash
@@ -47,7 +52,7 @@ without a restart. See the [user manual](docs/MANUAL.md).
 
 ## Development
 
-Anything that touches the mesh pipeline needs **a platform alias for the LWJGL natives** -
+The mesh pipeline needs **a platform alias for the LWJGL natives** -
 `:natives-linux` below; substitute `:natives-windows` or
 `:natives-macos-arm64`. Commands without one below do not need one.
 
@@ -98,8 +103,9 @@ creates it. Skip it and the page still renders
 and the canvas still loads; the library panel simply never populates, which reads exactly
 like a server bug. Why it is delivered separately from the CLJS bundle: TECHNICAL.md §8.
 
-`deps.edn` declares `org.lwjgl/lwjgl` and `org.lwjgl/lwjgl-meshoptimizer`, which are the
-Java API jars; the `.so`, `.dll` and `.dylib` are separate Maven artifacts carrying a
+`deps.edn` declares `org.lwjgl/lwjgl` and `org.lwjgl/lwjgl-meshoptimizer`,
+which are the Java API jars; the `.so`, `.dll` and `.dylib`
+are separate Maven artifacts carrying a
 platform classifier, and they live only in those aliases. Nothing fails to download - the
 classpath resolves cleanly and simply contains no native binary.
 

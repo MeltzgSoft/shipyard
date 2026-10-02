@@ -5,6 +5,8 @@
             [integrant.core :as ig]
             [shipyard.assembly-fixture :as fixture]
             [shipyard.e2e.support :as s]
+            [shipyard.file-picker.db :as picker]
+            [shipyard.file-picker.swing :as swing]
             [shipyard.library.index :as index]
             [shipyard.settings.db :as settings]
             [shipyard.system :as system]))
@@ -23,6 +25,25 @@
       (s/go! driver (s/base-url @running))
       (s/wait-visible! driver "#bulk-orient-filters")
       (s/click! driver ".settings__summary")
+      (s/choose-path! driver "#settings" candidate)
+      (is (= (str (:root started)) (index/root! library)) "selection alone does not relocate")
+      (testing "cancel leaves the selection unchanged"
+        (with-redefs [picker/choose! (fn [_ _] nil)]
+          (s/click! driver "#settings [data-picker-browse]")
+          (is (s/wait-until #(not (s/js driver "() => document.querySelector('#settings [data-picker-browse]').disabled"))))
+          (is (= (str candidate) (s/js driver "() => document.querySelector('#settings-root').value")))))
+      (testing "headless Browse gives guidance and preserves the selected path"
+        (with-redefs [swing/available? (constantly false)]
+          (s/click! driver "#settings [data-picker-browse]")
+          (is (s/wait-until #(str/includes? (s/text driver "#settings-root-picker-message")
+                                            "No graphical desktop is available")))
+          (is (= (str candidate) (s/js driver "() => document.querySelector('#settings-root').value")))))
+      (testing "display failures allow direct path entry"
+        (with-redefs [swing/choose! (fn [_] (throw (java.awt.AWTError. "Display connection failed")))]
+          (s/click! driver "#settings [data-picker-browse]")
+          (is (s/wait-until #(str/includes? (s/text driver "#settings-root-picker-message")
+                                            "Check that Java has desktop support")))
+          (is (= (str candidate) (s/js driver "() => document.querySelector('#settings-root').value")))))
       (s/fill-and-blur! driver "#settings-root" (str candidate))
       (with-redefs [settings/save-library-root!
                     (fn [transaction root]

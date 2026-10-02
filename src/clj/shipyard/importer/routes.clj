@@ -3,7 +3,17 @@
             [shipyard.importer.handlers :as handlers]))
 
 (defn routes [deps]
-  [["/imports/selection" {:post {:handler (partial handlers/selection! deps)
+  [["/imports/group" {:post {:handler #(handlers/edit-group! deps % :group)
+                             :parameters {:form [:map [:name {:optional true} string?]]}
+                             :responses contracts/html-responses}}]
+   ["/imports/split" {:post {:handler #(handlers/edit-group! deps % :split)
+                             :parameters {:form [:map [:group string?]]}
+                             :responses contracts/html-responses}}]
+   ["/imports/variant" {:post {:handler #(handlers/edit-group! deps % :variant)
+                               :parameters {:form [:map [:file string?]
+                                                   [:variant [:enum "supported" "unsupported" "unsupported-pitted"]]]}
+                               :responses contracts/html-responses}}]
+   ["/imports/selection" {:post {:handler (partial handlers/selection! deps)
                                  :parameters {:form [:map [:selection [:enum "all" "none"]]]}
                                  :responses contracts/html-responses}}]
    ["/imports/start" {:post {:handler (partial handlers/start! deps)

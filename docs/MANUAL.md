@@ -30,8 +30,9 @@ Shipyard has no default location, because there is no location it could guess th
 would be right. The first time you open it, the library panel asks where your models
 are:
 
-1. Type or paste the folder that holds your bundles - the one whose sub-folders are
-   `Human Navy Fleet Bundle` and the like. `~` works.
+1. Click **Browse…** beside **Library folder**. In the desktop folder
+   selector, choose the folder that holds your bundles — the one whose subfolders are
+   `Human Navy Fleet Bundle` and the like.
 2. Press **Use this folder**.
 
 Shipyard scans it immediately and the parts appear; there is nothing to restart. The
@@ -41,6 +42,13 @@ loaded.
 To change it later, open **Library folder** at the top of the library panel. If the
 path is wrong - a typo, or a drive that is not mounted - Shipyard says so and keeps
 using the folder it already had.
+
+The Swing selectors open on the desktop of the computer running Shipyard. Use the
+browser on that same computer. **Cancel** leaves the previous selection unchanged;
+choosing a folder does not apply it until you press **Use this folder**. If a selector
+is unavailable, you can type or paste the path directly (`~` works). Selectors need
+a Java runtime with desktop support and access to the graphical session; no separate
+file-dialog packages are required. A headless server still accepts paths.
 
 Your choice is stored in Shipyard's database, alongside your authored metadata.
 When upgrading, Shipyard preserves a selection from the old
@@ -70,24 +78,40 @@ render without showing pits or print scaffolding.
 
 ### Importing a ZIP archive
 
-Choose your library folder first. In **Part Browser**, enter the local path to a ZIP
-archive (a leading `~/` is supported) and choose **Review archive**. Shipyard unpacks
+Choose your library folder first. In **Part Browser**, click **Browse…** beside
+**ZIP archive**, and choose your archive in the desktop file selector,
+which filters for ZIP files. Then choose **Review archive**. Shipyard unpacks
 nested ZIPs and switches the table to **Import mode**, listing every STL in that
 archive. Non-STL extras, including Lychee projects and incomplete `.part` downloads,
-are ignored. The original archives are always kept.
+are ignored. Zero-byte nested ZIP files are skipped and listed in the review;
+invalid nonempty ZIPs stop extraction with their archive path in the error.
+The original archives are always kept.
 
 Bundle/faction, class, role and supported status are inferred from archive, folder and
 file names. These are hints: review unknown or ambiguous values. An inner **Original
 Files** folder takes precedence over an outer archive labelled **Supported**. Files
 without a support marker default to unsupported. The table shows the variant and
-original archive path; hover over a long source path to read it in full. Each STL has
-its own review row. Supported and unsupported versions with matching reviewed bundle,
-class, role and cleaned name share one destination part folder. Support labels are
-removed from inferred names; unrelated filenames need a name correction to pair them.
+original archive paths. Matching names, bundle, class and role are grouped into one
+row when each variant has unambiguous content. Identical repeated files can share a
+row; competing files with the same variant remain separate for review.
+
+Expand **Files / variants** in a row to see its source files and choose **Supported**,
+**Unsupported**, or **Unsupported (pitted)** for each. Changing one side of a clear
+pair swaps the other side automatically. Changing the unsupported source clears its
+saved orientation so the new geometry can be reviewed.
+
+If an inferred group is wrong, choose **Split into separate rows**. Split rows receive
+distinct names, which you can edit. To combine missed matches, select their rows,
+optionally enter a **Grouped part name**, and choose **Group selected rows**. The
+result shares the chosen source row's bundle, class and role; review those labels
+after grouping. Different files assigned the same variant show **Assign variants**
+and must be corrected or split before import. Separate rows targeting the same part
+folder must be renamed or explicitly grouped.
 
 Select rows, or **Select entire import** across all pages, to apply bulk bundle,
-class, role and name edits. **Supported / unsupported** accepts `unsupported`,
-`supported` or `unsupported-pitted`. Use **Orient selection** for the usual rotation
+class, role and name edits. The bulk **Supported / unsupported** field applies to
+single-file rows; use the per-file selectors for grouped rows.
+Use **Orient selection** for the usual rotation
 grid, then **Save orientations** and **Back to table**. Supported and pitted models
 remain listed but have no preview. Mount authoring and region painting are disabled
 throughout import. Switching to Ship Browser and back retains the import review and

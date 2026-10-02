@@ -2,6 +2,8 @@
   (:require [babashka.fs :as fs]
             [clojure.java.io :as io]
             [clojure.edn :as edn]
+            [datalevin.core :as d]
+            [shipyard.store.db :as store]
             [shipyard.fixtures :as meshes]
             [clojure.test :refer [deftest is testing]]
             [ring.mock.request :as mock]
@@ -23,8 +25,9 @@
       (testing "recursive archive review does not change the durable library"
         (is (= 200 (:status (post! "/imports/start" {"archive" (str zip)}))))
         (is (= 3 (count @(:entries (session!)))))
+        (is (= [["New Fleet.zip" "Cruisers Supported(1).zip"]] (:skipped-empty-archives (session!))))
         (is (= 200 (:status (post! "/imports/selection" {"selection" "all"}))))
-        (is (= 3 (count (edn/read-string (get-in @(:state workspace) [:workspaces :browse :bulk-selection])))))
+        (is (= 2 (count (edn/read-string (get-in @(:state workspace) [:workspaces :browse :bulk-selection])))))
         (is (= before (catalog/listing! cat)))
         (is (= 409 (:status (post! "/mounts" {}))))
         (is (= 409 (:status (post! "/parts/regions" {}))))
@@ -116,8 +119,115 @@
                                                 ["__MACOSX/._Hull.stl" data]
                                                 ["unfinished.zip.part" data]])))
       (testing "even absolute and traversal entry names produce only UUID files in staging"
-        (let [entries (archive/extract! zip output)]
+        (let [{:keys [entries]} (archive/extract! zip output)]
           (is (= 2 (count entries)))
           (is (every? #(= output (fs/parent (:file %))) entries))
           (is (not (fs/exists? (fs/path directory "escape.stl"))))))
       (finally (fs/delete-tree directory)))))
+
+(deftest empty-and-invalid-archives
+  (let [started (fixture/start!) handler (:handler started)
+        workspace (get-in started [:system :shipyard.workspace/db])
+        cat (get-in started [:system :shipyard.catalog/db])
+        before (catalog/listing! cat)
+        directory (fs/create-temp-dir)
+        output (fs/create-dirs (fs/path directory "output"))
+        zip (fs/file directory "Empty.zip")
+        invalid (archives/invalid-nested-archive! directory)
+        post! #(handler (mock/request :post "/imports/start" {"archive" (str %)}))]
+    (try
+      (testing "a zero-byte selected archive is still an error, not a skipped nested file"
+        (spit zip "")
+        (let [response (post! zip)]
+          (is (= 422 (:status response)))
+          (is (.contains (:body response) "Cannot read ZIP Empty.zip"))))
+      (testing "nested empty placeholders are reported even inside other nested ZIPs"
+        (with-open [out (io/output-stream zip)]
+          (.write out ^bytes (archives/zip-bytes [["Nested.zip" (archives/zip-bytes [["Empty(1).ZIP" (byte-array 0)]
+                                                                                     ["Valid-empty.zip" (archives/zip-bytes [])]])]])))
+        (is (= {:entries [] :skipped-empty-archives [["Empty.zip" "Nested.zip" "Empty(1).ZIP"]]}
+               (archive/extract! zip output)))
+        (is (empty? (fs/list-dir output)) "temporary nested ZIPs are removed")
+        (let [response (post! zip)]
+          (is (= 422 (:status response)))
+          (is (.contains (:body response) "This archive contains no STL files."))))
+      (testing "nonempty invalid nested ZIPs fail with their full source chain, without partial review"
+        (let [response (post! invalid)]
+          (is (= 422 (:status response)))
+          (is (.contains (:body response) "Cannot read ZIP Broken Fleet.zip → Download.zip → broken.zip")))
+        (is (nil? (importer/session! {:workspace workspace})))
+        (is (= before (catalog/listing! cat)))
+        (is (fs/regular-file? invalid)))
+      (finally (fixture/stop! started) (fs/delete-tree directory)))))
+
+(deftest grouping-splitting-and-variant-assignment
+  (let [started (fixture/start!) system (:system started) handler (:handler started)
+        workspace (:shipyard.workspace/db system) lib (:shipyard.library/index system)
+        cat (:shipyard.catalog/db system) directory (fs/create-temp-dir)
+        zip (fs/file directory "Pairs.zip")
+        post! #(handler (mock/request :post %1 %2))
+        check! (fn [status url params]
+                 (let [response (post! url params)]
+                   (is (= status (:status response)) (:body response))))
+        session! #(importer/session! {:workspace workspace})
+        original (meshes/->binary-stl (meshes/cube 2))
+        supported (meshes/->binary-stl (meshes/cube 3))
+        before (catalog/listing! cat)]
+    (try
+      (with-open [out (io/output-stream zip)]
+        (.write out ^bytes (archives/zip-bytes [["Cruiser/Hull.stl" original]
+                                                ["Cruiser/Hull_Supported.stl" supported]])))
+      (check! 200 "/imports/start" {"archive" (str zip)})
+      (let [session (session!) entries @(:entries session)
+            group (:group (first (vals entries)))
+            supported-id (:key (first (filter #(= :supported (:variant %)) (vals entries))))
+            parts! #(into {} (map (juxt :part/id identity)) (catalog/browse (catalog/listing! (:catalog session)) {}))
+            ids! #(vec (keys (parts!)))]
+        (is (= 1 (count (parts!))))
+        (is (= #{:supported :unsupported} (set (:part/variants (get (parts!) group)))))
+        (catalog/save-part-orientation! (:catalog session) group [0 1 0 0])
+        (testing "changing a pair swaps assignments, changes the source and clears its old pose"
+          (check! 200 "/imports/variant" {"file" supported-id "variant" "unsupported"})
+          (is (= :unsupported (get-in @(:entries session) [supported-id :variant])))
+          (is (= (:file (get entries supported-id)) (index/fresh-source-file! (:library session) group)))
+          (is (nil? (:part/orientation (get (parts!) group))))
+          (let [sources (store/read! (:store session)
+                                     #(d/pull % '[{:part/sources [*]}]
+                                              [:part/key [(:library @(:state (:catalog session))) group]]))
+                source (first (filter #(= :unsupported (:source/variant %)) (:part/sources sources)))]
+            (is (= (:file (get entries supported-id))
+                   (fs/file (index/root! (:library session)) (:source/path source))))))
+        (testing "failed regrouping rolls back the database and both in-memory projections"
+          (let [snapshot (parts!) indexed @(:state (:library session)) files @(:entries session)
+                transact d/transact!]
+            (with-redefs [d/transact! (fn [conn tx]
+                                        (let [result (transact conn tx)]
+                                          (when (some #(and (vector? %) (= :part/name-override (nth % 2 nil))) tx)
+                                            (throw (ex-info "Injected review failure" {})))
+                                          result))]
+              (check! 422 "/imports/split" {"group" group}))
+            (is (= snapshot (parts!)))
+            (is (= indexed @(:state (:library session))))
+            (is (= files @(:entries session)))))
+        (testing "splitting separates destinations and preserves all files"
+          (check! 200 "/imports/split" {"group" group})
+          (is (= 2 (count (parts!))))
+          (is (= 2 (count (set (map :id (importer/plan! session))))))
+          (is (= (set (keys entries)) (set (keys @(:entries session))))))
+        (testing "manual grouping joins differently named rows with reviewed labels"
+          (post! "/orient/selection" {"visible" (pr-str (ids!)) "selected" (ids!)})
+          (check! 200 "/imports/group" {"name" "Corrected Hull"})
+          (is (= 1 (count (parts!))))
+          (is (= "Corrected Hull" (:part/name (first (vals (parts!))))))
+          (is (= before (catalog/listing! cat))))
+        (testing "invalid member and variant requests do not change the review"
+          (let [snapshot @(:entries session)]
+            (check! 422 "/imports/variant" {"file" "missing" "variant" "supported"})
+            (check! 400 "/imports/variant" {"file" supported-id "variant" "invalid"})
+            (is (= snapshot @(:entries session)))))
+        (testing "publication uses the corrected file assignments"
+          (check! 200 "/imports/commit" {})
+          (doseq [[variant data] [["unsupported" supported] ["supported" original]]]
+            (let [file (fs/path (index/root! lib) "Pairs/Cruiser/Corrected Hull" (str variant ".stl"))]
+              (is (= (seq data) (seq (java.nio.file.Files/readAllBytes file))))))))
+      (finally (fixture/stop! started) (fs/delete-tree directory)))))

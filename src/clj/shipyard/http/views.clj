@@ -11,6 +11,7 @@
             [clojure.string :as str]
             [shipyard.catalog.part :as catalog-part]
             [shipyard.http.urls :as urls]
+            [shipyard.file-picker.views :as file-picker]
             [shipyard.http.pagination :as pagination]
             [shipyard.interface-colors :as interface-colors]
             [shipyard.mount.wizard :as wizard]
@@ -454,14 +455,7 @@
     :method "post" :action "/settings" :hx-post "/settings"
     :hx-target (str "#" id "-message")
     :hx-swap   "innerHTML"}
-   [:label.settings__field {:for (str id "-root")} "Library folder"
-    [:input {:type         "text"
-             :id           (str id "-root")
-             :name         "root"
-             :value        (or root "")
-             :placeholder  "/path/to/your/models"
-             :autocomplete "off"
-             :spellcheck   "false"}]]
+   (file-picker/field {:id (str id "-root") :value root})
    [:button.settings__save {:type "submit"} "Use this folder"]
    [:div.settings__message {:id (str id "-message")}
     (when error [:p.detail__error error])]])
