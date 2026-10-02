@@ -2264,6 +2264,11 @@ path. Successful saves retain the submitted HSV coordinates in transient Ship Br
 state scoped to the scheme and layer, provided they still produce the saved hex color.
 This preserves hue for gray and hue/saturation for black through form replacement;
 the durable material remains RGB. Local gestures do not round-trip through hex.
+The shared Hiccup color control and delegated gesture handlers also serve Paint
+material forms and the detail brush. Material gestures preview on input and save
+on release; brush color gestures set the next stroke material without saving a stroke.
+Paint material acknowledgements replace only status, so local HSV coordinates remain
+in the form. Saved-color controls read the active material or brush form.
 Shared presets are unique normalized `:color-preset/hex` entities in Datalevin;
 their add/remove endpoints return only the saved-color grid.
 Material `:glow` is an optional finite scalar in `[0,1]`, stored as `:material/glow`

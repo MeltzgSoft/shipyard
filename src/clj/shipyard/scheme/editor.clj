@@ -17,22 +17,6 @@
 (defn selected! [{:keys [workspace schemes]}]
   (schemes/palette! schemes (:scheme (workspace/workspace! workspace :ships))))
 
-(defn- color-control [hex picker]
-  (let [[h s v] (color/picker-value hex picker)]
-    [:div.color-picker
-     [:input {:type "hidden" :name "saturation" :value s}]
-     [:input {:type "hidden" :name "brightness" :value v}]
-     [:div.color-spectrum {:tabindex 0 :role "slider" :aria-label "Saturation and brightness"
-                           :aria-valuemin 0 :aria-valuemax 100 :aria-valuenow (* 100 s)
-                           :aria-valuetext (str "Saturation " (int (* 100 s)) "%, brightness " (int (* 100 v)) "%")
-                           :data-saturation s :data-brightness v
-                           :style (str "--spectrum-hue:hsl(" h ",100%,50%)")}
-      [:span.color-spectrum__cursor {:style (str "left:" (* 100 s) "%;top:" (* 100 (- 1 v)) "%")}]]
-     [:label "Hue" [:input.color-hue {:name "hue" :type "range" :min 0 :max 359 :step 1 :value h :aria-label "Hue"}]]
-     [:label "Hex color" [:input#paint-base {:type "text" :name "base" :value hex :required true
-                                             :pattern "#[0-9a-fA-F]{6}" :maxlength 7 :spellcheck false
-                                             :data-paint-input "true" :aria-label "Hex color"}]]]))
-
 (defn change! [{:keys [workspace schemes catalog] {scheme-lock :lock} :schemes} action {:strs [id name layer confirmed sequence] :as params}]
   (locking scheme-lock
     (let [state (workspace/workspace! workspace :ships)
@@ -115,9 +99,9 @@
          [:input {:type "hidden" :name "layer" :value layer}]
          [:input {:type "hidden" :name "sequence" :value (or (:scheme-sequence state) 0)}]
          [:h3#scheme-material-label (str (get-in (catalog/region-registry database) [:layers layer :name] layer) " material")]
-         (color-control (paint/color-hex (:base value))
-                        (when (= [(:scheme state) layer] ((juxt :scheme :layer) (:scheme-picker state)))
-                          (get-in state [:scheme-picker :hsv])))
+         (controls/color-control (paint/color-hex (:base value))
+                                 (when (= [(:scheme state) layer] ((juxt :scheme :layer) (:scheme-picker state)))
+                                   (get-in state [:scheme-picker :hsv])))
          (controls/material-control "Metalness" "metalness" "range" (:metalness value))
          (controls/material-control "Roughness" "roughness" "range" (:roughness value))
          (controls/material-control "Glow" "glow" "range" (get value :glow 0))

@@ -33,7 +33,7 @@
         [:button.color-preset__remove {:type "submit" :name "base" :value hex :aria-label (str "Remove " hex)} "×"]]])]
    [:form {:method "post" :action "/ships/schemes/presets/add" :hx-post "/ships/schemes/presets/add"
            :hx-target "#scheme-presets" :hx-swap "outerHTML" :hx-sync "#detail:queue last"
-           :hx-include "#scheme-material input[name=base]"}
+           :hx-vals "js:{base:document.querySelector('#scheme-material, #paint-material, #paint-brush:not([hidden])').querySelector('[data-color-value]').value}"}
     [:button {:type "submit"} "Save current color"]]])
 
 (defn handle! [{:keys [schemes]} operation request]

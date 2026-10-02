@@ -521,7 +521,9 @@ selecting a swatch makes that layer the target of the shared color, metalness,
 roughness and glow controls. The active layer is visibly marked. There is no separate Paint workspace.
 The shared color control offers a two-dimensional saturation/brightness spectrum,
 a hue slider and a hex input. Users can save and remove color presets shared across
-schemes; choosing a preset changes color without changing metalness, roughness or glow.
+schemes and named ships; choosing a preset changes color without changing metalness, roughness or glow.
+Paint uses the same picker and saved colors for instance, group and layer materials
+and for the detail brush. Brush color selection affects subsequent strokes.
 Layer selection updates only editor controls. Palette edits reuse loaded geometry
 and region assignments rather than retransmitting the ship's face masks.
 

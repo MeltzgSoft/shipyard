@@ -2,7 +2,7 @@
   "Local spectrum gestures edit the ordinary material form; HTMX owns saves."
   (:require [shipyard.scheme.color :as color]))
 
-(defn- field [^js form] (.namedItem (.-elements form) "base"))
+(defn- field [form] (.querySelector form "[data-color-value]"))
 (defn- emit! [element type] (.dispatchEvent element (js/Event. type #js {:bubbles true})))
 (defn- clamp [n] (max 0 (min 1 n)))
 
@@ -64,7 +64,7 @@
                                  (emit! (field form) "change")))))))
     (.addEventListener body "input"
                        (fn [^js event]
-                         (let [target (.-target event) form (.closest target "#scheme-material")]
+                         (let [target (.-target event) form (some-> target (.closest ".color-picker") (.closest "form"))]
                            (when form
                              (cond
                                (.matches target ".color-hue")
@@ -81,7 +81,7 @@
     (.addEventListener body "click"
                        (fn [^js event]
                          (when-let [button (.closest (.-target event) "[data-color-preset]")]
-                           (when-let [form (.getElementById js/document "scheme-material")]
+                           (when-let [form (.querySelector js/document "#scheme-material, #paint-material, #paint-brush:not([hidden])")]
                              (when-not (.-disabled (field form))
                                (edit! form (color/hex->hsv (.getAttribute button "data-color-preset")))
                                (emit! (field form) "change"))))))))

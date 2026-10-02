@@ -277,32 +277,34 @@
                          (fn [^js e]
                            (when (and (available?) (#{0 2} (.-button e)) (not (.-altKey e)))
                              (.preventDefault e) (.stopImmediatePropagation e)
-                             (try
-                               (let [form (form!) target-key (value form "target")
-                                     target (when (= "[" (subs target-key 0 1)) (edn/read-string target-key))
-                                     cross? (.-checked (field form "cross-instances"))
-                                     buffer (visible-buffer sys target)]
-                                 (if (and (not cross?) (not (contains? (:ranges buffer) target)))
-                                   (status! "Select an individual instance, or turn on Cross instances.")
-                                   (do
-                                     (set! (.-enabled controls) false)
-                                     (.setPointerCapture canvas (.-pointerId e))
-                                     (reset! stroke {:id (random-uuid) :part 0 :chain (js/Promise.resolve) :pending {} :keys {} :before {} :behind #{}
-                                                     :buffer buffer :form form :target target :target-key target-key :cross? cross? :dragging? true
-                                                     :scheme (value form "id") :headers (js/JSON.parse (.. (.getElementById js/document "workspace-context") -dataset -headers))
-                                                     :labels (edn/read-string (.getAttribute form "data-instance-labels"))
-                                                     :stale (set (edn/read-string (.getAttribute form "data-stale-targets")))
-                                                     :color {:base (rgb (value form "brush-color"))
-                                                             :metalness (js/parseFloat (value form "brush-metalness"))
-                                                             :roughness (js/parseFloat (value form "brush-roughness"))
-                                                             :glow (js/parseFloat (value form "brush-glow"))} :hex (value form "brush-color")
-                                                     :erase? (or (= 2 (.-button e)) (= "erase" (value form "mode"))) :radius (js/parseFloat (value form "radius"))})
-                                     (lock!)
-                                     (swap! stroke assoc :timer (js/setInterval #(flush! false) (js/Number (.getAttribute form "data-flush-interval"))))
-                                     (sample! e))))
-                               (catch :default _
-                                 (if @stroke (cancel! "The visible-face buffer could not be prepared. Nothing saved; try again." false)
-                                     (status! "The visible-face buffer could not be prepared. Nothing saved; try again.")))))) true)
+                             (if-not (.reportValidity (field (form!) "brush-color"))
+                               (status! "Enter a six-digit detail hex color before painting.")
+                               (try
+                                 (let [form (form!) target-key (value form "target")
+                                       target (when (= "[" (subs target-key 0 1)) (edn/read-string target-key))
+                                       cross? (.-checked (field form "cross-instances"))
+                                       buffer (visible-buffer sys target)]
+                                   (if (and (not cross?) (not (contains? (:ranges buffer) target)))
+                                     (status! "Select an individual instance, or turn on Cross instances.")
+                                     (do
+                                       (set! (.-enabled controls) false)
+                                       (.setPointerCapture canvas (.-pointerId e))
+                                       (reset! stroke {:id (random-uuid) :part 0 :chain (js/Promise.resolve) :pending {} :keys {} :before {} :behind #{}
+                                                       :buffer buffer :form form :target target :target-key target-key :cross? cross? :dragging? true
+                                                       :scheme (value form "id") :headers (js/JSON.parse (.. (.getElementById js/document "workspace-context") -dataset -headers))
+                                                       :labels (edn/read-string (.getAttribute form "data-instance-labels"))
+                                                       :stale (set (edn/read-string (.getAttribute form "data-stale-targets")))
+                                                       :color {:base (rgb (value form "brush-color"))
+                                                               :metalness (js/parseFloat (value form "brush-metalness"))
+                                                               :roughness (js/parseFloat (value form "brush-roughness"))
+                                                               :glow (js/parseFloat (value form "brush-glow"))} :hex (value form "brush-color")
+                                                       :erase? (or (= 2 (.-button e)) (= "erase" (value form "mode"))) :radius (js/parseFloat (value form "radius"))})
+                                       (lock!)
+                                       (swap! stroke assoc :timer (js/setInterval #(flush! false) (js/Number (.getAttribute form "data-flush-interval"))))
+                                       (sample! e))))
+                                 (catch :default _
+                                   (if @stroke (cancel! "The visible-face buffer could not be prepared. Nothing saved; try again." false)
+                                       (status! "The visible-face buffer could not be prepared. Nothing saved; try again."))))))) true)
       (.addEventListener canvas "pointermove"
                          (fn [^js e]
                            (let [enabled? (or (available?) (:dragging? @stroke)) radius (when enabled? (value (form!) "radius"))]

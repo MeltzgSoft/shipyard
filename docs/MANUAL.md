@@ -408,7 +408,8 @@ ship from the expanded row to resume editing. The Ship Browser camera and contro
 are shared across inspector tabs; there is no separate Paint workspace.
 
 Use instance rows, custom layer overrides, groups and the detail brush to customize
-this ship. Materials preview locally and save on release; **Save material** retries a
+this ship. Paint uses the same spectrum, hue slider, **Hex color** field and **Saved colors**
+as Schemes. Materials preview locally and save on release; **Save material** retries a
 failed save. If you change a material while a save is pending, its response keeps
 your newer preview on screen until you save it. Custom paint affects only this named ship. Instance materials override
 its layer palette; face details override individual faces. **Use inherited material**
@@ -435,7 +436,8 @@ Fleet ordering and fleet-default assignment are not yet available.
 ### Painting details
 
 Turn off **Mount colors**, then choose **Brush** in the Paint inspector. Pick a detail
-colour, metalness, roughness and radius (2–100 screen pixels). **Cross instances** is on by default: one
+colour with the spectrum, hue slider, **Detail hex color** field or a saved swatch,
+then set metalness, roughness and radius (2–100 screen pixels). **Cross instances** is on by default: one
 drag can touch several parts. Turn it off to paint only the instance selected in
 **Select** mode. The inspector lists touched parts and face counts for the live drag;
 parts identified behind the brush are skipped.

@@ -1,6 +1,8 @@
 (ns shipyard.paint.views
   (:require [shipyard.paint.transforms :as transforms]
             [shipyard.scheme.material :as material]
+            [shipyard.scheme.color :as color]
+            [shipyard.scheme.presets :as presets]
             [shipyard.workspace.views :as workspace]))
 
 (def selection-attrs
@@ -133,6 +135,24 @@
         [:label "Material group" [:select {:name "target"}
                                   (for [g groups] [:option {:value (str "group/" (:group/id g)) :selected (= (:group-id target) (:group/id g))} (:group/name g)])]]])]))
 
+(defn color-control
+  ([hex picker] (color-control hex picker {:name "base" :id "paint-base" :label "Hex color"}))
+  ([hex picker {:keys [name id label]}]
+   (let [[h s v] (color/picker-value hex picker)]
+     [:div.color-picker
+      [:input {:type "hidden" :name "saturation" :value s}]
+      [:input {:type "hidden" :name "brightness" :value v}]
+      [:div.color-spectrum {:tabindex 0 :role "slider" :aria-label "Saturation and brightness"
+                            :aria-valuemin 0 :aria-valuemax 100 :aria-valuenow (* 100 s)
+                            :aria-valuetext (str "Saturation " (int (* 100 s)) "%, brightness " (int (* 100 v)) "%")
+                            :data-saturation s :data-brightness v
+                            :style (str "--spectrum-hue:hsl(" h ",100%,50%)")}
+       [:span.color-spectrum__cursor {:style (str "left:" (* 100 s) "%;top:" (* 100 (- 1 v)) "%")}]]
+      [:label "Hue" [:input.color-hue {:name "hue" :type "range" :min 0 :max 359 :step 1 :value h :aria-label "Hue"}]]
+      [:label label [:input {:id id :type "text" :name name :value hex :required true
+                             :pattern "#[0-9a-fA-F]{6}" :maxlength 7 :spellcheck false
+                             :data-paint-input "true" :data-color-value "true" :aria-label label}]]])))
+
 (defn material-control [label name type value]
   [:label.paint-control [:span label [:output {:for (str "paint-" name)} value]]
    [:input (cond-> {:id (str "paint-" name) :type type :name name :value value :data-paint-input "true"
@@ -154,7 +174,7 @@
    [:input {:type "hidden" :name "target" :value (:key target)}]
    [:input {:type "hidden" :name "sequence" :value sequence}]
    [:div.paint-form-body
-    (material-control "Base colour" "base" "color" (transforms/color-hex (:base value)))
+    (color-control (transforms/color-hex (:base value)) nil)
     (material-control "Metalness" "metalness" "range" (:metalness value))
     (material-control "Roughness" "roughness" "range" (:roughness value))
     (material-control "Glow" "glow" "range" (get value :glow 0))
@@ -192,7 +212,7 @@
        [:input {:type "range" :name "radius" :min 2 :max 100 :value 20
                 :oninput "this.parentElement.querySelector('output').value=this.value+' px'"}]]
       [:label.paint-checkbox [:input {:type "checkbox" :name "cross-instances" :checked true}] "Cross instances"]
-      (material-control "Detail colour" "brush-color" "color" "#ff0000")
+      (color-control "#ff0000" nil {:name "brush-color" :id "paint-brush-color" :label "Detail hex color"})
       (material-control "Detail metalness" "brush-metalness" "range" (:metalness material))
       (material-control "Detail roughness" "brush-roughness" "range" (:roughness material))
       (material-control "Detail glow" "brush-glow" "range" (get material :glow 0))
@@ -248,7 +268,8 @@
                 (list (when-not (:layer-id target) (write-targets record targets target anchor-key))
                       (group-controls record target)
                       (material-form record target value paths sequence)))
-              (when model-ready? (brush-panel record target targets prepared state flush-interval value))))
+              (when model-ready? (brush-panel record target targets prepared state flush-interval value))
+              (presets/panel (:preset-db records) nil)))
       (when (and record target)
         [:form#paint-default (merge selection-attrs {:method "post" :action "/ships/paint/default" :hx-post "/ships/paint/default"})])]
      (when record [:div.paint-legend

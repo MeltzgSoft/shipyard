@@ -27,7 +27,7 @@
         target (or (first (filter #(= (:target state) (:key %)) targets)) (first targets))]
     (workspace/update-workspace! workspace :ships assoc :target (:key target))
     (htmx/fragment
-     (concat (views/panel {:schemes (vals records) :ships (vals (ships/listing! named-ships))
+     (concat (views/panel {:preset-db schemes :schemes (vals records) :ships (vals (ships/listing! named-ships))
                            :classes (vals (:loadouts (loadouts/snapshot! loadouts)))} draft targets target record
                           (transforms/target-material record target)
                           (transforms/affected-paths record targets target)
