@@ -167,6 +167,29 @@ by hyphens (for example, **Sensor Array** becomes **sensor-array**). Custom role
 available in the individual editor and socket acceptance choices, and participate in
 assembly compatibility. Weapon sockets retain their turret-only restriction.
 
+Part and ship thumbnails are saved in a disk cache and reused across reloads and app
+restarts. Saved geometry, orientation, assembly, region, scheme and paint changes produce
+updated previews when the list is shown again. Rendering shares a background job pool
+with mesh preparation and mount recovery. By default, two background jobs run at a time
+across the whole app, including import review. The cache removes older images as it fills; missing images
+are recreated automatically. After replacing STL files externally, rescan the library.
+
+To change background concurrency, add `:shipyard.jobs/pool {:threads 2 :queue-size 128}`
+to your application `config.edn` and restart the app. Omitted or nil limits use these
+defaults; they do not mean unlimited or follow CPU count. Both values must be positive
+integers. A full queue leaves previews preparing until a later poll can admit the work.
+Canceling an import stops only its jobs; browsing and thumbnails continue using the pool.
+
+The **Thumbnail generation** indicator shows actual running and queued thumbnail
+jobs across Part Browser, import review and Ship Browser. Cached image downloads,
+unrequested rows and unavailable previews do not count as generation work. Thumbnails
+are requested as rows enter view; opening a list does not generate the whole library.
+Hover over **No preview** for the reason a row is skipped. Part and ship thumbnail cache lookups use small persistent references, so refreshing
+a cached preview does not reread its region face assignments or custom paint.
+Queued thumbnail jobs carry identifiers and version metadata; workers load geometry
+and paint when they execute. Queue capacity bounds pending work, while worker count
+controls simultaneous heavy rendering. A larger queue does not increase parallelism.
+
 Double-click a row, or focus it and press Enter, to open the individual editor with
 its floating inspector. **Back to table** restores filters, selection and scroll position.
 The individual editor has no listing sidebar.

@@ -60,7 +60,8 @@
   ([] (start! false))
   ([server?] (start! server? library!))
   ([server? build-library!] (start! server? build-library! author!))
-  ([server? build-library! author-catalog!]
+  ([server? build-library! author-catalog!] (start! server? build-library! author-catalog! {}))
+  ([server? build-library! author-catalog! overrides]
    (let [temp (fs/create-temp-dir {:prefix "shipyard-assembly-"})
          root (build-library! (fs/path temp "library"))
          cfg (-> (system/load-config! {:profile :test :config-dir (str (fs/path temp "config")) :env {}})
@@ -68,7 +69,8 @@
                  (assoc-in [:shipyard.mesh/cache :cache-home] (str (fs/path temp "cache")))
                  (assoc-in [:shipyard.store/db :data-home] (str (fs/path temp "data")))
                  (assoc-in [:shipyard.http/routes :config-dir] (str (fs/path temp "config")))
-                 (assoc-in [:shipyard.http/server :port] 0))
+                 (assoc-in [:shipyard.http/server :port] 0)
+                 (system/deep-merge overrides))
          cfg (cond-> cfg (not server?) (dissoc :shipyard.http/server))
          started (system/start! cfg)]
      (author-catalog! (:shipyard.catalog/db started))
@@ -76,6 +78,6 @@
 
 (defn stop! [{:keys [temp system]}]
   (ig/halt! system)
-  (when-let [^ExecutorService pool (get-in system [:shipyard.http/jobs :pool])]
+  (when-let [^ExecutorService pool (get-in system [:shipyard.jobs/pool :pool])]
     (.awaitTermination pool 30 TimeUnit/SECONDS))
   (fs/delete-tree temp))

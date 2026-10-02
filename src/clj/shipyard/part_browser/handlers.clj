@@ -7,10 +7,13 @@
             [shipyard.mesh.cache :as cache]
             [shipyard.importer.db :as importer]
             [shipyard.part-browser.thumbnail :as thumbnail]
+            [shipyard.part.orientation :as orientation]
+            [shipyard.thumbnail.cache :as previews]
+            [shipyard.thumbnail.views :as preview-views]
             [shipyard.wire :as wire])
   (:import [java.nio.file Files]))
 
-(defn- thumbnail-effective! [{:keys [catalog cache] :as deps} {:keys [path-params]}]
+(defn- thumbnail-effective! [{:keys [catalog cache thumbnails] :as deps} {:keys [path-params]}]
   (let [id (:id path-params)
         part (catalog/summary! catalog id)]
     (if-not (:part/renderable part)
@@ -19,15 +22,21 @@
         (case state
           :ready
           (try
-            (let [part (:part (catalog/part-context! catalog id))
-                  regions (thumbnail/source-regions (:part/paint-regions part) mesh-key)
-                  ;; Face identities refer to the original mesh, never a simplified LOD.
-                  tiers (if (seq (:faces regions)) [0] (reverse (range (count (:lod-tiers cache)))))
-                  ^java.io.File file (first (filter fs/regular-file? (map #(cache/tier-file cache mesh-key %) tiers)))
-                  mesh (-> (wire/decode (Files/readAllBytes (.toPath file)))
-                           (thumbnail/region-mesh regions))]
-              (htmx/fragment [:img {:src (thumbnail/image! mesh (:part/orientation part))
-                                    :width 128 :height 88 :alt (str "Preview of " (:part/name part))}]))
+            (let [stamp (:stamp (catalog/thumbnail-context! catalog id))
+                  result (previews/request-derived!
+                          thumbnails {:part stamp :mesh mesh-key :tiers (:lod-tiers cache)}
+                          #(let [part (:part (catalog/thumbnail-context! catalog id stamp))
+                                 regions (thumbnail/source-regions (:part/paint-regions part) mesh-key)
+                                 ;; Face identities require the original mesh.
+                                 tiers (if (seq (:faces regions)) [0] (reverse (range (count (:lod-tiers cache)))))
+                                 ^java.io.File file (first (filter fs/regular-file? (map (fn [tier] (cache/tier-file cache mesh-key tier)) tiers)))
+                                 pose (orientation/orientation-of (:part/orientation part))]
+                             {:inputs {:mesh mesh-key :tier (str (fs/file-name file)) :pose pose
+                                       :regions (thumbnail/region-style regions)}
+                              :render! (fn [] (thumbnail/png! (-> (wire/decode (Files/readAllBytes (.toPath file)))
+                                                                  (thumbnail/region-mesh regions)) pose))}))]
+              (htmx/fragment (preview-views/preview result (str "/thumbnails/" (urls/encode-id id))
+                                                    "closest .part-thumbnail" (:part/name part))))
             (catch Exception _ (htmx/fragment [:span "Preview unavailable"])))
           :preparing (htmx/fragment [:span {:hx-get (str "/thumbnails/" (urls/encode-id id))
                                             :hx-trigger "load delay:600ms" :hx-target "closest .part-thumbnail"} "…"])

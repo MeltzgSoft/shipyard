@@ -4,6 +4,7 @@
             [datalevin.core :as d]
             [integrant.core :as ig]
             [shipyard.http.jobs]
+            [shipyard.jobs]
             [shipyard.library.index]
             [shipyard.settings.db :as settings]
             [shipyard.store.db :as store])
@@ -27,10 +28,11 @@
 (defn- assert-orderly-shutdown! [phase]
   (let [directory (fs/create-temp-dir {:prefix "shipyard-lifecycle-"})
         system (ig/init {:shipyard.store/db {:directory (str directory)}
+                         :shipyard.jobs/pool {:store (ig/ref :shipyard.store/db)}
                          :shipyard.library/index {:store (ig/ref :shipyard.store/db)}
-                         :shipyard.http/jobs {:library (ig/ref :shipyard.library/index) :cache {}}})
+                         :shipyard.http/jobs {:workers (ig/ref :shipyard.jobs/pool) :library (ig/ref :shipyard.library/index) :cache {}}})
         database (:shipyard.store/db system)
-        ^ExecutorService pool (get-in system [:shipyard.http/jobs :pool])
+        ^ExecutorService pool (get-in system [:shipyard.jobs/pool :pool])
         entered (promise)
         interrupted (promise)
         release (CountDownLatch. 1)

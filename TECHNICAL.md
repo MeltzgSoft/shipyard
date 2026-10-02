@@ -137,8 +137,14 @@ no namespace exists to hold constants.
  :shipyard.mesh/cache
  {:crease-deg 35
   :lod-tiers  [1.0 0.25 0.05]
-  :cap-bytes  #profile {:default 4294967296 :test 67108864}
-  :threads    :auto}
+  :cap-bytes  #profile {:default 4294967296 :test 67108864}}
+
+ :shipyard.jobs/pool
+ {:store #ig/ref :shipyard.store/db :threads 2 :queue-size 128}
+
+ :shipyard.http/jobs
+ {:library #ig/ref :shipyard.library/index :cache #ig/ref :shipyard.mesh/cache
+  :workers #ig/ref :shipyard.jobs/pool}
 
  :shipyard.http/routes
  {:library #ig/ref :shipyard.library/index
@@ -823,9 +829,10 @@ fails explicitly; incomplete tier bytes are never published. Staging files are
 cleaned after success or failure. Eviction tolerates a disappeared file from an
 external cache clear, while other I/O errors remain visible.
 
-Preprocessing runs on the calling thread: the HTTP layer supplies its bounded
-two-thread pool (`shipyard.http.jobs`, §7), while the canary supplies its own
-bounded parallelism. Parsing and encoding do not hold the filesystem lock.
+Preprocessing runs on the calling thread: the HTTP layer submits to the common
+application executor (`shipyard.jobs`, §7). The standalone canary uses the same
+executor implementation in its own process. Parsing and encoding do not hold the
+filesystem lock.
 
 **Cache budget and eviction.** With self-contained per-tier files, the Cruiser Hull's
 tier 0 is 4.95 MB against a 6.64 MB source
@@ -922,16 +929,23 @@ while retaining the successfully prepared mesh result. The failed write does not
 an uncommitted index entry. Library/source context is checked before publishing job
 completion, so a finished job cannot supply an old library's mesh to the active one.
 
-The work runs on a two-thread pool in `shipyard.http.jobs`. That is the bounded executor
-§6.5 said would earn its place once a UI existed prefetching distinct parts, and it lives
-in the HTTP layer rather than in `shipyard.mesh.cache` so the cache keeps its inline
-contract for every other caller - the canary wants exactly that back-pressure, and an
-inline exception arrives as itself rather than wrapped in an `ExecutionException`.
+`:shipyard.jobs/pool` owns the application's only background executor, separate from
+Jetty's HTTP workers. Library/import mesh preprocessing, mount facet recovery and all
+thumbnail rendering share its capacity. `:threads` defaults to 2 and `:queue-size` to
+128 when missing or nil; both require positive integers. Neither becomes unbounded or
+derives its value from processor count. Full queues reject admission without blocking
+or running work on HTTP threads. Callers remove their pending claim and retry through
+normal UI polling. Worker tasks must not submit dependent work and wait on this pool;
+thumbnail rendering is admitted only after mesh preparation has completed.
 
-Shutdown interrupts this pool and waits up to 30 seconds for its workers to finish
-before Integrant closes the shared store. If they do not stop, shutdown fails
-and leaves the store open. Store closure also shares the transaction lock with
-reads and writes, so it cannot close a native handle during an active operation.
+Each subsystem owns a scope that tracks queued and actually running tasks. Closing an
+import removes only its queued tasks, interrupts its running work and waits for task
+bodies to finish before closing its staging store. The shared executor stays available
+to other scopes. Tracking continues even if a task ignores interruption. Full shutdown
+closes scopes and terminates the executor before the shared store closes; its explicit
+Integrant dependency enforces that order. If work cannot drain within 30 seconds,
+shutdown fails and leaves its resources open. Store closure also shares the transaction
+lock with reads and writes, so it cannot close a native handle during an active operation.
 
 Completion reaches the browser by polling, not by a push channel. The loading fragment
 carries `hx-trigger="load delay:400ms"` pointed back at the same route, so the cycle
@@ -2180,8 +2194,40 @@ compose saved class placements independently of workspace model cells. Named-shi
 previews resolve the current scheme and compatible paint against each source mesh.
 Use tier 0 when projecting source-bound face masks, otherwise the lowest cached tier;
 repeated instances share decoded geometry within the request. Thumbnail requests are
-read-only and do not take the workspace transition lock. They resolve durable values
-on each table render rather than persisting stale images.
+read-only and do not take the workspace transition lock. Workers resolve current durable
+values into immutable render inputs when a source reference is missing. A canonical SHA-256 over these
+inputs and an explicit renderer version identifies each derived PNG. Part inputs include
+source mesh key, tier, normalized pose and effective region colors; assembly inputs
+include every reachable instance's source key, tier, placement matrix and resolved
+appearance. Names and other nonvisual metadata do not invalidate images.
+
+`:shipyard.thumbnail/cache` owns a scope on the common background executor and
+per-content duplicate suppression, shared by library and import previews. PNG rendering
+and mesh decoding run off HTTP threads and share capacity with mesh preprocessing and
+mount recovery. When the common queue is full, the normal 600 ms placeholder poll retries
+admission. Failed renders show unavailable; a later request may retry after 30 seconds.
+PNG files live beside the mesh cache in `shipyard/thumbnails`, survive restarts and use
+atomic publication plus LRU eviction (default 128 MiB, retaining at least the newest
+entry). Small `.ref` files map part and assembly thumbnail source stamps to existing content keys.
+Stamps contain library identity, pose, region entity/revision references and the used
+palette, plus mesh identity and tier configuration; they never load face chunks. On a
+reference miss, a worker verifies the stamp, materializes immutable rendering inputs,
+reuses any existing content PNG and atomically publishes the reference. References share
+the cache budget; a missing PNG is a miss even if its reference remains. Concurrent
+requests resolving the same image share its render. No durable catalog schema changes
+are needed. Assembly stamps add class, named-ship and scheme revisions plus dependency
+metadata. HTTP preparation loads attachment metadata only; queued thumbnail closures
+retain stamps and mesh keys, while workers read the coherent paint/region snapshot and
+decode meshes. Mount-recovery closures retain part ids and mounts, not entire part records.
+PNGs and references are disposable derived files, not catalog records. `/thumbnail-images/:key`
+validates a 64-hex content key and serves PNGs with immutable HTTP cache headers. Old
+jobs can only publish their own immutable key, so they cannot overwrite newer previews.
+
+`GET /thumbnail-progress` polls the shared thumbnail worker scope for actual
+executing and admitted queued task counts. It excludes browser requests, cached
+downloads, failures and unloaded rows; mesh preparation and mount recovery are
+separate work. The independent `browser-lists.js` asset handles unavailable images
+and rejects responses whose originating thumbnail was detached.
 
 Control responses must not grow with unrelated mesh or paint data. Assembly validation
 and table metadata use attachment-only catalog projections; painted scenes load region

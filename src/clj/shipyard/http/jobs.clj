@@ -1,33 +1,10 @@
 (ns shipyard.http.jobs
-  "Preprocessing off the request thread (TECHNICAL.md §6.5, §7).
-
-  `shipyard.mesh.cache/ensure!` runs on the calling thread deliberately: the
-  canary wants exactly that back-pressure, and an inline exception arrives as
-  itself rather than wrapped in an `ExecutionException`. A web request wants the
-  opposite - it must return in milliseconds while a cold Cruiser hull takes
-  seconds. §6.5 said a bounded pool would earn its place once a UI existed
-  prefetching distinct parts; this is that pool, and it is here rather than in
-  the cache so the cache keeps its inline contract for every other caller.
-
-  Two threads, not more. Preprocessing allocates tens of megabytes per part
-  against a 2 GB peak budget (§11), and this is a single-user application
-  looking at one part at a time."
+  "Library-scoped mesh preparation and recovery on the common background executor."
   (:require [clojure.tools.logging :as log]
             [integrant.core :as ig]
+            [shipyard.jobs :as workers]
             [shipyard.library.index :as index]
-            [shipyard.mesh.cache :as cache])
-  (:import [java.util.concurrent ExecutorService Executors ThreadFactory TimeUnit]))
-
-(def ^:const threads 2)
-
-(defn- daemon-factory []
-  (let [n (atom 0)]
-    (reify ThreadFactory
-      (newThread [_ r]
-        (doto (Thread. ^Runnable r (str "shipyard-preprocess-" (swap! n inc)))
-          ;; Daemon: a job in flight must never keep the JVM alive after the
-          ;; server has stopped.
-          (.setDaemon true))))))
+            [shipyard.mesh.cache :as cache]))
 
 (defn status
   "The recorded state of `part-id`, or nil if no job has ever run for it."
@@ -96,7 +73,7 @@
   result of `swap!` rather than the atom afterwards is what makes that decision
   a single point rather than a race. Library validation and claiming share the
   activation lock, so a delayed caller cannot submit an old root's source."
-  [{:keys [^ExecutorService pool state library] :as jobs} part-id source]
+  [{:keys [scope state library] :as jobs} part-id source]
   (let [library-lock (:state library)]
     (locking library-lock
       (let [expected (assoc (index/part-state! library part-id) :source source)]
@@ -105,9 +82,11 @@
                 ;; claim needs a distinct identity after clear! and resubmission.
                 mine (hash-map :state :running)
                 after (swap! state claim-job part-id mine)]
-            (when (identical? mine (get after part-id))
-              (.submit pool ^Runnable #(execute! jobs part-id source expected mine)))
-            (get after part-id)))))))
+            (when (and (identical? mine (get after part-id))
+                       (not (workers/submit! scope #(execute! jobs part-id source expected mine))))
+              (swap! state #(if (identical? mine (get % part-id)) (dissoc % part-id) %)))
+            ;; A full common queue is retried by the next normal UI poll.
+            (or (get @state part-id) {:state :running})))))))
 
 (defn submit-facet-backfill!
   "Run `task` once for a mesh-key-scoped legacy mount recovery.
@@ -115,39 +94,33 @@
   The task is intentionally supplied by the HTTP layer: it owns the catalog
   write, while this component owns bounded background execution and duplicate
   suppression."
-  [{:keys [^ExecutorService pool facet-state]} key task]
+  [{:keys [scope facet-state]} key task]
   (loop []
     (let [before @facet-state]
       (if-let [existing (get before key)]
         existing
-        (let [running {:state :running}]
+        (let [running (hash-map :state :running)]
           (if (compare-and-set! facet-state before (assoc before key running))
             (do
-              (.submit pool ^Runnable
-                       #(let [result (try
-                                       (task)
-                                       {:state :complete}
-                                       (catch Throwable t
-                                         (log/warn t "mount facet recovery failed:" (first key))
-                                         {:state :failed
-                                          :message (or (ex-message t) (str (class t)))}))]
-                          (swap! facet-state assoc key result)))
+              (when-not (workers/submit! scope
+                                         #(let [result (try
+                                                         (task)
+                                                         {:state :complete}
+                                                         (catch Throwable t
+                                                           (log/warn t "mount facet recovery failed:" (first key))
+                                                           {:state :failed
+                                                            :message (or (ex-message t) (str (class t)))}))]
+                                            (swap! facet-state (fn [current] (if (identical? running (get current key))
+                                                                               (assoc current key result) current)))))
+                (swap! facet-state #(if (identical? running (get % key)) (dissoc % key) %)))
               running)
             (recur)))))))
 
 ;; --- component --------------------------------------------------------------
 
-(defmethod ig/init-key :shipyard.http/jobs [_ {:keys [library cache]}]
-  {:pool    (Executors/newFixedThreadPool threads (daemon-factory))
-   :state   (atom {})
-   :facet-state (atom {})
-   :library library
-   :cache   cache})
+(defmethod ig/init-key :shipyard.http/jobs [_ {:keys [library cache workers]}]
+  {:workers workers :scope (workers/scope! workers)
+   :state (atom {}) :facet-state (atom {}) :library library :cache cache})
 
-(defmethod ig/halt-key! :shipyard.http/jobs [_ {:keys [^ExecutorService pool]}]
-  (when pool
-    (.shutdownNow pool)
-    ;; Interruption is only a request: native mesh work may still return and
-    ;; write its scan entry. Do not let Integrant close the store beneath it.
-    (when-not (.awaitTermination pool 30 TimeUnit/SECONDS)
-      (throw (ex-info "Preprocessing workers did not stop; application store remains open" {})))))
+(defmethod ig/halt-key! :shipyard.http/jobs [_ {:keys [scope]}]
+  (workers/close! scope))

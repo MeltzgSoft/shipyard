@@ -2,7 +2,8 @@
   "Class table, expandable named hulls and server-rendered navigation forms."
   (:require [clojure.string :as str]
             [shipyard.workspace.views :as workspace-views]
-            [shipyard.http.pagination :as pagination]))
+            [shipyard.http.pagination :as pagination]
+            [shipyard.thumbnail.views :as thumbnails]))
 
 (defn- action [id action label]
   [:form.ship-card__action
@@ -96,6 +97,7 @@
    [:section#library.panel.ship-table {:hx-swap-oob "outerHTML" :data-ship-view "table"
                                        :hx-on--config-request "var r=this.querySelector('#ship-results');if(!event.detail.elt.closest('.table-pages,#ship-filters')){event.detail.parameters['table-scroll']=String(r.scrollTop)}"
                                        :hx-on--load "if(event.target===this){var r=this.querySelector('#ship-results');r.scrollTop=Number(r.dataset.scrollTop||0)}"}
+    (thumbnails/progress)
     [:header.bulk-orient__head
      [:h2 "Ship Browser"] [:p "Double-click a class to assemble it, or expand its named ships to open custom paint."]
      [:form.ship-table__new (merge workspace-views/transition-attrs

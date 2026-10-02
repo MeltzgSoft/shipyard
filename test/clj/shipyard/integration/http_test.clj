@@ -16,6 +16,7 @@
             [shipyard.fixtures :as f]
             [shipyard.http.jobs :as jobs]
             [shipyard.http.routes :as routes]
+            [shipyard.jobs]
             [shipyard.catalog.db :as catalog-db]
             [shipyard.mesh.cache :as cache]
             [shipyard.library.index :as index]
@@ -53,8 +54,9 @@
     (binding [*opened-systems* (atom [])]
       (try (f)
            (finally
-             (doseq [{:keys [jobs catalog]} @*opened-systems*]
+             (doseq [{:keys [jobs workers catalog]} @*opened-systems*]
                (ig/halt-key! :shipyard.http/jobs jobs)
+               (ig/halt-key! :shipyard.jobs/pool workers)
                (metadata/close! (:store catalog))))))))
 
 (defn- system
@@ -76,8 +78,9 @@
                  :facet-plane-epsilon-mm 0.01
                  :cap-bytes 64000000 :inflight (atom {}) :files-lock (Object.)}
         catalog (ig/init-key :shipyard.catalog/db {:library library :store database})
-        jobs    (ig/init-key :shipyard.http/jobs {:library library :cache cache})
-        system {:library library :catalog catalog :cache cache :jobs jobs
+        workers (ig/init-key :shipyard.jobs/pool {})
+        jobs    (ig/init-key :shipyard.http/jobs {:library library :cache cache :workers workers})
+        system {:workers workers :library library :catalog catalog :cache cache :jobs jobs
      ;; Keep all application configuration isolated from the developer.
                 :config-dir (temp-dir "shipyard-cfg")}]
     (swap! *opened-systems* conj system)

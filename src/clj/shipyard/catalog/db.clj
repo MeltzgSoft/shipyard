@@ -167,7 +167,10 @@
 (def summary-pattern
   [:part/id :part/uid :part/name :part/bundle :part/class :part/role-hint :part/role-source
    :part/name-override :part/bundle-override :part/class-override :part/role-override
-   :part/orientation :part/present? :part/renderable :part/variants :part/revision])
+   :part/orientation :part/present? :part/renderable :part/variants :part/source :part/revision])
+
+(def attachment-pattern
+  (conj summary-pattern :part/accepts-turrets? {:part/mounts '[*]}))
 
 (defn listing! [{:keys [store state]}]
   (store/read! store
@@ -194,7 +197,7 @@
                (fn [db]
                  (let [library (:library @state)
                        shared (store/registry-value db library)
-                       pattern (conj summary-pattern :part/source :part/accepts-turrets? {:part/mounts '[*]})
+                       pattern attachment-pattern
                        parts (into {} (map (fn [entity] [(:part/id entity) (t/part-value entity shared)]))
                                    (when library (d/q '[:find [(pull ?part pattern) ...] :in $ ?library pattern
                                                         :where [?lib :library/id ?library] [?part :part/library ?lib]]
@@ -215,6 +218,30 @@
                (fn [db]
                  (let [entity (d/pull db summary-pattern [:part/key [(:library @state) id]])]
                    (when (:part/present? entity) (t/part-value entity nil))))))
+
+(defn thumbnail-context!
+  "Cheap thumbnail invalidation stamp; optionally materialize its exact source on
+  a worker. Region entity identities change on assignment saves. The stamp includes
+  only pose, region references and their palette, never dense masks or mount data."
+  ([catalog id] (thumbnail-context! catalog id nil))
+  ([{:keys [store state]} id expected]
+   (store/read! store
+                (fn [db]
+                  (let [library (:library @state)
+                        ref [:part/key [library id]]
+                        shared (store/registry-value db library)
+                        entity (d/pull db [:part/present? :part/orientation
+                                           {:part/regions [:db/id :region/revision
+                                                           {:region/masks [:db/id {:mask/layer [:layer/id]}]}]}] ref)
+                        layers (map #(get-in % [:mask/layer :layer/id]) (get-in entity [:part/regions :region/masks]))
+                        stamp {:library library :part id :source entity
+                               :layers (select-keys (:layers shared) layers)}]
+                    (when-not (:part/present? entity)
+                      (throw (ex-info "This thumbnail's part is no longer available." {})))
+                    (when (and expected (not= expected stamp))
+                      (throw (ex-info "Thumbnail source changed before preparation." {})))
+                    (cond-> {:stamp stamp}
+                      expected (assoc :part (t/part-value (d/pull db store/part-pattern ref) shared))))))))
 
 (defn save-metadata!
   "Apply one validated bulk edit atomically. Missing parts abort the whole edit."

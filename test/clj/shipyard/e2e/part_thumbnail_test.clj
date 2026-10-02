@@ -21,6 +21,7 @@
       (is (= "Plug · turret ×1" (s/text driver (str row " .bulk-orient__mounts"))))
       (is (= "No" (s/text driver (str row " .bulk-orient__regions"))))
       (let [plain (image-src)]
+        (is (re-find #"/thumbnail-images/[0-9a-f]{64}$" plain))
         (s/open-part! driver "weapon")
         (s/await-part driver id)
         (s/click! driver "[data-detail-tab=regions]")
@@ -47,7 +48,7 @@
         (s/wait-visible! driver image)
         (is (= "Yes" (s/text driver (str row " .bulk-orient__regions"))))
         (is (not= plain (image-src)))
-        (is (s/js driver (str "() => document.querySelector(\"" image "\").naturalWidth === 128")))
+        (is (s/wait-until #(s/js driver (str "() => document.querySelector(\"" image "\").naturalWidth === 128"))))
         (s/screenshot-el! driver "#library" (java.io.File. "/tmp/shipyard-part-region-thumbnails.png"))
         (s/open-part! driver "weapon")
         (s/await-part driver id)
