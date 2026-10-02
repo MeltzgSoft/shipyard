@@ -76,7 +76,7 @@
 
 (defn remember! [workspace mode params]
   (update-workspace! workspace mode update :filters merge
-                     (select-keys params ["bundle" "class" "role" "q" "orientation" "table-scroll" "expanded" "page"])))
+                     (select-keys params ["bundle" "class" "role" "q" "orientation" "variant" "table-scroll" "expanded" "page"])))
 
 (defn outgoing! [{:keys [workspace assembly]} params]
   (let [mode (:workspace (active-context! workspace))]

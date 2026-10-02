@@ -835,7 +835,9 @@
   (let [sys (system (library-tree))
         h (handler sys)]
     (testing "the mode and filtered table are server-rendered"
-      (is (str/includes? (:body (GET h "/orient")) "Part Browser"))
+      (let [body (:body (GET h "/orient"))]
+        (is (str/includes? body "bulk-orient-filters"))
+        (is (not (str/includes? body "<h2>Part Browser</h2>"))))
       (let [body (:body (GET h "/orient/parts" "role=hull&orientation=unset"))]
         (is (str/includes? body "Cruiser Hull"))
         (is (not (str/includes? body "Classic Ram Prow")))))

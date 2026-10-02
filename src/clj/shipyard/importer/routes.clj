@@ -1,9 +1,15 @@
 (ns shipyard.importer.routes
   (:require [shipyard.http.contracts :as contracts]
-            [shipyard.importer.handlers :as handlers]))
+            [shipyard.importer.handlers :as handlers]
+            [shipyard.part-browser.handlers :as thumbnails]))
 
 (defn routes [deps]
-  [["/imports/group" {:post {:handler #(handlers/edit-group! deps % :group)
+  [["/imports/thumbnails/:file" {:get {:handler (partial thumbnails/file-thumbnail! deps)
+                                       :parameters {:path [:map [:file string?]]}
+                                       :responses contracts/html-responses}}]
+   ["/imports/choose" {:post {:handler (partial handlers/choose! deps)
+                              :responses contracts/html-responses}}]
+   ["/imports/group" {:post {:handler #(handlers/edit-group! deps % :group)
                              :parameters {:form [:map [:name {:optional true} string?]]}
                              :responses contracts/html-responses}}]
    ["/imports/split" {:post {:handler #(handlers/edit-group! deps % :split)

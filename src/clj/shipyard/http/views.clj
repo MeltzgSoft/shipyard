@@ -21,10 +21,8 @@
 ;; --- parts ------------------------------------------------------------------
 
 (defn unrenderable-reason
-  "Why a part cannot be previewed, in the user's terms, or nil when it can.
-
-  Never a reason to hide it. Some folders lack an unpitted `unsupported.stl`;
-  a browser that omits what you own is lying to you (§5.3)."
+  "Why a part cannot use editing/assembly previews, or nil when it can.
+  Import thumbnails may independently preview supported geometry."
   [{:part/keys [renderable variants]}]
   (when-not renderable
     (let [variants (set variants)]
@@ -71,15 +69,18 @@
   a `load` trigger, and repeating it here would make the panel refetch itself
   forever."
   ([parts] (library-results parts nil))
-  ([parts page]
-   (let [window (pagination/window parts page)]
-     [:div#library-results.results
-      [:p.results__count (case (:total window)
-                           0 "No parts match."
-                           1 "1 part"
-                           (format "%,d parts" (:total window)))]
-      (pagination/controls window "/library" "#library-results" "#filters")
-      (when (seq parts) [:ul.parts (map part-card (:items window))])])))
+  ([parts page] (library-results parts page false))
+  ([parts page chunk?]
+   (let [window (pagination/batch-window parts page chunk?)
+         content (list (when (seq (:items window)) [:ul.parts (map part-card (:items window))])
+                       (pagination/more window "/library" "#library-results" "#filters"))]
+     (if chunk? content
+         [:div#library-results.results
+          [:p.results__count (case (:total window)
+                               0 "No parts match."
+                               1 "1 part"
+                               (format "%,d parts" (:total window)))]
+          content]))))
 
 ;; --- part detail ------------------------------------------------------------
 

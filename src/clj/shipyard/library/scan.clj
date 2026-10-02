@@ -183,8 +183,8 @@
 
 (defn source-variant
   "The unpitted unsupported variant the mesh pipeline should open, or nil when
-  it is absent. Pitted-only and supported-only folders are catalogued and
-  flagged, never dropped - a library browser that hides what you own is lying."
+  it is absent. Pitted-only and supported-only folders remain catalogued;
+  each browser decides which catalog entries to display."
   [vs]
   (some vs renderable))
 

@@ -30,8 +30,8 @@
             [shipyard.http.validation :as validation]
             [shipyard.http.views :as views]
             [shipyard.vocabulary.routes :as vocabulary-routes]
-            [shipyard.thumbnail.routes :as thumbnail-routes]
             [shipyard.vocabulary.db :as vocabulary]
+            [shipyard.thumbnail.routes :as thumbnail-routes]
             [shipyard.library.index :as index]
             [shipyard.importer.routes :as import-routes]
             [shipyard.mesh.cache :as cache]
@@ -87,7 +87,7 @@
                  {:bundle (blank->nil (get params "bundle"))
                   :class  (blank->nil (get params "class"))
                   :role   (some-> (get params "role") blank->nil keyword)
-                  :q      (blank->nil (get params "q"))}) (get params "page")))))
+                  :q      (blank->nil (get params "q"))}) (get params "page") (= "1" (get params "chunk"))))))
 
 ;; --- part detail ------------------------------------------------------------
 

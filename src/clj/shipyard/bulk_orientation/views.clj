@@ -5,11 +5,10 @@
             [shipyard.bulk-orientation.transforms :as bulk]
             [shipyard.http.views :as http-views]
             [shipyard.http.urls :as urls]
-            [shipyard.file-picker.views :as file-picker]
             [shipyard.http.pagination :as pagination]
             [shipyard.vocabulary.views :as vocabulary]
             [shipyard.part.orientation :as orientation]
-            [shipyard.thumbnail.views :as thumbnails]
+            [shipyard.part-browser.transforms :as parts]
             [shipyard.workspace.views :as workspace-views]
             [shipyard.workspace.transforms :as workspace-transforms]))
 
@@ -28,6 +27,10 @@
      [:summary (str (count files) (if (= 1 (count files)) " file" " files"))]
      (for [{:keys [key chain variant]} files]
        [:label.import-files__file
+        [:span.part-thumbnail.import-file-thumbnail
+         {:hx-get (str "/imports/thumbnails/" key)
+          :hx-trigger "intersect once root:#bulk-orient-results" :hx-sync "this:drop"
+          :hx-disabled-elt "this" :hx-target "this" :hx-swap "innerHTML"} "…"]
         [:span {:title (str/join " → " chain)} (str/join " → " chain)]
         [:select {:aria-label (str "Variant for " (last chain)) :data-import-file key
                   :hx-post "/imports/variant" :hx-trigger "change"
@@ -48,7 +51,8 @@
 (defn- orientation-row [selected part]
   (let [[yaw pitch roll] (orientation/to-euler-degrees (:part/orientation part))
         reason (http-views/unrenderable-reason part)
-        renderable? (nil? reason)]
+        renderable? (nil? reason)
+        thumbnail? (parts/thumbnail? part (:import/source part))]
     [:div.bulk-orient__row
      {:tabindex "0" :data-workspace-transition "true" :data-part-row (:part/id part)
       :hx-on:dblclick (when-not (:import/source part) "if(!this.hasAttribute('disabled')&&event.target.tagName!=='INPUT'){document.getElementById('part-open-id').value=this.dataset.partRow; document.getElementById('part-open').requestSubmit();}")
@@ -56,11 +60,11 @@
      [:input {:type "checkbox" :value (:part/id part) :aria-label (str "Select " (:part/name part))
               :data-bulk-select "true" :name "selected" :checked (contains? selected (:part/id part))}]
      [:span.part-thumbnail
-      (if renderable?
+      (if thumbnail?
         {:hx-get (str "/thumbnails/" (urls/encode-id (:part/id part)))
          :hx-trigger "intersect once root:#bulk-orient-results" :hx-sync "this:drop" :hx-disabled-elt "this" :hx-target "this" :hx-swap "innerHTML"}
         {:title reason})
-      (if renderable? "…" "No preview")]
+      (if thumbnail? "…" "No preview")]
      [:span.bulk-orient__part (:part/name part)]
      [:span.bulk-orient__bundle (:part/bundle part)]
      [:span.bulk-orient__role (name (or (:part/role-hint part) :unknown))]
@@ -76,34 +80,60 @@
      [:code (if (bulk/saved? part) (angle-label roll) "—")]
      [:span {:class (if (bulk/saved? part) "bulk-orient__saved" "bulk-orient__unset")}
       (cond
-        (not renderable?) "No preview"
+        (not renderable?) (if thumbnail? "Unavailable" "No preview")
         (bulk/saved? part) "Saved"
         :else "Unset")]]))
+
+(def selection-attrs
+  {:hx-post "/orient/select-all" :hx-target "#bulk-orient-selection" :hx-swap "outerHTML"
+   :hx-include "#bulk-orient-filters, #part-table-position, [data-part-page]"
+   :hx-params "selection,bundle,class,role,q,orientation,variant,table-scroll,page"
+   :hx-sync "#workspace-navigation:drop"
+   :hx-disabled-elt "[data-bulk-select], [data-select-all], [data-workspace-mode], [data-workspace-transition], .part-bulk-edit button"})
+
+(defn matching-checkbox [parts selected]
+  (let [ids (map :part/id parts)
+        n (count (filter selected ids))
+        all? (and (seq ids) (= n (count ids)))
+        mixed? (and (pos? n) (not all?))]
+    [:input#part-select-matching
+     (merge selection-attrs
+            {:type "checkbox" :aria-label "Select all matching parts" :title "Select or deselect all matching parts"
+             :data-select-all "all" :checked (boolean all?) :disabled (empty? ids)
+             :aria-checked (if mixed? "mixed" (str (boolean all?))) :data-indeterminate (str mixed?)
+             :hx-trigger "change" :hx-vals "js:{selection:this.checked?'all':'matching-none'}"})]))
 
 (defn results
   ([parts] (results parts #{}))
   ([parts selected] (results parts selected "0"))
   ([parts selected scroll] (results parts selected scroll nil))
-  ([parts selected scroll page]
-   (let [window (pagination/window parts page) parts (:items window)]
-     [:div#bulk-orient-results.bulk-orient__results
-      {:data-scroll-top (or scroll "0") :hx-on--load "if(event.target===this){this.scrollTop=Number(this.dataset.scrollTop)}"
-       :onscroll "document.getElementById('part-table-position').value=this.scrollTop"}
-      [:input#part-table-position {:type "hidden" :name "table-scroll" :value (or scroll "0")}]
-      [:input {:type "hidden" :name "page" :value (:page window) :data-part-page true}]
-      [:p.results__count (format "%d matches" (:total window))]
-      (pagination/controls window "/orient/parts" "#bulk-orient-results" "#bulk-orient-filters")
-      [:form.bulk-orient__table {:role "group" :aria-label "Parts"
-                                 :method "post" :action "/orient/selection" :hx-post "/orient/selection" :hx-trigger "change[target.matches('[data-bulk-select]')]" :hx-include "#part-table-position, [data-part-page]" :hx-target "#bulk-orient-selection"
-                                 :hx-swap "outerHTML" :hx-sync "this:replace"
-                                 :hx-disabled-elt "[data-workspace-mode], [data-workspace-transition], .part-bulk-edit button, [data-import-group]"}
-       [:input {:type "hidden" :name "visible" :value (pr-str (mapv :part/id parts))}]
-       [:div.bulk-orient__columns {:aria-hidden "true"}
-        [:span] [:span "Preview"] [:span "Part"] [:span "Bundle / faction"] [:span "Role"] [:span "Class"] [:span (if (:import/source (first parts)) "Variant" "Mount summary")] [:span (if (:import/source (first parts)) "Files / variants" "Regions")] [:span "Yaw"] [:span "Pitch"]
-        [:span "Roll"] [:span "Orientation"]]
-       (if (seq parts)
-         (map (partial orientation-row selected) parts)
-         [:p.bulk-orient__empty "No parts match these filters."])]])))
+  ([parts selected scroll page] (results parts selected scroll page false))
+  ([parts selected scroll page chunk?]
+   (let [checkbox (matching-checkbox parts selected)
+         window (pagination/batch-window parts page chunk?) parts (:items window)
+         rows (for [[n batch] (map-indexed vector (partition-all pagination/page-size parts))]
+                [:div.list-chunk {:data-list-page (if chunk? (:page window) (inc n))}
+                 (map (partial orientation-row selected) batch)])
+         more (pagination/more window "/orient/parts" "#bulk-orient-results" "#bulk-orient-filters")]
+     (if chunk?
+       (list rows more)
+       [:div#bulk-orient-results.bulk-orient__results
+        {:data-scroll-top (or scroll "0") :hx-on--load "if(event.target===this){this.scrollTop=Number(this.dataset.scrollTop)}"
+         :onscroll "document.getElementById('part-table-position').value=this.scrollTop"}
+        [:input#part-table-position {:type "hidden" :name "table-scroll" :value (or scroll "0")}]
+        [:input {:type "hidden" :name "page" :value (:page window) :data-part-page true}]
+        [:p.results__count (format "%d matches" (:total window))]
+        [:form.bulk-orient__table {:role "group" :aria-label "Parts"
+                                   :method "post" :action "/orient/selection" :hx-post "/orient/selection" :hx-trigger "change[target.matches('[data-bulk-select]')]" :hx-include "#part-table-position, [data-part-page]" :hx-target "#bulk-orient-selection"
+                                   :hx-swap "outerHTML" :hx-sync "this:replace"
+                                   :hx-disabled-elt "[data-workspace-mode], [data-workspace-transition], .part-bulk-edit button, [data-select-all], [data-import-group]"}
+         [:div.bulk-orient__columns
+          checkbox [:span "Preview"] [:span "Part"] [:span "Bundle / faction"] [:span "Role"] [:span "Class"] [:span (if (:import/source (first parts)) "Variant" "Mount summary")] [:span (if (:import/source (first parts)) "Files / variants" "Regions")] [:span "Yaw"] [:span "Pitch"]
+          [:span "Roll"] [:span "Orientation"]]
+         (if (seq parts)
+           rows
+           [:p.bulk-orient__empty "No parts match these filters."])
+         more]]))))
 
 (defn- selection-controls [selection]
   (let [ids (bulk/selected-ids selection)]
@@ -150,10 +180,7 @@
   ([facets selection root import-session]
    [:section#library.panel.bulk-orient
     (when-not import-session (http-views/settings-panel root))
-    (thumbnails/progress)
-    [:header.bulk-orient__head [:h2 (if import-session "Part Browser · Import mode" "Part Browser")]
-     [:p (if import-session "Review inferred fields. Select rows for bulk edits and orientation. Mount authoring and region painting are disabled."
-             "Select rows to edit fields or orient together. Double-click a part to open its editor.")]]
+    (pagination/progress)
     (if import-session
       [:div.import-review
        [:p "Archive: " (:archive import-session)]
@@ -161,12 +188,6 @@
          [:details.import-warnings
           [:summary (str "Skipped " (count skipped) " empty nested ZIP " (if (= 1 (count skipped)) "file" "files"))]
           [:ul (for [chain skipped] [:li (str/join " → " chain)])]])
-       (for [[selection label] [["all" "Select entire import"] ["none" "Clear selection"]]]
-         [:form {:method "post" :action "/imports/selection" :hx-post "/imports/selection" :hx-target "#bulk-orient-selection" :hx-swap "outerHTML"
-                 :hx-sync "#workspace-navigation:drop"
-                 :hx-disabled-elt "[data-workspace-mode], [data-workspace-transition], [data-bulk-select], [data-import-select], .part-bulk-edit button, [data-import-group]"}
-          [:input {:type "hidden" :name "selection" :value selection}]
-          [:button {:type "submit" :data-import-select selection} label]])
        [:form {:method "post" :action "/imports/group" :hx-post "/imports/group"
                :hx-target "#bulk-orient-selection" :hx-swap "outerHTML"
                :hx-sync "#workspace-navigation:drop"
@@ -174,29 +195,39 @@
         [:input {:name "name" :placeholder "Optional group name" :aria-label "Grouped part name"}]
         [:button {:type "submit" :data-import-group true} "Group selected rows"]]
        [:p "Matching versions share a row. Expand Files / variants to assign each file or split a group. Select rows to group missed matches; the resulting row shares its labels and orientation."]
-       [:p "Original ZIP archives are kept. Only unambiguous unsupported models have previews."]
+       [:p "Original ZIP archives are kept. Thumbnails prefer unsupported files; supported-only rows show their print supports. Orientation editing requires an unambiguous unsupported file."]
        [:form (merge workspace-views/transition-attrs {:method "post" :action "/imports/commit" :hx-post "/imports/commit" :hx-target "#detail" :hx-disabled-elt "find button"})
         [:button {:type "submit" :data-workspace-transition true} "Import into library"]]
        [:form (merge workspace-views/transition-attrs {:method "post" :action "/imports/cancel" :hx-post "/imports/cancel" :hx-target "#detail"})
         [:button {:type "submit" :data-workspace-transition true} "Cancel import"]]
        [:p#import-status {:role "status"}]]
-      [:form.import-start (merge workspace-views/transition-attrs {:method "post" :action "/imports/start" :hx-post "/imports/start" :hx-target "#detail" :hx-disabled-elt "find button"})
-       (file-picker/field {:id "import-archive"})
-       [:button {:type "submit" :disabled (nil? root)} "Review archive"]
+      [:form.import-start (merge workspace-views/transition-attrs {:method "post" :action "/imports/choose" :hx-post "/imports/choose" :hx-target "#detail"})
+       [:button {:type "submit" :disabled (nil? root) :data-picker-browse true
+                 :data-workspace-transition true :aria-label "Browse for ZIP archive"} "Import ZIP…"]
        [:span.htmx-indicator "Unpacking archive…"]
        [:p#import-status {:role "status"}]])
     [:form#bulk-orient-filters.filters
      {:data-workspace-filters "true" :hx-get "/orient/parts" :hx-target "#bulk-orient-results" :hx-swap "outerHTML"
+      :hx-sync "this:replace"
       :hx-vals "js:{page: event.type==='load' ? (document.querySelector('[data-part-page]')?.value || '1') : '1', 'table-scroll': event.type==='load' ? (document.querySelector('#part-table-position')?.value || '0') : '0'}"
       :hx-trigger "load, change[target.tagName === 'SELECT'], search, keyup changed delay:300ms"}
      [:label.filters__field "Bundle" [:select {:name "bundle"} (http-views/options "All bundles" (:bundles facets))]]
      [:label.filters__field "Class" [:select {:name "class"} (http-views/options "All classes" (:classes facets))]]
      [:label.filters__field "Role" [:select {:name "role"} (http-views/options "All roles" (map name (:roles facets)))]]
+     (when import-session
+       [:label.filters__field "Variant"
+        [:select {:name "variant"}
+         [:option {:value ""} "All variants"]
+         [:option {:value "unsupported"} "Unsupported"]
+         [:option {:value "supported"} "Supported"]
+         [:option {:value "unsupported-pitted"} "Unsupported (pitted)"]]])
      [:label.filters__field "Orientation" [:select {:name "orientation"}
                                            [:option {:value "all"} "Any orientation"]
                                            [:option {:value "unset"} "Orientation unset"]
                                            [:option {:value "saved"} "Orientation saved"]]]
-     [:label.filters__field "Name" [:input {:type "search" :name "q" :placeholder "Search names"}]]]
+     [:label.filters__field "Name" [:input {:type "search" :name "q" :placeholder "Search names"}]]
+     [:button (merge selection-attrs {:type "button" :data-select-all "none" :hx-trigger "click"
+                                      :hx-vals "{\"selection\":\"none\"}"}) "Clear selection"]]
     [:form#part-open (merge workspace-views/transition-attrs
                             {:hidden true :method "get" :action "/workspace/browse" :hx-get "/workspace/browse" :hx-target "#detail" :hx-swap "innerHTML settle:0ms"
                              :hx-include "#bulk-orient-filters, #part-table-position, [data-part-page]"})
