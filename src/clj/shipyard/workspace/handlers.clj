@@ -196,9 +196,7 @@
                     (append [:section#library.panel {:hx-swap-oob "outerHTML" :data-part-view "part"}])
                     (append [:section#bulk-orient.bulk-orient__stage {:hx-swap-oob "innerHTML"}]))
                 (let [grid (when (= view :grid) (orient/render! deps {:params {"part-ids" bulk-selection}}))
-                      panel (transforms/selected-filters (orient-views/panel (if (importer/session! deps)
-                                                                               (let [db (importer/listing! (importer/effective! deps))]
-                                                                                 {:bundles (catalog/bundles db) :classes (catalog/classes db) :roles (catalog/roles db)}) (facets))
+                      panel (transforms/selected-filters (orient-views/panel (orient/facets! (importer/effective! deps))
                                                                              bulk-selection (index/root! library) (importer/session! deps)) filters)]
                   (-> (htmx/fragment (views/detail-empty) (when-not grid {:events {:clear nil}}))
                       (append (into [(first panel) {:hx-swap-oob "outerHTML"}] (rest panel)))

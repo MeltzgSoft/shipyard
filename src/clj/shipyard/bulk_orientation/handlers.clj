@@ -13,16 +13,18 @@
             [shipyard.library.index :as index]
             [shipyard.importer.db :as importer]
             [shipyard.mesh.cache :as cache]
+            [shipyard.vocabulary.db :as vocabulary]
+            [shipyard.vocabulary.views :as vocabulary-views]
             [shipyard.workspace.db :as workspace]))
 
 (defn- blank->nil [x]
   (when-not (or (nil? x) (= "" x)) x))
 
-(defn- facets! [deps]
-  (let [database (importer/listing! deps)]
-    {:bundles (db/bundles database)
-     :classes (db/classes database)
-     :roles (db/roles database)}))
+(defn facets! [{:keys [catalog shared-catalog]}]
+  (let [values (merge-with into (vocabulary/choices! catalog)
+                           (when shared-catalog (vocabulary/choices! shared-catalog)))]
+    {:bundles (sort (:bundle values)) :classes (sort (:class values))
+     :roles (map keyword (sort (:role values))) :values values}))
 
 (defn- orientation-parts [deps params]
   (->> (db/browse (importer/listing! deps)
@@ -133,6 +135,8 @@
         (htmx/fragment
          (list [:span (str "Updated " (count ids) " part" (when (not= 1 (count ids)) "s") ".")]
                (update (parts-view! deps {}) 1 assoc :hx-swap-oob "outerHTML")
+               (into [:div#classification-values {:hx-swap-oob "outerHTML"}]
+                     (rest (vocabulary-views/choices (:values (facets! deps)))))
                (views/filter-updates (facets! deps) (:filters (workspace/workspace! workspace :browse)))))
         (catch Exception e (htmx/fragment [:span.detail__error (.getMessage e)] {:status 422}))))))
 

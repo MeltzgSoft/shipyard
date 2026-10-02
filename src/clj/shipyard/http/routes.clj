@@ -29,6 +29,8 @@
             [shipyard.http.urls :as urls]
             [shipyard.http.validation :as validation]
             [shipyard.http.views :as views]
+            [shipyard.vocabulary.routes :as vocabulary-routes]
+            [shipyard.vocabulary.db :as vocabulary]
             [shipyard.library.index :as index]
             [shipyard.importer.routes :as import-routes]
             [shipyard.mesh.cache :as cache]
@@ -54,10 +56,9 @@
   disagree, and computed once per page load - the library does not change while
   the process runs."
   [catalog]
-  (let [db (db/listing! catalog)]
-    {:bundles (db/bundles db)
-     :classes (db/classes db)
-     :roles   (db/roles db)}))
+  (let [values (vocabulary/choices! catalog)]
+    {:bundles (sort (:bundle values)) :classes (sort (:class values))
+     :roles (map keyword (sort (:role values))) :values values}))
 
 (defn- root! [{:keys [catalog library workspace]} _]
   (if workspace
@@ -104,7 +105,7 @@
     (htmx/fragment (views/detail-preparing part)
                    {:events {:status {:state :preparing
                                       :message "Restoring saved mount faces."}}})
-    (htmx/fragment (views/detail-ready part mesh-key {:region-layers (db/region-registry! (:catalog deps))})
+    (htmx/fragment (views/detail-ready part mesh-key {:region-layers (db/region-registry! (:catalog deps)) :roles (vocabulary/roles! (:catalog deps))})
                    {:headers {"HX-Trigger-After-Swap"
                               (htmx/trigger {:load-mesh {:url     (urls/mesh-url mesh-key 0)
                                                          :part-id (:part/id part)
@@ -253,7 +254,7 @@
                                 (assoc :mode :edit
                                        :original-mount-id (:original-mount-id edit)))]
                   (htmx/fragment
-                   (views/facet-preview preview)
+                   (views/facet-preview (assoc preview :roles (vocabulary/roles! catalog)))
                    {:events {:facet-preview {:part-id part-id
                                              :mesh-key mesh-key
                                              :triangle-index triangle-index
@@ -283,7 +284,7 @@
          mesh-key (index/mesh-key! library part-id)]
      (if (and (:part/id part) mesh-key)
        (htmx/fragment (views/detail-ready part mesh-key (assoc (merge {:mount-active? true :preserve-regions? true} view-options)
-                                                               :region-layers (db/region-registry! catalog)))
+                                                               :region-layers (db/region-registry! catalog) :roles (vocabulary/roles! catalog)))
                       {:events (assoc events :interfaces {:part-id part-id
                                                           :mesh-key mesh-key
                                                           :mounts (catalog-part/durable-mounts
@@ -592,6 +593,7 @@
     (ring/router
      (into (routes deps)
            (concat (file-picker/routes deps)
+                   (vocabulary-routes/routes deps)
                    (bulk-routes/routes deps)
                    (when (:workspace deps) (import-routes/routes deps))
                    (when (:assembly deps) (assembly-routes/routes deps))

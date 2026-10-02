@@ -16,7 +16,7 @@
 
 (defn effective! [deps]
   (if-let [session (when (:workspace deps) (session! deps))]
-    (merge deps (select-keys session [:catalog :library :jobs]) {:import-session session})
+    (merge deps (select-keys session [:catalog :library :jobs]) {:import-session session :shared-catalog (:catalog deps)})
     deps))
 
 (defn listing! [{:keys [catalog import-session]}]
