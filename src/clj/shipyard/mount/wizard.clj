@@ -6,6 +6,7 @@
             [shipyard.domain.schemas :as schemas]
             [shipyard.math :as math]
             [shipyard.mount.split :as split]
+            [shipyard.mount.cut :as cut]
             [shipyard.part.orientation :as orientation]
             [shipyard.vocabulary.transforms :as vocabulary]))
 
@@ -207,7 +208,12 @@
        (update-in [:mount/split :bounds]
                   (fn [[[xmin ymin] [xmax ymax]]]
                     ;; Reflection preserves X; reconstructing right-handed Y reverses it.
-                    [[xmin (- ymax)] [xmax (- ymin)]]))))))
+                    [[xmin (- ymax)] [xmax (- ymin)]]))
+       (:mount/outline mount)
+       (update :mount/outline
+               (fn [loops] (mapv (fn [ring]
+                                   (mapv #(orientation/reflect-position part-orientation plane offset %)
+                                         (reverse ring))) loops)))))))
 
 (defn repeat-values [mount mounts]
   (cond-> {:mount-id (some->> (:mount/id mount) (suggest-repeat-id mounts) (name))
@@ -229,6 +235,10 @@
        capacity (assoc :capacity capacity)
        (get params "split-direction") (assoc :split-direction (keyword (get params "split-direction")))
        twist-deg (assoc :twist-deg twist-deg)
+       (get params "cut-kind") (assoc :cut-kind (keyword (get params "cut-kind"))
+                                      :cut-depth (get params "cut-depth")
+                                      :cut-diameter (get params "cut-diameter")
+                                      :cut-border (get params "cut-border"))
        (seq accepts) (assoc :accepts accepts)
        mirror? (assoc :mirror? true
                       :mirror-id (get params "mirror-id")
@@ -238,6 +248,10 @@
 (defn mount-values [mount]
   (cond-> {:mount-id (some-> (:mount/id mount) (name))
            :kind (:mount/kind mount)}
+    (:mount/cut mount) (assoc :cut-kind (get-in mount [:mount/cut :kind])
+                              :cut-depth (get-in mount [:mount/cut :depth])
+                              :cut-diameter (get-in mount [:mount/cut :diameter])
+                              :cut-border (get-in mount [:mount/cut :border]))
     (seq (:mount/accepts mount)) (assoc :accepts (set (:mount/accepts mount)))
     (:mount/capacity mount) (assoc :capacity (:mount/capacity mount))
     (:mount/split mount) (assoc :split-direction (get-in mount [:mount/split :direction]))
@@ -247,7 +261,7 @@
                                     :mirror-offset (:mount/mirror-offset mount))))
 
 (defn mount-frame [mount]
-  (normalize-frame (select-keys mount [:mount/pos :mount/axis :mount/roll :mount/split])))
+  (normalize-frame (select-keys mount [:mount/pos :mount/axis :mount/roll :mount/split :mount/outline])))
 
 (defn edit-request [params existing-mounts]
   (let [mount-id (parse-mount-id (get params "mount-id"))
@@ -303,6 +317,7 @@
          original-mount-id (parse-mount-id (get params "original-mount-id"))
          kind (parse-keyword (get params "kind") kind-options)
          action (parse-keyword (get params "action") [:create :replace :update])
+         cutting (cut/request params kind)
          accepts (accepted-roles params part-role)
          capacity (or (parse-positive-long (get params "capacity")) 1)
          twist-deg (or (math/parse-finite-double (or (get params "twist-deg")
@@ -337,6 +352,8 @@
 
        (nil? frame)
        {:error "The selected face no longer has a valid frame. Pick it again."}
+
+       (:error cutting) cutting
 
        (and update? (nil? original-mount-id))
        {:error "Choose a mount to edit."}
@@ -394,6 +411,9 @@
                             :mount/roll (:mount/roll frame)
                             :mount/origin (or (:mount/origin existing-base) :picked)}
                      (:mount/facet existing-base) (assoc :mount/facet (:mount/facet existing-base))
+                     (or (:mount/outline source-frame) (:mount/outline existing-base))
+                     (assoc :mount/outline (or (:mount/outline source-frame) (:mount/outline existing-base)))
+                     (:cut cutting) (assoc :mount/cut (:cut cutting))
                      (= :socket kind) (assoc :mount/accepts accepts
                                              :mount/capacity capacity)
                      (and (= :socket kind) (> capacity 1)) (assoc :mount/split split-data)

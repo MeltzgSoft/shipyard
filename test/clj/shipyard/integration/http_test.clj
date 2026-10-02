@@ -19,6 +19,9 @@
             [shipyard.jobs]
             [shipyard.catalog.db :as catalog-db]
             [shipyard.mesh.cache :as cache]
+            [shipyard.mesh.stl :as stl]
+            [shipyard.math :as math]
+            [shipyard.pitting.geometry :as pitting-geometry]
             [shipyard.library.index :as index]
             [shipyard.wire :as wire])
   (:import [java.io File]))
@@ -118,6 +121,72 @@
           (get (triggers r) "shipyard:load-mesh") r
           (> (System/currentTimeMillis) deadline) (throw (ex-info "part never became ready" {:body (:body r)}))
           :else (do (Thread/sleep 50) (recur)))))))
+
+(deftest pitted-stl-generation-through-mount-http
+  (let [root (library-tree)
+        sys (system root)
+        h (handler sys)
+        source (io/file root prow-id "unsupported.stl")
+        target (io/file root prow-id "unsupported-pitted.stl")
+        original (java.nio.file.Files/readAllBytes (.toPath source))
+        _ (await-ready h prow-id)
+        key (index/mesh-key! (:library sys) prow-id)
+        mesh (wire/decode (java.nio.file.Files/readAllBytes (.toPath (fs/file (cache/tier-file (:cache sys) key 0)))))
+        triangles (pitting-geometry/mesh-triangles mesh)
+        selected (first (keep-indexed (fn [i [a b c]]
+                                        (when (> (last (math/cross (math/subtract b a) (math/subtract c a))) 0.1) i)) triangles))
+        preview (POST h "/facet" {:part-id prow-id :mesh-key key :triangle-index (str selected)})
+        frame (:frame (get (triggers preview) "shipyard:facet-preview"))
+        params {:part-id prow-id :mesh-key key :mount-id "pit" :kind "socket" :accepts "weapon"
+                :capacity "2" :split-direction "vertical" :frame (pr-str frame)
+                :facet-indices (pr-str (:facet-indices (get (triggers preview) "shipyard:facet-preview")))
+                :action "create" :create-pitted "true" :cut-kind "pit" :cut-depth "0.25" :cut-diameter "0.4"}
+        mounts #(get-in (catalog-db/part-context! (:catalog sys) prow-id) [:part :part/mounts])
+        read-target #(java.nio.file.Files/readAllBytes (.toPath target))]
+    (testing "save creates a suffixed STL from the original and persists section cuts"
+      (is (= 200 (:status preview)))
+      (is (= 200 (:status (POST h "/mounts" params))))
+      (is (.exists target))
+      (is (= :pit (get-in (first (mounts)) [:mount/cut :kind])))
+      (is (= key (get-in (first (mounts)) [:mount/cut :mesh-key])))
+      (is (= :pit (get-in (persisted/authored! (:catalog sys) prow-id) [:mounts 0 :mount/cut :kind])))
+      (is (> (:triangle-count (stl/parse-bytes (read-target))) 12))
+      (is (= (seq original) (seq (java.nio.file.Files/readAllBytes (.toPath source))))))
+    (let [initial (read-target)
+          edit (assoc params :action "update" :original-mount-id "pit" :cut-depth "0.5")]
+      (testing "dimension edits regenerate rather than accumulating cuts"
+        (is (= 200 (:status (POST h "/mounts" edit))))
+        (is (not= (seq initial) (seq (read-target))))
+        (is (= 0.5 (get-in (first (mounts)) [:mount/cut :depth]))))
+      (let [saved (read-target)
+            previous (mounts)]
+        (testing "invalid recess border preserves the prior file and saved definitions"
+          (let [response (POST h "/mounts" (assoc edit :cut-kind "recess" :cut-border "5"))]
+            (is (str/includes? (:body response) "border consumes"))
+            (is (= (seq saved) (seq (read-target))))
+            (is (= previous (mounts)))))
+        (testing "a publication failure restores saved mount definitions and cleans staging files"
+          (let [backup (io/file root prow-id "previous-pitted.stl")]
+            (fs/move target backup)
+            (.mkdir target)
+            (let [response (POST h "/mounts" (assoc edit :cut-depth "0.75"))]
+              (is (str/includes? (:body response) "Could not save mounts"))
+              (is (= previous (mounts)))
+              (is (empty? (fs/glob (.getParentFile target) ".shipyard-pitted-*"))))
+            (fs/delete-tree target)
+            (fs/move backup target)))
+        (testing "stale source rejects regeneration"
+          (spit source "changed")
+          (is (str/includes? (:body (POST h "/mounts" edit)) "source STL changed"))
+          (is (= previous (mounts)))
+          (with-open [out (io/output-stream source)] (.write out ^bytes original))
+          ;; Restore the indexed stamp as well: source freshness is deliberate.
+          (.setLastModified source (get-in @(:state (:library sys)) [:entries prow-id :mtime])))))
+    (testing "deleting the last cut rebuilds the variant from original bytes"
+      (is (= 200 (:status (POST h "/mounts/delete" {:part-id prow-id :mount-id "pit"}))))
+      (is (empty? (mounts)))
+      (is (= (seq original) (seq (read-target)))))
+    (fs/delete-tree root)))
 
 (defn- authoring-mesh
   [triangles]
@@ -391,6 +460,7 @@
                       :mount/axis [0.0 0.0 1.0]
                       :mount/roll [1.0 0.0 0.0]
                       :mount/facet {:mesh-key mesh-key :indices [0 1]}
+                      :mount/outline [[[0.0 0.0 0.0] [4.0 0.0 0.0] [4.0 2.0 0.0] [0.0 2.0 0.0]]]
                       :mount/origin :picked}]}
            (get (triggers saved) "shipyard:interfaces")))
     (is (str/includes? (:body saved) "port-1"))

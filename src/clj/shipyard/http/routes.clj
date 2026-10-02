@@ -40,6 +40,9 @@
             [shipyard.mount.facet-recovery :as facet-recovery]
             [shipyard.mount.wizard :as wizard]
             [shipyard.mount.split :as split]
+            [shipyard.mount.cut :as cut]
+            [shipyard.pitting.geometry :as pitting-geometry]
+            [shipyard.pitting.db :as pitting]
             [shipyard.part.orientation :as orientation]
             [shipyard.wire :as wire])
   (:import [java.io ByteArrayOutputStream FileInputStream]))
@@ -229,11 +232,13 @@
 
               :else
               (try
-                (let [{:keys [facet-indices frame points kind-hint]}
-                      (facet/select (wire/decode (read-bytes! tier0)) triangle-index
+                (let [mesh (wire/decode (read-bytes! tier0))
+                      {:keys [facet-indices frame points kind-hint]}
+                      (facet/select mesh triangle-index
                                     (select-keys cache [:facet-angle-deg :facet-plane-epsilon-mm]))
+                      outline (cut/outline (pitting-geometry/mesh-triangles mesh facet-indices))
                       frame (assoc (orientation/orient-mount-frame frame (:part/orientation part))
-                                   :face-points points)
+                                   :face-points points :mount/outline outline)
                       frame (assoc frame :mount/split (split/metadata-for frame frame :vertical))
                       edit (when-let [original-mount-id (get params "original-mount-id")]
                              (wizard/edit-request {"mount-id" original-mount-id}
@@ -320,6 +325,33 @@
                          %)
                       mounts))))))
 
+(defn- attach-cut-outline!
+  [result part cache mesh-key facet-indices params]
+  (if (:error result)
+    result
+    (let [id (get-in result [:mount :mount/id])
+          previous (wizard/mount-by-id (:part/mounts part) (or (some-> (get params "original-mount-id") (keyword)) id))
+          cut? (get-in result [:mount :mount/cut])
+          indices (or facet-indices (when (and cut? (= mesh-key (get-in previous [:mount/facet :mesh-key])))
+                                      (get-in previous [:mount/facet :indices])))
+          outline (if indices
+                    (cut/outline (pitting-geometry/mesh-triangles
+                                  (wire/decode (read-bytes! (cache/tier-file cache mesh-key 0))) indices))
+                    (or (:mount/outline previous) (get-in result [:mount :mount/outline])))
+          mounts (mapv (fn [mount]
+                         (if (= id (:mount/id mount))
+                           (cond-> (dissoc mount :mount/outline)
+                             outline (assoc :mount/outline outline)
+                             (:mount/cut mount) (assoc-in [:mount/cut :mesh-key] mesh-key))
+                           mount)) (:mounts result))
+          base (wizard/mount-by-id mounts id)
+          mirrored (when (:mirrored-mount result)
+                     (wizard/mirror-mount base (:mount/mirror-plane base) (:mount/mirror-offset base)
+                                          (:mount/mirror-id base) (:part/orientation part)))]
+      (if (and cut? (nil? indices))
+        {:error "The source mesh changed. Pick the mount face again before generating cuts."}
+        (assoc result :mounts (if mirrored (wizard/replace-mount mounts mirrored) mounts))))))
+
 (defn- save-mount!
   [{:keys [catalog library cache] :as deps} {:keys [params]}]
   (let [part-id (get params "part-id")
@@ -340,7 +372,8 @@
                                                 (catalog-part/durable-mounts (:part/mounts part))
                                                 (:part/orientation part)
                                                 (:part/role-hint part))
-                           (attach-selected-facet mesh-key facet-indices))]
+                           (attach-selected-facet mesh-key facet-indices)
+                           (attach-cut-outline! part cache mesh-key facet-indices params))]
             (if-let [error (:error result)]
               (mount-error-response!
                deps
@@ -351,7 +384,7 @@
                             :mesh-key (index/mesh-key! library part-id)}}
                {:preview (wizard/error-preview part params error)})
               (try
-                (db/save-authoring! catalog part-id (select-keys result [:mounts]))
+                (pitting/save! deps part-id (:mounts result) (:part/revision part))
                 (if-let [repeat-values (:repeat-values result)]
                   (mount-response! deps part-id {:clear-preview nil
                                                  :authoring {:state :enter
@@ -361,11 +394,10 @@
                                    {:repeat-values repeat-values})
                   (mount-response! deps part-id {:clear-preview nil
                                                  :authoring {:state :exit}}))
-                (catch Exception _
-                  (facet-error :mount-save-failed
-                               "The mount was written, but the catalog did not update. Restart Shipyard to re-ingest it."
-                               part-id
-                               500))))))))))
+                (catch Exception e
+                  (let [error (str "Could not save mounts or regenerate the pitted STL: " (.getMessage e))]
+                    (mount-error-response! deps part-id error {}
+                                           {:preview (wizard/error-preview part params error)})))))))))))
 
 (defn- edit-mount!
   [{:keys [catalog library] :as deps} {:keys [params]}]
@@ -487,11 +519,11 @@
 
           :else
           (try
-            (db/save-authoring! catalog part-id (select-keys result [:mounts]))
+            (pitting/save! deps part-id (:mounts result) (:part/revision part))
             (mount-response! deps part-id {:clear-preview nil})
-            (catch Exception _
+            (catch Exception e
               (facet-error :mount-save-failed
-                           "The mount deletion was written, but the catalog did not update. Restart Shipyard to re-ingest it."
+                           (str "Could not delete mounts or regenerate the pitted STL: " (.getMessage e))
                            part-id
                            500))))))))
 

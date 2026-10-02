@@ -8,9 +8,11 @@
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing use-fixtures]]
-            [shipyard.e2e.support :as s]
+            [shipyard.catalog.db :as catalog]
+            [shipyard.library.index :as index]
+            [shipyard.mesh.stl :as stl]
             [shipyard.fixtures :as f]
-            [shipyard.library.index :as index])
+            [shipyard.e2e.support :as s])
   (:import [javax.imageio ImageIO]
            [java.util.concurrent CountDownLatch ExecutorService TimeUnit]))
 
@@ -491,6 +493,103 @@
     (is (= "crosshair" (s/js *driver* "() => getComputedStyle(document.querySelector('canvas')).cursor")))
     (s/click! *driver* "[data-detail-tab=part]")
     (is (s/wait-until #(nil? (:authoring (s/stats *driver*)))))))
+
+(deftest mount-cuts-preview-save-regenerate-and-reload
+  ;; Use a closed solid with the same front face as the picking-only plate.
+  (let [library (:shipyard.library/index *system*)
+        root (index/root! library)
+        source (io/file root s/mount-plate-id "unsupported.stl")
+        solid (mapv (fn [tri] (mapv (fn [[x y z]] [(+ 2.0 (* 2.0 x)) (+ 1.0 y) (- (/ z 2.0) 0.5)]) tri)) (f/cube 2.0))]
+    (with-open [out (io/output-stream source)] (.write out ^bytes (f/->binary-stl solid)))
+    (index/set-root! library root)
+    (catalog/reingest! (:shipyard.catalog/db *system*) (index/parts! library) root))
+  (open-app!)
+  (select-part! "Mount Test Plate")
+  (s/await-part *driver* s/mount-plate-id)
+  (enter-authoring! s/mount-plate-id)
+  (let [{:keys [x y]} (viewport-center)] (s/click-point! *driver* x y))
+  (is (some? (await-preview)))
+  (is (= "recess" (s/js *driver* "() => document.querySelector('[name=cut-kind]').value"))
+      "plugs start with a recess option")
+  (s/click! *driver* "[name=create-pitted]")
+  (is (s/wait-until #(= 1 (count (get-in (s/stats *driver*) [:preview :cuts])))))
+  (is (false? (get-in (s/stats *driver*) [:preview :cuts 0 :depth-test])))
+  (s/select-option! *driver* "select[name=kind]" "socket")
+  (is (= "pit" (s/js *driver* "() => document.querySelector('[name=cut-kind]').value"))
+      "sockets start with a pit option")
+  (s/js *driver* "() => {
+    for (const [name, value] of Object.entries({capacity:'2', 'cut-depth':'0.25', 'cut-diameter':'0.4'})) {
+      const input = document.querySelector(`[name=${name}]`);
+      input.value = value; input.dispatchEvent(new Event('input', {bubbles:true}));
+    }
+  }")
+  (s/click! *driver* ".mount-wizard__form input[name=mirror][type=checkbox]")
+  (s/js *driver* "() => { const input = document.querySelector('[name=mirror-offset]'); input.value='0'; input.dispatchEvent(new Event('input',{bubbles:true})); }")
+  (is (s/wait-until #(= 2 (count (get-in (s/stats *driver*) [:preview :cuts])))))
+  (let [cuts (get-in (s/stats *driver*) [:preview :cuts])
+        xs (map first (:points (first cuts)))
+        mirrored-xs (map first (:points (second cuts)))]
+    (is (< (abs (+ (apply max xs) (apply min mirrored-xs))) 0.0001)
+        "mirrored wireframes mirror the entire cut volume"))
+  (let [source (io/file (get (index/source-files! (:shipyard.library/index *system*)) s/mount-plate-id))
+        target (io/file (.getParentFile source) "unsupported-pitted.stl")
+        original (java.nio.file.Files/readAllBytes (.toPath source))]
+    (s/click! *driver* "button[value=create]")
+    (is (s/wait-until #(and (.exists target) (nil? (:preview (s/stats *driver*))))))
+    (is (s/wait-until #(= 2 (count (get-in (s/stats *driver*) [:interfaces :cuts])))))
+    (is (= 2 (count (get-in (catalog/part-context! (:shipyard.catalog/db *system*) s/mount-plate-id) [:part :part/mounts]))))
+    (is (> (:triangle-count (stl/parse-file! target)) (:triangle-count (stl/parse-file! source))))
+    (testing "wireframes remain through the model with mount colors switched off"
+      (when (get-in (s/stats *driver*) [:interfaces :colors-visible])
+        (s/click! *driver* "[data-mount-colors-toggle]"))
+      (is (s/wait-until #(false? (get-in (s/stats *driver*) [:interfaces :colors-visible]))))
+      (is (true? (get-in (s/stats *driver*) [:interfaces :visible])))
+      (doseq [wire (get-in (s/stats *driver*) [:interfaces :cuts])]
+        (is (:visible wire))
+        (is (false? (:depth-test wire)))
+        (is (false? (:depth-write wire)))))
+    (let [initial (java.nio.file.Files/readAllBytes (.toPath target))]
+      (s/click! *driver* "form:has(input[name=mount-id][value='weapon-1']) button:has-text('Edit')")
+      (s/wait-visible! *driver* ".mount-wizard__form")
+      (is (= "0.25" (s/js *driver* "() => document.querySelector('[name=cut-depth]').value")))
+      (s/js *driver* "() => {const input = document.querySelector('[name=cut-depth]'); input.value='0.5'; input.dispatchEvent(new Event('input',{bubbles:true}));}")
+      (s/click! *driver* "button[value=update]")
+      (is (s/wait-until #(not= (seq initial) (seq (java.nio.file.Files/readAllBytes (.toPath target)))))))
+    (s/click! *driver* "[data-part-back]")
+    (s/wait-visible! *driver* "#bulk-orient-results .bulk-orient__row")
+    (s/go! *driver* (s/base-url *system*))
+    (s/wait-visible! *driver* "#bulk-orient-results .bulk-orient__row")
+    (select-part! "Mount Test Plate")
+    (s/await-part *driver* s/mount-plate-id)
+    (s/click! *driver* "[data-detail-tab=mounts]")
+    (is (s/wait-until #(= 2 (count (get-in (s/stats *driver*) [:interfaces :cuts])))))
+    (s/click! *driver* "form:has(input[name=mount-id][value='weapon-1']) button:has-text('Edit')")
+    (is (s/wait-until #(pos? (s/count-els *driver* ".mount-wizard__form")))
+        (str "mount editor after reload: " (s/text *driver* "#detail")))
+    (is (= "0.5" (s/js *driver* "() => document.querySelector('[name=cut-depth]').value")))
+    (s/click! *driver* "[name=create-pitted]")
+    (s/click! *driver* "button[value=update]")
+    (is (s/wait-until #(zero? (count (get-in (s/stats *driver*) [:interfaces :cuts])))))
+    (is (= (seq original) (seq (java.nio.file.Files/readAllBytes (.toPath target)))))
+    (testing "recess border edits regenerate the same variant"
+      (s/click! *driver* "form:has(input[name=mount-id][value='weapon-1']) button:has-text('Edit')")
+      (s/wait-visible! *driver* ".mount-wizard__form")
+      (s/click! *driver* "[name=create-pitted]")
+      (s/select-option! *driver* "select[name=cut-kind]" "Recess")
+      (s/js *driver* "() => {
+        for (const [name,value] of Object.entries({'cut-border':'0.25','cut-depth':'0.25'})) {
+          const input=document.querySelector(`[name=${name}]`); input.value=value; input.dispatchEvent(new Event('input',{bubbles:true}));
+        }
+      }")
+      (s/click! *driver* "button[value=update]")
+      (is (s/wait-until #(= :recess (get-in (catalog/part-context! (:shipyard.catalog/db *system*) s/mount-plate-id) [:part :part/mounts 0 :mount/cut :kind]))))
+      (let [recess (java.nio.file.Files/readAllBytes (.toPath target))]
+        (s/click! *driver* "form:has(input[name=mount-id][value='weapon-1']) button:has-text('Edit')")
+        (s/wait-visible! *driver* ".mount-wizard__form")
+        (s/js *driver* "() => {const input=document.querySelector('[name=cut-border]'); input.value='0.5'; input.dispatchEvent(new Event('input',{bubbles:true}));}")
+        (s/click! *driver* "button[value=update]")
+        (is (s/wait-until #(not= (seq recess) (seq (java.nio.file.Files/readAllBytes (.toPath target))))))))
+    (is (= (seq original) (seq (java.nio.file.Files/readAllBytes (.toPath source)))))))
 
 (deftest orbit-controls-work-outside-authoring-mode
   (open-app!)
