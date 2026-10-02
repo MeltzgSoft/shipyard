@@ -163,6 +163,12 @@
       (is (<= (+ (:y last-part) (:height last-part))
               (+ (:y library) (:height library)))
           (str "the final result should remain visible inside the library: " {:library library :last-part last-part})))
+    (s/scroll-into-view! *driver* ".part-bulk-edit")
+    (let [library (s/bounds *driver* "#library")
+          edits (s/bounds *driver* ".part-bulk-edit")]
+      (is (>= (:y edits) (:y library)) "Bulk edits remain reachable below the short table")
+      (is (<= (+ (:y edits) (:height edits)) (+ (:y library) (:height library)))
+          "Scrolling the short panel exposes the whole bulk edit form"))
     (finally
       (s/resize! *driver* 1280 900))))
 
