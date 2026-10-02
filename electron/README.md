@@ -32,10 +32,14 @@ user's browser. To exercise the Linux unpacked app:
 SHIPYARD_TEST_ELECTRON=dist/linux-unpacked/shipyard npm run test:e2e --prefix electron
 ```
 
-That executable path resolves relative to `electron/`. Linux CI runs the window
-suite under `xvfb-run`. When the harness itself runs as root, it supplies Chromium's
-required `--no-sandbox`; production launch never adds that flag. The local window
-suite also runs as an ordinary user with the default OS sandbox. Both verify
+That executable path resolves relative to `electron/`. GitHub Linux CI runs the
+window suite as an ordinary user under `xvfb-run` against the actual installed
+Debian package at `/opt/Shipyard/shipyard`. This exercises the installer's
+sandbox-helper permissions and Ubuntu AppArmor profile, including second launch.
+Playwright disables Chromium's OS sandbox by default; the harness explicitly
+enables it for ordinary-user launches and checks that `--no-sandbox` is absent.
+Only when the harness itself runs as root does it supply Chromium's required
+`--no-sandbox`; production launch never adds that flag. The suite also verifies
 `sandbox: true`, context isolation, and disabled renderer Node integration.
 
 ## Hosted packaging and releases
