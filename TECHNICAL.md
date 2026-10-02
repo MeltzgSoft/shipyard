@@ -950,7 +950,7 @@ completion, so a finished job cannot supply an old library's mesh to the active 
 `:shipyard.jobs/pool` owns the application's only background executor, separate from
 Jetty's HTTP workers. Library/import mesh preprocessing, mount facet recovery and all
 thumbnail rendering share its capacity. `:threads` defaults to 2 and `:queue-size` to
-32 when missing or nil; both require positive integers. Neither becomes unbounded or
+128 when missing or nil; both require positive integers. Neither becomes unbounded or
 derives its value from processor count. Full queues reject admission without blocking
 or running work on HTTP threads. Callers remove their pending claim and retry through
 normal UI polling. Worker tasks must not submit dependent work and wait on this pool;
