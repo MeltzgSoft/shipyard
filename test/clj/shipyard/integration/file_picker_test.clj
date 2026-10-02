@@ -73,8 +73,13 @@
                 (shutdown-agents))
         java (fs/path (System/getProperty "java.home") "bin"
                       (if (str/starts-with? (System/getProperty "os.name") "Windows") "java.exe" "java"))
-        {:keys [exit out err]} (shell/sh (str java) "-Djava.awt.headless=true"
-                                         "-cp" (System/getProperty "java.class.path")
-                                         "clojure.main" "-e" (pr-str code))]
-    (is (zero? exit) err)
-    (is (str/includes? out "headless-picker-ok"))))
+        script (fs/create-temp-file {:prefix "shipyard headless picker " :suffix ".clj"})]
+    (try
+      ;; A file avoids platform-specific command-line quoting of embedded strings.
+      (spit (str script) (pr-str code))
+      (let [{:keys [exit out err]} (shell/sh (str java) "-Djava.awt.headless=true"
+                                             "-cp" (System/getProperty "java.class.path")
+                                             "clojure.main" (str script))]
+        (is (zero? exit) err)
+        (is (str/includes? out "headless-picker-ok")))
+      (finally (fs/delete-if-exists script)))))
