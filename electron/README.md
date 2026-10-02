@@ -37,3 +37,16 @@ suite under `xvfb-run`. When the harness itself runs as root, it supplies Chromi
 required `--no-sandbox`; production launch never adds that flag. The local window
 suite also runs as an ordinary user with the default OS sandbox. Both verify
 `sandbox: true`, context isolation, and disabled renderer Node integration.
+
+## Hosted packaging and releases
+
+`.github/workflows/desktop.yml` follows Dapr's shared-payload/native-packaging
+pattern: build the jar and CLJS shell once, then call `package-desktop` on
+GitHub-hosted Linux, Windows and Apple Silicon macOS. The shared artifact also
+carries the compiled protocol-test library, which is excluded from installed
+app files. The native matrix tests each bundled Java runtime and uploads its
+installers. Linux also runs this packaged-window suite.
+
+Branch builds and manual `installers_only` smoke runs publish nothing. Version
+tags attach the complete installer set and checksums to a GitHub Release after
+all matrix legs pass. Ordinary JVM, browser and lint CI stays on Forgejo.

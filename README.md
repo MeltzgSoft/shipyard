@@ -43,7 +43,7 @@ field. Library-folder path entry also works on headless servers.
 ## Quick start
 
 For the desktop app, download the package for your platform from
-[Releases](https://forgejo.tail943578.ts.net/MeltzgSoft/shipyard/releases):
+[Releases](https://github.com/MeltzgSoft/shipyard/releases):
 
 | Platform | Package |
 |---|---|
@@ -72,9 +72,9 @@ without a restart. See the [user manual](docs/MANUAL.md).
 
 ## Desktop development and release
 
-Linux desktop builds need `binutils` (`sudo apt-get install binutils` on
-Debian/Ubuntu). Java's `jlink --strip-debug` uses its `objcopy` utility while
-packaging the bundled runtime.
+Linux desktop builds need `binutils` and `xz-utils`
+(`sudo apt-get install binutils xz-utils` on Debian/Ubuntu). Java's
+`jlink --strip-debug` uses `objcopy`, and Debian packaging uses xz compression.
 
 On a supported native build platform, install the desktop tools and build:
 
@@ -102,13 +102,20 @@ most recently. The installed shell requires its bundled jar and runtime.
 Run one backend per database; stop a separate CLI server before opening the
 desktop app with the same data directory.
 
-`.forgejo/workflows/desktop.yml` builds native packages on all three CI runners,
-tests the owned-child startup/shutdown protocol using the bundled runtime, and
-drives a real packaged Electron window on Linux. PR and manual runs retain
-installers as workflow artifacts and publish nothing. A `vX.Y.Z` tag sets
-`SHIPYARD_VERSION`, and only after every platform build succeeds does the workflow
-attach the four desktop packages and `SHA256SUMS` to a Forgejo release.
-The development uberjar remains available as a build task.
+`.github/workflows/desktop.yml` builds the shared uberjar and released CLJS shell
+once, then packages them on GitHub-hosted Linux, Windows and Apple Silicon macOS
+runners with each OS's Java runtime. The matrix calls `clojure -T:build
+package-desktop` against that exact prebuilt payload; it does not repeat AOT or
+frontend compilation. It tests the owned-child protocol using each bundled
+runtime and drives a real packaged Electron window on Linux.
+
+Mirror branch pushes and installer-only manual runs retain installers as GitHub
+Actions artifacts and publish nothing. A `vX.Y.Z` tag sets `SHIPYARD_VERSION`,
+and only after every platform build and test succeeds does the workflow attach
+the four desktop packages and `SHA256SUMS` to a GitHub Release. A manual smoke
+build defaults to `installers_only: true`; publishing manually requires a version
+tag ref and `installers_only: false`. The development uberjar remains available
+as a build task. Ordinary repository tests continue on Forgejo.
 
 Signing uses electron-builder's signing environment configuration when supplied.
 Without signing credentials, packages are unsigned; macOS and Windows apply
