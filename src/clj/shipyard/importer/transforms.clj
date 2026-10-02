@@ -87,12 +87,25 @@
 
 (def variants #{:supported :unsupported :unsupported-pitted})
 
+(defn file-preview-id [file-key] (str "file-" file-key))
+
 (defn members [entries group-id]
   (->> (vals entries) (filter #(= group-id (:group %))) (sort-by :key) (vec)))
 
 (defn preview-entry [files]
   (let [unsupported (filter #(= :unsupported (:variant %)) files)]
     (when (= 1 (count (set (map :sha unsupported)))) (first unsupported))))
+
+(defn thumbnail-entry
+  "Prefer the orientation source; supported-only review rows may show scaffolding."
+  [files]
+  (if (some #(= :unsupported (:variant %)) files)
+    (preview-entry files)
+    (let [supported (filter #(= :supported (:variant %)) files)]
+      (when (= 1 (count (set (map :sha supported)))) (first supported)))))
+
+(defn matches-variant? [variant part]
+  (or (str/blank? variant) (contains? (set (:part/variants part)) (keyword variant))))
 
 (defn inferred-entries
   "Pair matching inferred labels only when each variant has unambiguous content.

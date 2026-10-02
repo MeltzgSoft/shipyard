@@ -14,5 +14,5 @@
 
 (defn routes [deps]
   [["/files/choose/:field" {:post {:handler (partial choose! deps)
-                                   :parameters {:path [:map [:field [:enum "settings-root" "setup-root" "import-archive"]]]}
+                                   :parameters {:path [:map [:field [:enum "settings-root" "setup-root"]]]}
                                    :responses contracts/html-responses}}]])

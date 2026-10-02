@@ -2,6 +2,7 @@
   (:require [shipyard.bulk-orientation.handlers :as bulk]
             [shipyard.bulk-orientation.transforms :as selection]
             [shipyard.http.htmx :as htmx]
+            [shipyard.file-picker.db :as picker]
             [shipyard.importer.db :as db]
             [shipyard.system :as system]
             [shipyard.workspace.db :as workspace]
@@ -23,6 +24,13 @@
                                    (constantly {:view :table :filters {} :colors (:colors before)
                                                 :import (assoc session :before before)}))
       (transition! deps))
+    (catch Exception e (error-response e))))
+
+(defn choose! [{:keys [file-picker] :as deps} request]
+  (try
+    (if-let [path (picker/choose! file-picker "zip")]
+      (start! deps (assoc-in request [:params "archive"] path))
+      {:status 204 :headers {} :body ""})
     (catch Exception e (error-response e))))
 
 (defn- finish! [{:keys [workspace] :as deps} session]

@@ -118,7 +118,8 @@
 (deftest browse-and-filter
   (open-app!)
   (is (= 5 (s/count-els *driver* "#bulk-orient-results .bulk-orient__row")))
-  (testing "a supported-only part is greyed, with its reason, not hidden"
+  (testing "supported-only parts are hidden; pitted-only parts retain unavailable previews"
+    (is (zero? (s/count-els *driver* (str "[data-part-row='" s/supported-id "']"))))
     (is (= 1 (s/count-els *driver* ".bulk-orient__row:has(.part-thumbnail:text-is('No preview'))")))
     (is (str/includes? (s/text *driver* ".bulk-orient__row:has(.part-thumbnail:text-is('No preview'))")
                        "No preview")))
@@ -387,11 +388,11 @@
   (open-app!)
   (select-part! "Cruiser Hull")
   (s/await-part *driver* s/hull-id)
-  (select-part! "Supported Only Prow")
+  (select-part! "Pitted Only Prow")
   (is (s/wait-until #(empty? (s/loaded-parts *driver*)))
       "shipyard:clear should have emptied the scene")
   (testing "and the panel says why rather than going blank"
-    (is (str/includes? (s/text *driver* "#detail") "supported STL"))))
+    (is (str/includes? (s/text *driver* "#detail") "pitted/recessed"))))
 
 (deftest detail-panel-views-fit-the-floating-inspector
   (open-app!)
@@ -402,8 +403,8 @@
     (s/await-part *driver* s/hull-id)
     (assert-detail-panel-fits-content! "loaded"))
   (testing "unrenderable detail"
-    (select-part! "Supported Only Prow")
-    (is (s/wait-until #(str/includes? (s/text *driver* "#detail") "supported STL")))
+    (select-part! "Pitted Only Prow")
+    (is (s/wait-until #(str/includes? (s/text *driver* "#detail") "pitted/recessed")))
     (assert-detail-panel-fits-content! "unrenderable")))
 
 (deftest selecting-another-part-replaces-the-first
@@ -870,12 +871,12 @@
 
 (deftest nonpreviewable-parts-can-edit-labels-and-show-grid-error
   (open-app!)
-  (s/check! *driver* (str "[data-bulk-select][value='" s/supported-id "']"))
+  (s/check! *driver* (str "[data-bulk-select][value='" s/pitted-id "']"))
   (s/select-option! *driver* ".part-bulk-edit select[name=field]" "Name")
   (s/select-option! *driver* ".part-bulk-edit select[name=operation]" "Add prefix")
   (s/fill-and-blur! *driver* ".part-bulk-edit input[name=value]" "Archived ")
   (s/click! *driver* "#part-bulk-apply")
-  (is (s/wait-until #(str/includes? (s/text *driver* "#bulk-orient-results") "Archived Supported Only Prow")))
+  (is (s/wait-until #(str/includes? (s/text *driver* "#bulk-orient-results") "Archived Pitted Only Prow")))
   (s/click! *driver* "[data-bulk-render-button]")
   (s/wait-visible! *driver* "#part-edit-status[role=alert]")
   (is (str/includes? (s/text *driver* "#part-edit-status") "None of those parts can be previewed")))

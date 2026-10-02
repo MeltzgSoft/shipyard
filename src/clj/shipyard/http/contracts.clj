@@ -26,6 +26,8 @@
 
 (def library-query
   [:map {:closed false}
+   [:page {:optional true} string?]
+   [:chunk {:optional true} [:enum "1"]]
    [:bundle {:optional true} string?]
    [:class {:optional true} string?]
    [:role {:optional true} string?]
@@ -33,10 +35,13 @@
 
 (def orientation-query
   [:map {:closed false}
+   [:page {:optional true} string?]
+   [:chunk {:optional true} [:enum "1"]]
    [:bundle {:optional true} string?]
    [:class {:optional true} string?]
    [:role {:optional true} string?]
    [:orientation {:optional true} string?]
+   [:variant {:optional true} [:enum "" "unsupported" "supported" "unsupported-pitted"]]
    [:q {:optional true} string?]])
 
 (def bulk-render-form

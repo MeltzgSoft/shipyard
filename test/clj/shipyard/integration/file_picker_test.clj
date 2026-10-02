@@ -18,7 +18,7 @@
         request #(handler (mock/request :post (str "/files/choose/" %)))]
     (try
       (testing "each form requests its desktop picker and receives only its own input"
-        (doseq [[field kind] [["settings-root" "directory"] ["setup-root" "directory"] ["import-archive" "zip"]]]
+        (doseq [[field kind] [["settings-root" "directory"] ["setup-root" "directory"]]]
           (with-redefs [picker/choose! (fn [_ actual] (is (= kind actual)) "/tmp/Ships & Fleet.zip")]
             (let [response (request field)]
               (is (= 200 (:status response)))
@@ -36,6 +36,11 @@
           (is (= 400 (:status (request "arbitrary-input"))))
           (is (= 405 (:status (handler (mock/request :get "/files/choose/settings-root")))))
           (is (= 404 (:status (handler (mock/request :get "/files")))))))
+      (testing "stale workspace requests cannot open an import chooser"
+        (with-redefs [picker/choose! (fn [& _] (throw (AssertionError. "Must not open a dialog")))]
+          (is (= 204 (:status (handler (-> (mock/request :post "/imports/choose")
+                                           (mock/header "x-shipyard-workspace" "browse")
+                                           (mock/header "x-shipyard-activation" "999"))))))))
       (finally (fixture/stop! started)))))
 
 (deftest desktop-dialog-lock-and-runtime
@@ -57,7 +62,7 @@
         (is (thrown-with-msg? clojure.lang.ExceptionInfo #"Desktop unavailable" (picker/choose! dialog "zip"))))
       (is (not (.isLocked lock))))))
 
-(deftest headless-picker-allows-manual-entry
+(deftest headless-detection-and-typed-path-selection
   ;; A fresh JVM checks real headless detection independently of the test runner's
   ;; cached GraphicsEnvironment, without attempting to open a user's desktop.
   (let [code '(do
@@ -67,8 +72,21 @@
                     (picker/choose! {:lock (java.util.concurrent.locks.ReentrantLock.)} kind)
                     (throw (AssertionError. "A headless dialog must not open"))
                     (catch clojure.lang.ExceptionInfo e
-                      (assert (= "No graphical desktop is available to Shipyard. You can enter the path directly."
+                      (assert (= "No graphical desktop is available to Shipyard. Open Shipyard in a graphical desktop session to use the file selector."
                                  (ex-message e))))))
+                ;; Exercise the installed Swing UI's filename field and approval
+                ;; action without displaying a window. A full path needs no custom
+                ;; accessory or separate text input in the web application.
+                (javax.swing.SwingUtilities/invokeAndWait
+                 (fn []
+                   (let [file (java.io.File/createTempFile "Shipyard typed path " ".zip")]
+                     (try
+                       (let [chooser (javax.swing.JFileChooser.)
+                             ui (.getUI chooser)]
+                         (.setFileName ui (.getAbsolutePath file))
+                         (.actionPerformed (.getApproveSelectionAction ui) nil)
+                         (assert (= file (.getSelectedFile chooser))))
+                       (finally (.delete file))))))
                 (println "headless-picker-ok")
                 (shutdown-agents))
         java (fs/path (System/getProperty "java.home") "bin"

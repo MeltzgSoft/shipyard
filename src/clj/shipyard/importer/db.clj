@@ -34,17 +34,23 @@
 (defn- library-state! [parts root entries previous]
   (let [groups (group-by :group (sort-by :key (vals entries)))
         parts (mapv (fn [part]
-                      (assoc part :part/source-paths
+                      (assoc part :part/source (:variant (t/thumbnail-entry (get groups (:part/id part))))
+                             :part/source-paths
                              (into {} (for [[variant files] (group-by :variant (get groups (:part/id part)))
                                             :when (= 1 (count (set (map :sha files))))]
                                         [variant (str (fs/relativize root (:file (first files))))])))) parts)
-        sources (into {} (keep (fn [part]
-                                 (when-let [source (t/preview-entry (get groups (:part/id part)))]
-                                   [(:part/id part) (:file source)]))) parts)
+        file-parts (mapv (fn [{:keys [key variant]}]
+                           {:part/id (t/file-preview-id key) :part/source variant}) (vals entries))
+        sources (into (into {} (map (fn [{:keys [key file]}] [(t/file-preview-id key) file])) (vals entries))
+                      (keep (fn [part]
+                              (when-let [source (t/thumbnail-entry (get groups (:part/id part)))]
+                                [(:part/id part) (:file source)]))) parts)
         stored (select-keys (:entries previous)
                             (for [[id file] sources :when (= file (get-in previous [:source-files id]))] id))
         stats (update-vals sources #(hash-map :mtime (fs/file-time->millis (fs/last-modified-time %)) :size (fs/size %)))]
-    {:root root :parts parts :entries (index/refresh parts stored stats) :source-files sources}))
+    ;; File previews share the import's cancellation scope and index, but never
+    ;; become catalog rows or participate in grouping/publication.
+    {:root root :parts parts :entries (index/refresh (concat parts file-parts) stored stats) :source-files sources}))
 
 (defn close! [{:keys [jobs store directory]}]
   (when jobs (ig/halt-key! :shipyard.http/jobs jobs))

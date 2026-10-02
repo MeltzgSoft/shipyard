@@ -20,11 +20,11 @@
       (cond
         (= result JFileChooser/APPROVE_OPTION) (.getAbsolutePath (.getSelectedFile chooser))
         (= result JFileChooser/CANCEL_OPTION) nil
-        :else (throw (ex-info "The file selector could not open. You can enter the path directly." {}))))))
+        :else (throw (ex-info "The file selector could not open. Check that Shipyard has access to your graphical desktop." {}))))))
 
 (defn choose! [kind]
   (when-not (available?)
-    (throw (ex-info "No graphical desktop is available to Shipyard. You can enter the path directly." {})))
+    (throw (ex-info "No graphical desktop is available to Shipyard. Open Shipyard in a graphical desktop session to use the file selector." {})))
   (if (SwingUtilities/isEventDispatchThread)
     (show-dialog! kind)
     (let [result (CompletableFuture.)]

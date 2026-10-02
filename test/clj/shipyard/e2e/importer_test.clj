@@ -1,14 +1,18 @@
 (ns shipyard.e2e.importer-test
   (:require [babashka.fs :as fs]
+            [clojure.java.io :as io]
             [clojure.test :refer [deftest is testing]]
             [shipyard.assembly-fixture :as fixture]
             [shipyard.catalog.db :as catalog]
             [shipyard.e2e.support :as s]
             [shipyard.e2e.orient-save-test :as orient]
+            [shipyard.file-picker.db :as picker]
             [shipyard.import-fixture :as archives]
             [shipyard.importer.db :as importer]
+            [shipyard.fixtures :as meshes]
             [shipyard.library.index :as index])
-  (:import [com.microsoft.playwright Page]))
+  (:import [com.microsoft.playwright Page Request]
+           [java.util.function Consumer]))
 
 (deftest import-classification-selectors-reuse-and-stage-new-values
   (let [started (fixture/start! true) driver (s/make-driver) sys (:system started)
@@ -19,9 +23,8 @@
     (try
       (s/go! driver (s/base-url sys))
       (s/choose-path! driver ".import-start" zip)
-      (s/click! driver ".import-start button[type=submit]")
       (s/wait-visible! driver ".import-review")
-      (s/click! driver "[data-import-select=all]")
+      (s/click! driver "[data-select-all=all]")
       (s/wait-visible! driver "[data-bulk-count]:text-is('2 selected')")
       ;; Review combines its own choices with the destination library's values.
       (s/click! driver "[data-classification-toggle]")
@@ -47,6 +50,45 @@
       (is (zero? (s/count-els driver "#classification-values option[value='Staged Fleet'], #classification-values option[value='Staged Carrier'], #classification-values option[value='sensor-array']")))
       (finally (s/quit! driver) (fixture/stop! started) (fs/delete-tree directory)))))
 
+(deftest expanded-files-have-independent-lazy-thumbnails
+  (let [started (fixture/start! true) driver (s/make-driver) ^Page page (:page driver)
+        zip (fs/file (:temp started) "Variants.zip") requests (atom [])]
+    (try
+      (with-open [out (io/output-stream zip)]
+        (.write out ^bytes
+                (archives/zip-bytes
+                 (map-indexed (fn [n folder]
+                                [(str folder "/Hull.stl")
+                                 (meshes/->binary-stl
+                                  (mapv (fn [triangle]
+                                          (mapv (fn [[x y z]] [(* (inc n) x) y z]) triangle)) (meshes/cube)))])
+                              ["Original Files" "Supported Files" "Unsupported Pitted"]))))
+      (.onRequest page (reify Consumer (accept [_ request] (swap! requests conj (.url ^Request request)))))
+      (s/go! driver (s/base-url (:system started)))
+      (s/wait-visible! driver ".import-start")
+      (s/choose-path! driver ".import-start" zip)
+      (s/wait-visible! driver ".import-review")
+      (s/wait-visible! driver ".bulk-orient__row > .part-thumbnail img")
+      (is (not-any? #(.contains ^String % "/imports/thumbnails/") @requests)
+          "Collapsed variant cells do not prepare file previews")
+      (s/click! driver ".import-files summary")
+      (is (s/wait-until #(= 3 (s/count-els driver ".import-file-thumbnail img"))))
+      (is (s/js driver "() => [...document.querySelectorAll('.import-file-thumbnail img')].every(i=>i.naturalWidth===128)"))
+      (let [before (s/js driver "() => [...document.querySelectorAll('.import-files__file')].map(el=>[el.querySelector('select').dataset.importFile,el.querySelector('img').getAttribute('src')])")]
+        (is (= 3 (count (set (map second before)))) "Each source file gets its own content image")
+        (s/screenshot-el! driver ".import-files" (java.io.File. "/tmp/shipyard-variant-thumbnails.png"))
+        (s/select-option! driver ".import-files__file:has(select option:checked:text-is('Supported')) select" "Unsupported")
+        (s/wait-visible! driver ".import-files:not([open])")
+        (s/click! driver ".import-files summary")
+        (is (s/wait-until #(= 3 (s/count-els driver ".import-file-thumbnail img"))))
+        (is (= (set before)
+               (set (s/js driver "() => [...document.querySelectorAll('.import-files__file')].map(el=>[el.querySelector('select').dataset.importFile,el.querySelector('img').getAttribute('src')])")))
+            "Changing variant assignments preserves each file's image identity"))
+      (s/click! driver "form[hx-post='/imports/cancel'] button")
+      (s/wait-visible! driver ".import-start")
+      (is (zero? (s/count-els driver ".import-file-thumbnail")))
+      (finally (s/quit! driver) (fixture/stop! started)))))
+
 (deftest archive-review-bulk-orientation-and-publication
   (s/assert-bundle!)
   (let [started (fixture/start! true) driver (s/make-driver)
@@ -60,16 +102,33 @@
     (try
       (s/go! driver (s/base-url (:system started)))
       (s/wait-visible! driver ".import-start")
+      (is (zero? (s/count-els driver ".import-start input, button:text-is('Review archive')")))
+      (testing "canceling the desktop chooser retains the table and selection"
+        (s/wait-visible! driver "[data-bulk-select]")
+        (s/check! driver (str "[data-bulk-select][value='" (:prow fixture/ids) "']"))
+        (s/wait-visible! driver "[data-bulk-count]:text-is('1 selected')")
+        (with-redefs [picker/choose! (fn [_ _] nil)]
+          (let [response (.waitForResponse ^com.microsoft.playwright.Page (:page driver)
+                                           "**/imports/choose"
+                                           ^Runnable #(s/click! driver ".import-start button"))]
+            (is (= 204 (.status response)))))
+        (is (nil? (session!)))
+        (is (= "1 selected" (s/text driver "[data-bulk-count]"))))
+      (testing "an unavailable desktop keeps the table usable"
+        (with-redefs [picker/choose! (fn [_ _] (throw (ex-info "Desktop unavailable" {})))]
+          (.waitForResponse ^com.microsoft.playwright.Page (:page driver)
+                            "**/imports/choose"
+                            ^Runnable #(s/click! driver ".import-start button")))
+        (s/wait-visible! driver "#import-status:text-is('Desktop unavailable')")
+        (is (nil? (session!)))
+        (is (= "1 selected" (s/text driver "[data-bulk-count]"))))
       (is (s/js driver "() => {const f=document.querySelector('.import-start');return f.method==='post' && f.getAttribute('action')===f.getAttribute('hx-post')}"))
       (testing "invalid nested ZIPs identify the source and leave the browser ready for another archive"
         (s/choose-path! driver ".import-start" invalid)
-        (s/click! driver ".import-start button[type=submit]")
         (is (s/wait-until #(.contains (s/text driver "#import-status") "Cannot read ZIP Broken Fleet.zip → Download.zip → broken.zip")))
         (is (nil? (session!)))
         (is (= before (catalog/listing! cat))))
       (s/choose-path! driver ".import-start" zip)
-      (is (nil? (session!)) "choosing a ZIP does not start an import")
-      (s/click! driver ".import-start button[type=submit]")
       (s/wait-visible! driver ".import-review")
       (testing "an empty nested download is skipped and identified in review"
         (is (= "Skipped 1 empty nested ZIP file" (s/text driver ".import-warnings summary")))
@@ -104,7 +163,7 @@
           (s/click! driver "[data-import-group]")
           (is (s/wait-until #(= 2 (s/count-els driver ".bulk-orient__row"))))
           (is (= "1 selected" (s/text driver "[data-bulk-count]"))))
-        (s/click! driver "[data-import-select=all]")
+        (s/click! driver "[data-select-all=all]")
         (is (s/wait-until #(= "2 selected" (s/text driver "[data-bulk-count]"))))
         (s/select-option! driver ".part-bulk-edit select[name=field]" "Bundle / faction")
         (s/fill-and-blur! driver ".part-bulk-edit input[name=value]" "Reviewed Fleet")
@@ -136,9 +195,8 @@
         (is (some? (:part/orientation (catalog/part (catalog/listing! cat) "Reviewed Fleet/Cruiser/Hull")))))
       (testing "a colliding import reports an error and can be canceled through the UI"
         (s/choose-path! driver ".import-start" zip)
-        (s/click! driver ".import-start button[type=submit]")
         (s/wait-visible! driver ".import-review")
-        (s/click! driver "[data-import-select=all]")
+        (s/click! driver "[data-select-all=all]")
         (is (s/wait-until #(= "2 selected" (s/text driver "[data-bulk-count]"))))
         (s/select-option! driver ".part-bulk-edit select[name=field]" "Bundle / faction")
         (s/fill-and-blur! driver ".part-bulk-edit input[name=value]" "Reviewed Fleet")
@@ -151,4 +209,38 @@
         (s/click! driver "form[hx-post='/imports/cancel'] button")
         (s/wait-visible! driver ".import-start")
         (is (nil? (session!))))
+      (finally (s/quit! driver) (fixture/stop! started) (fs/delete-tree directory)))))
+
+(deftest import-batches-and-select-all-matching
+  (let [started (fixture/start! true) driver (s/make-driver)
+        directory (fs/create-temp-dir) zip (fs/file directory "Large Fleet.zip")
+        data (meshes/->binary-stl (meshes/cube))]
+    (try
+      (with-open [out (io/output-stream zip)]
+        (.write out ^bytes (archives/zip-bytes
+                            (for [n (range 60) folder ["Original Files" "Supported Files"]]
+                              [(format "Cruiser/%s/Part %02d.stl" folder n) data]))))
+      (s/go! driver (s/base-url (:system started)))
+      (s/wait-visible! driver ".import-start")
+      (s/choose-path! driver ".import-start" zip)
+      (s/wait-visible! driver ".import-review")
+      (is (s/wait-until #(= 50 (s/count-els driver ".bulk-orient__row"))))
+      (s/click! driver "[data-select-all=all]")
+      (is (s/wait-until #(= "60 selected" (s/text driver "[data-bulk-count]"))))
+      (s/scroll-into-view! driver "#bulk-orient-results .list-more")
+      (is (s/wait-until #(= 60 (s/count-els driver ".bulk-orient__row"))))
+      (is (= 60 (s/count-els driver "[data-bulk-select]:checked")))
+      (s/fill! driver "#bulk-orient-filters input[name=q]" "Part 5")
+      (is (s/wait-until #(= 10 (s/count-els driver ".bulk-orient__row"))))
+      (is (s/js driver "() => document.querySelector('#part-select-matching').checked"))
+      (s/click! driver "[data-select-all=all]")
+      (is (s/wait-until #(= "50 selected" (s/text driver "[data-bulk-count]"))))
+      (is (zero? (s/count-els driver "[data-bulk-select]:checked")))
+      (s/click! driver "[data-select-all=all]")
+      (is (s/wait-until #(= "60 selected" (s/text driver "[data-bulk-count]"))))
+      (s/click! driver "[data-select-all=none]")
+      (is (s/wait-until #(= "0 selected" (s/text driver "[data-bulk-count]"))))
+      (s/click! driver "form[hx-post='/imports/cancel'] button")
+      (s/wait-visible! driver ".import-start")
+      (is (fs/regular-file? zip))
       (finally (s/quit! driver) (fixture/stop! started) (fs/delete-tree directory)))))

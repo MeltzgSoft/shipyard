@@ -25,6 +25,7 @@
 (def prow-id "Human Navy Fleet Bundle/Cruiser/Classic Ram Prow")
 (def mount-plate-id "Human Navy Fleet Bundle/Cruiser/Mount Test Plate")
 (def supported-id "Human Navy Fleet Bundle/Cruiser/Supported Only Prow")
+(def pitted-id "Human Navy Fleet Bundle/Cruiser/Pitted Only Prow")
 (def ork-id "Ork Fleet Bundle/Escort/Ram Ship")
 
 (defn temp-dir ^File [prefix]
@@ -52,6 +53,7 @@
     (write-stl! (io/file root prow-id) "unsupported.stl" (translate (f/cube 2.0) prow-offset))
     (write-stl! (io/file root mount-plate-id) "unsupported.stl" (f/mount-plate))
     (write-stl! (io/file root supported-id) "supported.stl" (f/cube 1.0))
+    (write-stl! (io/file root pitted-id) "unsupported-pitted.stl" (f/cube 1.0))
     (write-stl! (io/file root ork-id) "unsupported.stl" (f/cube 3.0))
     root))
 
@@ -301,10 +303,14 @@
   "Drive the real browser/HTTP workflow; replace only the external desktop dialog."
   [{:keys [^Page page] :as driver} selector path]
   (with-redefs [picker/choose! (fn [_ _] (str path))]
-    (click! driver (str selector " [data-picker-browse]"))
-    (.waitForFunction page
-                      "([selector,path]) => document.querySelector(selector + ' [data-picker-value]').value === path"
-                      (to-array [selector (str path)]))))
+    (if (= selector ".import-start")
+      (.waitForResponse page "**/imports/choose"
+                        ^Runnable #(click! driver (str selector " [data-picker-browse]")))
+      (do
+        (click! driver (str selector " [data-picker-browse]"))
+        (.waitForFunction page
+                          "([selector,path]) => document.querySelector(selector + ' [data-picker-value]').value === path"
+                          (to-array [selector (str path)]))))))
 
 (defn select-option!
   "Pick an option by its **label**, not its value.

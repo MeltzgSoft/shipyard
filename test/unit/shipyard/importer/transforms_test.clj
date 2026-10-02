@@ -50,6 +50,20 @@
   (is (nil? (t/preview-entry [(get sample-entries "b")])))
   (is (nil? (t/preview-entry [(get sample-entries "a") (assoc (get sample-entries "a") :sha "other")]))))
 
+(deftest thumbnail-entry-test
+  (is (= "a" (:key (t/thumbnail-entry (vals sample-entries)))))
+  (is (= "b" (:key (t/thumbnail-entry [(get sample-entries "b")]))))
+  (is (nil? (t/thumbnail-entry [(assoc (get sample-entries "b") :variant :unsupported-pitted)])))
+  (is (nil? (t/thumbnail-entry [(get sample-entries "b") (assoc (get sample-entries "b") :sha "different")]))))
+
+(deftest matches-variant-test
+  (let [part {:part/variants #{:supported :unsupported}}]
+    (is (t/matches-variant? nil part))
+    (is (t/matches-variant? "" part))
+    (is (t/matches-variant? "supported" part))
+    (is (t/matches-variant? "unsupported" part))
+    (is (not (t/matches-variant? "unsupported-pitted" part)))))
+
 (deftest review-parts-test
   (let [entries (t/inferred-entries sample-entries)
         reviewed (assoc (t/infer "a" (get-in sample-entries ["a" :chain]))

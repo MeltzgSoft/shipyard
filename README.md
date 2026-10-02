@@ -31,10 +31,11 @@ and `--enable-native-access=ALL-UNNAMED`, which LWJGL needs to load its native
 meshoptimizer bindings without warnings. CI pins 25 on every job and the uberjar declares
 `Enable-Native-Access` in its manifest. Develop on 25.
 
-The **Browse…** buttons open Swing folder and ZIP selectors on Shipyard's local
+The **Browse…** and **Import ZIP…** buttons open Swing folder and ZIP selectors on Shipyard's local
 desktop using Java's `java.desktop` module; no separate dialog packages are needed.
 Use a browser on that same computer. A desktop-capable Java runtime and access to
-the graphical session are required; direct path entry also works on headless servers.
+the graphical session are required. ZIP paths can be typed into the selector’s filename
+field. Library-folder path entry also works on headless servers.
 
 ## Quick start
 
