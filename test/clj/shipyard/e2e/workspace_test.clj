@@ -6,7 +6,6 @@
             [shipyard.assembly-fixture :as fixture]
             [shipyard.catalog.db :as catalog]
             [shipyard.e2e.support :as s]
-            [shipyard.http.jobs :as jobs]
             [shipyard.loadout-fixture :as lf]
             [shipyard.loadout.db :as store]
             [shipyard.loadout.operations :as operations])
@@ -198,13 +197,14 @@
 
 (deftest back-to-table-survives-a-poll-during-the-click
   (let [started (fixture/start! true) driver (s/make-driver) ^Page page (:page driver)
-        held (atom nil) entered (CountDownLatch. jobs/threads) release (CountDownLatch. 1)
-        ^ExecutorService pool (get-in started [:system :shipyard.http/jobs :pool])
+        worker-count (get-in started [:system :shipyard.jobs/pool :threads])
+        held (atom nil) entered (CountDownLatch. worker-count) release (CountDownLatch. 1)
+        ^ExecutorService pool (get-in started [:system :shipyard.jobs/pool :pool])
         state (:state (:shipyard.workspace/db (:system started)))]
     (try
       ;; Keep real preprocessing pending; navigation must still work without
       ;; the viewport bundle and while a real polling response replaces the grid.
-      (dotimes [_ jobs/threads]
+      (dotimes [_ worker-count]
         (.submit pool ^Runnable (fn [] (.countDown entered) (.await release 120 TimeUnit/SECONDS))))
       (is (.await entered 10 TimeUnit/SECONDS))
       (.route page "**/js/viewport.js" (reify Consumer (accept [_ route] (.abort ^Route route))))

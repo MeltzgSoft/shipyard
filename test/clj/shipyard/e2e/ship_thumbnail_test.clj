@@ -26,6 +26,7 @@
       (is (not-any? #(.contains ^String % "/ship-thumbnails/ship/") @requests) "Collapsed named ships do not request thumbnails")
       (let [class-src (src ".ship-thumbnail img")
             draft @(:state (:shipyard.assembly/db sys))]
+        (is (re-find #"/thumbnail-images/[0-9a-f]{64}$" class-src))
         (s/click! driver ".ship-card__ships summary")
         (s/wait-visible! driver ".ship-table__named .ship-thumbnail img")
         (is (not= class-src (src ".ship-table__named .ship-thumbnail img")))
@@ -36,5 +37,8 @@
           (is (s/wait-until #(and (pos? (s/count-els driver ".ship-table__named .ship-thumbnail img"))
                                   (not= painted-src (src ".ship-table__named .ship-thumbnail img")))))
           (is (= class-src (src ".ship-table__named .ship-thumbnail img"))))
+        (s/go! driver (s/base-url sys))
+        (s/wait-visible! driver ".ship-thumbnail img")
+        (is (= class-src (src ".ship-thumbnail img")) "Reload reuses the immutable disk image URL")
         (s/screenshot-el! driver "#library" (java.io.File. "/tmp/shipyard-thumbnails.png")))
       (finally (s/quit! driver) (fixture/stop! started)))))

@@ -71,15 +71,18 @@
   a `load` trigger, and repeating it here would make the panel refetch itself
   forever."
   ([parts] (library-results parts nil))
-  ([parts page]
-   (let [window (pagination/window parts page)]
-     [:div#library-results.results
-      [:p.results__count (case (:total window)
-                           0 "No parts match."
-                           1 "1 part"
-                           (format "%,d parts" (:total window)))]
-      (pagination/controls window "/library" "#library-results" "#filters")
-      (when (seq parts) [:ul.parts (map part-card (:items window))])])))
+  ([parts page] (library-results parts page false))
+  ([parts page chunk?]
+   (let [window (pagination/batch-window parts page chunk?)
+         content (list (when (seq (:items window)) [:ul.parts (map part-card (:items window))])
+                       (pagination/more window "/library" "#library-results" "#filters"))]
+     (if chunk? content
+         [:div#library-results.results
+          [:p.results__count (case (:total window)
+                               0 "No parts match."
+                               1 "1 part"
+                               (format "%,d parts" (:total window)))]
+          content]))))
 
 ;; --- part detail ------------------------------------------------------------
 
@@ -175,7 +178,7 @@
 (defn- role-choice [selected role]
   [:option {:value (name role) :selected (= selected role)} (name role)])
 
-(defn- part-metadata [{:part/keys [id role-hint role-source]}]
+(defn- part-metadata [{:part/keys [id role-hint role-source]} roles]
   [:section.part-metadata
    [:h3.part-metadata__title "Part metadata"]
    [:form.part-metadata__form
@@ -186,7 +189,7 @@
     [:input {:type "hidden" :name "part-id" :value id}]
     [:label.part-metadata__field "Role"
      [:select {:name "part-role"}
-      (map (partial role-choice (or role-hint :unknown)) wizard/role-options)]]
+      (map (partial role-choice (or role-hint :unknown)) (or roles wizard/role-options))]]
     [:button {:type "submit"} "Save role"]]
    [:p.part-metadata__source
     (case role-source
@@ -239,7 +242,7 @@
 
 (defn detail-ready
   ([part mesh-key] (detail-ready part mesh-key nil))
-  ([part mesh-key {:keys [error orientation-error preview repeat-values region-layers mount-active? preserve-regions?]}]
+  ([part mesh-key {:keys [error orientation-error preview repeat-values region-layers roles mount-active? preserve-regions?]}]
    (let [mount-active? (if (some? mount-active?) mount-active? (boolean (or preview error)))]
      [:div.detail.detail--ready
       (part-back)
@@ -263,7 +266,7 @@
                                                            :hx-target "#detail"
                                                            :hx-include workspace-views/navigation-include :hx-swap "innerHTML settle:0ms"
                                                            :data-workspace-mode "ships" :data-hull (:part/id part)}) "Assemble this hull"])
-       (part-metadata part)
+       (part-metadata part roles)
        (part-orientation part orientation-error)]
       [:div.detail__tab-panel {:data-detail-panel "regions" :role "tabpanel" :hidden true}
        (if preserve-regions?
@@ -280,7 +283,7 @@
           repeat-values (assoc :data-repeat-values (pr-str repeat-values)))
         [:div#facet-preview
          (cond
-           preview (facet-preview preview)
+           preview (facet-preview (assoc preview :roles roles))
            error (facet-error error part))]]]])))
 
 (defn detail-failed [{:part/keys [id] :as part} message]
@@ -319,10 +322,10 @@
   (cond-> {:data-socket-only "true"}
     (= :plug kind) (assoc :hidden true :disabled true)))
 
-(defn- mount-form [{:keys [part frame mesh-key facet-indices kind-hint mode original-mount-id values]}]
+(defn- mount-form [{:keys [part frame mesh-key facet-indices kind-hint mode original-mount-id values roles]}]
   (let [kind (or (:kind values) (default-kind part))
         accepts (or (:accepts values) #{:weapon})
-        profiles (wizard/acceptance-profiles (:part/role-hint part))
+        profiles (wizard/acceptance-profiles (:part/role-hint part) (or roles wizard/role-options))
         sorted-profiles (sort-by (comp str/lower-case :label) profiles)
         selected-profile (or (:id (wizard/acceptance-profile (:part/role-hint part) accepts))
                              (some #(when (contains? accepts (:id %)) (:id %)) profiles)
@@ -515,6 +518,7 @@
     ;; htmx is a separate file from the viewport bundle so a broken viewport
     ;; build cannot take the whole UI down with it (TECHNICAL.md §8).
      [:script {:src "/js/htmx.min.js" :defer true}]
+     [:script {:src "/browser-lists.js" :defer true}]
      [:script {:src "/js/viewport.js" :defer true}]]
     [:body workspace-views/transport-attrs
      (workspace-views/context context colors)

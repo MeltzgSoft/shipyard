@@ -26,6 +26,8 @@
 
 (def library-query
   [:map {:closed false}
+   [:page {:optional true} string?]
+   [:chunk {:optional true} [:enum "1"]]
    [:bundle {:optional true} string?]
    [:class {:optional true} string?]
    [:role {:optional true} string?]
@@ -33,6 +35,8 @@
 
 (def orientation-query
   [:map {:closed false}
+   [:page {:optional true} string?]
+   [:chunk {:optional true} [:enum "1"]]
    [:bundle {:optional true} string?]
    [:class {:optional true} string?]
    [:role {:optional true} string?]

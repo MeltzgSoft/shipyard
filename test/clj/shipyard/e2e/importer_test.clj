@@ -1,5 +1,6 @@
 (ns shipyard.e2e.importer-test
   (:require [babashka.fs :as fs]
+            [clojure.java.io :as io]
             [clojure.test :refer [deftest is testing]]
             [shipyard.assembly-fixture :as fixture]
             [shipyard.catalog.db :as catalog]
@@ -7,6 +8,7 @@
             [shipyard.e2e.orient-save-test :as orient]
             [shipyard.import-fixture :as archives]
             [shipyard.importer.db :as importer]
+            [shipyard.fixtures :as meshes]
             [shipyard.library.index :as index]))
 
 (deftest archive-review-bulk-orientation-and-publication
@@ -113,4 +115,35 @@
         (s/click! driver "form[hx-post='/imports/cancel'] button")
         (s/wait-visible! driver ".import-start")
         (is (nil? (session!))))
+      (finally (s/quit! driver) (fixture/stop! started) (fs/delete-tree directory)))))
+
+(deftest import-batches-and-select-all-matching
+  (let [started (fixture/start! true) driver (s/make-driver)
+        directory (fs/create-temp-dir) zip (fs/file directory "Large Fleet.zip")
+        data (meshes/->binary-stl (meshes/cube))]
+    (try
+      (with-open [out (io/output-stream zip)]
+        (.write out ^bytes (archives/zip-bytes
+                            (for [n (range 60) folder ["Original Files" "Supported Files"]]
+                              [(format "Cruiser/%s/Part %02d.stl" folder n) data]))))
+      (s/go! driver (s/base-url (:system started)))
+      (s/wait-visible! driver ".import-start")
+      (s/choose-path! driver ".import-start" zip)
+      (s/click! driver ".import-start button[type=submit]")
+      (s/wait-visible! driver ".import-review")
+      (is (s/wait-until #(= 50 (s/count-els driver ".bulk-orient__row"))))
+      (s/click! driver "[data-select-all=all]")
+      (is (s/wait-until #(= "60 selected" (s/text driver "[data-bulk-count]"))))
+      (s/scroll-into-view! driver "#bulk-orient-results .list-more")
+      (is (s/wait-until #(= 60 (s/count-els driver ".bulk-orient__row"))))
+      (is (= 60 (s/count-els driver "[data-bulk-select]:checked")))
+      (s/fill! driver "#bulk-orient-filters input[name=q]" "Part 5")
+      (is (s/wait-until #(= 10 (s/count-els driver ".bulk-orient__row"))))
+      (s/click! driver "[data-select-all=all]")
+      (is (s/wait-until #(= "10 selected" (s/text driver "[data-bulk-count]"))))
+      (s/click! driver "[data-select-all=none]")
+      (is (s/wait-until #(= "0 selected" (s/text driver "[data-bulk-count]"))))
+      (s/click! driver "form[hx-post='/imports/cancel'] button")
+      (s/wait-visible! driver ".import-start")
+      (is (fs/regular-file? zip))
       (finally (s/quit! driver) (fixture/stop! started) (fs/delete-tree directory)))))

@@ -19,9 +19,10 @@
          ["/ships/tab/:tab" {:get {:handler (partial handlers/ship-tab! deps)
                                    :parameters {:path [:map [:tab [:enum "assembly" "schemes" "paint"]]]}
                                    :responses contracts/html-responses}}]
-         ["/ships" {:get {:handler (partial handlers/ships! deps) :responses contracts/html-responses}}]
+         ["/ships" {:get {:handler (partial handlers/ships! deps) :parameters {:query contracts/library-query}
+                          :responses contracts/html-responses}}]
          ["/ships/hulls/:id" {:get {:handler (partial handlers/named-rows! deps)
-                                    :parameters {:path ship-id-form}
+                                    :parameters {:path ship-id-form :query contracts/library-query}
                                     :responses contracts/html-responses}}]
          ["/ships/new" {:post {:handler (partial handlers/new-ship! deps)
                                :parameters {:form [:map [:discard-revision {:optional true} assembly-routes/revision-schema]]}

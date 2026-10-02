@@ -14,7 +14,9 @@
 
   It is a report, not a gate. Every part is examined even when the one before it
   threw, because the whole point is the list."
-  (:require [babashka.fs :as fs]
+  (:require [integrant.core :as ig]
+            [shipyard.jobs :as workers]
+            [babashka.fs :as fs]
             [clojure.pprint :as pp]
             [shipyard.library.index :as index]
             [shipyard.library.scan :as scan]
@@ -26,8 +28,7 @@
             [shipyard.settings.db :as settings]
             [shipyard.system :as system])
   (:import [java.io File]
-           [java.nio ByteBuffer ByteOrder]
-           [java.util.concurrent Executors ExecutorService TimeUnit]))
+           [java.nio ByteBuffer ByteOrder]))
 
 ;; --- geometry checks --------------------------------------------------------
 
@@ -120,49 +121,47 @@
 
 ;; --- the run ----------------------------------------------------------------
 
-(def ^:const default-threads
-  "Four, not `availableProcessors + 2`. Each worker holds a parsed hull plus its
-  welded and simplified derivatives. The largest selected source changes with
-  the collection (currently 34.0 MB; an earlier snapshot reached 57.8 MB), and
-  a dozen large parts at once blows the 2 GB peak budget (§11). The canary is
-  allowed to be slow; it is not allowed to die three hours in."
-  4)
-
-(defn- threads [n]
-  (max 1 (min (or n default-threads) (.availableProcessors (Runtime/getRuntime)))))
-
 (defn run-canary!
-  "Examine every part. Returns the report map."
+  "Examine every part using the common executor implementation in this CLI process."
   [{:keys [root parts crease-deg lod-tiers thread-count]
-    :or   {crease-deg 35 lod-tiers [1.0 0.25 0.05]}}]
-  (let [n     (threads thread-count)
-        pool  ^ExecutorService (Executors/newFixedThreadPool n)
-        done  (atom 0)
+    :or {crease-deg 35 lod-tiers [1.0 0.25 0.05]}}]
+  (let [shared (ig/init-key :shipyard.jobs/pool {:threads thread-count})
+        scope (workers/scope! shared)
+        n (:threads shared)
+        done (atom 0)
         total (count parts)
-        opts  {:crease-deg crease-deg :lod-tiers lod-tiers}]
+        opts {:crease-deg crease-deg :lod-tiers lod-tiers}]
     (try
-      (let [tasks    (mapv (fn [part]
-                             ;; A Clojure fn is already a Callable, which is
-                             ;; what invokeAll wants.
-                             (fn []
-                               (let [r (examine! root part opts)
-                                     d (swap! done inc)]
-                                 (when (zero? (mod d 100))
-                                   (println (format "  %d/%d parts" d total)))
-                                 r)))
-                           parts)
-            findings (->> (.invokeAll pool tasks)
-                          (mapcat #(.get ^java.util.concurrent.Future %))
-                          vec)]
-        {:root       (str root)
-         :ran-at     (str (java.time.Instant/now))
-         :parts      total
-         :threads    n
-         :findings   (vec (sort-by (juxt :kind :part/id) findings))
-         :totals     (into (sorted-map) (frequencies (map :kind findings)))})
-      (finally
-        (.shutdown pool)
-        (.awaitTermination pool 1 TimeUnit/SECONDS)))))
+      (let [findings
+            (into []
+                  (mapcat
+                   (fn [batch]
+                     ;; The CLI owns this pool. Admit only one worker-sized batch,
+                     ;; then consume it; do not queue the entire library at once.
+                     (let [results
+                           (mapv (fn [part]
+                                   (let [result (promise)]
+                                     (when-not
+                                      (workers/submit!
+                                       scope
+                                       #(deliver result
+                                                 (try
+                                                   (let [r (examine! root part opts)
+                                                         d (swap! done inc)]
+                                                     (when (zero? (mod d 100))
+                                                       (println (format "  %d/%d parts" d total)))
+                                                     {:value r})
+                                                   (catch Throwable error {:error error}))))
+                                       (throw (ex-info "Canary executor is unavailable" {})))
+                                     result)) batch)]
+                       (mapcat (fn [result]
+                                 (let [{:keys [value error]} @result]
+                                   (if error (throw error) value))) results))))
+                  (partition-all n parts))]
+        {:root (str root) :ran-at (str (java.time.Instant/now)) :parts total :threads n
+         :findings (vec (sort-by (juxt :kind :part/id) findings))
+         :totals (into (sorted-map) (frequencies (map :kind findings)))})
+      (finally (ig/halt-key! :shipyard.jobs/pool shared)))))
 
 ;; --- reporting --------------------------------------------------------------
 

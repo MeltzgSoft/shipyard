@@ -686,7 +686,20 @@ ships show their scheme and compatible custom paint. Previews require no prior v
 to the editor and never change a workspace draft. Use the lowest cached mesh tier
 except where source-bound region or detail colors require the original tier. Lighting
 is simplified; the editor remains the reference for metallic and roughness finishes.
-Missing sources show an unavailable placeholder.
+Missing sources show an unavailable placeholder. Browser lists show counts of ready,
+generating, waiting, unavailable and no-preview counts for loaded rows; generation remains
+lazy. Skipped rows expose the reason they cannot be previewed.
+All part, import, class and named-ship PNGs use a shared bounded background rendering
+pool and a disposable disk cache that survives application restarts. Identical visual
+inputs share an image. Source geometry, saved orientation, assembly placements, region
+colors, shared schemes and custom paint determine image identity, so returning to a list
+after editing resolves the current preview automatically. Nonvisual metadata changes
+reuse existing images. Content-addressed image URLs allow browser caching without stale
+previews, and clearing or evicting cached images safely regenerates them on demand.
+Thumbnail rendering, library/import mesh preparation and mount recovery share one
+bounded application background pool, separate from HTTP request workers. Missing worker
+and queue limits default to 2 and 32 respectively. Canceling an import drains its work
+before discarding staging data and leaves the common pool available to other jobs.
 
 ### 9.2 Independent workspace state
 
@@ -712,12 +725,13 @@ actions with defined destinations.
 Ship Browser opens as a full-width table of reusable classes (saved loadouts), filtered
 by the root hull's bundle/faction, class and class or named-ship name. Each class row
 shows its name, classification and reachable empty-mount count. Missing hulls remain
-listed with an error. Class tables show 50 rows per page. Expand a row to load its
-named custom painted ships, with separate pages of up to 50 hulls.
+listed with an error. Class tables load successive batches of 50 rows as the user
+scrolls. Expand a row to load its named custom painted ships, whose batches load
+independently. Manual Load more remains available for retry.
 
 Double-click a class row, press Enter on it, or choose Edit to open the Assemble
 editor. A named-ship row opens the same editor on Paint. Back to ships restores table
-filters, class page, scroll and expanded rows. New class starts an empty assembly; Resume assembly
+filters, loaded classes, scroll and expanded rows. New class starts an empty assembly; Resume assembly
 returns to the retained draft. The main workspace selector contains Part Browser and
 Ship Browser; Assemble is a view within Ship Browser.
 
@@ -765,8 +779,16 @@ capacity grouped by accepted roles. Regions is Yes when any non-Primary face ass
 are saved, and No when assignments are empty. An explicitly saved identity
 pose counts as Saved; a part without saved orientation is Unset. Parts that cannot be
 previewed remain visible as No preview and can still be selected for metadata edits. No matches produces
-an explicit empty state. Tables show 50 rows per page. Selections persist across pages;
-changing filters returns to the first page, and Back from an editor restores the page.
+an explicit empty state. Tables load successive batches of 50 rows as the user scrolls.
+Selections persist across batches; changing filters restarts loading, and Back from an
+editor restores the loaded rows and scroll position. Select all matching parts selects
+every filtered result, including unloaded rows; Clear selection clears the entire selection.
+Both controls are available during import review.
+
+Users can add shared faction/bundle, class and role values during normal browsing or
+import review. Explicitly added values persist across restarts and library changes.
+Custom roles are available to metadata editing and socket acceptance, with the same
+role matching rules as built-in roles; weapon sockets remain turret-only.
 
 Selection persists across filter changes, including selected parts hidden by the
 current filters. The selected count describes the whole selection. **Orient selection**

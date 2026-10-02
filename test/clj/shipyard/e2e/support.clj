@@ -122,9 +122,12 @@
                             :facet-plane-epsilon-mm 0.01
                             :cap-bytes 64000000 :cache-home (str cache-home)}
    :shipyard.store/db {:data-home (str cache-home)}
+   :shipyard.jobs/pool {:store (ig/ref :shipyard.store/db)}
+   :shipyard.thumbnail/cache {:cache (ig/ref :shipyard.mesh/cache) :workers (ig/ref :shipyard.jobs/pool) :cap-bytes 134217728}
    :shipyard.file-picker/db {}
    :shipyard.catalog/db    {:library (ig/ref :shipyard.library/index) :store (ig/ref :shipyard.store/db)}
-   :shipyard.http/jobs     {:library (ig/ref :shipyard.library/index)
+   :shipyard.http/jobs     {:workers (ig/ref :shipyard.jobs/pool)
+                            :library (ig/ref :shipyard.library/index)
                             :cache   (ig/ref :shipyard.mesh/cache)}
    :shipyard.assembly/db {}
    :shipyard.loadout/db {:store (ig/ref :shipyard.store/db) :catalog (ig/ref :shipyard.catalog/db)}
@@ -133,7 +136,8 @@
    :shipyard.loadout.operations/preview {}
    :shipyard.workspace/db {:assembly (ig/ref :shipyard.assembly/db)
                            :preview (ig/ref :shipyard.loadout.operations/preview)}
-   :shipyard.http/routes   {:file-picker (ig/ref :shipyard.file-picker/db)
+   :shipyard.http/routes   {:thumbnails (ig/ref :shipyard.thumbnail/cache)
+                            :file-picker (ig/ref :shipyard.file-picker/db)
                             :workspace (ig/ref :shipyard.workspace/db)
                             :assembly (ig/ref :shipyard.assembly/db)
                             :loadouts (ig/ref :shipyard.loadout/db)
@@ -157,7 +161,7 @@
 
 (defn stop-system! [system]
   (ig/halt! system)
-  (when-let [^ExecutorService pool (get-in system [:shipyard.http/jobs :pool])]
+  (when-let [^ExecutorService pool (get-in system [:shipyard.jobs/pool :pool])]
     (.awaitTermination pool 30 TimeUnit/SECONDS))
   (doseq [root (::temporary-roots (meta system))] (fs/delete-tree root)))
 

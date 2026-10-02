@@ -8,21 +8,24 @@
             [shipyard.part-browser.transforms :as edits]
             [shipyard.http.htmx :as htmx]
             [shipyard.http.jobs :as jobs]
+            [shipyard.http.pagination :as pagination]
             [shipyard.http.urls :as urls]
             [shipyard.http.views :as http-views]
             [shipyard.library.index :as index]
             [shipyard.importer.db :as importer]
             [shipyard.mesh.cache :as cache]
+            [shipyard.vocabulary.db :as vocabulary]
+            [shipyard.vocabulary.views :as vocabulary-views]
             [shipyard.workspace.db :as workspace]))
 
 (defn- blank->nil [x]
   (when-not (or (nil? x) (= "" x)) x))
 
-(defn- facets! [deps]
-  (let [database (importer/listing! deps)]
-    {:bundles (db/bundles database)
-     :classes (db/classes database)
-     :roles (db/roles database)}))
+(defn facets! [{:keys [catalog shared-catalog]}]
+  (let [values (merge-with into (vocabulary/choices! catalog)
+                           (when shared-catalog (vocabulary/choices! shared-catalog)))]
+    {:bundles (sort (:bundle values)) :classes (sort (:class values))
+     :roles (map keyword (sort (:role values))) :values values}))
 
 (defn- orientation-parts [deps params]
   (->> (db/browse (importer/listing! deps)
@@ -39,10 +42,13 @@
   (when workspace (workspace/remember! workspace :browse params))
   (let [{:keys [bulk-selection filters]} (when workspace (workspace/workspace! workspace :browse))]
     (views/results (orientation-parts deps (merge filters params))
-                   (set (bulk/selected-ids bulk-selection)) (get filters "table-scroll") (get filters "page"))))
+                   (set (bulk/selected-ids bulk-selection)) (get filters "table-scroll") (get filters "page") (= "1" (get params "chunk")))))
 
 (defn parts! [deps {:keys [params]}]
-  (htmx/fragment (parts-view! (importer/effective! deps) params)))
+  (if (and (= "1" (get params "chunk"))
+           (not (pagination/same-filters? params (:filters (workspace/workspace! (:workspace deps) :browse)))))
+    {:status 204 :headers {} :body ""}
+    (htmx/fragment (parts-view! (importer/effective! deps) params))))
 
 (defn selection! [{:keys [workspace]} {:keys [params]}]
   (workspace/remember! workspace :browse params)
@@ -58,17 +64,17 @@
   (let [part-id (:part/id part)
         mesh-key (index/mesh-key! library part-id)
         cached? (and mesh-key (fs/regular-file? (cache/tier-file cache mesh-key 0)))
-        source (when-not cached? (index/fresh-source-file! library part-id))
-        job (when source (jobs/submit! jobs part-id source))]
+        source (index/fresh-source-file! library part-id)
+        job (when (and source (not cached?)) (jobs/submit! jobs part-id source))]
     (cond
+      (nil? source)
+      {:part part :state :failed :message "The source mesh is unavailable or changed. Rescan the library."}
+
       cached?
       {:part part :state :ready :mesh-key mesh-key :mesh-url (urls/mesh-url mesh-key 0)}
 
       (= :failed (:state job))
       {:part part :state :failed :message "Could not prepare this part."}
-
-      (nil? source)
-      {:part part :state :failed :message "The source mesh is no longer available."}
 
       :else
       {:part part :state :preparing :message "Preparing…"})))
@@ -133,6 +139,8 @@
         (htmx/fragment
          (list [:span (str "Updated " (count ids) " part" (when (not= 1 (count ids)) "s") ".")]
                (update (parts-view! deps {}) 1 assoc :hx-swap-oob "outerHTML")
+               (into [:div#classification-values {:hx-swap-oob "outerHTML"}]
+                     (rest (vocabulary-views/choices (:values (facets! deps)))))
                (views/filter-updates (facets! deps) (:filters (workspace/workspace! workspace :browse)))))
         (catch Exception e (htmx/fragment [:span.detail__error (.getMessage e)] {:status 422}))))))
 
@@ -161,3 +169,10 @@
     (workspace/update-workspace! workspace :browse assoc :bulk-selection selection)
     (htmx/fragment (list (views/selection-updates selection)
                          (update (parts-view! deps {}) 1 assoc :hx-swap-oob "outerHTML")))))
+
+(defn select-all! [{:keys [workspace] :as deps} {:keys [params]}]
+  (workspace/remember! workspace :browse params)
+  (select-ids! deps (if (= "all" (get params "selection"))
+                      (map :part/id (orientation-parts (importer/effective! deps)
+                                                       (:filters (workspace/workspace! workspace :browse))))
+                      [])))

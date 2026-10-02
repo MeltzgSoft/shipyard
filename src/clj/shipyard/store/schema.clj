@@ -12,7 +12,7 @@
                 :library/root :part/id :part/name :part/bundle :part/class
                 :part/name-override :part/bundle-override :part/class-override
                 :part/mesh-key :source/path :mesh/sha :layer/id :layer/name :layer/preview-name
-                :scheme/name :ship/name :loadout/name :group/name :fleet/name])
+                :scheme/name :ship/name :loadout/name :group/name :fleet/name :vocabulary/value])
    (attributes :db.type/uuid
                [:library/id :part/uid :mount/uid :scheme/id :ship/id :loadout/id :paint/group-id :fleet/id])
    (attributes :db.type/long
@@ -25,7 +25,7 @@
                 :ship/deleted? :layer/builtin?])
    (attributes :db.type/keyword
                [:part/source :part/role-hint :part/role-source :part/role-override :mount/id :mount/kind
-                :mount/origin :mount/mirror-id :source/variant])
+                :mount/origin :mount/mirror-id :source/variant :vocabulary/field])
    (attributes :db.type/data
                [:scan/escort-analysis :part/orientation :mount/pos :mount/axis :mount/roll :mount/magnet
                 :mount/facet :mount/split :mount/mirror-plane :mount/mirror-offset :chunk/payload
@@ -51,5 +51,5 @@
    (into {} (map (fn [attr] [attr {:db/valueType :db.type/string :db/unique :db.unique/identity}]))
          [:store/key :library/root :mesh/sha :color-preset/hex])
    (into {} (map (fn [attr] [attr {:db/unique :db.unique/identity}]))
-         [:scan/key :part/key :layer/key :source/key])
+         [:scan/key :part/key :layer/key :source/key :vocabulary/key])
    {:layer/active-name {:db/unique :db.unique/value}}))

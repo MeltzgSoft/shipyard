@@ -108,7 +108,8 @@ after grouping. Different files assigned the same variant show **Assign variants
 and must be corrected or split before import. Separate rows targeting the same part
 folder must be renamed or explicitly grouped.
 
-Select rows, or **Select entire import** across all pages, to apply bulk bundle,
+Select rows, use **Select all matching parts** for every filtered result (including
+rows not loaded yet), or **Select entire import** to ignore filters, to apply bulk bundle,
 class, role and name edits. The bulk **Supported / unsupported** field applies to
 single-file rows; use the per-file selectors for grouped rows.
 Use **Orient selection** for the usual rotation
@@ -145,13 +146,46 @@ available if the 3D view cannot load.
 Part Browser opens as a table with part thumbnails showing saved region colors.
 Mount summary lists plugs and socket capacity by accepted role. Regions shows Yes
 when a part has saved non-Primary face assignments; clearing them returns it to No.
-Returning from the part editor refreshes its thumbnail and these columns. Tables show 50 rows per page; use Previous and Next to navigate. Selection and workspace filters are briefly unavailable while navigation restores the destination view. Selected parts stay selected across pages, and changing a filter returns to the first page. Filter by bundle/faction, class,
+Returning from the part editor refreshes its thumbnail and these columns. Scroll down
+to load more rows automatically, in batches of 50. **Load more** also works as a manual
+retry. Changing a filter starts a new list; returning from an editor restores the
+loaded rows and scroll position. Selection and workspace filters are briefly unavailable
+while navigation restores the destination view. Filter by bundle/faction, class,
 role, name or orientation status. Check rows to select them; selection remains when
-filters hide rows. Choose a field, enter a value and click **Apply to selected** to
+filters hide rows. **Select all matching parts** replaces the selection with every
+filtered result, including unloaded rows. **Clear selection** clears the whole selection.
+Choose a field, enter a value and click **Apply to selected** to
 edit bundle/faction, class, role or name. Changing the row selection keeps your
 chosen field, name operation and entered values, including edits made while the
 selection is updating. For names, choose find-and-replace, prefix,
 suffix or set-name. These labels survive rescans and do not rename source files.
+
+Expand **Add faction, class or role** below the editing controls to create a reusable
+value. The shared choices persist across restarts and library changes, including values
+created during an import that is later canceled. Bulk edit inputs suggest these values
+and also accept new text. Role names become lowercase identifiers with spaces replaced
+by hyphens (for example, **Sensor Array** becomes **sensor-array**). Custom roles are
+available in the individual editor and socket acceptance choices, and participate in
+assembly compatibility. Weapon sockets retain their turret-only restriction.
+
+Part and ship thumbnails are saved in a disk cache and reused across reloads and app
+restarts. Saved geometry, orientation, assembly, region, scheme and paint changes produce
+updated previews when the list is shown again. Rendering shares a background job pool
+with mesh preparation and mount recovery. By default, two background jobs run at a time
+across the whole app, including import review. The cache removes older images as it fills; missing images
+are recreated automatically. After replacing STL files externally, rescan the library.
+
+To change background concurrency, add `:shipyard.jobs/pool {:threads 2 :queue-size 32}`
+to your application `config.edn` and restart the app. Omitted or nil limits use these
+defaults; they do not mean unlimited or follow CPU count. Both values must be positive
+integers. A full queue leaves previews preparing until a later poll can admit the work.
+Canceling an import stops only its jobs; browsing and thumbnails continue using the pool.
+
+The **Loaded thumbnails** indicator shows ready, generating, waiting, unavailable and
+no-preview counts for loaded rows. Hover over **No preview** for the reason a row is
+skipped. Thumbnails are generated as rows enter view; waiting rows do
+not cause the entire library to be preprocessed. Unsupported geometry is required for
+a part preview.
 
 Double-click a row, or focus it and press Enter, to open the individual editor with
 its floating inspector. **Back to table** restores filters, selection and scroll position.
@@ -344,7 +378,9 @@ The viewport combines fleet palettes with each named ship’s custom materials a
 
 ## Ship classes and named ships
 
-Open **Ship Browser** for a table of reusable ship classes. Use Previous and Next for large libraries. Expanding a class loads its named ships, with separate page controls when needed. Row thumbnails show the
+Open **Ship Browser** for a table of reusable ship classes. Scrolling automatically
+loads more classes in batches of 50. Expanding a class loads its named ships, which
+load further batches independently as you scroll. Row thumbnails show the
 saved assembly; expanding a class loads previews of its named ships with their scheme
 and custom colors. Previews use simplified lighting; open Assemble to inspect finishes. Filter by bundle/faction,
 class, or a class or ship name. Double-click a class row (or focus it and press Enter)

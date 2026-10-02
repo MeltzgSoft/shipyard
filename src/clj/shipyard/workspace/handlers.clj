@@ -9,6 +9,7 @@
             [shipyard.bulk-orientation.handlers :as orient]
             [shipyard.bulk-orientation.views :as orient-views]
             [shipyard.http.htmx :as htmx]
+            [shipyard.http.pagination :as pagination]
             [shipyard.http.views :as views]
             [shipyard.library.index :as index]
             [shipyard.importer.db :as importer]
@@ -51,23 +52,39 @@
                           [:span {:hx-get "/ships?poll=1" :hx-trigger "load delay:400ms" :hx-target "#detail" :hx-sync "#detail:abort"}]))))
                (when result [:input {:type "hidden" :data-assembly-event (pr-str (:event result))}])))))))
 
+(defn- remember-ship-filters! [workspace params]
+  (when (and (some #(contains? params %) ["bundle" "class" "q"])
+             (not (pagination/same-filters? params (:filters (workspace/workspace! workspace :ships)))))
+    (workspace/update-workspace! workspace :ships update :filters dissoc "hull-pages"))
+  (workspace/remember! workspace :ships params))
+
 (defn ships! [{:keys [workspace] :as deps} {:keys [headers params] :as request}]
   (let [table? (not= :editor (:view (workspace/workspace! workspace :ships)))]
     (cond
+      (= "1" (get params "chunk"))
+      (if (pagination/same-filters? params (:filters (workspace/workspace! workspace :ships)))
+        (do (remember-ship-filters! workspace params)
+            (htmx/fragment (ship-views/results (class-entries! deps) (:filters (workspace/workspace! workspace :ships)) nil nil true)))
+        {:status 204 :headers {} :body ""})
       (= "ship-results" (get headers "hx-target"))
-      (do (workspace/remember! workspace :ships params)
+      (do (remember-ship-filters! workspace params)
           (htmx/fragment (ship-views/results (class-entries! deps) (:filters (workspace/workspace! workspace :ships)))))
       table?
-      (do (workspace/remember! workspace :ships params)
+      (do (remember-ship-filters! workspace params)
           (htmx/fragment (cond-> (ship-views/cards (class-entries! deps) (:filters (workspace/workspace! workspace :ships)))
                            (get params "error") (conj [:p.detail__error {:role "alert"} (get params "error")]))))
       :else (ship-preview! deps request))))
 
-(defn named-rows! [deps {:keys [parameters params]}]
+(defn named-rows! [{:keys [workspace] :as deps} {:keys [parameters params]}]
   (let [id (parse-uuid (get-in parameters [:path :id]))
-        entry (some #(when (= id (get-in % [:loadout :loadout/id])) %) (class-entries! deps))]
-    (if entry (htmx/fragment (ship-views/named-rows entry (get params "page") (get params "q")))
-        (htmx/fragment [:p.detail__error "This ship class is unavailable."] {:status 404}))))
+        filters (:filters (workspace/workspace! workspace :ships))
+        entry (some #(when (= id (get-in % [:loadout :loadout/id])) %) (class-entries! deps))
+        page (or (get params "page") (get-in filters ["hull-pages" (str id)]) "1")]
+    (cond
+      (not (pagination/same-filters? params filters)) {:status 204 :headers {} :body ""}
+      entry (do (workspace/update-workspace! workspace :ships assoc-in [:filters "hull-pages" (str id)] page)
+                (htmx/fragment (ship-views/named-rows entry page (get params "q") (= "1" (get params "chunk")))))
+      :else (htmx/fragment [:p.detail__error "This ship class is unavailable."] {:status 404}))))
 
 (defn delete-ship! [deps {:keys [parameters]}]
   (let [id (parse-uuid (get-in parameters [:form :id]))
@@ -196,9 +213,7 @@
                     (append [:section#library.panel {:hx-swap-oob "outerHTML" :data-part-view "part"}])
                     (append [:section#bulk-orient.bulk-orient__stage {:hx-swap-oob "innerHTML"}]))
                 (let [grid (when (= view :grid) (orient/render! deps {:params {"part-ids" bulk-selection}}))
-                      panel (transforms/selected-filters (orient-views/panel (if (importer/session! deps)
-                                                                               (let [db (importer/listing! (importer/effective! deps))]
-                                                                                 {:bundles (catalog/bundles db) :classes (catalog/classes db) :roles (catalog/roles db)}) (facets))
+                      panel (transforms/selected-filters (orient-views/panel (orient/facets! (importer/effective! deps))
                                                                              bulk-selection (index/root! library) (importer/session! deps)) filters)]
                   (-> (htmx/fragment (views/detail-empty) (when-not grid {:events {:clear nil}}))
                       (append (into [(first panel) {:hx-swap-oob "outerHTML"}] (rest panel)))

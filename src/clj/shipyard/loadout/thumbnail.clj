@@ -15,6 +15,8 @@
             [shipyard.scheme.db :as schemes]
             [shipyard.scheme.material :as material]
             [shipyard.ship.db :as ships]
+            [shipyard.thumbnail.cache :as previews]
+            [shipyard.thumbnail.views :as preview-views]
             [shipyard.wire :as wire])
   (:import [java.nio.file Files]))
 
@@ -48,12 +50,12 @@
            (update :colors into colors))))
    {:positions [] :indices [] :colors []} instances))
 
-(defn- read-mesh! [cache mesh-key exact?]
+(defn- mesh-file! [cache mesh-key exact?]
   (let [tiers (if exact? [0] (reverse (range (count (:lod-tiers cache)))))
         ^java.io.File file (first (filter fs/regular-file? (map #(cache/tier-file cache mesh-key %) tiers)))]
-    (wire/decode (Files/readAllBytes (.toPath file)))))
+    file))
 
-(defn thumbnail! [{:keys [catalog loadouts named-ships schemes cache] :as deps} {:keys [path-params]}]
+(defn thumbnail! [{:keys [catalog loadouts named-ships schemes cache thumbnails] :as deps} {:keys [path-params]}]
   (try
     (let [{:keys [kind id]} path-params
           id (parse-uuid id)
@@ -81,11 +83,20 @@
                                     (let [mesh-key (get-in prepared [part-id :mesh-key])
                                           appearance (appearance (catalog/part database part-id) profile path mesh-key)]
                                       (assoc placement :appearance appearance :mesh-key mesh-key
-                                             :exact? (boolean (or (seq (:regions appearance)) (seq (:details appearance))))))) placements)
-                  ;; Repeated mounts share decoded geometry for this request.
-                  meshes (into {} (for [[key exact? :as k] (distinct (map (juxt :mesh-key :exact?) instances))]
-                                    [k (read-mesh! cache key exact?)]))
-                  mesh (assembled-mesh (map #(assoc % :mesh (meshes [(:mesh-key %) (:exact? %)])) instances))]
-              (htmx/fragment [:img {:src (thumbnail/image! mesh nil) :width 128 :height 88
-                                    :alt (str "Preview of " (or (:ship/name ship) (:loadout/name record)))}]))))))
+                                             :exact? (boolean (or (seq (:regions appearance)) (seq (:details appearance)))))))
+                                  (sort-by (comp pr-str key) placements))
+                  files (into {} (for [[key exact? :as k] (distinct (map (juxt :mesh-key :exact?) instances))]
+                                   [k (mesh-file! cache key exact?)]))
+                  inputs (mapv (fn [instance]
+                                 (assoc (select-keys instance [:matrix :appearance :mesh-key])
+                                        :tier (str (fs/file-name (files [(:mesh-key instance) (:exact? instance)]))))) instances)
+                  result (previews/request!
+                          thumbnails {:assembly inputs}
+                          #(let [meshes (update-vals files (fn [^java.io.File file]
+                                                             (wire/decode (Files/readAllBytes (.toPath file)))))
+                                 mesh (assembled-mesh (map (fn [instance]
+                                                             (assoc instance :mesh (meshes [(:mesh-key instance) (:exact? instance)]))) instances))]
+                             (thumbnail/png! mesh nil)))]
+              (htmx/fragment (preview-views/preview result (str "/ship-thumbnails/" kind "/" id)
+                                                    "closest .ship-thumbnail" (or (:ship/name ship) (:loadout/name record)))))))))
     (catch Exception _ (htmx/fragment [:span "Preview unavailable"]))))

@@ -6,8 +6,8 @@
 ;;   3. environment variables               - PORT
 ;; Application settings are read from Datalevin after this opens the store.
 ;;
-;; Tunables here were measured, not derived (see TECHNICAL.md §6.2, §6.3, §6.5),
-;; which is exactly why they are adjustable without a rebuild.
+;; Mesh tunables were measured (TECHNICAL.md §6.2, §6.3, §6.5); job bounds limit
+;; concurrent memory use. All are adjustable without a rebuild.
 
 {;; Component keys are namespaced to the namespace that implements them, so
  ;; integrant's load-namespaces can find each ig/init-key without a registry.
@@ -28,7 +28,12 @@
                         :test    67108864}}   ; 64 MB so LRU eviction is testable in seconds
 
  :shipyard.store/db {}
+ ;; One executor for library/import preprocessing, recovery and all thumbnails.
+ ;; Depend on the store so all workers stop before its native handle closes.
+ :shipyard.jobs/pool {:store #ig/ref :shipyard.store/db :threads 2 :queue-size 32}
  :shipyard.file-picker/db {}
+ :shipyard.thumbnail/cache {:cache #ig/ref :shipyard.mesh/cache :cap-bytes 134217728
+                            :workers #ig/ref :shipyard.jobs/pool}
 
  :shipyard.catalog/db
  {:library #ig/ref :shipyard.library/index
@@ -38,6 +43,7 @@
  ;; seconds and GET /part/:id must return immediately (TECHNICAL.md §7).
  :shipyard.http/jobs
  {:library #ig/ref :shipyard.library/index
+  :workers #ig/ref :shipyard.jobs/pool
   :cache   #ig/ref :shipyard.mesh/cache}
 
  :shipyard.assembly/db {}
@@ -51,7 +57,8 @@
                          :preview #ig/ref :shipyard.loadout.operations/preview}
 
  :shipyard.http/routes
- {:file-picker #ig/ref :shipyard.file-picker/db
+ {:thumbnails #ig/ref :shipyard.thumbnail/cache
+  :file-picker #ig/ref :shipyard.file-picker/db
   :library #ig/ref :shipyard.library/index
   :catalog #ig/ref :shipyard.catalog/db
   :cache   #ig/ref :shipyard.mesh/cache

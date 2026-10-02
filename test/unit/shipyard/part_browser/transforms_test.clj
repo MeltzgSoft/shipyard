@@ -12,7 +12,7 @@
     (is (= "New Hull" (-> (edit {"operation" "replace" "find" "Old"}) :changes first :value)))
     (is (:error (edit {"operation" "replace"})))
     (is (:error (edit {"value" " "})))
-    (is (:error (edit {"field" "role" "value" "invalid"})))
+    (is (:error (edit {"field" "role" "value" "bad/role"})))
     (is (= :prow (-> (edit {"field" "role" "value" "prow"}) :changes first :value)))
     (is (:error (t/edits [] {})))))
 
