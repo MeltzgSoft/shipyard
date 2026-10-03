@@ -868,7 +868,7 @@
   (s/select-option! *driver* ".part-bulk-edit select[name=field]" "Name")
   (s/select-option! *driver* ".part-bulk-edit select[name=operation]" "Add prefix")
   (s/fill-and-blur! *driver* ".part-bulk-edit input[name=value]" "Archived ")
-  (s/click! *driver* ".part-bulk-edit button")
+  (s/click! *driver* "#part-bulk-apply")
   (is (s/wait-until #(str/includes? (s/text *driver* "#bulk-orient-results") "Archived Supported Only Prow")))
   (s/click! *driver* "[data-bulk-render-button]")
   (s/wait-visible! *driver* "#part-edit-status[role=alert]")

@@ -2202,6 +2202,12 @@ The shared store keeps explicitly added classifications as vocabulary entities k
 `[field value]`, with a keyword field and string value. Choice projections combine these
 application-wide values with observed/authored labels in the selected library and, during
 review, the staging catalog. Role identifiers are normalized by a pure transform.
+The shared bulk-edit form uses a server-rendered editable classification selector.
+A small ClojureScript DOM enhancement projects the current datalist values into a
+searchable dropdown with keyboard navigation and a missing-value choice. It initializes
+independently of WebGL and keeps transient menu state on the element; selection swaps
+leave the value field intact. Choices and saves remain server-owned: only the existing
+metadata POST applies typed values, with import edits using the staging catalog.
 Custom singleton roles participate in socket acceptance and existing assembly matching;
 the built-in weapon/turret and shared hull hardpoint constraints remain in force.
 Variable-size viewport events exceeding 2 KiB are carried in escaped

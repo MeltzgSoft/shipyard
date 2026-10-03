@@ -129,8 +129,7 @@
     (selection-controls selection)
     [:form.part-bulk-edit {:method "post" :action "/parts/metadata" :hx-post "/parts/metadata" :hx-target "#part-edit-status"
                            :hx-include "#part-table-position, [data-part-page]" :hx-disabled-elt (if importing? "find button, .import-review button" "find button")}
-     [:label "Field" [:select {:name "field"
-                               :hx-on:change "var input=this.form.querySelector('input[name=value]'); if(['bundle','class','role'].includes(this.value)){input.setAttribute('list','part-'+this.value+'-values');}else{input.removeAttribute('list');}"}
+     [:label "Field" [:select {:name "field"}
                       (for [[value label] (cond-> [["bundle" "Bundle / faction"] ["class" "Class"] ["role" "Role"] ["name" "Name"]] importing? (conj ["variant" "Supported / unsupported"]))]
                         [:option {:value value} label])]]
      [:label.part-bulk-edit__name "Name operation" [:select {:name "operation"}
@@ -139,7 +138,7 @@
                                                     [:option {:value "suffix"} "Add suffix"]
                                                     [:option {:value "set"} "Replace entire name"]]]
      [:label.part-bulk-edit__find "Find" [:input {:name "find"}]]
-     [:label "Value" [:input {:name "value" :list "part-bundle-values"}]]
+     (vocabulary/picker)
      (apply-button selection)]
     [:p#part-edit-status {:role "status"}]]))
 

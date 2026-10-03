@@ -124,7 +124,7 @@
         (s/select-option! driver ".part-bulk-edit select[name=operation]" "Add prefix")
         (s/fill! driver ".part-bulk-edit input[name=value]" "Archived ")
         (is (= expected (fields)))
-        (is (true? (s/js driver "() => document.querySelector('.part-bulk-edit button').disabled"))))
+        (is (true? (s/js driver "() => document.querySelector('#part-bulk-apply').disabled"))))
       (let [[^Route route ^APIResponse response] @held]
         (.fulfill route (doto (Route$FulfillOptions.) (.setResponse response))))
       (testing "selection updates the count and Apply button without replacing the user's edit"
@@ -132,8 +132,8 @@
         (is (= expected (fields)))
         (is (= {:name "value" :start 9 :end 9}
                (s/js driver "() => ({name:document.activeElement.name,start:document.activeElement.selectionStart,end:document.activeElement.selectionEnd})")))
-        (is (false? (s/js driver "() => document.querySelector('.part-bulk-edit button').disabled")))
-        (s/click! driver ".part-bulk-edit button")
+        (is (false? (s/js driver "() => document.querySelector('#part-bulk-apply').disabled")))
+        (s/click! driver "#part-bulk-apply")
         (is (s/wait-until #(str/includes? (s/text driver "#bulk-orient-results") "Archived Supported Only Prow")))
         (is (= expected (fields)))
         (is (= "Human Navy Fleet Bundle"
@@ -142,7 +142,7 @@
       (testing "clearing the selection disables Apply while retaining the editable fields"
         (.uncheck page (str "[data-bulk-select][value='" s/supported-id "']"))
         (is (s/wait-until #(= "0 selected" (s/text driver "[data-bulk-count]"))))
-        (is (true? (s/js driver "() => document.querySelector('.part-bulk-edit button').disabled")))
+        (is (true? (s/js driver "() => document.querySelector('#part-bulk-apply').disabled")))
         (is (= expected (fields))))
       (finally (s/quit! driver) (s/stop-system! system)))))
 
