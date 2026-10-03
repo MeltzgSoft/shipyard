@@ -4,8 +4,11 @@
 
 (defn- input [^js root] (.querySelector root "[data-classification-input]"))
 (defn- menu [^js root] (.querySelector root "[role=listbox]"))
+(defn- field [^js root]
+  (or (.getAttribute (input root) "data-classification-field")
+      (some-> (.namedItem (.-elements (.-form (input root))) "field") .-value)))
 (defn- classification? [^js root]
-  (contains? #{"bundle" "class" "role"} (.-value (.namedItem (.-elements (.-form (input root))) "field"))))
+  (contains? #{"bundle" "class" "role"} (field root)))
 
 (defn- close! [^js root]
   (set! (.-hidden (menu root)) true)
@@ -24,7 +27,7 @@
 
 (defn- open! [^js root all?]
   (when (classification? root)
-    (let [field (.-value (.namedItem (.-elements (.-form (input root))) "field"))
+    (let [field (field root)
           values (map #(.-value ^js %) (array-seq (.querySelectorAll js/document (str "#part-" field "-values option"))))
           query (if all? "" (.-value (input root)))
           options (picker/options values query)
@@ -33,7 +36,7 @@
       (doseq [[index {:keys [value new?]}] (map-indexed vector options)]
         (let [item (.createElement js/document "button")]
           (set! (.-type item) "button")
-          (set! (.-id item) (str "part-edit-option-" index))
+          (set! (.-id item) (str (.-id list) "-option-" index))
           (set! (.-tabIndex item) -1)
           (.setAttribute item "role" "option")
           (.setAttribute item "data-classification-value" value)
@@ -60,7 +63,7 @@
   (.removeAttribute (input root) "list")
   (let [enabled? (classification? root)]
     (set! (.-hidden (.querySelector root "[data-classification-toggle]")) (not enabled?))
-    (set! (.-hidden (.querySelector root "small")) (not enabled?))
+    (when-let [help (.querySelector root "small")] (set! (.-hidden help) (not enabled?)))
     (if enabled? (.setAttribute (input root) "role" "combobox") (.removeAttribute (input root) "role")))
   (close! root))
 

@@ -47,3 +47,26 @@
       (catalog/save-regions! cat id (assoc regions :faces {}))
       (is (false? (:part/has-regions? (read!))))
       (finally (fixture/stop! started)))))
+
+(deftest drawer-edits-only-one-part-and-validates-all-fields
+  (let [started (fixture/start!) handler (:handler started) cat (get-in started [:system :shipyard.catalog/db])
+        state (get-in started [:system :shipyard.workspace/db :state])
+        a (:prow fixture/ids) b (:bridge fixture/ids)
+        original (catalog/snapshot! cat)
+        params {"part-id" a "name" "Drawer Prow" "bundle" "Drawer Fleet" "class" "Drawer Cruiser" "role" "Sensor Array"}
+        post! #(handler (mock/request :post "/parts/metadata/row" %))]
+    (try
+      (swap! state assoc-in [:workspaces :browse :bulk-selection] (pr-str [b]))
+      (is (= 400 (:status (post! (dissoc params "class")))))
+      (is (= 422 (:status (post! (assoc params "role" "bad/role")))))
+      (is (= 422 (:status (post! (assoc params "part-id" "missing")))))
+      (is (= original (catalog/snapshot! cat)))
+      (is (= 200 (:status (post! params))))
+      (let [after (catalog/snapshot! cat) part (catalog/part after a)]
+        (is (= ["Drawer Prow" "Drawer Fleet" "Drawer Cruiser" :sensor-array]
+               (mapv part [:part/name :part/bundle :part/class :part/role-hint])))
+        (is (= (catalog/part original b) (catalog/part after b)))
+        (is (= (select-keys (catalog/part original a) [:part/id :part/uid :part/mounts :part/paint-regions :part/orientation])
+               (select-keys part [:part/id :part/uid :part/mounts :part/paint-regions :part/orientation])))
+        (is (= (pr-str [b]) (get-in @state [:workspaces :browse :bulk-selection]))))
+      (finally (fixture/stop! started)))))

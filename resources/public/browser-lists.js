@@ -26,7 +26,7 @@
   });
   document.addEventListener('htmx:beforeRequest', event => {
     const source = event.detail.elt;
-    if (source.closest('.list-more') || source.closest(thumbnails)) {
+    if (source.closest('.list-more, .part-drawer__content') || source.closest(thumbnails)) {
       const xhr = event.detail.xhr;
       const guard = e => { if (e.detail.xhr === xhr && !source.isConnected) e.detail.shouldSwap = false; };
       document.addEventListener('htmx:beforeSwap', guard);
