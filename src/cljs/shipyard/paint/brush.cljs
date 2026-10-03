@@ -107,23 +107,19 @@
 
 (defn- rgb [hex] (mapv #(/ (js/parseInt (subs hex % (+ % 2)) 16) 255) [1 3 5]))
 
-(defn sampled-instances [buffer x y radius target cross?]
-  (if-not cross?
-    (if-let [entry (get-in buffer [:ranges target])]
-      (let [triangles (visible-triangles (merge buffer entry) x y radius)]
-        (if (seq triangles) {target triangles} {})) {})
-    (let [ranges (vec (sort-by (comp :start val) (:ranges buffer)))
-          ids (visible-triangles (assoc buffer :start 1 :end 16777216) x y radius)]
-      (reduce (fn [result encoded]
-                (let [id (inc encoded)
-                      entry (loop [lo 0 hi (dec (count ranges))]
-                              (when (<= lo hi)
-                                (let [mid (quot (+ lo hi) 2) [_ {:keys [start end]}] (nth ranges mid)]
-                                  (cond (< id start) (recur lo (dec mid))
-                                        (>= id end) (recur (inc mid) hi)
-                                        :else (nth ranges mid)))))]
-                  (if entry (update result (first entry) (fnil conj #{}) (- id (:start (second entry)))) result)))
-              {} ids))))
+(defn sampled-instances [buffer x y radius]
+  (let [ranges (vec (sort-by (comp :start val) (:ranges buffer)))
+        ids (visible-triangles (assoc buffer :start 1 :end 16777216) x y radius)]
+    (reduce (fn [result encoded]
+              (let [id (inc encoded)
+                    entry (loop [lo 0 hi (dec (count ranges))]
+                            (when (<= lo hi)
+                              (let [mid (quot (+ lo hi) 2) [_ {:keys [start end]}] (nth ranges mid)]
+                                (cond (< id start) (recur lo (dec mid))
+                                      (>= id end) (recur (inc mid) hi)
+                                      :else (nth ranges mid)))))]
+                (if entry (update result (first entry) (fnil conj #{}) (- id (:start (second entry)))) result)))
+            {} ids)))
 
 (defn- entries [current pending]
   (mapv (fn [[path keys]]
@@ -147,7 +143,7 @@
           (.append element row))))))
 
 (def lock-selector
-  ".ship-inspector > nav button, .ship-card button, #workspace-navigation button, #paint-select select, #paint-target button, #paint-create button, #paint-rename button, #mount-colors-toggle, .paint-tools button, .paint-editor input:not([type=hidden]), .paint-editor select, .paint-editor button, .paint-rail button")
+  ".ship-inspector > nav button, .ship-card button, #workspace-navigation button, #paint-create button, #paint-rename button, #mount-colors-toggle, .paint-editor input:not([type=hidden]), .paint-editor select, .paint-editor button, .paint-rail button, .named-ship-actions button")
 
 (defn listen! [{:keys [^js canvas ^js controls ^js camera active mount-colors-enabled] :as sys} apply-material!]
   (let [stroke (atom nil) last-stroke (atom nil) locked (atom [])
@@ -193,7 +189,7 @@
               (and @active (identical? (:form current) (form!)) (= (:id current) (:id @stroke))))
             (set-field! [form name v] (set! (.-value (field form name)) v))
             (parameters [current pending final? part]
-              {"id" (:scheme current) "target" (:target-key current)
+              {"id" (:scheme current)
                "stroke-id" (str (:id current)) "part" (str part) "final" (str final?)
                "entries" (pr-str (entries current pending))
                "color" (:hex current) "metalness" (str (get-in current [:color :metalness]))
@@ -221,7 +217,7 @@
                     (swap! stroke assoc :pending {} :part (inc (:part current))
                            :chain (.catch task (fn [_]
                                                  (when (live? current)
-                                                   (cancel! "Save not confirmed. Retry last stroke, or reopen Paint to restore saved details." true)))))))))
+                                                   (cancel! "Save not confirmed. Retry last stroke, or reopen Customize to restore saved details." true)))))))))
             (behind! [current x y]
               (let [ray (three/Raycaster.) position (three/Vector2. (- (* 2 (/ x (:width (:buffer current)))) 1)
                                                                     (- 1 (* 2 (/ y (:height (:buffer current))))))
@@ -233,21 +229,21 @@
                   (set (for [[path {:keys [object]}] (get-in current [:buffer :ranges])
                              :when (and (not (identical? object front)) (contains? behind object))] path)))))
             (sample! [^js e]
-              (when-let [{:keys [buffer radius last-point target cross?] :as current} @stroke]
+              (when-let [{:keys [buffer radius last-point] :as current} @stroke]
                 (when (:dragging? current)
                   (let [[x y :as now] (point e) [lx ly] (or last-point now)
                         steps (max 1 (js/Math.ceil (/ (js/Math.hypot (- x lx) (- y ly)) (max 1 (/ radius 2)))))
                         sampled (reduce #(merge-with into %1 %2) {}
                                         (for [step (range 1 (inc steps))]
                                           (sampled-instances buffer (+ lx (* (/ step steps) (- x lx)))
-                                                             (+ ly (* (/ step steps) (- y ly))) radius target cross?)))
+                                                             (+ ly (* (/ step steps) (- y ly))) radius)))
                         deltas (into {} (for [[path triangles] sampled
                                               :let [^js object (get-in buffer [:ranges path :object])
                                                     known (get-in current [:keys path] #{})
                                                     added (into #{} (comp (map #(render/face-key (.-geometry object) %)) (remove known)) triangles)]
                                               :when (seq added)] [path added]))]
                     (if (some (:stale current) (keys deltas))
-                      (cancel! "Source mesh changed. Clear instance details before repainting. Nothing saved." false)
+                      (cancel! "Source mesh changed. Reset custom paint before repainting. Nothing saved." false)
                       (do
                         (doseq [[path added] deltas]
                           (let [^js object (get-in buffer [:ranges path :object]) before (.. object -userData -paintDetails)
@@ -280,28 +276,22 @@
                              (if-not (.reportValidity (field (form!) "brush-color"))
                                (status! "Enter a six-digit detail hex color before painting.")
                                (try
-                                 (let [form (form!) target-key (value form "target")
-                                       target (when (= "[" (subs target-key 0 1)) (edn/read-string target-key))
-                                       cross? (.-checked (field form "cross-instances"))
-                                       buffer (visible-buffer sys target)]
-                                   (if (and (not cross?) (not (contains? (:ranges buffer) target)))
-                                     (status! "Select an individual instance, or turn on Cross instances.")
-                                     (do
-                                       (set! (.-enabled controls) false)
-                                       (.setPointerCapture canvas (.-pointerId e))
-                                       (reset! stroke {:id (random-uuid) :part 0 :chain (js/Promise.resolve) :pending {} :keys {} :before {} :behind #{}
-                                                       :buffer buffer :form form :target target :target-key target-key :cross? cross? :dragging? true
-                                                       :scheme (value form "id") :headers (js/JSON.parse (.. (.getElementById js/document "workspace-context") -dataset -headers))
-                                                       :labels (edn/read-string (.getAttribute form "data-instance-labels"))
-                                                       :stale (set (edn/read-string (.getAttribute form "data-stale-targets")))
-                                                       :color {:base (rgb (value form "brush-color"))
-                                                               :metalness (js/parseFloat (value form "brush-metalness"))
-                                                               :roughness (js/parseFloat (value form "brush-roughness"))
-                                                               :glow (js/parseFloat (value form "brush-glow"))} :hex (value form "brush-color")
-                                                       :erase? (or (= 2 (.-button e)) (= "erase" (value form "mode"))) :radius (js/parseFloat (value form "radius"))})
-                                       (lock!)
-                                       (swap! stroke assoc :timer (js/setInterval #(flush! false) (js/Number (.getAttribute form "data-flush-interval"))))
-                                       (sample! e))))
+                                 (let [form (form!) buffer (visible-buffer sys nil)]
+                                   (set! (.-enabled controls) false)
+                                   (.setPointerCapture canvas (.-pointerId e))
+                                   (reset! stroke {:id (random-uuid) :part 0 :chain (js/Promise.resolve) :pending {} :keys {} :before {} :behind #{}
+                                                   :buffer buffer :form form :dragging? true
+                                                   :scheme (value form "id") :headers (js/JSON.parse (.. (.getElementById js/document "workspace-context") -dataset -headers))
+                                                   :labels (edn/read-string (.getAttribute form "data-instance-labels"))
+                                                   :stale (set (edn/read-string (.getAttribute form "data-stale-targets")))
+                                                   :color {:base (rgb (value form "brush-color"))
+                                                           :metalness (js/parseFloat (value form "brush-metalness"))
+                                                           :roughness (js/parseFloat (value form "brush-roughness"))
+                                                           :glow (js/parseFloat (value form "brush-glow"))} :hex (value form "brush-color")
+                                                   :erase? (or (= 2 (.-button e)) (= "erase" (value form "mode"))) :radius (js/parseFloat (value form "radius"))})
+                                   (lock!)
+                                   (swap! stroke assoc :timer (js/setInterval #(flush! false) (js/Number (.getAttribute form "data-flush-interval"))))
+                                   (sample! e))
                                  (catch :default _
                                    (if @stroke (cancel! "The visible-face buffer could not be prepared. Nothing saved; try again." false)
                                        (status! "The visible-face buffer could not be prepared. Nothing saved; try again."))))))) true)
@@ -339,6 +329,6 @@
                          (fn [^js e]
                            (when (and @stroke (:submitting? @stroke) (identical? (.. e -detail -elt) (:form @stroke)))
                              (if (or (not (.. e -detail -successful)) (.querySelector js/document "#brush-status [data-brush-result=failed]"))
-                               (cancel! "Save not confirmed. Retry last stroke, or reopen Paint to restore saved details." true)
+                               (cancel! "Save not confirmed. Retry last stroke, or reopen Customize to restore saved details." true)
                                (do (reset! last-stroke @stroke) (reset! stroke nil) (unlock!)
                                    (status! "Details saved.")))))))))

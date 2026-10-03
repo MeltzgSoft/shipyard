@@ -1,157 +1,112 @@
 (ns shipyard.e2e.paint-editor-test
-  (:require [shipyard.persistence-fixture :as persisted]
-            [clojure.test :refer [deftest is testing]]
+  (:require [clojure.test :refer [deftest is]]
             [shipyard.assembly-fixture :as fixture]
             [shipyard.e2e.support :as s]
-            [shipyard.e2e.workspace-test :as workspace]
-            [shipyard.e2e.paint-material-test :as materials]
+            [shipyard.e2e.named-ship-test :as named]
+            [shipyard.e2e.detail-brush-test :as brush]
             [shipyard.loadout-fixture :as lf]
-            [shipyard.ship.db :as schemes])
-  (:import [com.microsoft.playwright Page Route APIResponse Route$FulfillOptions]
+            [shipyard.loadout.db :as classes]
+            [shipyard.ship.db :as ships]
+            [shipyard.scheme.db :as schemes]
+            [shipyard.persistence-fixture :as persisted])
+  (:import [com.microsoft.playwright Page Dialog]
            [java.util.function Consumer]))
 
-(defn input! [driver selector value event]
-  (s/js driver (str "() => {let e=document.querySelector('" selector "');e.value='" value
-                    "';e.dispatchEvent(new Event('" event "',{bubbles:true}));}")))
+(defn- confirm! [driver accept?]
+  (.onceDialog ^Page (:page driver)
+               (reify Consumer (accept [_ dialog]
+                                 (if accept? (.accept ^Dialog dialog) (.dismiss ^Dialog dialog))))))
 
-(deftest paint-input-preview-commit-and-instance-independence
+(deftest customize-and-browser-tables-edit-and-delete-named-ships
   (s/assert-bundle!)
   (let [started (fixture/start! true) sys (:system started) driver (s/make-driver)
-        state (:state (:shipyard.assembly/db sys)) store (:shipyard.ship/db sys)]
+        class-db (:shipyard.loadout/db sys) ship-db (:shipyard.ship/db sys)
+        scheme-db (:shipyard.scheme/db sys)
+        class {:loadout/id (random-uuid) :loadout/name "Cruiser" :loadout/hull (:hull lf/draft) :loadout/slots lf/assignments}
+        other (assoc class :loadout/id (random-uuid) :loadout/name "Scout" :loadout/slots {})
+        palette {:scheme/id (random-uuid) :scheme/name "Fleet" :scheme/layers {}}
+        scout {:ship/id (random-uuid) :ship/name "Scout vessel" :ship/class (:loadout/id other) :ship/paint {}}
+        edit #(str "button[aria-label='Edit ship " % "']")
+        delete #(str "button[aria-label='Delete ship " % "']")]
     (try
-      (swap! state assoc :draft lf/draft :root (str (:root started)))
-      (lf/save-class! sys)
+      (classes/put! class-db class :create)
+      (classes/put! class-db other :create)
+      (schemes/put! scheme-db palette :create)
+      (ships/put! ship-db scout :create)
       (s/go! driver (s/base-url sys))
-      (workspace/switch! driver "assembly")
-      (workspace/await-ship! driver)
-      (s/click! driver "button:text-is('Create named ship')")
-      (is (s/wait-until #(zero? (s/js driver "() => document.querySelectorAll('#paint-target, #paint-material, .paint-group-link, .paint-tools').length"))))
-      (is (re-find #"name" (s/text driver "#paint-create")))
-      (s/wait-visible! driver "#paint-create")
-      (is (= "Ship Browser" (s/text driver ".masthead__mode--active")))
-      (s/fill-and-blur! driver "#paint-create input[name=name]" "Distinct weapons")
-      (s/click! driver "#paint-create button")
-      (s/wait-visible! driver "#paint-material")
-      (s/click! driver "#paint-target button[data-paint-target='[[:weapon 0]]']")
-      (is (s/wait-until #(= "[[:weapon 0]]" (s/js driver "() => document.querySelector('#paint-material')?.elements.target.value"))))
-      (workspace/await-ship! driver)
-      (let [before (schemes/snapshot! store) id (get-in @(:state (:shipyard.paint/db sys)) [:draft :ship-id])]
-        (input! driver "#paint-material input[name=base]" "#ff0000" "input")
-        (is (s/wait-until #(= "ff0000" (:color (materials/slot driver [["weapon" 0]])))))
-        (is (= "9aa4af" (:color (materials/slot driver [["weapon" 1]]))))
-        (is (= before (schemes/snapshot! store)))
-        (input! driver "#paint-material input[name=base]" "#ff0000" "change")
-        (is (s/wait-until #(= "Material saved." (s/text driver "#paint-status"))))
-        (is (= [1.0 0.0 0.0] (get-in (persisted/records! store :ships)
-                                     [:ships id :ship/paint :paint/instances [[:weapon 0]] :material :base])))
-        (is (= lf/draft (dissoc (:draft @state) :name :loadout-id)))
-        (let [held (atom nil) ^Page page (:page driver)]
-          (.route page "**/ships/paint/material"
-                  (reify Consumer
-                    (accept [_ value]
-                      (let [^Route route value]
-                        (if (nil? @held) (reset! held [route (.fetch route)]) (.resume route))))))
-          (input! driver "#paint-material input[name=base]" "#00ff00" "input")
-          (input! driver "#paint-material input[name=base]" "#00ff00" "change")
-          (is (s/wait-until #(do (s/stats driver) (some? @held))))
-          (is (true? (s/js driver "() => document.querySelector('[data-workspace-mode=ships]').disabled")))
-          (input! driver "#paint-material input[name=base]" "#ff0000" "input")
-          (let [[^Route route ^APIResponse response] @held]
-            (.fulfill route (doto (Route$FulfillOptions.) (.setResponse response))))
-          (is (s/wait-until #(= "Newer preview not saved" (s/text driver "#paint-status"))))
-          (is (= "ff0000" (:color (materials/slot driver [["weapon" 0]]))))
-          (is (= "#ff0000" (s/js driver "() => document.querySelector('#paint-material').elements.base.value")))
-          (is (= [0.0 1.0 0.0] (get-in (persisted/records! store :ships)
-                                       [:ships id :ship/paint :paint/instances [[:weapon 0]] :material :base]))
-              "The delayed save committed green while the newer red preview stays local")
-          (s/click! driver "#paint-material button.paint-primary")
-          (is (s/wait-until #(= "Material saved." (s/text driver "#paint-status")))))
-        (testing "A finish edit persists through a separate database connection"
-          (input! driver "#paint-material input[name=metalness]" "0.33" "input")
-          (input! driver "#paint-material input[name=metalness]" "0.33" "change")
-          (is (s/wait-until #(= "Material saved." (s/text driver "#paint-status")))))
-        (is (= 0.33 (get-in (persisted/records! store :ships)
-                            [:ships id :ship/paint :paint/instances [[:weapon 0]] :material :metalness])))
-        (workspace/switch! driver "assembly")
-        (workspace/await-ship! driver)
-        (s/click! driver ".ship-inspector nav button:text-is('Paint')")
-        (s/wait-visible! driver "#paint-material")
-        (is (s/wait-until #(= "ff0000" (:color (materials/slot driver [["weapon" 0]])))))
-        (s/click! driver "button:text-is('Use inherited material')")
-        (s/wait-visible! driver "#paint-material")
-        (is (s/wait-until #(= "9aa4af" (:color (materials/slot driver [["weapon" 0]])))))
-        (is (empty? (get-in (schemes/snapshot! store) [:ships id :ship/paint :paint/instances]))))
+      (s/open-class! driver "Cruiser")
+      (named/tab! driver "Customize")
+      (s/select-option! driver "#paint-create select[name=scheme]" "Fleet")
+      (named/create! driver "Resolute")
+      (is (zero? (s/count-els driver "#paint-target, #paint-material, .paint-tools, .paint-group-controls, .paint-write, [name=cross-instances]")))
+      (is (= 2 (s/count-els driver ".customize-ships tbody tr")))
+      (is (= "Customize" (s/text driver ".ship-inspector nav button[aria-current=page]")))
+      (let [id (get-in @(:state (:shipyard.paint/db sys)) [:draft :ship-id])
+            before-class (classes/snapshot! class-db)]
+        (s/input! driver "#paint-brush input[name=radius]" "2" "input")
+        (apply brush/stroke! driver (brush/face-point driver [] 0))
+        (brush/await-saved! driver)
+        (let [details (get-in (ships/snapshot! ship-db) [:ships id :ship/paint :paint/details])]
+          (s/click! driver (edit "Scout vessel"))
+          (s/wait-visible! driver "#paint-brush")
+          (is (s/wait-until #(= (:ship/id scout) (get-in @(:state (:shipyard.paint/db sys)) [:draft :ship-id]))))
+          (is (s/wait-until #(= 1 (count (get-in (s/stats driver) [:assembly :slots])))))
+          (s/click! driver (edit "Resolute"))
+          (s/wait-visible! driver "#paint-brush")
+          (is (s/wait-until #(seq (:details (s/slot driver [])))))
+          (confirm! driver false)
+          (s/click! driver (delete "Scout vessel"))
+          (is (= 2 (count (:ships (ships/snapshot! ship-db)))))
+          (confirm! driver true)
+          (s/click! driver (delete "Scout vessel"))
+          (is (s/wait-until #(= #{id} (set (keys (:ships (ships/snapshot! ship-db)))))))
+          (is (s/wait-until #(= 1 (s/count-els driver ".customize-ships tbody tr"))))
+          (is (= id (get-in @(:state (:shipyard.paint/db sys)) [:draft :ship-id])))
+          (is (= details (get-in (persisted/records! ship-db :ships) [:ships id :ship/paint :paint/details])))
+          (s/screenshot-el! driver ".stage__detail" (java.io.File. "/tmp/shipyard-customize.png")))
+        (s/ship-table! driver)
+        (s/click! driver ".ship-card:has([aria-label='Open class Cruiser']) summary")
+        (s/wait-visible! driver (edit "Resolute"))
+        (s/click! driver (edit "Resolute"))
+        (s/wait-visible! driver "#paint-brush")
+        (is (= id (get-in @(:state (:shipyard.paint/db sys)) [:draft :ship-id])))
+        (s/ship-table! driver)
+        (s/wait-visible! driver (delete "Resolute"))
+        (s/screenshot-el! driver "#library" (java.io.File. "/tmp/shipyard-named-ship-actions.png"))
+        (confirm! driver false)
+        (s/click! driver (delete "Resolute"))
+        (is (= #{id} (set (keys (:ships (ships/snapshot! ship-db))))))
+        (confirm! driver true)
+        (s/click! driver (delete "Resolute"))
+        (is (s/wait-until #(empty? (:ships (ships/snapshot! ship-db)))))
+        (is (s/wait-until #(zero? (s/count-els driver ".ship-table__named"))))
+        (is (= before-class (classes/snapshot! class-db)))
+        (is (= palette (get-in (schemes/snapshot! scheme-db) [:schemes (:scheme/id palette)])))
+        (is (= (ships/snapshot! ship-db) (persisted/records! ship-db :ships))))
       (finally (s/quit! driver) (fixture/stop! started)))))
 
-(deftest group-editing-precedence-and-floating-inspector
+(deftest customize-table-pages-without-changing-the-current-preview
   (s/assert-bundle!)
   (let [started (fixture/start! true) sys (:system started) driver (s/make-driver)
-        store (:shipyard.ship/db sys)
-        target! (fn [key]
-                  (s/click! driver (str "#paint-target button[data-paint-target='" key "']"))
-                  (is (s/wait-until #(= key (s/js driver "() => document.querySelector('#paint-material')?.elements.target.value")))))]
+        class-db (:shipyard.loadout/db sys) ship-db (:shipyard.ship/db sys)
+        class {:loadout/id (random-uuid) :loadout/name "Cruiser" :loadout/hull (:hull lf/draft) :loadout/slots {}}]
     (try
-      (swap! (:state (:shipyard.assembly/db sys)) assoc :draft lf/draft :root (str (:root started)))
-      (lf/save-class! sys)
+      (classes/put! class-db class :create)
+      (doseq [n (range 51)]
+        (ships/put! ship-db {:ship/id (random-uuid) :ship/name (format "Vessel %02d" n)
+                             :ship/class (:loadout/id class) :ship/paint {}} :create))
       (s/go! driver (s/base-url sys))
-      (workspace/switch! driver "assembly")
-      (workspace/await-ship! driver)
-      (s/click! driver "button:text-is('Create named ship')")
-      (s/fill-and-blur! driver "#paint-create input[name=name]" "Group proof")
-      (s/click! driver "#paint-create button")
-      (s/wait-visible! driver "#paint-material")
-      (workspace/await-ship! driver)
-      (is (true? (s/js driver "() => {const c=document.querySelector('#viewport').getBoundingClientRect(),i=document.querySelector('.stage__detail').getBoundingClientRect();return c.right>=i.right&&c.left<i.left&&c.height>=i.height;}")))
-      (let [id (get-in @(:state (:shipyard.paint/db sys)) [:draft :ship-id])
-            record #(get-in (schemes/snapshot! store) [:ships id :ship/paint])
-            create! (fn [name members]
-                      (doseq [member members] (s/check! driver (str "#paint-target input[value='" member "']")))
-                      (s/click! driver ".paint-group-link")
-                      (s/fill-and-blur! driver "#paint-group-create input[name=name]" name)
-                      (s/click! driver "#paint-group-create button")
-                      (is (s/wait-until #(= name (s/text driver ".paint-inspector-header h2")))))]
-        (create! "Battery" ["[[:weapon 0]]" "[[:weapon 1]]"])
-        (let [gid (:group/id (first (:paint/groups (record))))]
-          (input! driver "#paint-material input[name=base]" "#ff0000" "input")
-          (is (s/wait-until #(= "ff0000" (:color (materials/slot driver [["weapon" 0]])))))
-          (is (= "ff0000" (:color (materials/slot driver [["weapon" 1]]))))
-          (is (nil? (:group/material (first (:paint/groups (record))))))
-          (input! driver "#paint-material input[name=base]" "#ff0000" "change")
-          (is (s/wait-until #(= "Material saved." (s/text driver "#paint-status"))))
-          (target! "[[:weapon 0]]")
-          (input! driver "#paint-material input[name=base]" "#0000ff" "input")
-          (input! driver "#paint-material input[name=base]" "#0000ff" "change")
-          (is (s/wait-until #(= "Material saved." (s/text driver "#paint-status"))))
-          (is (= "ff0000" (:color (materials/slot driver [["weapon" 1]]))))
-          (s/click! driver "button:text-is('Use inherited material')")
-          (is (s/wait-until #(= "ff0000" (:color (materials/slot driver [["weapon" 0]])))))
-          (create! "Trim" ["[[:weapon 0]]"])
-          (input! driver "#paint-material input[name=base]" "#00ff00" "input")
-          (input! driver "#paint-material input[name=base]" "#00ff00" "change")
-          (is (s/wait-until #(= "Material saved." (s/text driver "#paint-status"))))
-          (is (= "ff0000" (:color (materials/slot driver [["weapon" 0]]))))
-          (s/click! driver "button:text-is('Move up')")
-          (is (s/wait-until #(= "00ff00" (:color (materials/slot driver [["weapon" 0]])))))
-          (is (= "ff0000" (:color (materials/slot driver [["weapon" 1]]))))
-          (target! "[[:weapon 0]]")
-          (s/click! driver ".paint-write button:text-is('Group')")
-          (s/wait-visible! driver ".paint-write select")
-          (is (= "Trim" (s/text driver ".paint-inspector-header h2")))
-          (s/select-option! driver ".paint-write select" "Battery")
-          (is (s/wait-until #(= (str "group/" gid) (s/js driver "() => document.querySelector('#paint-material')?.elements.target.value"))))
-          (target! "[]")
-          (target! (str "group/" gid))
-          (is (= "[[:weapon 0]]" (s/js driver "() => [...document.querySelectorAll('.paint-write button')].find(e=>e.textContent==='Instance').value")))
-          (target! (str "group/" gid))
-          (s/fill-and-blur! driver ".paint-editor input[name=name]" "Main battery")
-          (s/click! driver "button:text-is('Rename group')")
-          (is (s/wait-until #(= "Main battery" (s/text driver ".paint-inspector-header h2"))))
-          (s/js driver "() => {const e=document.querySelector('#paint-target input[value=\"[[:weapon 1]]\"]');e.checked=false;}")
-          (s/click! driver "button:text-is('Use checked members')")
-          (is (s/wait-until #(= 1 (count (:group/members (first (filter (fn [g] (= gid (:group/id g))) (:paint/groups (record)))))))))
-          (.onceDialog ^Page (:page driver) (reify Consumer (accept [_ dialog] (.accept ^com.microsoft.playwright.Dialog dialog))))
-          (s/click! driver "button:text-is('Delete group')")
-          (is (s/wait-until #(not-any? (fn [g] (= gid (:group/id g))) (:paint/groups (record)))))
-          (is (= (schemes/snapshot! store) (persisted/records! store :ships)))
-          (s/screenshot-el! driver "body" (java.io.File. "/tmp/shipyard-paint-material.png"))))
+      (s/open-class! driver "Cruiser")
+      (named/tab! driver "Customize")
+      (is (= 50 (s/count-els driver "#customize-ships tbody tr")))
+      (let [before (:draft @(:state (:shipyard.paint/db sys)))]
+        (s/click! driver "#customize-ships button:text-is('Next')")
+        (is (s/wait-until #(= 1 (s/count-els driver "#customize-ships tbody tr"))))
+        (is (re-find #"Vessel 50" (s/text driver "#customize-ships")))
+        (is (= before (:draft @(:state (:shipyard.paint/db sys)))) "Paging does not select another ship")
+        (named/tab! driver "Schemes")
+        (named/tab! driver "Customize")
+        (is (= 1 (s/count-els driver "#customize-ships tbody tr")))
+        (s/click! driver "#customize-ships button:text-is('Previous')")
+        (is (s/wait-until #(= 50 (s/count-els driver "#customize-ships tbody tr")))))
       (finally (s/quit! driver) (fixture/stop! started)))))

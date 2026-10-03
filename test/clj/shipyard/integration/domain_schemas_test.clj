@@ -19,12 +19,9 @@
                :loadout/slots {[[:weapon 0]] weapon}}
         scheme {:scheme/id (random-uuid) :scheme/name "Palette" :scheme/layers {"Primary" material}}
         face (apply str (repeat 72 "0")) mesh (apply str (repeat 64 "a"))
-        group {:group/id (random-uuid) :group/name "Battery" :group/order 0
-               :group/members [{:path [] :part-id hull} {:path [[:weapon 0]] :part-id weapon}]}
         ship {:ship/id (random-uuid) :ship/name "Ship" :ship/class (:loadout/id class)
               :ship/scheme (:scheme/id scheme)
-              :ship/paint {:paint/groups [group] :paint/instances {[] {:part-id hull :material material}}
-                           :paint/details {[] {:part-id hull :mesh-key mesh :faces {face material}}}}}]
+              :ship/paint {:paint/details {[] {:part-id hull :mesh-key mesh :faces {face material}}}}}]
     (try
       (testing "direct facade writes and nested values survive a real database reopen"
         (is (nil? (:error (classes/put! class-db class :create))))
@@ -40,9 +37,9 @@
                    [:loadouts (assoc class :unexpected true) :invalid-loadout]
                    [:schemes (assoc-in scheme [:scheme/layers "Primary" :glow] ##NaN) :invalid-scheme]
                    [:schemes (dissoc scheme :scheme/name) :invalid-scheme]
-                   [:ships (assoc-in ship [:ship/paint :paint/groups] [group group]) :invalid-ship]
+                   [:ships (assoc-in ship [:ship/paint :paint/groups] []) :invalid-ship]
                    [:ships (assoc-in ship [:ship/paint :paint/details [] :faces face :base] [2 0 0]) :invalid-ship]
-                   [:ships (assoc-in ship [:ship/paint :paint/instances [] :part-id] "") :invalid-ship]]]
+                   [:ships (assoc-in ship [:ship/paint :paint/instances] {}) :invalid-ship]]]
             (is (= code (:error (store/put-record! database library kind invalid :update)))))
           (is (= before [(classes/snapshot! class-db) (schemes/snapshot! scheme-db) (ships/snapshot! ship-db)]))
           (is (= before (mapv #(persisted/records! database %) [:loadouts :schemes :ships])))

@@ -41,26 +41,24 @@
           (is (= "Resolute" (:ship/name (record id))))
           (is (= (:loadout/id class) (:ship/class (record id))))
           (is (= scheme-id (:ship/scheme (record id))))
-          (post "/ships/paint/target" {:target "[]"})
-          (is (str/includes? (:body (post "/ships/paint/material" {:id (str id) :target "[]" :sequence "1" :base "#ff0000" :metalness "0.8" :roughness "0.2"})) "Material saved"))
-          (is (= [1.0 0.0 0.0] (get-in (record id) [:ship/paint :paint/instances [] :material :base])))
-          (is (empty? (get-in (schemes/snapshot! scheme-db) [:schemes scheme-id :scheme/instances])))
+          (ships/put! ship-db (assoc-in (record id) [:ship/paint :paint/details []]
+                                        (lf/detail-layer! sys (:hull fixture/ids) {:base [1 0 0] :metalness 0.8 :roughness 0.2})) :update)
           (post "/ships/paint/create" {:name "Intrepid" :class (str (:loadout/id class)) :scheme (str scheme-id)})
           (let [sibling (get-in @(:state paint) [:draft :ship-id])]
             (is (not= id sibling))
-            (is (empty? (:paint/instances (:ship/paint (record sibling))))))
+            (is (empty? (:paint/details (:ship/paint (record sibling))))))
           (post "/ships/paint/select" {:id (str id)})
           (post "/ships/paint/select" {:scheme ""})
           (is (nil? (:ship/scheme (record id))))
-          (is (seq (:paint/instances (:ship/paint (record id)))))
+          (is (seq (:paint/details (:ship/paint (record id)))))
           (testing "Named ships follow their class without overwriting custom paint"
             (classes/put! class-db (assoc-in class [:loadout/slots [[:weapon 0]]] (:weapon-alt fixture/ids)) :update)
             (handler (mock/request :get "/ships?poll=1"))
             (is (= (:weapon-alt fixture/ids) (get-in @(:state paint) [:draft :assignments [[:weapon 0]]])))
-            (is (seq (:paint/instances (:ship/paint (record id))))))
+            (is (seq (:paint/details (:ship/paint (record id))))))
           (is (= (ships/snapshot! ship-db) (persisted/records! ship-db :ships)))
           (post "/ships/paint/reset" {:id (str id) :confirmed "true"})
-          (is (empty? (:paint/instances (:ship/paint (record id)))))
+          (is (empty? (:paint/details (:ship/paint (record id)))))
           (is (= "Resolute" (:ship/name (record id))))))
       (finally (fixture/stop! started)))))
 
@@ -80,29 +78,24 @@
       (is (empty? (presets/colors! facade)))
       (finally (fixture/stop! started)))))
 
-(deftest ships-have-independent-paint-group-ownership
+(deftest ships-have-independent-detail-ownership
   (let [started (fixture/start!) sys (:system started)
-        class-db (:shipyard.loadout/db sys) ship-db (:shipyard.ship/db sys) scheme-db (:shipyard.scheme/db sys)
-        scheme-id (random-uuid) group-id (random-uuid)
+        class-db (:shipyard.loadout/db sys) ship-db (:shipyard.ship/db sys)
+        scheme-db (:shipyard.scheme/db sys)
         class {:loadout/id (random-uuid) :loadout/name "Class" :loadout/hull (:hull lf/draft) :loadout/slots lf/assignments}
-        palette {:scheme/id scheme-id :scheme/name "Palette" :scheme/layers {}}
-        groups [{:group/id group-id :group/name "Battery" :group/order 0
-                 :group/material {:base [1 0 0] :metalness 0.4 :roughness 0.7}
-                 :group/members [{:path [[:weapon 0]] :part-id (:weapon fixture/ids)}]}]]
+        palette {:scheme/id (random-uuid) :scheme/name "Palette" :scheme/layers {}}
+        details {[] (lf/detail-layer! sys (:hull fixture/ids) {:base [1 0 0] :metalness 0.4 :roughness 0.7})}]
     (try
       (schemes/put! scheme-db palette :create)
       (classes/put! class-db class :create)
       (let [ship {:ship/id (random-uuid) :ship/name "Vessel" :ship/class (:loadout/id class)
-                  :ship/scheme scheme-id :ship/paint {:paint/groups groups}}
+                  :ship/scheme (:scheme/id palette) :ship/paint {:paint/details details}}
             sibling (assoc ship :ship/id (random-uuid) :ship/name "Sibling")]
         (is (not (:error (ships/put! ship-db ship :create))))
-        (is (= (:loadout/id class) (:ship/class ship)))
-        (is (= groups (get-in ship [:ship/paint :paint/groups])))
         (is (not (:error (ships/put! ship-db sibling :create))))
-        (ships/put! ship-db (assoc-in ship [:ship/paint :paint/groups 0 :group/name] "Changed") :update)
-        (is (= "Battery" (get-in (ships/snapshot! ship-db) [:ships (:ship/id sibling) :ship/paint :paint/groups 0 :group/name])))
-        (is (= palette (get-in (schemes/snapshot! scheme-db) [:schemes scheme-id])))
-        (is (= 2 (count (:ships (ships/snapshot! ship-db)))))
+        (ships/put! ship-db (assoc ship :ship/paint {}) :update)
+        (is (= details (get-in (ships/snapshot! ship-db) [:ships (:ship/id sibling) :ship/paint :paint/details])))
+        (is (= palette (get-in (schemes/snapshot! scheme-db) [:schemes (:scheme/id palette)])))
         (is (= (ships/snapshot! ship-db) (persisted/records! ship-db :ships)))
         (let [before (ships/snapshot! ship-db) write! store/put-ship!]
           (with-redefs [store/put-ship! (fn [conn library record]

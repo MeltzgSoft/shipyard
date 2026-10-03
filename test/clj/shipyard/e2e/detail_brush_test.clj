@@ -7,12 +7,10 @@
             [shipyard.assembly-fixture :as fixture]
             [shipyard.e2e.support :as s]
             [shipyard.e2e.workspace-test :as workspace]
-            [shipyard.e2e.paint-editor-test :as editor]
-            [shipyard.e2e.paint-material-test :as materials]
             [shipyard.loadout-fixture :as lf]
             [shipyard.ship.db :as schemes]
             [shipyard.workspace.db :as workspace-db])
-  (:import [com.microsoft.playwright Page Mouse$MoveOptions Mouse$DownOptions Mouse$UpOptions Dialog Route APIResponse Route$FulfillOptions]
+  (:import [com.microsoft.playwright Page Mouse$MoveOptions Mouse$DownOptions Mouse$UpOptions Route]
            [java.util.function Consumer]
            [com.microsoft.playwright.options MouseButton]))
 
@@ -33,17 +31,10 @@
     (.up mouse (doto (Mouse$UpOptions.) (.setButton MouseButton/RIGHT)))))
 
 (defn face-point [driver slot face]
-  (let [centers (:face-centers (materials/slot driver slot))
+  (let [centers (:face-centers (s/slot driver slot))
         point (nth (filter :front? centers) face)
         origin (s/js driver "() => {let r=document.querySelector('canvas').getBoundingClientRect();return [r.x,r.y];}")]
     [(+ (first origin) (:x point)) (+ (second origin) (:y point))]))
-
-(defn select-target! [driver _label path]
-  (s/click! driver ".paint-tools button:text-is('Select')")
-  (s/click! driver (str "#paint-target button[data-paint-target='" path "']"))
-  (s/click! driver ".paint-tools button:text-is('Brush')")
-  (s/wait-visible! driver "#paint-brush")
-  (is (s/wait-until #(= path (s/js driver "() => document.querySelector('#paint-brush')?.elements.target.value")))))
 
 (deftest visible-strokes-save-undo-erase-and-retry
   (s/assert-bundle!)
@@ -58,10 +49,10 @@
       (s/wait-visible! driver "#paint-create")
       (s/fill-and-blur! driver "#paint-create input[name=name]" "Detail proof")
       (s/click! driver "#paint-create button")
-      (s/click! driver ".paint-tools button:text-is('Brush')")
       (s/wait-visible! driver "#paint-brush")
       (workspace/await-ship! driver)
-      (.uncheck ^Page (:page driver) "#paint-brush input[name=cross-instances]")
+      ;; Keep this hull-only test away from nearby visible turrets.
+      (s/input! driver "#paint-brush input[name=radius]" "2" "input")
       (let [id (get-in @(:state (:shipyard.paint/db sys)) [:draft :ship-id])
             center (face-point driver [] 0)
             masks #(get-in (schemes/snapshot! store) [:ships id :ship/paint :paint/details])
@@ -74,39 +65,16 @@
           (is (<= 1 (count painted) 6) "Only front-facing visible faces of the 12-triangle cube")
           (is (= #{[]} (set (keys (masks)))) "Repeated and nested instances stay untouched")
           (is (= painted (get-in (persisted/records! store :ships) [:ships id :ship/paint :paint/details [] :faces])))
-          (is (true? (:vertex-colors (materials/slot driver []))))
+          (is (true? (:vertex-colors (s/slot driver []))))
           (s/click! driver "[data-mount-colors-toggle]")
-          (is (s/wait-until #(false? (:vertex-colors (materials/slot driver [])))))
+          (is (s/wait-until #(false? (:vertex-colors (s/slot driver [])))))
           (s/click! driver "[data-mount-colors-toggle]")
-          (is (s/wait-until #(true? (:vertex-colors (materials/slot driver [])))))
+          (is (s/wait-until #(true? (:vertex-colors (s/slot driver [])))))
           (s/click! driver "#paint-brush button[value=undo]")
           (is (s/wait-until #(nil? (get (masks) []))))
           (s/click! driver "#paint-brush button[value=redo]")
           (is (s/wait-until #(= painted (get-in (masks) [[] :faces]))))
-          (testing "Clear requires confirmation and can be undone"
-            ;; Playwright dismisses unhandled dialogs: the first click is Cancel.
-            (s/click! driver "button:text-is('Clear instance details')")
-            (is (= painted (get-in (masks) [[] :faces])))
-            (.onceDialog ^Page (:page driver) (reify Consumer (accept [_ dialog] (.accept ^Dialog dialog))))
-            (s/click! driver "button:text-is('Clear instance details')")
-            (is (s/wait-until #(nil? (get (masks) []))))
-            (let [^Page page (:page driver) held (atom nil)]
-              ;; A durable Undo can finish before its response unlocks the brush.
-              ;; Hold that response so the next stroke cannot depend on local speed.
-              (.route page "**/ships/paint/stroke"
-                      (reify Consumer
-                        (accept [_ value]
-                          (let [^Route route value]
-                            (reset! held [route (.fetch route)])))))
-              (try
-                (s/click! driver "#paint-brush button[value=undo]")
-                (is (s/wait-until #(and @held (= painted (get-in (masks) [[] :faces])))))
-                (is (true? (s/js driver "() => document.querySelector('#paint-brush').elements.radius.disabled")))
-                (is (empty? (:details (materials/slot driver []))))
-                (let [[^Route route ^APIResponse response] @held]
-                  (.fulfill route (doto (Route$FulfillOptions.) (.setResponse response))))
-                (await-saved! driver)
-                (finally (.unroute page "**/ships/paint/stroke")))))
+
           (testing "Right-drag erases without changing the paint tool or camera"
             (let [camera (:camera (s/stats driver))]
               (apply right-stroke! driver center)
@@ -119,7 +87,7 @@
               (s/click! driver "#paint-brush button[value=redo]")
               (is (s/wait-until #(empty? (get-in (masks) [[] :faces]))))))
           (testing "A failed database transaction preserves the stroke and supports retry"
-            (is (s/wait-until #(and (empty? (:details (materials/slot driver [])))
+            (is (s/wait-until #(and (empty? (:details (s/slot driver [])))
                                     (false? (s/js driver "() => document.querySelector('#paint-brush').elements.radius.disabled")))))
             (let [before (schemes/snapshot! store)
                   revision (persisted/ship-revision! store id Long/MAX_VALUE)]
@@ -134,13 +102,12 @@
               (await-saved! driver)))
           (workspace/switch! driver "browse")
           (workspace/switch! driver "ships") (workspace/await-ship! driver)
-          (is (= (count painted) (count (:details (materials/slot driver [])))))
+          (is (= (count painted) (count (:details (s/slot driver [])))))
           (testing "Two separated areas retain distinct colors on one instance"
-            (.uncheck ^Page (:page driver) "#paint-brush input[name=cross-instances]")
-            (editor/input! driver "#paint-brush input[name=radius]" "2" "input")
+            (s/input! driver "#paint-brush input[name=radius]" "2" "input")
             (apply stroke! driver (face-point driver [] 0))
             (await-saved! driver)
-            (editor/input! driver "#paint-brush input[name=brush-color]" "#00ff00" "input")
+            (s/input! driver "#paint-brush input[name=brush-color]" "#00ff00" "input")
             (let [[x y] (face-point driver [] 3)]
               (is (= "CANVAS" (s/js driver (str "() => document.elementFromPoint(" x "," y ")?.tagName")))
                   "Returning to Ship Browser keeps the paint surface clear of the inspector")
@@ -149,23 +116,20 @@
             (is (s/wait-until #(= #{[1.0 0.0 0.0] [0.0 1.0 0.0]} (set (map :base (vals (get-in (masks) [[] :faces]))))))
                 (pr-str {:status (s/text driver "#brush-status") :faces (get-in (masks) [[] :faces])})))
           (testing "Repeated and nested copies have independent masks"
-            (doseq [[label path slot] [["weapon · [[:weapon 0]]" "[[:weapon 0]]" [["weapon" 0]]]
-                                       ["turret · [[:weapon 0] [:turret 0]]" "[[:weapon 0] [:turret 0]]" [["weapon" 0] ["turret" 0]]]]]
-              (select-target! driver label path)
-              (.uncheck ^Page (:page driver) "#paint-brush input[name=cross-instances]")
-              (editor/input! driver "#paint-brush input[name=radius]" "2" "input")
+            (doseq [[slot] [[[["weapon" 0]]]
+                            [[["weapon" 0] ["turret" 0]]]]]
+              (s/input! driver "#paint-brush input[name=radius]" "2" "input")
               ;; The weapon's +Z face is covered by its turret. Use a side face.
               (apply stroke! driver (face-point driver slot 2))
               (await-saved! driver))
             (is (= #{[] [[:weapon 0]] [[:weapon 0] [:turret 0]]} (set (keys (masks))))))
           (testing "The hull occludes a rear-mounted instance"
-            (select-target! driver "weapon · [[:mirrored-weapon 0]]" "[[:mirrored-weapon 0]]")
-            (.uncheck ^Page (:page driver) "#paint-brush input[name=cross-instances]")
-            (editor/input! driver "#paint-brush input[name=radius]" "2" "input")
+            (s/input! driver "#paint-brush input[name=radius]" "2" "input")
             (let [before (schemes/snapshot! store)]
               (apply stroke! driver (face-point driver [["mirrored-weapon" 0]] 0))
-              (is (= "No visible faces under the brush." (s/text driver "#brush-status")))
-              (is (= before (schemes/snapshot! store)))))
+              (await-saved! driver)
+              (is (= (get-in before [:ships id :ship/paint :paint/details [[:mirrored-weapon 0]]])
+                     (get-in (masks) [[[:mirrored-weapon 0]]])))))
           (testing "Alt-drag orbits without painting"
             (let [before (schemes/snapshot! store) camera (:camera (s/stats driver))
                   ^Page page (:page driver) mouse (.mouse page) [x y] (face-point driver [] 0)]
@@ -176,8 +140,6 @@
               (is (s/wait-until #(not= camera (:camera (s/stats driver)))))
               (is (= before (schemes/snapshot! store)))))
           (testing "Dragging commits one stroke, without moving the camera"
-            (select-target! driver "hull · Hull" "[]")
-            (.uncheck ^Page (:page driver) "#paint-brush input[name=cross-instances]")
             (let [camera (:camera (s/stats driver)) [x y] (face-point driver [] 0)
                   mouse (.mouse ^Page (:page driver))
                   sequence (s/js driver "() => Number(document.querySelector('#paint-brush').elements.sequence.value)")]
@@ -203,10 +165,8 @@
       (s/click! driver "button:text-is('Create named ship')")
       (s/fill-and-blur! driver "#paint-create input[name=name]" "Cross instance")
       (s/click! driver "#paint-create button")
-      (s/click! driver ".paint-tools button:text-is('Brush')")
       (s/wait-visible! driver "#paint-brush") (workspace/await-ship! driver)
-      (is (true? (s/js driver "() => document.querySelector('#paint-brush').elements['cross-instances'].checked")))
-      (editor/input! driver "#paint-brush input[name=radius]" "2" "input")
+      (s/input! driver "#paint-brush input[name=radius]" "2" "input")
       (let [id (get-in @(:state (:shipyard.paint/db sys)) [:draft :ship-id])
             masks #(get-in (schemes/snapshot! store) [:ships id :ship/paint :paint/details])
             [ax ay] (face-point driver [["weapon" 0]] 2)
@@ -234,7 +194,7 @@
           (is (s/wait-until #(empty? (masks))))
           (s/click! driver "#paint-brush button[value=redo]")
           (is (s/wait-until #(= saved (schemes/snapshot! store))))
-          (is (s/wait-until #(and (seq (:details (materials/slot driver [["weapon" 0]])))
+          (is (s/wait-until #(and (seq (:details (s/slot driver [["weapon" 0]])))
                                   (false? (s/js driver "() => document.querySelector('#paint-brush').elements.radius.disabled"))))))
         (let [saved (schemes/snapshot! store) parts (atom 0)]
           (.route page "**/ships/paint/stroke"
@@ -242,7 +202,7 @@
                     (accept [_ value]
                       (let [^Route route value]
                         (if (= 2 (swap! parts inc)) (.abort route) (.resume route))))))
-          (editor/input! driver "#paint-brush input[name=brush-color]" "#0000ff" "input")
+          (s/input! driver "#paint-brush input[name=brush-color]" "#0000ff" "input")
           (.move mouse ax ay) (.down mouse)
           (is (s/wait-until #(do (s/stats driver) (and (= 1 @parts) (:brush-pending (state))))))
           (.move mouse bx by (doto (Mouse$MoveOptions.) (.setSteps 4)))
@@ -250,7 +210,7 @@
           (.up mouse)
           (is (= saved (schemes/snapshot! store)))
           (is (= (into {} (map (fn [[k v]] [(keyword k) v]) (get-in (masks) [[[:weapon 0]] :faces])))
-                 (update-vals (:details (materials/slot driver [["weapon" 0]])) #(-> % (update :base (partial mapv double)) (update :metalness double) (update :roughness double) (update :glow double)))))
+                 (update-vals (:details (s/slot driver [["weapon" 0]])) #(-> % (update :base (partial mapv double)) (update :metalness double) (update :roughness double) (update :glow double)))))
           (.unroute page "**/ships/paint/stroke")
           (s/click! driver "button:text-is('Retry last stroke')")
           (await-saved! driver))
@@ -278,10 +238,9 @@
       (s/click! driver "button:text-is('Create named ship')")
       (s/fill-and-blur! driver "#paint-create input[name=name]" "Large stroke")
       (s/click! driver "#paint-create button")
-      (s/click! driver ".paint-tools button:text-is('Brush')")
       (s/wait-visible! driver "#paint-brush")
       (is (s/wait-until #(= 1 (count (get-in (s/stats driver) [:assembly :slots])))))
-      (editor/input! driver "#paint-brush input[name=radius]" "100" "input")
+      (s/input! driver "#paint-brush input[name=radius]" "100" "input")
       (let [id (get-in @(:state (:shipyard.paint/db sys)) [:draft :ship-id])
             center (s/js driver "() => {const c=document.querySelector('canvas').getBoundingClientRect(),i=document.querySelector('.paint-editor').getBoundingClientRect();return [c.x+(c.width-i.width-28)/2,c.y+c.height/2];}")
             began (System/nanoTime) geometries (:geometries (s/stats driver))]

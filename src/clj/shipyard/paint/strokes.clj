@@ -68,7 +68,7 @@
                       (assoc-in result [:layers path] (:layer changed))))))
           pending entries))
 
-(defn history-change [details history operation path]
+(defn history-change [details history operation]
   (let [undo (vec (:undo history)) redo (vec (:redo history))]
     (case operation
       "undo" (if (and (seq undo) (= details (:after (peek undo))))
@@ -77,7 +77,6 @@
       "redo" (if (and (seq redo) (= details (:before (peek redo))))
                {:details (:after (peek redo)) :history {:undo (conj undo (peek redo)) :redo (pop redo)}}
                {:error :no-redo})
-      "clear" {:details (dissoc details path)}
       {:error :invalid-operation})))
 
 (defn commit-history [history before after]
@@ -113,24 +112,22 @@
           n (when (string? sequence) (parse-long sequence))
           operation (or history operation)]
       (if (or (nil? n) (<= n (or (:brush-sequence state) 0))
-              (not= id (str (:ship-id draft))) (not= target (:target state)))
+              (not= id (str (:ship-id draft))))
         {:error :stale-stroke}
         (locking ship-lock
           (workspace/update-workspace! workspace :ships assoc :brush-sequence n)
           (if-let [record (db/record! deps)]
-            (let [targets (transforms/targets (catalog/assembly-snapshot! catalog) draft record)
-                  selected (first (filter #(= target (:key %)) targets))
+            (let [targets (transforms/targets (catalog/assembly-snapshot! catalog) draft)
                   details (or (:scheme/details record) {})]
               (cond
-                (nil? selected) {:error :stale-stroke}
                 (= "cancel" operation)
                 (do (when (= (some-> stroke-id (parse-uuid)) (get-in state [:brush-pending :id]))
                       (workspace/update-workspace! workspace :ships dissoc :brush-pending))
                     {:canceled true})
-                (#{"undo" "redo" "clear"} operation)
-                (if (or (:brush-pending state) (and (= "clear" operation) (not (contains? selected :path))))
+                (#{"undo" "redo"} operation)
+                (if (:brush-pending state)
                   {:error :stroke-in-progress}
-                  (let [result (history-change details (:brush-history state) operation (:path selected))]
+                  (let [result (history-change details (:brush-history state) operation)]
                     (if (:error result) result (commit! deps record state (:details result) (:history result)))))
                 (not (#{"paint" "erase"} operation)) {:error :invalid-operation}
                 :else
@@ -144,11 +141,11 @@
                       checked (validate-entries! deps targets raw)
                       start (if (= 0 part)
                               {:id sid :next-part 0 :before details :layers details :operation operation
-                               :paint paint-value :sources {} :target target :ship (:ship-id draft)} pending)
+                               :paint paint-value :sources {} :ship (:ship-id draft)} pending)
                       invalid (cond (nil? sid) :stale-stroke
                                     (and sid (= sid (:brush-committed-id state))) nil
                                     (or (nil? start) (not= sid (:id start)) (not= part (:next-part start))
-                                        (not= target (:target start)) (not= (:ship-id draft) (:ship start))
+                                        (not= (:ship-id draft) (:ship start))
                                         (not= operation (:operation start)) (not= paint-value (:paint start))) :stale-stroke
                                     (nil? paint-value) :invalid-material
                                     (:error checked) (:error checked))]

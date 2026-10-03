@@ -277,7 +277,7 @@ The browser uses Clipper for matching live polygon insets.
 
 `shipyard.domain.schemas` defines Malli schemas in `.cljc` for structured domain
 values and their shared constraints. Named substructures describe materials,
-groups, classes/loadouts, named ships, paint and regions; a schema definition does
+classes/loadouts, named ships, paint and regions; a schema definition does
 not imply a separate persisted entity. Simple fragments used in only one enclosing
 shape remain inline. Live validation boundaries compile predicates once with
 `malli/validator`; the JVM and ClojureScript use the same shapes. Malli is an
@@ -325,7 +325,7 @@ also runs at the transactional boundary.
 | Region set | Part-owned, content ref, revision; owned masks referring to shared layers |
 | Mask/detail chunk | Owned, ordered, versioned face payload; Primary is implicit |
 | Loadout | UUID, name, library and hull refs, optional scheme ref; owned full-path slot assignments |
-| Scheme | UUID, name, library ref; owned role/layer material bindings, targets and ordered groups |
+| Scheme | UUID, name, library ref; owned shared region-layer material bindings |
 | Target | Scheme-owned, full instance path and part ref; optional material and source-bound detail mask |
 | Group membership | Group-owned, explicit order and target ref |
 | Fleet | Schema reserved for later fleet workflows; no fleet authoring UI yet |
@@ -1511,7 +1511,7 @@ box full and the list unfiltered.
 | Selecting another part | Exactly the new part is in the scene, and geometry count does not grow (§7.2) |
 | Mount wizard (M2) | Clicking a face returns a highlighted facet and a plausible frame |
 | Assembly (M3) | Choosing a prow places it at the socket transform |
-| Paint (M5) | Scrubbing a colour updates the material live; release persists it |
+| Schemes / Customize (M5) | Scheme colours preview and save on release; brush finish saves with the released stroke |
 | Degraded mode | With the viewport bundle blocked, browsing and loadouts still work (§8) |
 
 **Asserting on WebGL is the hard part, and pixels are the wrong answer.** Screenshot
@@ -2388,8 +2388,7 @@ advance that boundary.
 Paint detail changes use source-bound `:detail-delta` patches (sets/removals or a smaller
 replacement); the acknowledged scene sequence establishes their baseline. Initial scene
 loads and sequence recovery still include authoritative full details. Scheme selectors
-pull ID/name summaries, and palette previews pull only layer bindings. Instance details
-and groups belong to named ships.
+pull ID/name summaries, and palette previews pull only layer bindings. Face details belong to named ships.
 Browser lists request batches of at most 50 rows through HTMX intersection sentinels.
 New batches append without replacing earlier rows; restoring a workspace renders its
 loaded prefix. CSS content visibility skips layout/painting for offscreen batches,
@@ -2523,16 +2522,16 @@ unsaved viewport poses, while selections and settings remain in the running serv
 Datalevin store. New scheme authoring changes only name and shared layer materials.
 `:shipyard.ship/db` projects `{:version 1 :ships {uuid record}}`. Each named ship has a
 stable `:ship/class` ref to a loadout, optional `:ship/scheme` ref and an owned
-`:ship/paint` component. Paint role/layer bindings, instance targets, group memberships
-and face chunks are normalized entities; only dense masks use data values. Group IDs
-are local to the paint graph, so copying a group cannot merge siblings.
+`:ship/paint` component. Source-bound detail targets and face chunks are normalized
+entities; only dense face masks use data values. Custom paint contains only
+`:paint/details`; fleet region-layer bindings remain owned by schemes.
 All writes and graph replacements use the shared transaction lock.
 
 Ship Browser owns one preview cell and one workspace context. `:shipyard.paint/db`
 shares `:shipyard.loadout.operations/preview`'s state atom and adds face-cache and
-brush-flush configuration only. Target selection, scheme-preview selection and tool
-state live in the `:ships` workspace. Class table rows contain native expandable lists of
-named ships. Hiccup renders Assembly, Schemes and Paint in the same floating inspector.
+brush-flush configuration only. Scheme-preview selection and brush history live in
+the `:ships` workspace. Class table rows contain native expandable lists of
+named ships. Hiccup renders Assembly, Schemes and Customize in the same floating inspector.
 Tab and ship selection transitions advance the shared activation; endpoints live
 under `/ships/paint/*` and `/ships/schemes/*`, with Ship Browser admission guards.
 Scheme layer swatches submit the selected stable layer ID through the existing
@@ -2547,11 +2546,10 @@ path. Successful saves retain the submitted HSV coordinates in transient Ship Br
 state scoped to the scheme and layer, provided they still produce the saved hex color.
 This preserves hue for gray and hue/saturation for black through form replacement;
 the durable material remains RGB. Local gestures do not round-trip through hex.
-The shared Hiccup color control and delegated gesture handlers also serve Paint
-material forms and the detail brush. Material gestures preview on input and save
-on release; brush color gestures set the next stroke material without saving a stroke.
-Paint material acknowledgements replace only status, so local HSV coordinates remain
-in the form. Saved-color controls read the active material or brush form.
+The shared Hiccup color control and delegated gesture handlers also serve the
+Customize detail brush. Scheme gestures preview on input and save on release;
+brush color gestures set the next stroke material without saving a stroke.
+Saved-color controls read the active scheme or brush form.
 Shared presets are unique normalized `:color-preset/hex` entities in Datalevin;
 their add/remove endpoints return only the saved-color grid.
 Material `:glow` is an optional finite scalar in `[0,1]`, stored as `:material/glow`
@@ -2568,8 +2566,8 @@ Presets change only base color. Mount identification temporarily suppresses emis
 The Assembly tab stores reusable class configurations; scheme preview uses its current draft without changing it.
 
 Before rendering a named ship, resolve its current class. Saving custom paint checks
-that the class hull/slots still match the admitted preview. Instance and group paint
-matches path plus part identity; details additionally match source hash. Retain
+that the class hull/slots still match the admitted preview. Face details
+match path, part identity and source hash. Retain
 incompatible data and report source mismatches rather than applying them silently.
 A missing class blocks authoring. Scheme selection persists on the named vessel and
 preserves custom paint. Reset replaces only the owned paint graph after confirmation.
@@ -2577,28 +2575,26 @@ preserves custom paint. Reset replaces only the owned paint graph after confirma
 `paint.job/editor-record` adapts a sparse ship job to shared material operations;
 `:scheme/base` carries its fleet palette for resolution only. `from-profile` selects
 only custom fields before persistence, never freezing inherited palette materials.
-Material resolution is detail, instance, first matching material group, custom layer,
-fleet layer, Primary, then neutral. RGB is sRGB and is converted at the
+Material resolution is detail, fleet region layer, Primary, then neutral. RGB is sRGB and is converted at the
 three.js boundary. Mount colors change display only. Missing schemes keep their refs.
 
-Inputs preview viewport resources locally; change commits a complete material.
-Paint responses apply the acknowledged scene, then restore newer unsaved material
-input from the still-current form. Detached forms cannot repaint another selection.
-Monotonic edit and
-brush sequences, activation guards, source identity and transaction boundaries reject
-stale work. Scheme preview resolves only the fleet palette even when a named ship
-was selected. Late mesh completion reads current slot payload materials. There is no
+Scheme inputs preview viewport resources locally and commit complete materials on
+change. Brush inputs capture the next stroke’s finish without changing durable paint.
+Monotonic brush sequences, activation guards, selected-ship/source identity and
+transaction boundaries reject stale work. Scheme preview resolves only its fleet
+palette. Late mesh completion reads current slot payload materials. There is no
 client store for class, ship, scheme or navigation ownership.
 
-### 15.1 Material groups and inspector layout
+### 15.1 Customize and named-ship tables
 
-`:paint/groups` is a vector with UUID `:group/id`, `:group/name`, contiguous nonnegative
-`:group/order`, `:group/members` (`{:path path :part-id id}`), and optional material.
-IDs and order are unique within one paint job. Groups may overlap; the first group
-with a material wins beneath an instance override. Replacing parts retains unmatched
-members. Native checkboxes select members; all mutations use the ship transaction.
-The floating inspector contains creation, target, material and brush controls and
-scrolls within the viewport. Back to ships replaces the editor with the full-width class table.
+Customize contains named-ship creation and management, a named-ships table, and the
+detail brush. Both its table and expanded Ship Browser named-ship rows render native
+Edit and Delete forms. Edit uses `/ships/open` and the shared class/draft admission
+contract; Delete posts the row's ship UUID with confirmation to `/ships/paint/delete`.
+Deleting another ship preserves the active vessel and its brush history. The server
+renders at most 50 rows per table page and never includes face maps in table markup.
+Retired material, target, default, tool and group routes are removed, together with
+their schemas, storage projections and viewport override-preview code.
 
 ### 15.2 Visible detail brush
 
@@ -2614,12 +2610,11 @@ source-space vertices, with negative zero normalized. It survives triangle/index
 reordering while keeping opposite-facing coincident triangles distinct. Identical
 same-winding triangles intentionally share a geometric face identity. Masks use
 tier 0 only, never facet indices or decimated LOD indices. Rendering filters by both
-part id and current source hash. A mismatch retains data and warns in Paint.
+part id and current source hash. A mismatch retains data and warns in Customize.
 
 The browser creates one temporary depth-tested RGB triangle-ID render at CSS canvas
 resolution per stroke. All assembly instances occlude. The ID ranges map to full
-instance paths; Cross instances admits every frontmost instance, while disabling it
-admits only the selected instance. The pass uses front faces, no MSAA, blending, lighting or
+instance paths and admit every frontmost instance. The pass uses front faces, no MSAA, blending, lighting or
 colour conversion. Readback is sampled at pixel centres inside the circular brush;
 pointer segments are sampled at intervals of at most half the radius. Camera updates
 pause during a stroke. Temporary ID geometries, material and render target are
@@ -2641,12 +2636,11 @@ buffers remain instance-owned. Scene reset clears the source cache. Browser key 
 uses one Float32 scratch buffer per triangle, preserving the existing wire identity.
 
 `POST /ships/paint/stroke` uses workspace/activation admission, a separate monotonic brush
-sequence and selected named-ship/target guards. It validates face keys against the
-current tier-0 source geometry, caching membership sets per mesh in the Paint component.
+sequence and selected named-ship guards. It validates face keys against the
+current tier-0 source geometry, caching membership sets per mesh in the paint component.
 It commits through the same atomic named-ship boundary; no partial strokes. Undo/redo
 history is bounded to 20 snapshots in server workspace state, with before/after guards;
-only successful commits change history. Navigation restores committed masks. Strokes
-and material saves disable competing controls until acknowledgement. Success emits
+only successful commits change history. Navigation restores committed masks. Stroke saves disable competing controls until acknowledgement. Success emits
 material/detail commands without replacing geometry or changing mesh fetch tokens.
 
 

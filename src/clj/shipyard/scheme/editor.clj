@@ -66,7 +66,7 @@
         local-attrs (assoc attrs :hx-target ".scheme-editor" :hx-swap "outerHTML")]
     [:div.scheme-editor
      [:h2 "Fleet schemes"]
-     [:p "One palette for every ship class. Preview it here, then choose it when creating a named ship in Paint."]
+     [:p "One palette for every ship class. Preview it here, then choose it when creating a named ship in Customize."]
      (when error [:p.detail__error {:role "alert"} error])
      [:form#scheme-select (merge attrs {:method "post" :action "/ships/schemes/select" :hx-post "/ships/schemes/select" :hx-trigger "change"})
       [:label "Scheme" [:select {:name "id"} (controls/scheme-options (vals records) (:scheme state))]]]

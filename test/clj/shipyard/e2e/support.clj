@@ -457,5 +457,12 @@
         (when-not (.evaluate details "e => e.open")
           (.click (.locator details "summary")))))
     (wait-visible! driver row)
-    (click! driver (str row " button")))
-  (wait-visible! driver "#paint-material"))
+    (click! driver (str row " button:text-is('Edit')")))
+  (wait-visible! driver "#paint-brush"))
+
+(defn input! [driver selector value event]
+  (js driver (str "() => {let e=document.querySelector('" selector "');e.value='" value
+                  "';e.dispatchEvent(new Event('" event "',{bubbles:true}));}")))
+
+(defn slot [driver path]
+  (first (filter #(= path (:slot %)) (get-in (stats driver) [:assembly :slots]))))

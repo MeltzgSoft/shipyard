@@ -13,8 +13,6 @@
             [shipyard.e2e.support :as s]
             [shipyard.e2e.workspace-test :as workspace]
             [shipyard.e2e.detail-brush-test :as brush]
-            [shipyard.e2e.paint-editor-test :as editor]
-            [shipyard.e2e.paint-material-test :as materials]
             [shipyard.e2e.metallic-details-test :as metallic]
             [shipyard.loadout-fixture :as lf]
             [shipyard.loadout.db :as loadouts]
@@ -38,14 +36,14 @@
 
 (defn set-layer! [driver layer color metal]
   (named/scheme-layer! driver layer)
-  (editor/input! driver "#scheme-material input[name=base]" color "input")
-  (editor/input! driver "#scheme-material input[name=metalness]" metal "input")
+  (s/input! driver "#scheme-material input[name=base]" color "input")
+  (s/input! driver "#scheme-material input[name=metalness]" metal "input")
   (let [before (s/js driver "() => document.querySelector('#scheme-status').dataset.sequence")]
     (s/click! driver "#scheme-material button")
     (is (s/wait-until #(not= before (s/js driver "() => document.querySelector('#scheme-status').dataset.sequence"))))))
 
 (defn face [driver slot key]
-  (first (filter #(= key (:key %)) (:face-finishes (materials/slot driver slot)))))
+  (first (filter #(= key (:key %)) (:face-finishes (s/slot driver slot)))))
 
 (defn region-colors [driver]
   (into {} (map (juxt :key :base)) (:region-faces (s/stats driver))))
@@ -75,7 +73,7 @@
       (s/click! driver "button:text-is('Apply layer to entire part')")
       (is (s/wait-until #(= 12 (count (:faces (catalog/part-regions (catalog/part (catalog/snapshot! cat) id)))))))
       (s/click! driver "button[aria-label='Paint Trim']")
-      (editor/input! driver "#region-stroke input[name=radius]" "2" "input")
+      (s/input! driver "#region-stroke input[name=radius]" "2" "input")
       (apply brush/stroke! driver (region-point driver 0))
       (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
       (is (s/wait-until #(= 2 (count (set (vals (region-colors driver)))))))
@@ -108,7 +106,7 @@
       (s/click! driver "button[data-region-layer='Secondary']")
       (is (= "Secondary" (selected)))
       (is (= "facets" (mode)))
-      (editor/input! driver "#region-stroke input[name=radius]" "2" "input")
+      (s/input! driver "#region-stroke input[name=radius]" "2" "input")
       (apply brush/stroke! driver (region-point driver 0))
       (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
       (is (= 1 (count (:faces (regions)))) "Facets affects only the touched triangle")
@@ -129,7 +127,7 @@
       (is (s/wait-until #(= "Panels" (selected))))
       (is (= "faces" (mode)) "Layer operations retain the brush mode")
       (s/click! driver "button[data-region-mode=facets]")
-      (editor/input! driver "#region-stroke input[name=radius]" "2" "input")
+      (s/input! driver "#region-stroke input[name=radius]" "2" "input")
       (apply brush/stroke! driver (region-point driver 0))
       (is (s/wait-until #(= 4 (:revision (regions)))))
       (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
@@ -154,7 +152,7 @@
       (s/fill-and-blur! driver "#region-add input[name=name]" "Trim")
       (s/click! driver "button:text-is('Add layer')")
       (is (s/wait-until #(rf/id cat "Trim")))
-      (editor/input! driver "#region-stroke input[name=radius]" "2" "input")
+      (s/input! driver "#region-stroke input[name=radius]" "2" "input")
       (apply brush/stroke! driver (region-point driver 0))
       (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
       (let [before (regions id) colors (region-colors driver)
@@ -220,7 +218,7 @@
       (s/screenshot-el! driver "body" (java.io.File. "/tmp/shipyard-layer-types.png"))
       (finally (s/quit! driver) (fixture/stop! started)))))
 
-(deftest reusable-regions-schemes-and-overrides
+(deftest reusable-regions-and-schemes
   (s/assert-bundle!)
   (let [started (fixture/start! true) sys (:system started) driver (s/make-driver)
         id (:weapon fixture/ids) cat (:shipyard.catalog/db sys) store (:shipyard.scheme/db sys)
@@ -237,7 +235,7 @@
       (s/click! driver "button[data-region-layer='Secondary']")
 
       (is (s/wait-until #(false? (:mount-colors-enabled (s/stats driver)))))
-      (editor/input! driver "#region-stroke input[name=radius]" "2" "input")
+      (s/input! driver "#region-stroke input[name=radius]" "2" "input")
       (apply brush/stroke! driver (region-point driver 0))
       (is (s/wait-until #(seq (:faces (regions)))))
       (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
@@ -265,7 +263,7 @@
           ;; Select the existing shared name without defining it on this part.
           (s/click! driver "button[aria-label='Paint Trim']")
 
-          (editor/input! driver "#region-stroke input[name=radius]" "2" "input")
+          (s/input! driver "#region-stroke input[name=radius]" "2" "input")
           (apply brush/stroke! driver (region-point driver 0))
           (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
           (is (some #{(rf/id cat "Trim")} (vals (:faces (catalog/part-regions (catalog/part (catalog/snapshot! cat) (:hull fixture/ids)))))))
@@ -290,20 +288,16 @@
             (is (metallic/near? 0.3 (:metalness (face driver slot secondary))))
             (is (every? true? (map metallic/near? (map material/srgb->linear [0 1 0]) (:base (face driver slot secondary))))))
           (s/screenshot-el! driver "body" (java.io.File. "/tmp/shipyard-region-palette.png"))
-          (named/tab! driver "Paint")
+          (named/tab! driver "Customize")
           (s/select-option! driver "#paint-create select[name=scheme]" "Region palette")
           (named/create! driver "Region ship")
-          (s/click! driver "#paint-target button[data-paint-target='[[:weapon 0]]']")
-          (is (s/wait-until #(= "[[:weapon 0]]" (s/js driver "() => document.querySelector('#paint-material')?.elements.target.value"))))
-          (editor/input! driver "#paint-material input[name=base]" "#ff0000" "input")
-          (editor/input! driver "#paint-material input[name=metalness]" "0.5" "input")
-          (s/click! driver "#paint-material button.paint-primary")
-          (is (s/wait-until #(= "Material saved." (s/text driver "#paint-status"))))
-          (is (= "ff0000" (:color (materials/slot driver [["weapon" 0]]))))
+          (let [primary (first (remove #(contains? (:faces (regions)) (:key %))
+                                       (:face-finishes (s/slot driver [["weapon" 0]]))))]
+            (is (some? primary))
+            (is (every? true? (map metallic/near? [0 0 1] (:base primary)))))
           (is (metallic/near? 1 (:metalness (face driver [["weapon" 1]] trim))))
-          (s/click! driver "button:text-is('Use inherited material')")
           (is (s/wait-until #(metallic/near? 1 (:metalness (face driver [["weapon" 0]] trim)))))
-          (workspace/switch! driver "assembly") (named/tab! driver "Paint") (workspace/await-ship! driver)
+          (workspace/switch! driver "assembly") (named/tab! driver "Customize") (workspace/await-ship! driver)
           (is (metallic/near? 1 (:metalness (face driver [["weapon" 1]] trim))))
           (named/tab! driver "Schemes")
           (s/click! driver ".scheme-editor summary:text-is('New scheme')")
@@ -409,8 +403,8 @@
 
       (is (s/wait-until #(false? (:mount-colors-enabled (s/stats driver)))))
       (s/click! driver "button[data-region-mode=faces]")
-      (editor/input! driver "#region-angle" "31" "input")
-      (editor/input! driver "#region-stroke input[name=radius]" "100" "input")
+      (s/input! driver "#region-angle" "31" "input")
+      (s/input! driver "#region-stroke input[name=radius]" "100" "input")
       (let [center (s/js driver "() => {const c=document.querySelector('canvas').getBoundingClientRect();return [c.x+c.width/2,c.y+c.height/2];}")]
         (apply brush/stroke! driver center)
         (is (s/wait-until #(> (count (:faces (regions))) 100)))
@@ -448,9 +442,9 @@
         ;; Canvas strokes must use explicit background POSTs even if the form's
         ;; submit event is not intercepted by HTMX.
         (s/click! driver "button[data-region-mode=faces]")
-        (editor/input! driver "#region-angle" "31" "input")
+        (s/input! driver "#region-angle" "31" "input")
         (s/js driver "() => document.querySelector('#region-stroke').addEventListener('submit', e => e.stopImmediatePropagation(), {capture:true, once:true})")
-        (editor/input! driver "#region-stroke input[name=radius]" "100" "input")
+        (s/input! driver "#region-stroke input[name=radius]" "100" "input")
         (apply brush/stroke! driver (s/js driver "() => {const c=document.querySelector('canvas').getBoundingClientRect();return [c.x+c.width/2,c.y+c.height/2];}"))
         (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
         (is (s/wait-until #(= 4 (:revision (regions)))))
@@ -459,7 +453,7 @@
         (is (every? #(= "POST" (:method %)) @requests))
         (is (< (count (:body (last @requests))) 4096))
         (s/click! driver "button[data-region-mode=facets]")
-        (editor/input! driver "#region-stroke input[name=radius]" "2" "input")
+        (s/input! driver "#region-stroke input[name=radius]" "2" "input")
         (apply brush/stroke! driver (s/js driver "() => {const c=document.querySelector('canvas').getBoundingClientRect();return [c.x+c.width/2,c.y+c.height/2];}"))
         (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
         (is (= 5 (:revision (regions))))
@@ -548,12 +542,12 @@
       (is (true? (s/js driver "() => document.querySelector('#region-angle-control').hidden")))
       (s/click! driver "button[data-region-mode=faces]")
       (s/wait-visible! driver "#region-angle")
-      (editor/input! driver "#region-stroke input[name=radius]" "2" "input")
-      (editor/input! driver "#region-angle" "0" "input")
+      (s/input! driver "#region-stroke input[name=radius]" "2" "input")
+      (s/input! driver "#region-angle" "0" "input")
       (apply brush/stroke! driver (region-point driver 0))
       (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
       (is (< 0 (count (:faces (regions))) 48))
-      (editor/input! driver "#region-angle" "60" "input")
+      (s/input! driver "#region-angle" "60" "input")
       (apply brush/stroke! driver (region-point driver 0))
       (is (s/wait-until #(= 48 (count (:faces (regions))))))
       (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
@@ -568,7 +562,7 @@
       (s/click! driver "button[data-region-mode=facets]")
       (is (true? (s/js driver "() => document.querySelector('#region-angle-control').hidden")))
       (s/click! driver "button[data-region-mode=faces]")
-      (editor/input! driver "#region-angle" "0" "input")
+      (s/input! driver "#region-angle" "0" "input")
       (apply brush/stroke! driver (region-point driver 0))
       (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
       (is (< 0 (count (:faces (regions))) 48) "Lowering tolerance recomputes the cached surface groups")
@@ -585,7 +579,7 @@
       (s/open-part! driver "weapon")
       (s/await-part driver id)
       (s/click! driver "[data-detail-tab=regions]")
-      (editor/input! driver "#region-stroke input[name=radius]" "2" "input")
+      (s/input! driver "#region-stroke input[name=radius]" "2" "input")
       (let [point (region-point driver 0)]
         ;; Widen HTMX's normal swap/initialization gap deterministically.
         (s/js driver "() => { htmx.config.defaultSettleDelay = 10000; window.regionSettled = false; document.addEventListener('htmx:afterSettle', () => window.regionSettled = true, {once:true}); }")
@@ -619,7 +613,7 @@
                 (s/open-part! driver "weapon")
                 (s/await-part driver id)
                 (s/click! driver "[data-detail-tab=regions]")
-                (editor/input! driver "#region-stroke input[name=radius]" "2" "input"))]
+                (s/input! driver "#region-stroke input[name=radius]" "2" "input"))]
     (try
       (s/go! driver (s/base-url sys))
       (open!)
@@ -679,7 +673,7 @@
       (s/await-part driver id)
       (s/click! driver "[data-detail-tab=regions]")
       (s/click! driver "button[data-region-mode=faces]")
-      (editor/input! driver "#region-stroke input[name=radius]" "2" "input")
+      (s/input! driver "#region-stroke input[name=radius]" "2" "input")
       (is (false? (s/js driver "() => document.querySelector('[name=mirror]').checked")))
       (is (nil? (:region-mirror-guide (s/stats driver))))
       (s/check! driver "#region-stroke input[name=mirror]")
@@ -716,7 +710,7 @@
         (is (empty? (:faces (regions)))))
       ;; A deliberately displaced plane must not paint a guessed counterpart.
       ;; The first stroke must use a typed offset even before blur fires change.
-      (editor/input! driver "#region-stroke input[name=mirror-offset]" "1000" "input")
+      (s/input! driver "#region-stroke input[name=mirror-offset]" "1000" "input")
       (is (s/wait-until #(= 1000 (get-in (s/stats driver) [:region-mirror-guide :position 2]))))
       (apply brush/stroke! driver (point! 2))
       (saved! "displaced plane paint")
@@ -791,10 +785,10 @@
       (s/await-part driver id)
       (s/click! driver "[data-detail-tab=regions]")
       (s/click! driver "button[data-region-mode=facets]")
-      (editor/input! driver "#region-stroke input[name=radius]" "2" "input")
+      (s/input! driver "#region-stroke input[name=radius]" "2" "input")
       (s/check! driver "#region-stroke input[name=mirror]")
       (s/select-option! driver "#region-stroke select[name=mirror-axis]" "XZ plane (across Y)")
-      (editor/input! driver "#region-stroke input[name=mirror-offset]" "3" "input")
+      (s/input! driver "#region-stroke input[name=mirror-offset]" "3" "input")
       (apply brush/stroke! driver (point! 0))
       (saved!)
       (is (= 1 (count (filter source-keys (painted)))))
@@ -806,7 +800,7 @@
       (apply brush/right-stroke! driver (point! 0))
       (saved!)
       (is (empty? (painted)))
-      (editor/input! driver "#region-stroke input[name=radius]" "70" "input")
+      (s/input! driver "#region-stroke input[name=radius]" "70" "input")
       (apply brush/stroke! driver (point! 0))
       (saved!)
       (is (> (count (filter opposite-keys (painted))) 1) "Increasing radius widens the mirrored footprint")
@@ -814,7 +808,7 @@
       (apply brush/right-stroke! driver (point! 0))
       (saved!)
       (is (empty? (painted)))
-      (editor/input! driver "#region-stroke input[name=radius]" "2" "input")
+      (s/input! driver "#region-stroke input[name=radius]" "2" "input")
       (let [[x y] (point! 0) [end-x end-y] (point! 1)
             mouse (.mouse ^Page (:page driver))]
         (.move mouse x y)
@@ -864,8 +858,8 @@
       (s/await-part driver id)
       (s/click! driver "[data-detail-tab=regions]")
       (s/click! driver "button[data-region-mode=faces]")
-      (editor/input! driver "#region-stroke input[name=angle]" "23" "input")
-      (editor/input! driver "#region-stroke input[name=radius]" "2" "input")
+      (s/input! driver "#region-stroke input[name=angle]" "23" "input")
+      (s/input! driver "#region-stroke input[name=radius]" "2" "input")
       (s/check! driver "#region-stroke input[name=mirror]")
       (s/select-option! driver "#region-stroke select[name=mirror-axis]" "XZ plane (across Y)")
       (is (s/wait-until #(when-let [y (get-in (s/stats driver) [:region-mirror-guide :position 1])]
@@ -894,7 +888,7 @@
       (s/open-part! driver "weapon")
       (s/await-part driver id)
       (s/click! driver "[data-detail-tab=regions]")
-      (editor/input! driver "#region-stroke input[name=radius]" "2" "input")
+      (s/input! driver "#region-stroke input[name=radius]" "2" "input")
       (apply brush/stroke! driver (region-point driver 0))
       (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
       (let [saved (regions) colors (region-colors driver)]
@@ -927,7 +921,7 @@
       (s/open-part! driver "weapon")
       (s/await-part driver id)
       (s/click! driver "[data-detail-tab=regions]")
-      (editor/input! driver "#region-stroke input[name=radius]" "2" "input")
+      (s/input! driver "#region-stroke input[name=radius]" "2" "input")
       ;; Count real GPU reads without replacing the picker or its output.
       (s/js driver "() => {const gl=document.querySelector('canvas').getContext('webgl2'); const read=gl.readPixels.bind(gl); window.regionReadbacks=0; gl.readPixels=(...args)=>{window.regionReadbacks++; return read(...args);};}")
       ;; Opening Regions asynchronously switches from mount faces to layer types.
@@ -942,7 +936,7 @@
         (is (empty? (:faces (regions))))
         (is (= 1 (captures)) "Erasing after a save reuses picking despite nonindexed rendering")
         (s/click! driver "button[data-region-mode=faces]")
-        (editor/input! driver "#region-stroke input[name=radius]" "3" "input")
+        (s/input! driver "#region-stroke input[name=radius]" "3" "input")
         (paint!)
         (is (= 2 (count (:faces (regions)))))
         (is (= 1 (captures)) "Mode and radius changes sample the existing view")

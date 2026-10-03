@@ -20,9 +20,7 @@
   '[* {:scheme/layers [* {:binding/layer [:layer/id]}]}])
 
 (def paint-pattern
-  '[* {:paint/layers [* {:binding/layer [:layer/id]}]
-       :paint/groups [* {:group/members [* {:membership/target [:db/id]}]}]
-       :paint/targets [* {:target/part [:part/id]
+  '[* {:paint/targets [* {:target/part [:part/id]
                           :target/details [* {:detail/content [:mesh/sha] :detail/chunks [*]}]}]}])
 (def loadout-pattern
   '[* {:loadout/hull [:part/id]
@@ -204,12 +202,9 @@
     (d/transact! conn [{:scheme/id id :scheme/deleted? true}])))
 
 (defn- paint-refs! [conn library record]
-  (let [paths (concat (map :part-id (vals (:paint/instances record)))
-                      (map :part-id (vals (:paint/details record)))
-                      (map :part-id (mapcat :group/members (:paint/groups record))))]
-    (doseq [layer (keys (:paint/layers record))] (layer-ref! conn library layer))
-    (doseq [detail (vals (:paint/details record))] (content! conn (:mesh-key detail)))
-    (into {} (map (fn [path] [path (part-ref! conn library path)])) paths)))
+  (doseq [detail (vals (:paint/details record))] (content! conn (:mesh-key detail)))
+  (into {} (map (fn [path] [path (part-ref! conn library path)]))
+        (map :part-id (vals (:paint/details record)))))
 
 (defn put-loadout! [conn library record]
   (let [library (or (get-in (d/pull @conn [{:loadout/library [:library/id]}] [:loadout/id (:loadout/id record)]) [:loadout/library :library/id]) library)
@@ -256,7 +251,7 @@
     (d/transact! conn [(cond-> {:ship/id id :ship/name (:ship/name record) :ship/deleted? false
                                 :ship/revision (inc (or (:ship/revision old) 0))
                                 :ship/library [:library/id library] :ship/class [:loadout/id (:ship/class record)]
-                                :ship/paint (t/paint-tx library parts id (:ship/paint record))}
+                                :ship/paint (t/paint-tx parts id (:ship/paint record))}
                          (:ship/scheme record) (assoc :ship/scheme [:scheme/id (:ship/scheme record)]))])))
 
 (defn put-record! [store library kind record mode]

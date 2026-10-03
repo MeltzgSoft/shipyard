@@ -7,9 +7,7 @@
             [shipyard.loadout.db :as classes]
             [shipyard.ship.db :as ships]
             [shipyard.paint.job :as job]
-            [shipyard.paint.transforms :as transforms]
-            [shipyard.scheme.db :as schemes]
-            [shipyard.workspace.db :as workspace]))
+            [shipyard.scheme.db :as schemes]))
 
 (defmethod ig/init-key :shipyard.paint/db [_ {:keys [paint/flush-interval-ms preview] :or {flush-interval-ms 120}}]
   (when-not (pos-int? flush-interval-ms)
@@ -64,22 +62,3 @@
     (when-not (:error result)
       (swap! (:state paint) assoc :draft draft :root (index/root! library)))
     result))
-
-(defn edit! [{:keys [workspace paint catalog] {ship-lock :lock} :named-ships :as deps} {:strs [id target sequence] :as params}]
-  (let [state (workspace/workspace! workspace :ships)
-        selected (get-in @(:state paint) [:draft :ship-id])
-        request-sequence (when (string? sequence) (parse-long sequence))
-        record (record! deps)
-        targets (transforms/targets (catalog/assembly-snapshot! catalog) (:draft @(:state paint)) record)
-        selected-target (first (filter #(= target (:key %)) targets))]
-    (if (or (not= (str selected) id) (not= target (:target state))
-            (nil? request-sequence) (<= request-sequence (or (:edit-sequence state) 0)))
-      {:error :stale-edit :message "This paint selection changed. Reopen it before retrying."}
-      (locking ship-lock
-        (if record
-          (let [result (transforms/edit-record record selected-target (transforms/parse-material params)
-                                               (= "true" (get params "clear")))
-                saved (if (:error result) result (save! deps (:scheme result)))]
-            (workspace/update-workspace! workspace :ships assoc :edit-sequence request-sequence)
-            saved)
-          {:error :missing-ship :message "Choose or create a named ship first."})))))

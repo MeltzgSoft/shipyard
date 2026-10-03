@@ -19,6 +19,7 @@
          ["/ships/tab/:tab" {:get {:handler (partial handlers/ship-tab! deps)
                                    :parameters {:path [:map [:tab [:enum "assembly" "schemes" "paint"]]]}
                                    :responses contracts/html-responses}}]
+         ["/ships/customize/ships" {:get {:handler (partial paint/table! deps) :responses contracts/html-responses}}]
          ["/ships" {:get {:handler (partial handlers/ships! deps) :parameters {:query contracts/library-query}
                           :responses contracts/html-responses}}]
          ["/ships/hulls/:id" {:get {:handler (partial handlers/named-rows! deps)
@@ -45,18 +46,8 @@
          [["/ships/paint/stroke" {:post {:handler (partial paint/stroke! deps) :responses contracts/html-responses}}]
           ["/ships/paint/delete" {:post {:handler (partial handlers/paint-selection! deps :delete)
                                          :parameters {:form (conj ship-id-form [:confirmed [:enum "true"]])}
-                                         :responses contracts/html-responses}}]
-          ["/ships/paint/material" {:post {:handler (partial paint/material! deps) :responses contracts/html-responses}}]]
-         (for [action [:create :rename :delete :members :order]]
-           [(str "/ships/paint/group/" (name action))
-            {:post {:handler (partial handlers/paint-selection! deps (keyword (str "group-" (name action))))
-                    :parameters {:form (into [:map]
-                                             (concat (when (not= action :create) [[:group [:and string? [:fn #(some? (parse-uuid %))]]]])
-                                                     (when (#{:create :rename} action) [[:name string?]])
-                                                     (when (#{:create :members} action) [[:members {:optional true} [:or string? [:sequential string?]]]])
-                                                     (when (= action :order) [[:direction [:enum "up" "down"]]])))}
-                    :responses contracts/html-responses}}])
-         (for [action [:select :target :create :rename :default :reset :tool]]
+                                         :responses contracts/html-responses}}]]
+         (for [action [:select :create :rename :reset]]
            [(str "/ships/paint/" (name action)) {:post {:handler (partial handlers/paint-selection! deps action)
                                                         :responses contracts/html-responses}}])
          (for [source [:assembly :ships]]

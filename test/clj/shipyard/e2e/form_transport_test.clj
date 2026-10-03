@@ -63,15 +63,8 @@
         (s/click! driver "button:text-is('Create named ship')")
         (s/fill-and-blur! driver "#paint-create input[name=name]" "Transport palette")
         (s/click! driver "#paint-create button")
-        (s/wait-visible! driver "#paint-material")
-        (assert-post-forms! driver ["/ships/paint/select" "/ships/paint/create" "/ships/paint/rename" "/ships/paint/delete"
-                                    "/ships/paint/target" "/ships/paint/material" "/ships/paint/stroke" "/ships/paint/tool" "/ships/paint/group/create"])
-        (s/check! driver "#paint-target input[value='[[:weapon 0]]']")
-        (s/click! driver ".paint-group-link")
-        (s/fill-and-blur! driver "#paint-group-create input[name=name]" "Transport group")
-        (s/click! driver "#paint-group-create button")
-        (s/wait-visible! driver "button:text-is('Rename group')")
-        (assert-post-forms! driver ["/ships/paint/group/rename" "/ships/paint/group/members" "/ships/paint/group/order" "/ships/paint/group/delete"]))
+        (s/wait-visible! driver "#paint-brush")
+        (assert-post-forms! driver ["/ships/paint/select" "/ships/paint/create" "/ships/paint/rename" "/ships/paint/delete" "/ships/paint/reset" "/ships/paint/stroke" "/ships/open"]))
       (testing "Ship Browser actions"
         (s/ship-table! driver)
         (s/wait-visible! driver ".ship-card")

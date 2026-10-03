@@ -12,14 +12,18 @@
             [shipyard.library.index :as index]
             [shipyard.loadout.db :as classes]
             [shipyard.loadout-fixture :as lf]
+            [shipyard.mesh.cache :as meshes]
+            [shipyard.paint.strokes :as strokes]
             [shipyard.scheme.db :as schemes]
             [shipyard.ship.db :as ships]
             [shipyard.http.urls :as urls]
             [shipyard.part-browser.thumbnail :as renderer]
             [shipyard.part.orientation :as orientation]
             [shipyard.thumbnail.cache :as cache]
-            [shipyard.thumbnail.transforms :as t])
-  (:import [java.util.concurrent CountDownLatch TimeUnit]
+            [shipyard.thumbnail.transforms :as t]
+            [shipyard.wire :as wire])
+  (:import [java.nio.file Files]
+           [java.util.concurrent CountDownLatch TimeUnit]
            [javax.imageio ImageIO]))
 
 (defn await! [f]
@@ -166,10 +170,15 @@
         (is (= class-url (image-url! handler class-path)))
         (schemes/put! scheme-db (assoc-in scheme [:scheme/layers "Primary" :base] [0.0 0.0 1.0]) :update)
         (is (not= ship-url (image-url! handler ship-path)) "Shared scheme edits invalidate named ships")
-        (let [scheme-url (image-url! handler ship-path)]
-          (ships/put! ship-db (assoc-in ship [:ship/paint :paint/layers "Primary"]
-                                        {:base [0.0 1.0 0.0] :metalness 0.2 :roughness 0.6}) :update)
-          (is (not= scheme-url (image-url! handler ship-path)) "Custom paint invalidates the compact ship stamp"))
+        (let [scheme-url (image-url! handler ship-path)
+              part-id (:hull lf/draft)
+              mesh-key (index/mesh-key! (:shipyard.library/index sys) part-id)
+              mesh (wire/decode (Files/readAllBytes (fs/path (meshes/tier-file (:shipyard.mesh/cache sys) mesh-key 0))))
+              detail {:part-id part-id :mesh-key mesh-key
+                      :faces (zipmap (strokes/mesh-faces mesh)
+                                     (repeat {:base [0.0 1.0 0.0] :metalness 0.2 :roughness 0.6}))}]
+          (is (nil? (:error (ships/put! ship-db (assoc-in ship [:ship/paint :paint/details []] detail) :update))))
+          (is (not= scheme-url (image-url! handler ship-path)) "Source-bound custom details invalidate the compact ship stamp"))
         (is (= class-url (image-url! handler class-path)) "Unpainted class image remains reusable"))
       (finally (fixture/stop! started)))))
 

@@ -499,7 +499,7 @@ saved assembly; expanding a class loads previews of its named ships with their s
 and custom colors. Previews use simplified lighting; open Assemble to inspect finishes. Filter by bundle/faction,
 class, or a class or ship name. Double-click a class row (or focus it and press Enter)
 to open **Assemble**. Expand **named ships** beneath a class to open one of its custom
-painted hulls. The editor has **Assembly**, **Schemes**, and **Paint** tabs.
+painted hulls. The editor has **Assembly**, **Schemes**, and **Customize** tabs.
 
 **Back to ships** restores the table's filters, scroll and expanded rows. **New class**
 starts a fresh assembly; **Resume assembly** returns to your working draft. Assembly
@@ -577,7 +577,7 @@ them. Renaming preserves painted regions, scheme colors and preview swatches. Pr
 The row’s **×** asks for confirmation, then removes that type from every part in
 the current library and returns its painted regions to Primary. It is available
 even on parts that have not used that type. Primary and Secondary are permanent.
-Deleted layers disappear from the list and Paint defaults. Recreating the same
+Deleted layers disappear from the list and scheme palettes. Recreating the same
 name makes a new layer. **Reset regions** clears this part’s assignments after
 confirmation while retaining shared layers.
 Later edits live in the database. Back up the database along with your library;
@@ -607,33 +607,32 @@ Click a saved swatch to reuse it, or its × button to remove it. Presets change 
 color; **Metalness**, **Roughness**, **Glow** and optional **Paint name** remain separate controls.
 Glow runs from 0 (off) to 1 and makes the selected color self-lit with a soft halo
 and colored light on nearby parts. Nearby lighting is an approximation without cast shadows.
-It is available for scheme layers, custom ship materials, and the detail brush as **Detail glow**.
+It is available for scheme layers, the detail brush as **Detail glow**.
 Turning on **Mount colors** temporarily hides glow. Changes preview while dragging
 and save on release. Select another class and choose Schemes to preview the same palette there. Preview
 never creates a named ship or assigns a scheme to a class. Palette editing also works
 without selecting a class. Turn off **Mount colors** to see paint.
 
-Save any assembly changes, then open **Paint** for the selected class, enter a ship name, choose a fleet scheme and
+Save any assembly changes, then open **Customize** for the selected class, enter a ship name, choose a fleet scheme and
 click **Create ship**. This creates a named ship beneath that class’s row. A class
 may have many named ships, each with its own scheme and custom paint. Select a named
 ship from the expanded row to resume editing. The Ship Browser camera and controls
-are shared across inspector tabs; there is no separate Paint workspace.
+are shared across inspector tabs; there is no separate Customize workspace.
 
-Use instance rows, custom layer overrides, groups and the detail brush to customize
-this ship. Paint uses the same spectrum, hue slider, **Hex color** field and **Saved colors**
-as Schemes. Materials preview locally and save on release; **Save material** retries a
-failed save. If you change a material while a save is pending, its response keeps
-your newer preview on screen until you save it. Custom paint affects only this named ship. Instance materials override
-its layer palette; face details override individual faces. **Use inherited material**
-removes the selected instance, group or layer override. Check instance rows and use
-**Group selection** to create a group; **Manage group** changes name, membership,
-priority or deletes the group. The first matching group with a material wins, beneath
-an instance override. Repeated copies of one weapon can have different materials.
+Customize lists named ships in a table with their class and scheme. **Edit** opens
+that ship's detail brush; **Delete** asks for confirmation and removes only that
+named ship and its paint. The Ship Browser's expanded named-ship rows provide the
+same Edit and Delete controls. Canceled deletes leave the ship unchanged.
+
+Use the detail brush to customize this ship over its region scheme. The brush uses
+the same spectrum, hue slider, **Detail hex color** field and **Saved colors** as
+Schemes. Picker changes affect the next stroke; releasing a stroke saves its details.
+There is no Select tool or whole-instance, group or custom layer material editor.
 
 Changing **Fleet scheme** keeps the ship’s custom paint. Palette edits in Schemes
 appear beneath that paint on all ships using the palette. **Manage ship → Reset
-custom paint** explicitly clears all custom layers, groups, instance materials and
-details after confirmation, keeping the ship’s name, class and scheme. Rename and
+custom paint** explicitly clears all custom face details after confirmation, keeping
+the ship’s name, class and scheme. Rename and
 Delete ship affect the named ship only. Deleting a scheme keeps ship references and
 custom paint and shows a missing-scheme warning until another scheme is selected.
 
@@ -647,44 +646,43 @@ Fleet ordering and fleet-default assignment are not yet available.
 
 ### Painting details
 
-Turn off **Mount colors**, then choose **Brush** in the Paint inspector. Pick a detail
+Turn off **Mount colors**, then open **Customize** to use the detail brush. Pick a detail
 colour with the spectrum, hue slider, **Detail hex color** field or a saved swatch,
-then set metalness, roughness and radius (2–100 screen pixels). **Cross instances** is on by default: one
-drag can touch several parts. Turn it off to paint only the instance selected in
-**Select** mode. The inspector lists touched parts and face counts for the live drag;
+then set metalness, roughness and radius (2–100 screen pixels). One drag can touch
+several parts. The inspector lists touched parts and face counts for the live drag;
 parts identified behind the brush are skipped.
 
 Left-drag to fill whole visible triangles under the circle. Hidden and back-facing
-faces are never painted. Even a small brush fills a whole triangle. Alt+drag or the
-**Select** tool permits orbiting. Colour and finish are captured together at the start
+faces are never painted. Even a small brush fills a whole triangle. Alt+drag permits
+orbiting. Colour and finish are captured together at the start
 of each drag, so metallic details can sit beside matte faces. Finish controls initially
-match the selected target's effective material. Changing them affects the next stroke,
+match the selected scheme’s Primary material. Changing them affects the next stroke,
 not existing details.
 
 For gold trim, choose a gold colour, metalness `1` and roughness around `0.2`.
 Lower roughness gives sharper reflections. Right-drag erases details and restores
-the underlying instance/group/layer colour and finish without changing the
+the underlying region scheme colour and finish without changing the
 selected mode or paint material. The next left-drag can paint again. **Erase to base**
 is also available for erasing with the left button. **Mount colors** temporarily replaces displayed
 colours while keeping face finishes.
 
 New faces are sent periodically while dragging, but nothing is durably saved until
 you release. The whole drag is one undo step, including when it crosses parts.
-**Undo** / **Redo** keep the last 20 strokes for the current target selection. Changing
-target or scheme resets that history. **Clear instance details** removes the selected
-instance's entire layer after confirmation and can also be undone. Choose an instance
-in Select mode to clear it. Details belong only to the selected named ship.
+**Undo** / **Redo** keep the last 20 strokes for the current named ship. Changing
+ship or scheme resets that history. **Manage ship → Reset custom paint** clears all
+its details after confirmation; this reset also clears history. Reset retained
+incompatible details before painting a replacement source mesh.
 
 Check **Details saved.** after release. If saving fails, every touched part returns to
 its pre-stroke appearance; **Retry last stroke** retries the captured stroke. Leaving
-Paint or canceling the drag discards its uncommitted preview. Face counts are
+Customize or canceling the drag discards its uncommitted preview. Face counts are
 informational: strokes and saved layers have no face-count limits. Large meshes may
 take longer to prepare their first detail layer.
 
 Replaced parts/source files suppress incompatible details and show a warning in
-Paint. The old mask remains saved until you explicitly clear that instance's details.
+Customize. Old masks remain saved until you use **Reset custom paint**.
 After replacing a source file, reselect your library in Settings to rescan it before
-reopening Paint. Restoring the original source restores its mask after the same rescan.
+reopening Customize. Restoring the original source restores its mask after the same rescan.
 
 ## Troubleshooting
 
