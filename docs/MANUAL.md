@@ -284,6 +284,10 @@ not determine yaw, the child faces forward with the part it is mounted to.
 - **Repeat classification** keeps the kind and accepted role ready for the next picked
   face. The next mount is still shown in the form and must be saved deliberately.
 
+The **Interface colors** legend also shows the mount frame directions: **Normal (+Z)**,
+**Twist reference (+X)** and **Up (+Y)**. These remain visible while authoring the first
+mount, before any interface colors have been configured.
+
 When capacity is above one, choose **Vertical — equal widths** or
 **Horizontal — equal heights**. The selected face is divided in its own frame:
 vertical cuts run along +Y, and horizontal cuts along +X. White lines show boundaries
