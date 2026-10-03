@@ -106,7 +106,10 @@ optionally enter a **Grouped part name**, and choose **Group selected rows**. Th
 result shares the chosen source row's bundle, class and role; review those labels
 after grouping. Different files assigned the same variant show **Assign variants**
 and must be corrected or split before import. Separate rows targeting the same part
-folder must be renamed or explicitly grouped.
+folder must be renamed or explicitly grouped. After a successful group,
+selection clears so another pair can be grouped without including the completed
+group, even when filters hide it. Select an existing group again if you intend to
+merge it with another row.
 
 Select rows, or **Select entire import** across all pages, to apply bulk bundle,
 class, role and name edits. The bulk **Supported / unsupported** field applies to

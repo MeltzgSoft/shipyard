@@ -838,6 +838,10 @@ remain intact. Identical entries sharing a destination can coalesce; different c
 and existing destinations must never be silently overwritten. Failed validation retains
 the review for correction, and cancel discards it without changing library parts.
 
+Successful manual grouping clears the import selection, including selected rows
+hidden by filters. A second grouping operation must preserve unrelated groups and
+their reviewed labels. Group submission waits for pending checkbox selection updates.
+
 ## 10. Delivery planning
 
 Milestone scope, progress, and outstanding work live in the

@@ -95,7 +95,7 @@
       [:form.bulk-orient__table {:role "group" :aria-label "Parts"
                                  :method "post" :action "/orient/selection" :hx-post "/orient/selection" :hx-trigger "change[target.matches('[data-bulk-select]')]" :hx-include "#part-table-position, [data-part-page]" :hx-target "#bulk-orient-selection"
                                  :hx-swap "outerHTML" :hx-sync "this:replace"
-                                 :hx-disabled-elt "[data-workspace-mode], [data-workspace-transition], .part-bulk-edit button"}
+                                 :hx-disabled-elt "[data-workspace-mode], [data-workspace-transition], .part-bulk-edit button, [data-import-group]"}
        [:input {:type "hidden" :name "visible" :value (pr-str (mapv :part/id parts))}]
        [:div.bulk-orient__columns {:aria-hidden "true"}
         [:span] [:span "Preview"] [:span "Part"] [:span "Bundle / faction"] [:span "Role"] [:span "Class"] [:span (if (:import/source (first parts)) "Variant" "Mount summary")] [:span (if (:import/source (first parts)) "Files / variants" "Regions")] [:span "Yaw"] [:span "Pitch"]
@@ -164,7 +164,7 @@
        (for [[selection label] [["all" "Select entire import"] ["none" "Clear selection"]]]
          [:form {:method "post" :action "/imports/selection" :hx-post "/imports/selection" :hx-target "#bulk-orient-selection" :hx-swap "outerHTML"
                  :hx-sync "#workspace-navigation:drop"
-                 :hx-disabled-elt "[data-workspace-mode], [data-workspace-transition], [data-bulk-select], [data-import-select], .part-bulk-edit button"}
+                 :hx-disabled-elt "[data-workspace-mode], [data-workspace-transition], [data-bulk-select], [data-import-select], .part-bulk-edit button, [data-import-group]"}
           [:input {:type "hidden" :name "selection" :value selection}]
           [:button {:type "submit" :data-import-select selection} label]])
        [:form {:method "post" :action "/imports/group" :hx-post "/imports/group"

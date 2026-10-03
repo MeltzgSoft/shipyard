@@ -128,7 +128,9 @@
               (dissoc :part/orientation))))
         (sort-by key (group-by :group (sort-by :key (vals entries))))))
 
-(defn group-selection [entries parts ids group-name]
+(defn group-selection
+  "Group the chosen rows and finish that selection, including rows hidden by filters."
+  [entries parts ids group-name]
   (let [ids (set ids)
         selected (filter #(ids (:group %)) (vals entries))
         seed-id (:group (or (preview-entry (sort-by :key selected)) (first (sort-by :key selected))))
@@ -140,7 +142,7 @@
       (throw (ex-info "The group name must be a valid folder name." {})))
     {:entries (update-vals entries #(cond-> % (ids (:group %)) (assoc :group seed-id)))
      :labels (cond-> parts (not (str/blank? group-name)) (assoc seed-id (assoc seed :part/name group-name)))
-     :selected [seed-id]}))
+     :selected []}))
 
 (defn split-group [entries parts id]
   (let [files (members entries id)

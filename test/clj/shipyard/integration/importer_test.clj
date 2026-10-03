@@ -217,6 +217,7 @@
         (testing "manual grouping joins differently named rows with reviewed labels"
           (post! "/orient/selection" {"visible" (pr-str (ids!)) "selected" (ids!)})
           (check! 200 "/imports/group" {"name" "Corrected Hull"})
+          (is (= "[]" (:bulk-selection (get-in @(:state workspace) [:workspaces :browse]))))
           (is (= 1 (count (parts!))))
           (is (= "Corrected Hull" (:part/name (first (vals (parts!))))))
           (is (= before (catalog/listing! cat))))

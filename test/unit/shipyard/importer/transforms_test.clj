@@ -65,7 +65,7 @@
   (let [entries (into {} (map (fn [[id file]] [id (assoc file :group id)])) sample-entries)
         parts (into {} (map (fn [[id file]] [id (t/infer id (:chain file))])) entries)
         result (t/group-selection entries parts ["a" "b"] "My hull")]
-    (is (= ["a"] (:selected result)))
+    (is (= [] (:selected result)))
     (is (= #{"a"} (set (map :group (vals (:entries result))))))
     (is (= "My hull" (get-in result [:labels "a" :part/name])))
     (is (thrown? clojure.lang.ExceptionInfo (t/group-selection entries parts ["a"] nil)))

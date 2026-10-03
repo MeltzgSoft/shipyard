@@ -65,7 +65,7 @@
           (s/fill-and-blur! driver "form[hx-post='/imports/group'] input[name=name]" "Hull")
           (s/click! driver "[data-import-group]")
           (is (s/wait-until #(= 2 (s/count-els driver ".bulk-orient__row"))))
-          (is (= "1 selected" (s/text driver "[data-bulk-count]"))))
+          (is (= "0 selected" (s/text driver "[data-bulk-count]"))))
         (s/click! driver "[data-import-select=all]")
         (is (s/wait-until #(= "2 selected" (s/text driver "[data-bulk-count]"))))
         (s/select-option! driver ".part-bulk-edit select[name=field]" "Bundle / faction")
