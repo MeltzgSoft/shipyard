@@ -2278,6 +2278,8 @@ The shared store keeps explicitly added classifications as vocabulary entities k
 `[field value]`, with a keyword field and string value. Choice projections combine these
 application-wide values with observed/authored labels in the selected library and, during
 review, the staging catalog. Role identifiers are normalized by a pure transform.
+Part and import row disclosures lazily load the same server-rendered metadata editor through `GET /parts/metadata/row`. `POST /parts/metadata/row` validates all four labels and commits their overrides in one catalog transaction, without changing bulk selection. Its response replaces only the saved drawer and classification/filter choices, preserving other row drafts. Larger 256×176 previews are requested lazily on expansion and use a size-specific thumbnail cache key; list summaries remain metadata-only.
+
 The shared bulk-edit form uses a server-rendered editable classification selector.
 A small ClojureScript DOM enhancement projects the current datalist values into a
 searchable dropdown with keyboard navigation and a missing-value choice. It initializes

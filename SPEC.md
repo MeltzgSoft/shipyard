@@ -791,6 +791,8 @@ or deselects every filtered result, including unloaded rows, retaining hidden se
 It reflects all, some or no matching rows selected. Clear selection beside the filters
 clears the entire selection. Both controls are available during import review.
 
+Each part and import row expands into a drawer with a larger preview and name, faction/bundle, class and role fields. Save part atomically saves that row independently of bulk selection; typing and closing a drawer do not save. Import edits remain staged until publication. Saving one row preserves other open drawers and their drafts. Orientation remains in the orientation editor.
+
 The bulk-edit Value control in Part Browser and import review is an editable selector
 for faction/bundle, class and role. It lists saved values, filters as the user types,
 and offers a missing typed value for addition. Choosing or typing a value does not save;

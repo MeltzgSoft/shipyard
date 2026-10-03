@@ -33,3 +33,14 @@
         result (thumbnail/triangles mesh nil)]
     (is (= 1 (count result)))
     (is (every? (fn [[x y]] (and (<= 0 x 128) (<= 0 y 88))) (:points (first result))))))
+
+(deftest row-edits-test
+  (let [part {:part/id "a"} params {"name" " Hull " "bundle" "Fleet" "class" "Cruiser" "role" "Sensor Array"}]
+    (is (= [{:id "a" :attribute :part/name-override :value "Hull"}
+            {:id "a" :attribute :part/bundle-override :value "Fleet"}
+            {:id "a" :attribute :part/class-override :value "Cruiser"}
+            {:id "a" :attribute :part/role-override :value :sensor-array}]
+           (:changes (t/row-edits part params))))
+    (is (:error (t/row-edits nil params)))
+    (is (:error (t/row-edits part (assoc params "class" " "))))
+    (is (:error (t/row-edits part (assoc params "role" "bad/role"))))))

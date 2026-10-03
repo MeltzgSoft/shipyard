@@ -41,3 +41,10 @@
       (some #(and (string? (:value %)) (str/blank? (:value %))) changes)
       {:error "Names, bundles and classes cannot be blank."}
       :else {:changes changes})))
+
+(defn row-edits [part params]
+  (if-not part
+    {:error "This part is unavailable. Refresh the table and retry."}
+    (let [results (mapv (fn [field] (edits [part] {"field" field "operation" "set" "value" (get params field)}))
+                        ["name" "bundle" "class" "role"])]
+      (or (first (filter :error results)) {:changes (vec (mapcat :changes results))}))))

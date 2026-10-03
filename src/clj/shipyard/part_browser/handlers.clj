@@ -15,8 +15,10 @@
             [shipyard.wire :as wire])
   (:import [java.nio.file Files]))
 
-(defn- thumbnail-effective! [{:keys [catalog cache thumbnails] :as deps} {:keys [path-params]}]
+(defn- thumbnail-effective! [{:keys [catalog cache thumbnails] :as deps} {:keys [path-params params]}]
   (let [id (:id path-params)
+        scale (if (= "large" (get params "size")) 2 1)
+        url (str "/thumbnails/" (urls/encode-id id) (when (= 2 scale) "?size=large"))
         part (catalog/summary! catalog id)]
     (if-not (t/thumbnail? part (:import-session deps))
       (htmx/fragment [:span "No preview"])
@@ -26,7 +28,7 @@
           (try
             (let [stamp (:stamp (catalog/thumbnail-context! catalog id))
                   result (previews/request-derived!
-                          thumbnails {:part stamp :mesh mesh-key :tiers (:lod-tiers cache)}
+                          thumbnails {:part stamp :mesh mesh-key :tiers (:lod-tiers cache) :size scale}
                           #(let [part (:part (catalog/thumbnail-context! catalog id stamp))
                                  regions (thumbnail/source-regions (:part/paint-regions part) mesh-key)
                                  ;; Face identities require the original mesh.
@@ -34,13 +36,13 @@
                                  ^java.io.File file (first (filter fs/regular-file? (map (fn [tier] (cache/tier-file cache mesh-key tier)) tiers)))
                                  pose (orientation/orientation-of (:part/orientation part))]
                              {:inputs {:mesh mesh-key :tier (str (fs/file-name file)) :pose pose
-                                       :regions (thumbnail/region-style regions)}
+                                       :regions (thumbnail/region-style regions) :size scale}
                               :render! (fn [] (thumbnail/png! (-> (wire/decode (Files/readAllBytes (.toPath file)))
-                                                                  (thumbnail/region-mesh regions)) pose))}))]
-              (htmx/fragment (preview-views/preview result (str "/thumbnails/" (urls/encode-id id))
+                                                                  (thumbnail/region-mesh regions)) pose scale))}))]
+              (htmx/fragment (preview-views/preview result url
                                                     "closest .part-thumbnail" (:part/name part))))
             (catch Exception _ (htmx/fragment [:span "Preview unavailable"])))
-          :preparing (htmx/fragment [:span {:hx-get (str "/thumbnails/" (urls/encode-id id))
+          :preparing (htmx/fragment [:span {:hx-get url
                                             :hx-trigger "load delay:600ms" :hx-target "closest .part-thumbnail"} "…"])
           (htmx/fragment [:span "Preview unavailable"]))))))
 

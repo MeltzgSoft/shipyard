@@ -48,41 +48,72 @@
                  :hx-disabled-elt "#library button, #library select, [data-bulk-select]"}
         "Split into separate rows"])]))
 
-(defn- orientation-row [selected part]
-  (let [[yaw pitch roll] (orientation/to-euler-degrees (:part/orientation part))
-        reason (http-views/unrenderable-reason part)
-        renderable? (nil? reason)
-        thumbnail? (parts/thumbnail? part (:import/source part))]
-    [:div.bulk-orient__row
-     {:tabindex "0" :data-workspace-transition "true" :data-part-row (:part/id part)
-      :hx-on:dblclick (when-not (:import/source part) "if(!this.hasAttribute('disabled')&&event.target.tagName!=='INPUT'){document.getElementById('part-open-id').value=this.dataset.partRow; document.getElementById('part-open').requestSubmit();}")
-      :hx-on:keydown (when-not (:import/source part) "if(!this.hasAttribute('disabled')&&event.key==='Enter'){event.preventDefault(); document.getElementById('part-open-id').value=this.dataset.partRow; document.getElementById('part-open').requestSubmit();}")}
-     [:input {:type "checkbox" :value (:part/id part) :aria-label (str "Select " (:part/name part))
-              :data-bulk-select "true" :name "selected" :checked (contains? selected (:part/id part))}]
-     [:span.part-thumbnail
-      (if thumbnail?
-        {:hx-get (str "/thumbnails/" (urls/encode-id (:part/id part)))
-         :hx-trigger "intersect once root:#bulk-orient-results" :hx-sync "this:drop" :hx-disabled-elt "this" :hx-target "this" :hx-swap "innerHTML"}
-        {:title reason})
-      (if thumbnail? "…" "No preview")]
-     [:span.bulk-orient__part (:part/name part)]
-     [:span.bulk-orient__bundle (:part/bundle part)]
-     [:span.bulk-orient__role (name (or (:part/role-hint part) :unknown))]
-     [:span.bulk-orient__class (or (:part/class part) "—")]
-     [:span.bulk-orient__mounts (if (:import/source part)
-                                  (if (:import/conflict? part) [:strong.detail__error "Assign variants"]
-                                      (str/join " + " (sort (map name (:part/variants part)))))
-                                  (mount-label (:part/mount-summary part)))]
-     [:span.bulk-orient__regions {:title (:import/source part) :data-has-regions (str (boolean (:part/has-regions? part)))}
-      (if (:import/source part) (import-files part) (if (:part/has-regions? part) "Yes" "No"))]
-     [:code (if (bulk/saved? part) (angle-label yaw) "—")]
-     [:code (if (bulk/saved? part) (angle-label pitch) "—")]
-     [:code (if (bulk/saved? part) (angle-label roll) "—")]
-     [:span {:class (if (bulk/saved? part) "bulk-orient__saved" "bulk-orient__unset")}
-      (cond
-        (not renderable?) (if thumbnail? "Unavailable" "No preview")
-        (bulk/saved? part) "Saved"
-        :else "Unset")]]))
+(defn row-editor [part message]
+  (let [id (:part/id part) prefix (str "part-row-" (urls/encode-id id))]
+    [:div.part-drawer__body
+     [:span.part-thumbnail.part-thumbnail--large
+      (if (parts/thumbnail? part (:import/source part))
+        {:hx-get (str "/thumbnails/" (urls/encode-id id) "?size=large")
+         :hx-trigger "intersect once root:#bulk-orient-results" :hx-sync "this:drop" :hx-target "this" :hx-swap "innerHTML"}
+        {})
+      (if (parts/thumbnail? part (:import/source part)) "…" "No preview")]
+     [:form.part-row-edit {:method "post" :action "/parts/metadata/row" :hx-post "/parts/metadata/row"
+                           :hx-params "*" :hx-include "unset" :hx-target "closest .part-drawer" :hx-swap "outerHTML" :hx-sync "#workspace-navigation:drop"
+                           :hx-disabled-elt "find fieldset, [data-bulk-select], [data-select-all], [data-workspace-mode], [data-workspace-transition], .part-bulk-edit button"}
+      [:input {:type "hidden" :name "part-id" :value id}]
+      [:fieldset.part-row-edit__fields
+       [:label.part-row-edit__name "Name" [:input {:name "name" :value (:part/name part) :required true}]]
+       (vocabulary/field-picker (str prefix "-bundle") "bundle" "Bundle / faction" (:part/bundle part))
+       (vocabulary/field-picker (str prefix "-class") "class" "Class" (:part/class part))
+       (vocabulary/field-picker (str prefix "-role") "role" "Role" (name (or (:part/role-hint part) :unknown)))
+       [:div.part-row-edit__actions [:button {:type "submit"} "Save part"]
+        [:span {:role "status"} message]]]]
+     (when (:import/source part) (import-files part))]))
+
+(defn orientation-row
+  ([selected part] (orientation-row selected part false nil))
+  ([selected part open? message]
+   (let [[yaw pitch roll] (orientation/to-euler-degrees (:part/orientation part))
+         reason (http-views/unrenderable-reason part)
+         renderable? (nil? reason)
+         thumbnail? (parts/thumbnail? part (:import/source part))]
+     [:details.bulk-orient__row.part-drawer
+      {:open open? :tabindex "0" :data-workspace-transition "true" :data-part-row (:part/id part)
+       :hx-on:dblclick (when-not (:import/source part) "if(!this.hasAttribute('disabled')&&event.target.closest('summary')&&!event.target.closest('input,button,select,a')){document.getElementById('part-open-id').value=this.dataset.partRow; document.getElementById('part-open').requestSubmit();}")
+       :hx-on:keydown (when-not (:import/source part) "if(!this.hasAttribute('disabled')&&event.key==='Enter'&&event.target===this){event.preventDefault(); document.getElementById('part-open-id').value=this.dataset.partRow; document.getElementById('part-open').requestSubmit();}")}
+      [:summary.part-drawer__summary
+       [:input {:type "checkbox" :value (:part/id part) :aria-label (str "Select " (:part/name part))
+                :data-bulk-select "true" :name "selected" :checked (contains? selected (:part/id part))}]
+       [:span.part-thumbnail
+        (if thumbnail?
+          {:hx-get (str "/thumbnails/" (urls/encode-id (:part/id part)))
+           :hx-trigger "intersect once root:#bulk-orient-results" :hx-sync "this:drop" :hx-disabled-elt "this" :hx-target "this" :hx-swap "innerHTML"}
+          {:title reason})
+        (if thumbnail? "…" "No preview")]
+       [:span.bulk-orient__part (:part/name part)]
+       [:span.bulk-orient__bundle (:part/bundle part)]
+       [:span.bulk-orient__role (name (or (:part/role-hint part) :unknown))]
+       [:span.bulk-orient__class (or (:part/class part) "—")]
+       [:span.bulk-orient__mounts (if (:import/source part)
+                                    (if (:import/conflict? part) [:strong.detail__error "Assign variants"]
+                                        (str/join " + " (sort (map name (:part/variants part)))))
+                                    (mount-label (:part/mount-summary part)))]
+       [:span.bulk-orient__regions {:title (:import/source part) :data-has-regions (str (boolean (:part/has-regions? part)))}
+        (if (:import/source part) (str (count (:import/files part)) " files") (if (:part/has-regions? part) "Yes" "No"))]
+       [:code (if (bulk/saved? part) (angle-label yaw) "—")]
+       [:code (if (bulk/saved? part) (angle-label pitch) "—")]
+       [:code (if (bulk/saved? part) (angle-label roll) "—")]
+       [:span {:class (if (bulk/saved? part) "bulk-orient__saved" "bulk-orient__unset")}
+        (cond
+          (not renderable?) (if thumbnail? "Unavailable" "No preview")
+          (bulk/saved? part) "Saved"
+          :else "Unset")]]
+      (if open?
+        (row-editor part message)
+        [:div.part-drawer__content
+         {:hx-get (str "/parts/metadata/row?part-id=" (urls/encode-id (:part/id part)))
+          :hx-trigger "toggle[event.target.open] once from:closest details" :hx-target "this" :hx-swap "innerHTML" :hx-sync "this:drop"}
+         [:p "Loading part…"]])])))
 
 (def selection-attrs
   {:hx-post "/orient/select-all" :hx-target "#bulk-orient-selection" :hx-swap "outerHTML"
@@ -123,10 +154,10 @@
         [:input#part-table-position {:type "hidden" :name "table-scroll" :value (or scroll "0")}]
         [:input {:type "hidden" :name "page" :value (:page window) :data-part-page true}]
         [:p.results__count (format "%d matches" (:total window))]
-        [:form.bulk-orient__table {:role "group" :aria-label "Parts"
-                                   :method "post" :action "/orient/selection" :hx-post "/orient/selection" :hx-trigger "change[target.matches('[data-bulk-select]')]" :hx-include "#part-table-position, [data-part-page]" :hx-target "#bulk-orient-selection"
-                                   :hx-swap "outerHTML" :hx-sync "this:replace"
-                                   :hx-disabled-elt "[data-workspace-mode], [data-workspace-transition], .part-bulk-edit button, [data-select-all]"}
+        [:div.bulk-orient__table {:role "group" :aria-label "Parts"
+                                  :method "post" :action "/orient/selection" :hx-post "/orient/selection" :hx-trigger "change[target.matches('[data-bulk-select]')]" :hx-include ".bulk-orient__table [data-bulk-select], #part-table-position, [data-part-page]" :hx-params "selected,visible,table-scroll,page" :hx-target "#bulk-orient-selection"
+                                  :hx-swap "outerHTML" :hx-sync "this:replace"
+                                  :hx-disabled-elt "[data-workspace-mode], [data-workspace-transition], .part-bulk-edit button, [data-select-all]"}
          [:div.bulk-orient__columns
           checkbox [:span "Preview"] [:span "Part"] [:span "Bundle / faction"] [:span "Role"] [:span "Class"] [:span (if (:import/source (first parts)) "Variant" "Mount summary")] [:span (if (:import/source (first parts)) "Files / variants" "Regions")] [:span "Yaw"] [:span "Pitch"]
           [:span "Roll"] [:span "Orientation"]]

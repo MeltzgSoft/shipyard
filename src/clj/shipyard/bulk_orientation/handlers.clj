@@ -188,3 +188,28 @@
                         "all" (set/union previous matching)
                         "matching-none" (set/difference previous matching)
                         "none" #{}))))
+
+(defn row-metadata! [deps {:keys [params]}]
+  (let [{:keys [catalog workspace] :as deps} (importer/effective! deps)
+        id (get params "part-id")
+        part (db/part (importer/listing! deps) id)
+        selected (set (bulk/selected-ids (:bulk-selection (workspace/workspace! workspace :browse))))
+        result (edits/row-edits part params)]
+    (if-let [error (:error result)]
+      (htmx/fragment [:span.detail__error error] {:status 422 :headers {"HX-Retarget" "find [role=status]" "HX-Reswap" "innerHTML"}})
+      (try
+        (db/save-metadata! catalog (:changes result))
+        (htmx/fragment
+         (list (views/orientation-row selected (db/part (importer/listing! deps) id) true "Saved.")
+               (into [:div#classification-values {:hx-swap-oob "outerHTML"}]
+                     (rest (vocabulary-views/choices (:values (facets! deps)))))
+               (views/filter-updates (facets! deps) (:filters (workspace/workspace! workspace :browse)))))
+        (catch Exception e
+          (htmx/fragment [:span.detail__error (.getMessage e)]
+                         {:status 422 :headers {"HX-Retarget" "find [role=status]" "HX-Reswap" "innerHTML"}}))))))
+
+(defn row-editor! [deps {:keys [params]}]
+  (let [deps (importer/effective! deps)]
+    (if-let [part (db/part (importer/listing! deps) (get params "part-id"))]
+      (htmx/fragment (views/row-editor part nil))
+      (htmx/fragment [:p.detail__error "This part is unavailable. Refresh the table and retry."] {:status 422}))))
