@@ -7,7 +7,45 @@
             [shipyard.e2e.orient-save-test :as orient]
             [shipyard.import-fixture :as archives]
             [shipyard.importer.db :as importer]
-            [shipyard.library.index :as index]))
+            [shipyard.library.index :as index])
+  (:import [com.microsoft.playwright Page]))
+
+(deftest import-classification-selectors-reuse-and-stage-new-values
+  (let [started (fixture/start! true) driver (s/make-driver) sys (:system started)
+        workspace (:shipyard.workspace/db sys) cat (:shipyard.catalog/db sys)
+        directory (fs/create-temp-dir) zip (archives/archive! directory)
+        session! #(importer/session! {:workspace workspace})
+        before (catalog/listing! cat)]
+    (try
+      (s/go! driver (s/base-url sys))
+      (s/choose-path! driver ".import-start" zip)
+      (s/click! driver ".import-start button[type=submit]")
+      (s/wait-visible! driver ".import-review")
+      (s/click! driver "[data-import-select=all]")
+      (s/wait-visible! driver "[data-bulk-count]:text-is('2 selected')")
+      ;; Review combines its own choices with the destination library's values.
+      (s/click! driver "[data-classification-toggle]")
+      (s/click! driver "#part-edit-options [role=option]:text-is('Synthetic Navy')")
+      (is (= "Synthetic Navy" (s/js driver "() => document.querySelector('#part-edit-value').value")))
+      (doseq [[label field value saved] [["Bundle / faction" :part/bundle "Staged Fleet" "Staged Fleet"]
+                                         ["Class" :part/class "Staged Carrier" "Staged Carrier"]
+                                         ["Role" :part/role-hint "Sensor Array" :sensor-array]]]
+        (s/select-option! driver ".part-bulk-edit select[name=field]" label)
+        (.fill ^Page (:page driver) "#part-edit-value" value)
+        (s/click! driver (str "#part-edit-options [role=option]:text-is('Add “" value "”')"))
+        (s/click! driver "#part-bulk-apply")
+        (is (s/wait-until #(every? (fn [part] (= saved (get part field)))
+                                   (vals (:parts (catalog/listing! (:catalog (session!))))))))
+        (is (= before (catalog/listing! cat)))
+        (s/click! driver "[data-classification-toggle]")
+        (s/click! driver (str "#part-edit-options [role=option]:text-is('" (if (keyword? saved) (name saved) saved) "')")))
+      (s/click! driver "[data-classification-toggle]")
+      (s/screenshot-el! driver "#library" (java.io.File. "/tmp/shipyard-import-classification-selector.png"))
+      (s/click! driver "form[hx-post='/imports/cancel'] button")
+      (s/wait-visible! driver ".import-start")
+      (is (= before (catalog/listing! cat)))
+      (is (zero? (s/count-els driver "#classification-values option[value='Staged Fleet'], #classification-values option[value='Staged Carrier'], #classification-values option[value='sensor-array']")))
+      (finally (s/quit! driver) (fixture/stop! started) (fs/delete-tree directory)))))
 
 (deftest archive-review-bulk-orientation-and-publication
   (s/assert-bundle!)
@@ -70,7 +108,7 @@
         (is (s/wait-until #(= "2 selected" (s/text driver "[data-bulk-count]"))))
         (s/select-option! driver ".part-bulk-edit select[name=field]" "Bundle / faction")
         (s/fill-and-blur! driver ".part-bulk-edit input[name=value]" "Reviewed Fleet")
-        (s/click! driver ".part-bulk-edit button")
+        (s/click! driver "#part-bulk-apply")
         (is (s/wait-until #(every? (fn [p] (= "Reviewed Fleet" (:part/bundle p)))
                                    (catalog/browse (catalog/listing! (:catalog (session!))) {}))))
         (s/click! driver "[data-bulk-render-button]")
@@ -104,7 +142,7 @@
         (is (s/wait-until #(= "2 selected" (s/text driver "[data-bulk-count]"))))
         (s/select-option! driver ".part-bulk-edit select[name=field]" "Bundle / faction")
         (s/fill-and-blur! driver ".part-bulk-edit input[name=value]" "Reviewed Fleet")
-        (s/click! driver ".part-bulk-edit button")
+        (s/click! driver "#part-bulk-apply")
         (is (s/wait-until #(every? (fn [p] (= "Reviewed Fleet" (:part/bundle p)))
                                    (catalog/browse (catalog/listing! (:catalog (session!))) {}))))
         (s/click! driver "form[hx-post='/imports/commit'] button")

@@ -1003,6 +1003,13 @@ body:has(#workspace-context[data-workspace="browse"]) #library[data-part-view="p
 .part-bulk-edit:has(select[name="field"] option[value="name"]:checked) .part-bulk-edit__name { display: grid !important; }
 .part-bulk-edit:has(select[name="field"] option[value="name"]:checked):has(select[name="operation"] option[value="replace"]:checked) .part-bulk-edit__find { display: grid !important; }
 #part-edit-status { margin: 0; padding: 0 12px 8px; font-size: 12px; }
+.classification-picker { position: relative; display: grid; gap: 4px; font-size: 11px; min-width: 230px; }
+.classification-picker__control { display: flex; }
+.classification-picker__control input { min-width: 0; flex: 1; }
+.classification-picker small { color: var(--ink-dim); }
+.classification-picker__options { position: absolute; bottom: calc(100% + 4px); left: 0; right: 0; z-index: 5; max-height: min(240px, 40vh); overflow-y: auto; padding: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; box-shadow: 0 6px 16px #0008; }
+.classification-picker__options button { display: block; width: 100%; text-align: left; border: 0; cursor: pointer; }
+.classification-picker__options button[aria-selected=true], .classification-picker__options button:hover { background: var(--line); }
 [data-part-back] { margin-bottom: 12px; border: 1px solid var(--line); border-radius: 4px; padding: 6px 9px; background: var(--panel-2); color: var(--ink); cursor: pointer; }
 #bulk-orient-filters { display: grid; grid-template-columns: repeat(5, minmax(100px, 1fr)); gap: 8px; padding: 12px; }
 #bulk-orient-filters .filters__field { margin: 0; }

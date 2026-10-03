@@ -770,8 +770,11 @@ previewed remain visible as No preview and can still be selected for metadata ed
 an explicit empty state. Tables show 50 rows per page. Selections persist across pages;
 changing filters returns to the first page, and Back from an editor restores the page.
 
-Users enter new faction/bundle, class and role values ad hoc while editing parts in
-normal browsing or import review. Saved values become available as editing suggestions
+The bulk-edit Value control in Part Browser and import review is an editable selector
+for faction/bundle, class and role. It lists saved values, filters as the user types,
+and offers a missing typed value for addition. Choosing or typing a value does not save;
+Apply to selected persists the edit. Names and import variants retain ordinary value entry.
+Saved values become available as editing suggestions
 and filter choices; import values remain staged until publication.
 Custom roles are available to metadata editing and socket acceptance, with the same
 role matching rules as built-in roles; weapon sockets remain turret-only.

@@ -156,8 +156,11 @@ chosen field, name operation and entered values, including edits made while the
 selection is updating. For names, choose find-and-replace, prefix,
 suffix or set-name. These labels survive rescans and do not rename source files.
 
-Enter new faction/bundle, class or role values directly in the bulk edit **Value**
-field and choose **Apply to selected**. Existing values appear as suggestions; new
+For faction/bundle, class or role, open the bulk edit **Value** dropdown to choose a
+saved value, or type to filter it. Choose **Add “value”** for a missing name. Arrow keys
+and Enter select a choice; Escape closes the list. These controls work in both Part
+Browser and import review. Typing or choosing a value does not save it: choose
+**Apply to selected** to apply the edit. New
 values become available in the current library's filters and editors after saving.
 Values authored in import review remain staged until the import is committed. Role names become lowercase identifiers with spaces replaced
 by hyphens (for example, **Sensor Array** becomes **sensor-array**). Custom roles are
