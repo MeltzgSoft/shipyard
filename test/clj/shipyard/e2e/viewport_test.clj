@@ -797,6 +797,11 @@
   (is (some? (await-preview)))
   (s/select-option! *driver* ".mount-wizard__form select[name=kind]" "socket")
   (is (= "SELECT" (s/js *driver* "() => document.querySelector('select[name=accepts]').tagName")))
+  (is (s/js *driver* "() => {
+      const form = document.querySelector('.mount-wizard__form').getBoundingClientRect();
+      const mirror = document.querySelector('.mount-wizard__mirror').getBoundingClientRect();
+      return Math.abs(form.width - mirror.width) < 2 && Math.abs(form.x - mirror.x) < 2;
+    }") "The mirror controls use the full mount form width")
   (let [layout (s/js *driver* "() => {
                                const select = document.querySelector('select[name=accepts]');
                                return {
