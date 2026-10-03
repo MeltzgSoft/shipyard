@@ -12,6 +12,7 @@
       (s/go! driver (s/base-url sys))
       (s/wait-visible! driver "[data-bulk-select]")
       (is (zero? (s/count-els driver ".classification-editor")))
+      (is (zero? (s/count-els driver ".part-bulk-edit .classification-picker small")))
       (s/check! driver (str "[data-bulk-select][value='" id "']"))
       (s/wait-visible! driver "[data-bulk-count]:text-is('1 selected')")
       (s/click! driver ".part-bulk-edit [data-classification-toggle]")
