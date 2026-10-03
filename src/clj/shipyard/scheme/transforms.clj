@@ -4,7 +4,6 @@
             [shipyard.domain.schemas :as schemas]))
 
 (def material? (m/validator schemas/material))
-(def member? (m/validator schemas/member))
 (def scheme? (m/validator schemas/scheme))
 
 (defn put-record [store record mode]

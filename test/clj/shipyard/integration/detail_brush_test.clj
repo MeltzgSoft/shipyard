@@ -56,10 +56,10 @@
             (is (not= mesh-key new-key) "The source content, not just its timestamp, changed")
             (index/record-mesh-key! library id new-key 12)
             (is (str/includes? (:body (handler (mock/request :get "/ships?poll=1"))) "changed part or source mesh"))
-            (is (str/includes? (:body (post "/ships/paint/stroke" (assoc params :sequence "5" :mesh-key new-key :history "clear"))) "Details saved"))
+            (is (= 200 (:status (post "/ships/paint/reset" {:id (str scheme) :confirmed "true"}))))
             (is (nil? (get-in (schemes/snapshot! store) [:ships scheme :ship/paint :paint/details []])))
-            (is (str/includes? (:body (post "/ships/paint/stroke" (assoc params :sequence "6" :mesh-key new-key :history "undo"))) "Details saved"))
-            (is (= before (schemes/snapshot! store)) "Undo clear recovers the retained incompatible layer"))))
+            (is (str/includes? (:body (post "/ships/paint/stroke" (assoc params :sequence "1" :mesh-key new-key :faces (pr-str [(first (strokes/known-faces! {:paint paint :cache cache} new-key))])))) "Details saved"))
+            (is (= new-key (get-in (schemes/snapshot! store) [:ships scheme :ship/paint :paint/details [] :mesh-key]))))))
       (finally (fixture/stop! started)))))
 
 (deftest streamed-cross-instance-stroke-is-one-atomic-history-entry

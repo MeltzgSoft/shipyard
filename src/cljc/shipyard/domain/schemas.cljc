@@ -29,23 +29,10 @@
 (def detail-layer
   [:map {:closed true} [:part-id part-id] [:mesh-key mesh-key]
    [:faces [:map-of face-key detail-material]]])
-(def instance
-  [:map {:closed true} [:part-id part-id] [:material material]])
-(def member
-  [:map {:closed true} [:path instance-path] [:part-id part-id]])
 (defn- distinct-values? [values] (= (count values) (count (set values))))
-(def group
-  [:map {:closed true} [:group/id :uuid] [:group/name display-name] [:group/order nat-int?]
-   [:group/members [:and [:vector member] [:fn distinct-values?]]]
-   [:group/material {:optional true} material]])
-(def groups
-  [:and [:vector group]
-   [:fn #(distinct-values? (map :group/id %))]
-   [:fn #(distinct-values? (map :group/order %))]])
 (def palette [:map-of layer-id material])
 (def paint-job
-  [:map {:closed true} [:paint/layers {:optional true} palette] [:paint/groups {:optional true} groups]
-   [:paint/instances {:optional true} [:map-of {:max 4097} instance-path instance]]
+  [:map {:closed true}
    [:paint/details {:optional true} [:map-of {:max 4097} instance-path detail-layer]]])
 (def scheme
   [:map {:closed true} [:scheme/id :uuid] [:scheme/name display-name] [:scheme/layers palette]])

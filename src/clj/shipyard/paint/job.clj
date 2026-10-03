@@ -4,11 +4,10 @@
   (:require [clojure.set :as set]))
 
 (def profile-keys
-  {:paint/layers :scheme/layers
-   :paint/instances :scheme/instances :paint/groups :scheme/groups :paint/details :scheme/details})
+  {:paint/details :scheme/details})
 
 (defn profile [job]
-  (set/rename-keys job profile-keys))
+  (set/rename-keys (select-keys job (keys profile-keys)) profile-keys))
 
 (defn from-profile [record]
   (set/rename-keys (select-keys record (vals profile-keys)) (set/map-invert profile-keys)))

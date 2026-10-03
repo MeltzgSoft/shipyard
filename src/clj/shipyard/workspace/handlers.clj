@@ -138,7 +138,7 @@
               (when ship (paint/select! deps {"id" id}))
               (when-not ship
                 (paint-db/transfer! deps (:assembly deps) (:scheme (workspace/workspace! workspace :ships))))
-              (workspace/update-workspace! workspace :ships dissoc :target :edit-sequence :brush-sequence :brush-history)
+              (workspace/update-workspace! workspace :ships dissoc :brush-sequence :brush-history :brush-pending :brush-committed-id)
               (workspace/update-workspace! workspace :ships assoc :view :editor :inspector-tab (if ship "paint" "assembly"))
               (transition! deps {:path-params {:mode "ships"} :params {} :headers {"hx-request" "true"}}))))))))
 
@@ -211,27 +211,19 @@
         (append response [:div#part-edit-status {:hx-swap-oob "outerHTML" :role "alert"}
                           (html/raw (:body response))])))))
 
-(defn paint-selection! [{:keys [workspace] :as deps} action {:keys [params]}]
-  (if (and (= action :target) (= (get params "target") (:target (workspace/workspace! workspace :ships))))
-    (htmx/fragment nil {:status 204})
-    (let [result (case action
-                   :create (paint/create! deps params)
-                   :rename (paint/rename! deps params)
-                   :delete (paint/delete! deps params)
-                   :default (paint/default! deps params)
-                   :reset (paint/reset! deps params)
-                   :tool (when (#{"select" "brush"} (get params "tool"))
-                           (workspace/update-workspace! workspace :ships assoc :tool (get params "tool")))
-                   :group-create (paint/group! deps :create params)
-                   :group-rename (paint/group! deps :rename params)
-                   :group-delete (paint/group! deps :delete params)
-                   :group-members (paint/group! deps :members params)
-                   :group-order (paint/group! deps :order params)
-                   (paint/select! deps params))]
-      (when (not= action :tool)
-        (workspace/update-workspace! workspace :ships assoc :edit-sequence 0 :brush-sequence 0 :brush-history nil))
-      (workspace/update-workspace! workspace :ships assoc :view :editor :inspector-tab "paint")
-      (ship-preview! deps {:params (cond-> {"poll" "1"} (:error result) (assoc "error" (:error result)))}))))
+(defn paint-selection! [{:keys [workspace paint] :as deps} action {:keys [params]}]
+  (let [selected (get-in @(:state paint) [:draft :ship-id])
+        result (case action
+                 :create (paint/create! deps params)
+                 :rename (paint/rename! deps params)
+                 :delete (paint/delete! deps params)
+                 :reset (paint/reset! deps params)
+                 (paint/select! deps params))]
+    (when (and (not (:error result)) (or (not= action :delete) (= (str selected) (get params "id"))))
+      (workspace/update-workspace! workspace :ships dissoc :brush-sequence :brush-history :brush-pending :brush-committed-id))
+    (workspace/update-workspace! workspace :ships assoc
+                                 :view (if (= "table" (get params "return")) :table :editor) :inspector-tab "paint")
+    (ships! deps {:params (cond-> {"poll" "1"} (:error result) (assoc "error" (:error result)))})))
 
 (defn paint-transfer! [{:keys [assembly preview workspace] :as deps} source {:keys [params]}]
   (workspace/outgoing! deps params)
@@ -245,7 +237,7 @@
                 (ships! deps {:params {"poll" "1"}}))
               [:p.detail__error {:role "alert"} "Save a ship class before creating a named ship. Restore missing parts and retry."])
       (do
-        (workspace/update-workspace! workspace :ships dissoc :target :edit-sequence :brush-sequence :brush-history)
+        (workspace/update-workspace! workspace :ships dissoc :brush-sequence :brush-history :brush-pending :brush-committed-id)
         (workspace/update-workspace! workspace :ships assoc :view :editor :inspector-tab "paint")
         (transition! deps {:path-params {:mode "ships"} :params {} :headers {"hx-request" "true"}})))))
 

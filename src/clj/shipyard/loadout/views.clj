@@ -22,6 +22,38 @@
                          :hx-sync "this:drop" :hx-disabled-elt "this" :hx-target "this" :hx-swap "innerHTML"}
    "…"])
 
+(defn named-actions [ship return-view]
+  [:div.named-ship-actions
+   [:form (merge workspace-views/transition-attrs
+                 {:method "post" :action "/ships/open" :hx-post "/ships/open" :hx-target "#detail"
+                  :hx-include "#ship-filters, #ship-table-position, [data-ship-page]"})
+    [:input {:type "hidden" :name "kind" :value "ship"}]
+    [:input {:type "hidden" :name "id" :value (str (:ship/id ship))}]
+    [:button {:type "submit" :data-workspace-transition "true" :aria-label (str "Edit ship " (:ship/name ship))} "Edit"]]
+   [:form (merge workspace-views/transition-attrs
+                 {:method "post" :action "/ships/paint/delete" :hx-post "/ships/paint/delete" :hx-target "#detail"
+                  :hx-include "#ship-filters, #ship-table-position, [data-ship-page]"
+                  :hx-confirm (str "Delete named ship “" (:ship/name ship) "” and its custom paint? Its class and scheme will be kept.")})
+    [:input {:type "hidden" :name "id" :value (str (:ship/id ship))}]
+    [:input {:type "hidden" :name "confirmed" :value "true"}]
+    [:input {:type "hidden" :name "return" :value return-view}]
+    [:button {:type "submit" :data-workspace-transition "true" :aria-label (str "Delete ship " (:ship/name ship))} "Delete"]]])
+
+(defn customize-table [ships classes schemes selected page]
+  (let [classes (into {} (map (juxt :loadout/id :loadout/name)) classes)
+        schemes (into {} (map (juxt :scheme/id :scheme/name)) schemes)
+        window (pagination/window (sort-by :ship/name ships) page)]
+    [:details#customize-ships.customize-ships {:open true} [:summary "Named ships"]
+     (pagination/controls window "/ships/customize/ships" "#customize-ships" "")
+     (if (seq ships)
+       [:table [:thead [:tr [:th "Ship / class"] [:th "Scheme"] [:th "Actions"]]]
+        [:tbody (for [ship (:items window)]
+                  [:tr {:data-ship-id (str (:ship/id ship)) :aria-current (when (= selected (:ship/id ship)) "true")}
+                   [:td [:strong (:ship/name ship)] [:small (get classes (:ship/class ship) "Class unavailable")]]
+                   [:td (if (:ship/scheme ship) (get schemes (:ship/scheme ship) "Scheme unavailable") "No scheme")]
+                   [:td (named-actions ship "customize")]])]]
+       [:p.ship-table__empty "No named ships yet. Create one below."])]))
+
 (defn named-rows [{:keys [loadout ships bundle class]} page q]
   (let [q (str/lower-case (or q ""))
         ;; A class-name match shows all its hulls; otherwise show matching hull names.
@@ -40,13 +72,8 @@
                                                   :hx-on:keydown (str "if(event.key==='Enter' && event.target===this){event.preventDefault();" (open-row "ship" (:ship/id ship)) "}")}
           (thumbnail "ship" (:ship/id ship))
           [:span.ship-table__name (:ship/name ship)] [:span bundle] [:span class] [:span "Custom hull"]
-          [:form.ship-card__named (merge workspace-views/transition-attrs
-                                         {:method "post" :action "/ships/open" :hx-post "/ships/open" :hx-target "#detail"
-                                          :hx-include "#ship-filters, #ship-table-position, [data-ship-page]"})
-           [:input {:type "hidden" :name "kind" :value "ship"}]
-           [:input {:type "hidden" :name "id" :value (str (:ship/id ship))}]
-           [:button {:type "submit" :data-workspace-transition "true"} "Open"]]])
-       [:p.ship-table__empty "No named ships yet. Open this class and choose Paint to create one."])]))
+          (named-actions ship "table")])
+       [:p.ship-table__empty "No named ships yet. Open this class and choose Customize to create one."])]))
 
 (defn results
   ([entries filters] (results entries filters nil nil))

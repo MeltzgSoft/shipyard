@@ -22,8 +22,8 @@
   (let [a (:layer (faces/stroke nil "hull" hash-a [key-a] {:base [1 0 0] :metalness 0 :roughness 1} false))
         b (:layer (faces/stroke a "hull" hash-a [key-b] {:base [0 1 0] :metalness 0 :roughness 1} false))
         history (-> nil (strokes/commit-history {} {[] a}) (strokes/commit-history {[] a} {[] b}))
-        undo (strokes/history-change {[] b} history "undo" [])
-        redo (strokes/history-change (:details undo) (:history undo) "redo" [])
+        undo (strokes/history-change {[] b} history "undo")
+        redo (strokes/history-change (:details undo) (:history undo) "redo")
         erase (:layer (faces/stroke b "hull" hash-a [key-a] {:base [1 0 0] :metalness 0 :roughness 1} true))]
     (is (= {[] a} (:details undo)))
     (is (= {[] b} (:details redo)))
@@ -32,8 +32,7 @@
     (is (= {key-b {:base [0 1 0] :metalness 0 :roughness 1}} (:faces erase)))
     (is (= :changed-source (:error (faces/stroke b "other" hash-a [key-a] {:base [1 0 0] :metalness 0 :roughness 1} false))))
     (is (= :changed-source (:error (faces/stroke b "hull" (apply str (repeat 64 "b")) [key-a] {:base [1 0 0] :metalness 0 :roughness 1} false))))
-    (is (= :no-undo (:error (strokes/history-change {[] a} history "undo" []))))
-    (is (= {} (:details (strokes/history-change {[] b} history "clear" []))))
+    (is (= :no-undo (:error (strokes/history-change {[] a} history "undo"))))
     (is (= 20 (count (:undo (reduce #(strokes/commit-history %1 {:before %2} {:after %2}) nil (range 25))))))))
 
 (deftest unbounded-layer-and-incremental-parts

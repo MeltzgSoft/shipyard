@@ -4,35 +4,13 @@
 (def neutral {:base [(/ 154.0 255) (/ 164.0 255) (/ 175.0 255)] :metalness 0.05 :roughness 0.65})
 
 (defn effective-profile
-  "Combine a fleet palette with a ship's sparse overrides; never persist this projection."
+  "Project a ship's selected fleet palette without copying it into custom paint."
   [profile]
-  (let [base (:scheme/base profile)]
-    (-> profile
-        (dissoc :scheme/base)
-        (assoc :scheme/layers (merge (:scheme/layers base) (:scheme/layers profile))))))
+  (cond-> (dissoc profile :scheme/base)
+    (contains? profile :scheme/base) (assoc :scheme/layers (get-in profile [:scheme/base :scheme/layers]))))
 
-(defn groups-for [scheme path part-id]
-  (filterv #(some #{{:path path :part-id part-id}} (:group/members %))
-           (sort-by :group/order (:scheme/groups scheme))))
-
-(defn winning-group [scheme path part-id]
-  (first (filter :group/material (groups-for scheme path part-id))))
-
-(defn material-source [profile path part-id]
-  (let [scheme (effective-profile profile)]
-    (if (= part-id (get-in scheme [:scheme/instances path :part-id]))
-      [:instance path]
-      (if-let [group (winning-group scheme path part-id)]
-        [:group (:group/id group)]
-        (if (get-in scheme [:scheme/layers "Primary"]) [:layer "Primary"] [:neutral])))))
-
-(defn resolve-material [scheme path part-id]
-  (let [scheme (effective-profile scheme)
-        instance (get-in scheme [:scheme/instances path])]
-    (or (when (= part-id (:part-id instance)) (:material instance))
-        (:group/material (winning-group scheme path part-id))
-        (get-in scheme [:scheme/layers "Primary"])
-        neutral)))
+(defn resolve-material [profile]
+  (or (get-in (effective-profile profile) [:scheme/layers "Primary"]) neutral))
 
 (defn select-scheme [schemes override fleet-default]
   (let [id (or override fleet-default)]

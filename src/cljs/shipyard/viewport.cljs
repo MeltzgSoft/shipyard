@@ -1584,19 +1584,15 @@
                       :roughness (js/parseFloat (value "roughness"))
                       :glow (js/parseFloat (value "glow"))}
             paths (edn/read-string (.getAttribute form "data-paint-slots"))
-            layer (.getAttribute form "data-paint-layer")
-            override? (= "true" (.getAttribute form "data-paint-override"))]
+            layer (.getAttribute form "data-paint-layer")]
         (when (= "scheme-material" (.getAttribute form "id"))
           (doseq [^js swatch (array-seq (.querySelectorAll js/document
                                                            (str "#scheme-layer [aria-pressed=true] .scheme-layer__swatch"
                                                                 (when (= layer "Primary") ", #scheme-layer [data-inherits-primary=true]"))))]
             (set! (.. swatch -style -backgroundColor) hex)))
         (doseq [path paths]
-          (if layer
-            (do (swap! (:assembly sys) assoc-in [:slots path :payload :layers layer] material)
-                (when (= layer "Primary") (swap! (:assembly sys) assoc-in [:slots path :payload :material] material)))
-            (do (swap! (:assembly sys) assoc-in [:slots path :payload :material] material)
-                (when override? (swap! (:assembly sys) assoc-in [:slots path :payload :layers] nil))))
+          (swap! (:assembly sys) assoc-in [:slots path :payload :layers layer] material)
+          (when (= layer "Primary") (swap! (:assembly sys) assoc-in [:slots path :payload :material] material))
           (when-let [object (get @(:parts sys) path)]
             (let [payload (get-in @(:assembly sys) [:slots path :payload])]
               (paint-render/set-regions! object (:regions payload) (:layers payload))
@@ -1604,16 +1600,7 @@
 
 (defn- preview-paint! [sys ^js event]
   (when (some-> (.-target event) (.hasAttribute "data-paint-input"))
-    (preview-paint-form! sys (.closest (.-target event) "#paint-material, #scheme-material"))))
-
-(defn- restore-newer-paint-preview! [sys ^js event]
-  (let [form (.. event -detail -elt)
-        sent (.. event -detail -requestConfig -parameters -sequence)]
-    ;; Apply the acknowledged scene first, then restore only this form's newer
-    ;; local preview. Detached forms must never repaint a different selection.
-    (when (and form (some? sent) (identical? form (.getElementById js/document "paint-material"))
-               (not= (str sent) (.-value (.namedItem (.-elements form) "sequence"))))
-      (preview-paint-form! sys form))))
+    (preview-paint-form! sys (.closest (.-target event) "#scheme-material"))))
 
 (defn- listen! [sys]
   (let [body (.-body js/document)
@@ -1653,7 +1640,6 @@
                                                (sync-socket-fields-from-dom!)
                                                (sync-interfaces-from-dom! sys)
                                                (refresh-preview-after-swap! sys)))
-    (listen-event! body sys "htmx:afterRequest" #(restore-newer-paint-preview! sys %))
     (listen-event! body sys "input" (fn [e]
                                       (preview-paint! sys e)
                                       (when-let [form (event-form e)]

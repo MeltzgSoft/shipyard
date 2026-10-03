@@ -513,43 +513,40 @@ global illumination. UV/texture painting is outside v1.
                  "Secondary" {:base [0.55 0.45 0.15] :metalness 0.8 :roughness 0.35}}}
 ```
 
-The Ship Browser floating inspector has **Assembly**, **Schemes**, and **Paint** tabs.
+The Ship Browser floating inspector has **Assembly**, **Schemes**, and **Customize** tabs.
 Schemes creates, edits and previews palettes against any selected class, without
 assigning the palette to that class or creating a named ship. Palette authoring also
 works without a preview model. Region layers appear as a named color-swatch list;
 selecting a swatch makes that layer the target of the shared color, metalness,
-roughness and glow controls. The active layer is visibly marked. There is no separate Paint workspace.
+roughness and glow controls. The active layer is visibly marked. There is no separate Customize workspace.
 The shared color control offers a two-dimensional saturation/brightness spectrum,
 a hue slider and a hex input. Users can save and remove color presets shared across
 schemes and named ships; choosing a preset changes color without changing metalness, roughness or glow.
-Paint uses the same picker and saved colors for instance, group and layer materials
-and for the detail brush. Brush color selection affects subsequent strokes.
+Customize uses the same picker and saved colors for the detail brush. Brush color
+selection affects subsequent strokes.
 Layer selection updates only editor controls. Palette edits reuse loaded geometry
 and region assignments rather than retransmitting the ship's face masks.
 
-Paint creates a named ship of the selected class and edits its own custom paint:
+Customize creates a named ship of the selected class and edits its own custom face details:
 
 ```clojure
 {:ship/id #uuid "…" :ship/name "Resolute" :ship/class #uuid "…"
- :ship/scheme #uuid "…" :ship/paint {:paint/instances {} :paint/groups [] :paint/details {}}}
+ :ship/scheme #uuid "…" :ship/paint {:paint/details {}}}
 ```
 
-Named ships follow the latest class hull and assignments. Custom instance materials
-and group members match the full slot path (hull `[]`) and assigned part identity.
-Details additionally match the source mesh hash. Incompatible paint remains stored
-but is not applied to replacement parts or changed meshes. A missing class blocks
-painting with a recoverable error. Selecting another scheme preserves custom paint;
-**Reset custom paint** explicitly clears the named ship's overrides after confirmation.
-It preserves the name, class and selected scheme. Scheme changes are live beneath
-custom overrides and are never copied into the custom paint record.
+Named ships follow the latest class hull and assignments. Details match the full
+slot path (hull `[]`), part identity and source mesh hash. Incompatible details stay
+stored but do not apply to replacement parts or changed meshes. A missing class
+blocks authoring with a recoverable error. Selecting another scheme preserves details.
+**Reset custom paint** explicitly clears all details after confirmation, preserving
+the name, class and selected scheme. Scheme changes remain live beneath face details.
 
-Resolution is detail face, instance, first matching material group, custom layer,
-fleet layer, Primary fallback, then neutral. Groups are named,
-ordered sets of instance identities belonging to one named ship. They may overlap;
-the first group with a material wins. Group creation leaves inheritance intact until
-a material is saved. Deleting a group preserves instance materials and details.
-**Use inherited material** clears a selected instance, group or custom layer material.
-An unavailable scheme retains its reference and warns; custom paint remains usable.
+Resolution is detail face, fleet region layer, Primary fallback, then neutral.
+Customize offers only the detail brush; Select painting and whole-instance/group/custom
+layer material overrides are retired. Its named-ships table and Ship Browser's
+expanded named-ship rows each offer **Edit** and confirmed **Delete** controls.
+Delete removes only the named ship and its details, preserving classes and schemes.
+An unavailable scheme retains its reference and warns; custom details remain usable.
 
 Fleet ordering and fleet-default assignment remain M6 work.
 
@@ -608,46 +605,45 @@ view and save atomically with the original stroke. Faces mode expands each side'
 hits independently using the same angle tolerance. Rays that miss the model select
 nothing; Facets mode does not paint through the first surface hit. Mirror controls
 survive saves and layer operations for the current part, and reset on part/source/orientation changes. This is a Regions
-brush option; the Ship Browser Paint tab detail brush keeps its existing behavior.
+brush option; the Ship Browser Customize tab detail brush keeps its existing behavior.
 Changed source meshes retain old regions but cannot display or extend them until
 reset. Shared rename and delete remain available even for stale masks.
 
 `:scheme/layers` maps stable layer IDs to complete materials. Deleted IDs
 may retain dormant palette entries, but cannot reappear in available layers; a newly
 created layer has a new identity even if its label matches a deleted layer.
-Per-face resolution is freehand detail, matching instance material, winning group
-material, assigned layer material, Primary material, then neutral. Layer identities
+Per-face resolution is freehand detail, assigned fleet region-layer material,
+Primary material, then neutral. Layer identities
 are shared across parts. Scheme defaults are reusable without a preview model;
-instance/group and brush tools require a named ship. Before creation, explain how
+detail brush requires a named ship. Before creation, explain how
 to name a ship of the selected class and hide unavailable editing controls.
 
 Schemes can be deleted after confirmation explaining the effect on referencing
 named ships. Deletion preserves those references and custom paint. A failed write
 keeps the scheme and selection intact. Successful deletion clears the Schemes tab's
-selected palette. Group management includes rename, membership, ordering and deletion.
+selected palette.
 
-The **Detail brush** paints across instances by default. Turn **Cross instances** off
-to confine it to the selected individual instance. **Select** and **Brush** choose the
-viewport tool; the Brush rail shows touched instances and their running face counts.
+The **Detail brush** paints across visible instances. The rail shows touched
+instances and their running face counts. Alt+drag permits orbiting.
 Occluded instances identified behind the brush are explanatory only and are not painted. Its adjustable circular
 screen-space footprint selects triangles with at least one visible pixel centre
 inside the circle. It fills entire triangles, not partial faces, including at the
 footprint boundary. Occluded and back-facing triangles are excluded; there is no
 paint-through volume. Drag samples overlap along the pointer path. Left-drag paints
-in Brush mode; Alt+drag or Select permits ordinary orbiting. Face deltas flush
+in Customize; Alt+drag permits ordinary orbiting. Face deltas flush
 periodically during a drag; release commits atomically as one undo step across all
 touched instances. **Detail colour**, **Detail metalness**, **Detail roughness** and **Detail glow**
 are captured together for each stroke. Finish controls initially use the selected
-target's effective material; changing controls alone does not repaint details.
+scheme’s Primary material; changing controls alone does not repaint details.
 **Erase to base** removes all face material overrides. Mount colors replaces displayed
 colour and suppresses glow, preserving metalness and roughness without changing saved details.
 
 Detail masks belong to named ships, scoped to full slot path, part id and source
 mesh identity. Changed parts or source meshes never receive an old mask silently;
-retain the old data and warn in Paint. **Clear instance details** explicitly removes
-it so that the new source can be painted. Undo/redo retains up to 20 detail strokes
-in the current server-owned selection, including clear; selection changes reset
-history. Failed writes leave durable masks/history untouched and allow retry.
+retain the old data and warn in Customize. **Reset custom paint** explicitly removes
+all details so the new source can be painted. Undo/redo retains up to 20 detail
+strokes for the current named ship. Ship or scheme changes and reset clear history.
+Failed writes leave durable masks/history untouched and allow retry.
 There are no per-stroke or per-layer face limits. A failed chunk or final save restores
 the pre-stroke preview on every touched instance and leaves the stroke available for
 retry. Buffered parts do not change durable state; leaving or canceling discards them.
@@ -670,7 +666,7 @@ All server-rendered hiccup driven by htmx, except the viewport.
 - **Mount wizard** (§5.4) - pick a face in the viewport, review the computed frame,
   adjust roll, name it, save. Offers symmetry mirroring on hulls. Surfaces
   `:mount/origin` so mirrored and seeded mounts can be confirmed.
-- **Paint inspector tab** - named ships, custom layer/instance/group materials and visible-face detail brushing in Ship Browser.
+- **Customize inspector tab** - named-ships table with Edit/Delete, ship management and visible-face detail brushing in Ship Browser.
 - **Fleet roster** - list of loadouts, select to load into the viewport.
 - **Ship Browser** - a table of saved classes and named ships that opens the Assemble editor. See §9.3.
 
@@ -723,7 +719,7 @@ filters, class page, scroll and expanded rows. New class starts an empty assembl
 returns to the retained draft. The main workspace selector contains Part Browser and
 Ship Browser; Assemble is a view within Ship Browser.
 
-The editor's floating inspector contains Assembly, Schemes and Paint tabs. Assembly
+The editor's floating inspector contains Assembly, Schemes and Customize tabs. Assembly
 edits the reusable class's hull and nested mount assignments. Schemes edits shared
 fleet layer palettes and previews them on the current assembly, including an unsaved
 draft. Paint creates or edits a named ship of the saved class. Save assembly changes

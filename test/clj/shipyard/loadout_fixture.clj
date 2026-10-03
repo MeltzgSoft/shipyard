@@ -2,7 +2,11 @@
   (:require [babashka.fs :as fs]
             [shipyard.assembly-fixture :as fixture]
             [shipyard.catalog.db :as catalog]
-            [shipyard.loadout.db :as loadouts]))
+            [shipyard.loadout.db :as loadouts]
+            [shipyard.library.index :as index]
+            [shipyard.mesh.cache :as cache]
+            [shipyard.paint.strokes :as strokes]
+            [shipyard.wire :as wire]))
 
 (def assignments
   (into {} (map (fn [[path role]] [path (fixture/ids role)]))
@@ -60,3 +64,10 @@
     (loadouts/put! (:shipyard.loadout/db sys) {:loadout/id id :loadout/name "Fixture class" :loadout/hull (:hull draft) :loadout/slots (:assignments draft)} :create)
     (swap! state assoc :draft draft)
     id))
+
+(defn detail-layer! [sys part-id material]
+  (let [library (:shipyard.library/index sys) cache (:shipyard.mesh/cache sys)
+        key (:mesh-key (cache/ensure! cache (index/fresh-source-file! library part-id)))
+        mesh (wire/decode (java.nio.file.Files/readAllBytes (fs/path (cache/tier-file cache key 0))))]
+    (index/record-mesh-key! library part-id key (quot (count (:indices mesh)) 3))
+    {:part-id part-id :mesh-key key :faces (zipmap (strokes/mesh-face-keys mesh) (repeat material))}))

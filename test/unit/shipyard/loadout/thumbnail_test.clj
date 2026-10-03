@@ -18,7 +18,7 @@
     (is (= [[0 1 0] [1 0 0]] (:colors result)))
     (is (= {:positions [] :indices [] :colors []} (t/assembled-mesh [])))))
 
-(deftest appearance-honors-source-identity-and-instance-precedence
+(deftest appearance-honors-source-identity-and-detail-precedence
   (let [part {:part/id "hull" :part/role-hint :hull
               :part/paint-regions {:mesh-key "current" :faces {"face" "Secondary"}}}
         profile {:scheme/layers {"Primary" material/neutral "Secondary" {:base [0 1 0]}}
@@ -27,7 +27,4 @@
     (is (= {"face" (assoc material/neutral :base [1 0 0])} (:details (t/appearance part profile [] "current"))))
     (is (nil? (:regions (t/appearance part profile [] "changed"))))
     (is (nil? (:details (t/appearance part profile [] "changed"))))
-    (is (nil? (:details (t/appearance (assoc part :part/id "replacement") profile [] "current"))))
-    (let [result (t/appearance part (assoc profile :scheme/instances {[] {:part-id "hull" :material {:base [0 0 1]}}}) [] "current")]
-      (is (= [0 0 1] (get-in result [:material :base])))
-      (is (nil? (:regions result))))))
+    (is (nil? (:details (t/appearance (assoc part :part/id "replacement") profile [] "current"))))))

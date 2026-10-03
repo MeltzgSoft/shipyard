@@ -1,19 +1,25 @@
 (ns shipyard.paint.handlers
   (:refer-clojure :exclude [reset!])
-  (:require [clojure.string :as str]
-            [shipyard.assembly.db :as assembly]
-            [shipyard.catalog.db :as catalog]
+  (:require [shipyard.assembly.db :as assembly]
             [shipyard.http.htmx :as htmx]
             [shipyard.loadout.transforms :as loadout]
+            [shipyard.loadout.views :as ship-views]
             [shipyard.loadout.db :as loadouts]
             [shipyard.paint.db :as db]
-            [shipyard.paint.groups :as groups]
             [shipyard.paint.strokes :as strokes]
             [shipyard.paint.transforms :as transforms]
             [shipyard.paint.views :as views]
+            [shipyard.scheme.material :as material]
             [shipyard.scheme.db :as schemes]
             [shipyard.ship.db :as ships]
             [shipyard.workspace.db :as workspace]))
+
+(defn table! [{:keys [workspace paint schemes named-ships loadouts]} {:keys [params]}]
+  (workspace/update-workspace! workspace :ships assoc :customize-page (get params "page"))
+  (htmx/fragment (ship-views/customize-table (vals (ships/listing! named-ships))
+                                             (vals (:loadouts (loadouts/snapshot! loadouts)))
+                                             (vals (schemes/listing! schemes))
+                                             (get-in @(:state paint) [:draft :ship-id]) (get params "page"))))
 
 (defn current! [{:keys [workspace paint schemes loadouts named-ships] :as deps} {:keys [params]}]
   (let [checked (db/refresh! deps)
@@ -22,23 +28,18 @@
         base (schemes/palette! schemes (get-in @(:state paint) [:draft :scheme]))
         result (assembly/request! (assoc deps :assembly paint :paint-profile (or record base)) nil {:resume? (not= "1" (get params "poll"))})
         draft (:draft result)
-        targets (transforms/targets (:database result) draft record)
-        state (workspace/workspace! workspace :ships)
-        target (or (first (filter #(= (:target state) (:key %)) targets)) (first targets))]
-    (workspace/update-workspace! workspace :ships assoc :target (:key target))
+        targets (transforms/targets (:database result) draft)
+        state (workspace/workspace! workspace :ships)]
     (htmx/fragment
      (concat (views/panel {:preset-db schemes :schemes (vals records) :ships (vals (ships/listing! named-ships))
-                           :classes (vals (:loadouts (loadouts/snapshot! loadouts)))} draft targets target record
-                          (transforms/target-material record target)
-                          (transforms/affected-paths record targets target)
-                          (or (:edit-sequence state) 0)
+                           :classes (vals (:loadouts (loadouts/snapshot! loadouts))) :page (:customize-page state)} draft targets record
                           (or (get params "error") (:error checked)
                               (when (and (:scheme draft) (nil? base)) "Scheme unavailable. Choose another scheme; custom paint is preserved.")
-                              (when (:detail-warning result) "Some details belong to a changed part or source mesh. Select that instance and Clear instance details before repainting."))
-                          (:prepared result) (:anchor-target state) state (:flush-interval-ms paint))
+                              (when (:detail-warning result) "Some details belong to a changed part or source mesh. Reset custom paint before repainting."))
+                          (:prepared result) state (:flush-interval-ms paint) (material/resolve-material record))
              [[:input {:type "hidden" :data-assembly-event (pr-str (:event result))}]]))))
 
-(defn select! [{:keys [paint schemes named-ships workspace catalog] :as deps} {:strs [id target scheme]}]
+(defn select! [{:keys [paint schemes named-ships] :as deps} {:strs [id scheme]}]
   (cond
     (some? id)
     (if (or (= "" id) (ships/record! named-ships (parse-uuid id)))
@@ -52,10 +53,6 @@
           (if (:error saved) {:error (:message saved)} (db/refresh! deps)))
         (do (swap! (:state paint) assoc-in [:draft :scheme] (parse-uuid scheme)) {}))
       {:error "That scheme is unavailable."})
-    target (if (some #(= target (:key %)) (transforms/targets (catalog/assembly-snapshot! catalog) (:draft @(:state paint)) (db/record! deps)))
-             (do (workspace/update-workspace! workspace :ships assoc :target target :anchor-target
-                                              (if (str/starts-with? target "[") target (:anchor-target (workspace/workspace! workspace :ships)))) {})
-             {:error "That instance is no longer in the paint preview. Choose another target."})
     :else {}))
 
 (defn create! [{:keys [named-ships loadouts schemes paint] :as deps} {:strs [name class scheme]}]
@@ -86,42 +83,6 @@
         {:error "Confirm resetting this ship's custom paint."})
       {:error "Choose a named ship first."})))
 
-(defn default! [{:keys [paint workspace catalog] {ship-lock :lock} :named-ships :as deps} _]
-  (locking ship-lock
-    (let [draft (:draft @(:state paint)) record (db/record! deps)
-          target (first (filter #(= (:key %) (:target (workspace/workspace! workspace :ships)))
-                                (transforms/targets (catalog/assembly-snapshot! catalog) draft record)))
-          result (when record (transforms/edit-record record target nil true))]
-      (if (and result (not (:error result)))
-        (let [saved (db/save! deps (:scheme result))]
-          (when (:error saved) {:error (:message saved)}))
-        {:error "Select a paint target to restore its inherited material."}))))
-
-(defn material! [{:keys [paint workspace catalog] :as deps} {:keys [params]}]
-  (let [result (db/edit! deps params)]
-    (htmx/fragment
-     (if (:error result)
-       [:span.detail__error {:role "alert"} (or (:message result) "Material was not saved. Check the values and retry.")]
-       (let [draft (:draft @(:state paint)) record (db/record! deps)
-             targets (transforms/targets (catalog/assembly-snapshot! catalog) draft record)
-             target (first (filter #(= (:target (workspace/workspace! workspace :ships)) (:key %)) targets))
-             tree (second (views/target-tree record targets target))
-             scene (assembly/request! (assoc deps :assembly paint :paint-profile record) nil {})]
-         (list [:span "Material saved."]
-               (assoc-in tree [1 :hx-swap-oob] "outerHTML")
-               [:input {:type "hidden" :data-assembly-event (pr-str (:event scene))}]))))))
-
-(defn group! [{:keys [paint catalog workspace] {ship-lock :lock} :named-ships :as deps} action params]
-  (locking ship-lock
-    (let [draft (:draft @(:state paint)) record (db/record! deps)
-          id (if (= action :create) (random-uuid) (some-> (get params "group") (parse-uuid)))
-          selected (groups/members (transforms/targets (catalog/assembly-snapshot! catalog) draft) (get params "members"))
-          result (groups/change record action id (get params "name") selected (get params "direction"))
-          saved (if (:error result) result (db/save! deps (:scheme result)))]
-      (if (:error saved) {:error (or (:message saved) (:error saved))}
-          (when (= action :create)
-            (workspace/update-workspace! workspace :ships assoc :target (str "group/" id)))))))
-
 (defn stroke! [{:keys [paint] :as deps} {:keys [params]}]
   (let [result (strokes/stroke! deps params)]
     (cond
@@ -131,14 +92,14 @@
        [:span.detail__error {:role "alert" :data-brush-result "failed"}
         (or (:message result)
             (case (:error result)
-              :changed-source "Source mesh changed. Clear instance details before repainting. Nothing saved."
+              :changed-source "Source mesh changed. Reset custom paint before repainting. Nothing saved."
               :invalid-faces "Invalid stroke faces. Nothing saved."
               :invalid-material "Invalid detail material. Choose a colour and metalness/roughness between 0 and 1. Nothing saved."
               :stale-stroke "Paint selection changed, or the stroke is out of order. Reopen it before retrying."
               :stroke-in-progress "Finish the current stroke before changing detail history."
               :no-undo "No detail stroke to undo for this selection."
               :no-redo "No detail stroke to redo for this selection."
-              "Stroke was not saved. Retry, or reopen Paint to restore saved details."))]
+              "Stroke was not saved. Retry, or reopen Customize to restore saved details."))]
        (when (= "false" (get params "final")) {:status 409}))
       :else
       (let [scene (assembly/request! (assoc deps :assembly paint :paint-profile (db/record! deps)) nil {})
@@ -150,9 +111,10 @@
                [:input {:type "hidden" :data-assembly-event (pr-str (:event scene))}]))))))
 
 (defn delete! [{:keys [named-ships paint]} {:strs [id confirmed]}]
-  (let [selected (get-in @(:state paint) [:draft :ship-id])]
-    (if-not (and (= confirmed "true") (= id (str selected)))
-      {:error "Select the named ship and confirm its deletion."}
-      (let [result (ships/delete! named-ships selected)]
-        (if (:error result) {:error (or (:message result) "Ship could not be deleted.")}
-            (do (swap! (:state paint) assoc :draft {:revision 0}) {}))))))
+  (if-not (= confirmed "true")
+    {:error "Confirm deleting this named ship."}
+    (let [ship-id (some-> id parse-uuid)
+          result (ships/delete! named-ships ship-id)]
+      (if (:error result) {:error (or (:message result) "Ship could not be deleted.")}
+          (do (when (= ship-id (get-in @(:state paint) [:draft :ship-id]))
+                (swap! (:state paint) update :draft #(-> % (dissoc :ship-id :name) (update :revision inc)))) {})))))

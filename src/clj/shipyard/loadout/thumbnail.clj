@@ -22,9 +22,8 @@
   (let [id (:part/id part)
         regions (:part/paint-regions part)
         details (get-in profile [:scheme/details path])
-        layers (when (#{:neutral :layer} (first (material/material-source profile path id)))
-                 (:scheme/layers profile))]
-    {:material (material/resolve-material profile path id)
+        layers (:scheme/layers profile)]
+    {:material (material/resolve-material profile)
      :regions (when (and (seq layers) (= mesh-key (:mesh-key regions))) (:faces regions))
      :layers layers
      :details (when (and (= id (:part-id details)) (= mesh-key (:mesh-key details))) (:faces details))}))

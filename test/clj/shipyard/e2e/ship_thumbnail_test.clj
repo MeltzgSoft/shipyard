@@ -12,7 +12,7 @@
         ^Page page (:page driver) requests (atom [])
         class {:loadout/id (random-uuid) :loadout/name "Cruiser" :loadout/hull (:hull lf/draft) :loadout/slots lf/assignments}
         ship {:ship/id (random-uuid) :ship/name "Resolute" :ship/class (:loadout/id class)
-              :ship/paint {:paint/layers {"Primary" {:base [1.0 0.0 0.0] :metalness 0.2 :roughness 0.6}}}}
+              :ship/paint {:paint/details {[] (lf/detail-layer! sys (:hull lf/draft) {:base [1.0 0.0 0.0] :metalness 0.2 :roughness 0.6})}}}
         src #(s/js driver (str "() => document.querySelector('" % "').src"))]
     (try
       (.route page "**/js/viewport.js" (reify java.util.function.Consumer (accept [_ route] (.abort ^com.microsoft.playwright.Route route))))

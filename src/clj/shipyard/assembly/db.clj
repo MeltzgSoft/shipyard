@@ -75,13 +75,12 @@
           after (if (:error placement-result) scene
                     (into {} (map (fn [[path placement]]
                                     (let [id (:part-id placement) part (catalog/part database id) role (:part/role-hint part)
-                                          layers (when (#{:neutral :layer} (first (material/material-source profile path id)))
-                                                   (:scheme/layers profile))]
+                                          layers (:scheme/layers profile)]
                                       [path (assoc placement :role role
                                                    :regions (when (and layers (:paint-profile deps)) (catalog/part-regions part))
                                                    :layers layers
                                                    :details (get-in profile [:scheme/details path])
-                                                   :material (material/resolve-material profile path id))])))
+                                                   :material (material/resolve-material profile))])))
                           (:scene placement-result)))
           sources (fresh-sources library (map :part-id (vals after)))
           prepared (prepare! deps sources (map :part-id (vals after)) retry)

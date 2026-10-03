@@ -62,9 +62,9 @@
                                      {:type "button" :data-ship-back "true" :data-workspace-transition "true"
                                       :hx-get "/workspace/ships?table=1" :hx-target "#detail"
                                       :hx-include ".assembly__save input[name=name]"}) "← Back to ships"]
-   [:h2.ship-editor__title "Assemble"]
+   [:h2.ship-editor__title (get {"assembly" "Assemble" "schemes" "Schemes" "paint" "Customize"} tab)]
    [:nav.paint-segmented {:aria-label "Ship editor"}
-    (for [[id label] [["assembly" "Assembly"] ["schemes" "Schemes"] ["paint" "Paint"]]]
+    (for [[id label] [["assembly" "Assembly"] ["schemes" "Schemes"] ["paint" "Customize"]]]
       [:button (merge transition-attrs
                       {:type "button" :data-workspace-transition "true" :hx-get (str "/ships/tab/" id)
                        :hx-target "#detail" :hx-include ".assembly__save input[name=name]"

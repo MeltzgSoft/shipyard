@@ -12,13 +12,13 @@
                 :library/root :part/id :part/name :part/bundle :part/class
                 :part/name-override :part/bundle-override :part/class-override
                 :part/mesh-key :source/path :mesh/sha :layer/id :layer/name :layer/preview-name
-                :scheme/name :ship/name :loadout/name :group/name :fleet/name])
+                :scheme/name :ship/name :loadout/name :fleet/name])
    (attributes :db.type/uuid
-               [:library/id :part/uid :mount/uid :scheme/id :ship/id :loadout/id :paint/group-id :fleet/id])
+               [:library/id :part/uid :mount/uid :scheme/id :ship/id :loadout/id :fleet/id])
    (attributes :db.type/long
                [:store/version :scan/mtime :scan/size :scan/tris :library/revision :part/revision :part/tris :source/size
                 :source/mtime :mesh/tris :region/revision :chunk/index :chunk/version
-                :scheme/revision :ship/revision :loadout/revision :group/order :membership/order :fleet-entry/order :mount/capacity :mount/order])
+                :scheme/revision :ship/revision :loadout/revision :fleet-entry/order :mount/capacity :mount/order])
    (attributes :db.type/boolean
                [:source/present? :part/present? :part/renderable :part/weapons? :part/turrets?
                 :part/accepts-turrets? :layer/deleted? :scheme/deleted? :loadout/deleted?
@@ -34,7 +34,7 @@
    (attributes :db.type/ref
                [:part/library :source/part :source/content :layer/library :mask/layer
                 :region/content :slot/part :ship/class :ship/scheme :ship/library :loadout/hull :loadout/library :scheme/library
-                :membership/target :binding/layer :target/part :detail/content :fleet/default-scheme
+                :binding/layer :target/part :detail/content :fleet/default-scheme
                 :fleet-entry/loadout :mount/mirror])
    (into {} (map (fn [attr] [attr {:db/valueType :db.type/ref :db/isComponent true}]))
          [:part/regions :target/details :ship/paint])
@@ -42,8 +42,8 @@
                                    :db/isComponent true}]))
          [:part/mounts :part/sources :region/masks :mask/chunks :detail/chunks
           :scheme/layers :loadout/slots
-          :paint/layers :paint/targets :paint/groups
-          :fleet/entries :group/members])
+          :paint/targets
+          :fleet/entries])
    {:mount/accepts {:db/valueType :db.type/keyword :db/cardinality :db.cardinality/many}
     :part/variants {:db/valueType :db.type/keyword :db/cardinality :db.cardinality/many}}
    (into {} (map (fn [attr] [attr {:db/valueType :db.type/uuid :db/unique :db.unique/identity}]))

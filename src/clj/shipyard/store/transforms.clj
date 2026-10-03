@@ -89,61 +89,23 @@
                         (:scheme/layers record))})
 
 (defn paint-value [entity]
-  (let [targets (into {} (map (juxt :db/id identity)) (:paint/targets entity))
-        value {:paint/layers (into {} (map (fn [binding] [(get-in binding [:binding/layer :layer/id]) (material binding)]))
-                                   (:paint/layers entity))
+  (select-keys
+   {:paint/details (into {} (keep (fn [target]
+                                    (when-let [detail (:target/details target)]
+                                      [(:target/path target)
+                                       {:part-id (get-in target [:target/part :part/id])
+                                        :mesh-key (get-in detail [:detail/content :mesh/sha])
+                                        :faces (faces (:detail/chunks detail))}]))) (:paint/targets entity))}
+   (set (:paint/fields entity))))
 
-               :paint/instances (into {} (keep (fn [target]
-                                                 (when-let [m (material target)]
-                                                   [(:target/path target) {:part-id (get-in target [:target/part :part/id])
-                                                                           :material m}]))) (:paint/targets entity))
-               :paint/details (into {} (keep (fn [target]
-                                               (when-let [detail (:target/details target)]
-                                                 [(:target/path target)
-                                                  {:part-id (get-in target [:target/part :part/id])
-                                                   :mesh-key (get-in detail [:detail/content :mesh/sha])
-                                                   :faces (faces (:detail/chunks detail))}]))) (:paint/targets entity))
-               :paint/groups (mapv (fn [group]
-                                     (cond-> (assoc (select-keys group [:group/name :group/order]) :group/id (:paint/group-id group))
-                                       true (assoc :group/members
-                                                   (mapv (fn [member]
-                                                           (let [target (get targets (get-in member [:membership/target :db/id]))]
-                                                             {:path (:target/path target)
-                                                              :part-id (get-in target [:target/part :part/id])}))
-                                                         (sort-by :membership/order (:group/members group))))
-                                       (material group) (assoc :group/material (material group))))
-                                   (sort-by :group/order (:paint/groups entity)))}]
-    (select-keys value (set (:paint/fields entity)))))
-
-(defn paint-tx
-  "parts maps current path to stable part lookup ref; layer refs are library scoped."
-  [library parts ship-id record]
-  (let [id (str "ship:" ship-id)
-        target-key (fn [path part] (str "target:" id ":" (pr-str [path part])))
-        identities (set (concat
-                         (map (fn [[path v]] [path (:part-id v)]) (:paint/instances record))
-                         (map (fn [[path v]] [path (:part-id v)]) (:paint/details record))
-                         (map (juxt :path :part-id) (mapcat :group/members (:paint/groups record)))))
-        targets (mapv (fn [[path part]]
-                        (let [instance (get-in record [:paint/instances path])
-                              detail (get-in record [:paint/details path])]
-                          (cond-> {:db/id (target-key path part) :target/path path :target/part (get parts part)}
-                            (= part (:part-id instance)) (merge (material-tx (:material instance)))
-                            (= part (:part-id detail)) (assoc :target/details
-                                                              {:detail/content [:mesh/sha (:mesh-key detail)]
-                                                               :detail/chunks (chunks (:faces detail))}))))
-                      (sort-by pr-str identities))]
-    {:paint/fields (set (keys record))
-     :paint/layers (mapv (fn [[layer m]] (assoc (material-tx m) :binding/layer [:layer/key [library layer]])) (:paint/layers record))
-     :paint/targets targets
-     :paint/groups (mapv (fn [group]
-                           (merge (assoc (select-keys group [:group/name :group/order]) :paint/group-id (:group/id group))
-                                  (material-tx (:group/material group))
-                                  {:group/members (mapv (fn [order member]
-                                                          {:membership/order order
-                                                           :membership/target (target-key (:path member) (:part-id member))})
-                                                        (range) (:group/members group))}))
-                         (:paint/groups record))}))
+(defn paint-tx [parts ship-id record]
+  {:paint/fields (set (keys record))
+   :paint/targets (mapv (fn [[path detail]]
+                          {:db/id (str "target:ship:" ship-id ":" (pr-str [path (:part-id detail)]))
+                           :target/path path :target/part (get parts (:part-id detail))
+                           :target/details {:detail/content [:mesh/sha (:mesh-key detail)]
+                                            :detail/chunks (chunks (:faces detail))}})
+                        (sort-by (comp pr-str key) (:paint/details record)))})
 
 (defn ship-value [entity]
   (cond-> {:ship/id (:ship/id entity) :ship/name (:ship/name entity)

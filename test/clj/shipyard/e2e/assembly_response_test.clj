@@ -2,8 +2,7 @@
   (:require [clojure.test :refer [deftest is]]
             [shipyard.assembly-fixture :as fixture]
             [shipyard.loadout.db :as loadouts]
-            [shipyard.e2e.support :as s]
-            [shipyard.e2e.paint-material-test :as materials])
+            [shipyard.e2e.support :as s])
   (:import [com.microsoft.playwright Page]))
 
 (deftest immediately-saving-a-replaced-assembly-form-stays-in-the-app
@@ -52,7 +51,7 @@
       (s/open-assembly! driver)
       (s/select-option! driver ".assembly__hull select[name=part-id]" "hull")
       (s/click! driver ".assembly__hull button")
-      (is (s/wait-until #(= (:hull fixture/ids) (:part-id (materials/slot driver [])))))
+      (is (s/wait-until #(= (:hull fixture/ids) (:part-id (s/slot driver [])))))
       (.route page "**/assembly/assign"
               (reify java.util.function.Consumer
                 (accept [_ route]
@@ -63,5 +62,5 @@
       (is (s/wait-until #(deref dropped)))
       (is (= (:prow-alt fixture/ids) (get-in @(:state (:shipyard.assembly/db sys)) [:draft :assignments [[:prow 0]]])))
       (s/click! driver ".assembly__slot[data-slot='[[:prow 0]]'] > summary")
-      (is (s/wait-until #(= (:prow-alt fixture/ids) (:part-id (materials/slot driver [["prow" 0]])))))
+      (is (s/wait-until #(= (:prow-alt fixture/ids) (:part-id (s/slot driver [["prow" 0]])))))
       (finally (s/quit! driver) (fixture/stop! started)))))

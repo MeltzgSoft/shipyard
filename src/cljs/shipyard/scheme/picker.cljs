@@ -81,7 +81,7 @@
     (.addEventListener body "click"
                        (fn [^js event]
                          (when-let [button (.closest (.-target event) "[data-color-preset]")]
-                           (when-let [form (.querySelector js/document "#scheme-material, #paint-material, #paint-brush:not([hidden])")]
+                           (when-let [form (.querySelector js/document "#scheme-material, #paint-brush")]
                              (when-not (.-disabled (field form))
                                (edit! form (color/hex->hsv (.getAttribute button "data-color-preset")))
                                (emit! (field form) "change"))))))))
