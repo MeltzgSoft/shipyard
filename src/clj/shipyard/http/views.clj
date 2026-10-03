@@ -153,16 +153,25 @@
              [:button {:type "submit"} (if (:mount/mirror-id mount) "Delete pair" "Delete")]]]])]])))
 
 (defn- interface-legend [{:part/keys [mounts]}]
-  (when (seq mounts)
-    [:section.interface-legend
-     [:h3.interface-legend__title "Interface colors"]
-     [:ul.interface-legend__list
-      (for [{:keys [type label color]} (interface-colors/legend-items mounts)]
-        [:li.interface-legend__item
-         [:span.interface-legend__swatch
-          {:style (str "--interface-color:" color)
-           :aria-hidden "true"}]
-         [:span {:data-interface-type (name type)} label]])]]))
+  [:section.interface-legend
+   [:h3.interface-legend__title "Interface colors"]
+   [:ul.interface-legend__list
+    (for [{:keys [type label color]} (interface-colors/legend-items mounts)]
+      [:li.interface-legend__item
+       [:span.interface-legend__swatch
+        {:style (str "--interface-color:" color)
+         :aria-hidden "true"}]
+       [:span {:data-interface-type (name type)} label]])]
+   [:ul.interface-legend__list.interface-legend__orientation
+    [:li.interface-legend__item
+     [:span.interface-legend__orientation-swatch.interface-legend__orientation-swatch--normal {:aria-hidden "true"}]
+     "Normal (+Z)"]
+    [:li.interface-legend__item
+     [:span.interface-legend__orientation-swatch.interface-legend__orientation-swatch--twist {:aria-hidden "true"}]
+     "Twist reference (+X)"]
+    [:li.interface-legend__item
+     [:span.interface-legend__orientation-swatch.interface-legend__orientation-swatch--up {:aria-hidden "true"}]
+     "Up (+Y)"]]])
 
 (declare facet-preview facet-error)
 
@@ -404,10 +413,6 @@
        [:label.mount-wizard__check
         [:input {:type "checkbox" :name "repeat" :value "true"}]
         "Repeat classification"])
-     [:ul.mount-wizard__orientation
-      [:li [:span.mount-wizard__swatch.mount-wizard__swatch--axis] "Normal (+Z)"]
-      [:li [:span.mount-wizard__swatch.mount-wizard__swatch--roll] "Twist reference (+X)"]
-      [:li [:span.mount-wizard__swatch.mount-wizard__swatch--up] "Up (+Y)"]]
      [:fieldset.mount-wizard__cut
       [:legend "Pitted STL"]
       [:label.mount-wizard__check

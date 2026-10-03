@@ -792,6 +792,16 @@
   (select-part! "Mount Test Plate")
   (s/await-part *driver* s/mount-plate-id)
   (enter-authoring! s/mount-plate-id)
+  (s/wait-visible! *driver* ".interface-legend__orientation")
+  (is (= ["Normal (+Z)" "Twist reference (+X)" "Up (+Y)"]
+         (s/js *driver* "() => [...document.querySelectorAll('.interface-legend__orientation li')].map(e => e.textContent)")))
+  (is (s/js *driver* "() => {
+      const legend = document.querySelector('.interface-legend');
+      const colors = legend.querySelector('.interface-legend__list:not(.interface-legend__orientation)').getBoundingClientRect();
+      const orientation = legend.querySelector('.interface-legend__orientation').getBoundingClientRect();
+      return orientation.top - colors.bottom >= 7;
+    }") "A small gap separates interface colors from the orientation legend")
+  (is (zero? (s/count-els *driver* ".mount-wizard__form .interface-legend__orientation")))
   (let [{:keys [x y]} (viewport-center)]
     (s/click-point! *driver* x y))
   (is (some? (await-preview)))
@@ -852,6 +862,12 @@
                           (str/includes? (s/text *driver* "#detail") "weapon-1-mirror")))
       (str "saving with mirror should persist both sockets; detail was "
            (pr-str (s/text *driver* "#detail"))))
+  (let [colors (s/bounds *driver* ".interface-legend__list:not(.interface-legend__orientation)")
+        directions (s/bounds *driver* ".interface-legend__orientation")]
+    (is (pos? (:height colors)) "Saved mount colors appear above the orientation directions")
+    (is (<= 7 (- (:y directions) (+ (:y colors) (:height colors))) 9)
+        "The populated legend retains its small separation"))
+  (s/screenshot-el! *driver* ".interface-legend" (java.io.File. "/tmp/shipyard-interface-orientation-legend.png"))
   (is (s/wait-until
        #(let [items (get-in (s/stats *driver*) [:interfaces :items])
               mirrored (filter (fn [item]
