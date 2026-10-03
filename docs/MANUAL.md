@@ -30,16 +30,16 @@ Shipyard has no default location, because there is no location it could guess th
 would be right. The first time you open it, the library panel asks where your models
 are:
 
-1. Click **Browse…** beside **Library folder**. In the desktop folder
+1. Open **Settings** in the masthead, then click **Browse…** beside **Library folder**. In the desktop folder
    selector, choose the folder that holds your bundles — the one whose subfolders are
    `Human Navy Fleet Bundle` and the like.
 2. Press **Use this folder**.
 
-Shipyard scans it immediately and the parts appear; there is nothing to restart. The
+Shipyard scans it immediately; return to **Part Browser** to see the parts; there is nothing to restart. The
 folder is remembered, so every run after this one starts with your library already
 loaded.
 
-To change it later, open **Library folder** at the top of the library panel. If the
+To change it later, open **Settings → Library folder**. If the
 path is wrong - a typo, or a drive that is not mounted - Shipyard says so and keeps
 using the folder it already had.
 
@@ -53,8 +53,26 @@ file-dialog packages are required. A headless server still accepts library folde
 Your choice is stored in Shipyard's database, alongside your authored metadata.
 When upgrading, Shipyard preserves a selection from the old
 `$XDG_CONFIG_HOME/shipyard/library.edn` file if the database has no saved selection.
-After that, use **Library folder** to change it; editing the old file does not change
+After that, use **Settings → Library folder** to change it; editing the old file does not change
 the database selection. Shipyard leaves your system `config.edn` untouched.
+
+### Classification values and mount-cut defaults
+
+In **Settings**, add, rename or delete **Faction**, **Class**, and **Role** values.
+Each row shows how many parts and socket acceptance lists use it, including missing
+parts and parts in other libraries. **Save** renames the value everywhere without
+changing source paths, mount geometry or paint. A name already in use cannot be the
+rename destination. **Delete** is available only for unused values. Built-in roles
+cannot be renamed or deleted. During import review, library and classification
+changes are disabled; finish or cancel the import first.
+
+**Pit and recess defaults** sets pit depth and diameter, and recess depth and border,
+in millimeters. Depth and diameter must be positive; border may be zero. Press
+**Save defaults** to persist them in the database. New mount cuts use these values;
+saved cuts and manually entered dimensions retain their values. Creating a pitted
+version still requires checking **Create pitted version** in Mounts. Changing defaults
+does not regenerate any STL. Unsaved folder and default fields survive switching
+workspaces while the server is running.
 
 ### How your library should be organised
 
@@ -152,7 +170,7 @@ and 64 GiB of expanded data; large bundles need corresponding temporary disk spa
 
 ## 3. Browsing your library
 
-Use **Part Browser** and **Ship Browser** in the masthead
+Use **Part Browser**, **Ship Browser**, and **Settings** in the masthead
 to switch workspaces. Each keeps its own selection, filters, and mount-color setting
 while Shipyard is running. Reloading restores the active workspace, selection and
 mount-color setting; unsaved viewport pose edits still require Save before reloading.

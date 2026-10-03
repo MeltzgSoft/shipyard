@@ -87,9 +87,9 @@
     (testing "the library panel asks for a folder"
       (let [body (:body (GET h "/library"))]
         (is (str/includes? body "does not know where your models are"))
-        (is (str/includes? body "hx-post=\"/settings\""))))
+        (is (str/includes? body "hx-get=\"/workspace/settings\""))))
     (testing "and so does the shell, so it can be changed once one is set"
-      (is (str/includes? (:body (GET h "/")) "hx-post=\"/settings\"")))))
+      (is (str/includes? (:body (GET h "/")) "hx-get=\"/workspace/settings\"")))))
 
 ;; --- setting one ------------------------------------------------------------
 
@@ -171,7 +171,7 @@
     (let [body (:body (GET h "/library"))]
       (is (str/includes? body "No library at")
           "a remembered answer would list parts whose every row 404s")
-      (is (str/includes? body "hx-post=\"/settings\"")
+      (is (str/includes? body "hx-get=\"/workspace/settings\"")
           "it must offer the way out, not just the diagnosis"))))
 
 ;; --- the scan index ---------------------------------------------------------

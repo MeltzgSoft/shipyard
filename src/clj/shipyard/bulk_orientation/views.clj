@@ -210,7 +210,6 @@
   ([facets selection root] (panel facets selection root nil))
   ([facets selection root import-session]
    [:section#library.panel.bulk-orient
-    (when-not import-session (http-views/settings-panel root))
     (pagination/progress)
     (if import-session
       [:div.import-review

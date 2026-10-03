@@ -27,7 +27,7 @@
                [:part/source :part/role-hint :part/role-source :part/role-override :mount/id :mount/kind
                 :mount/origin :mount/mirror-id :source/variant :vocabulary/field])
    (attributes :db.type/data
-               [:scan/escort-analysis :part/orientation :mount/pos :mount/axis :mount/roll :mount/magnet
+               [:settings/mount-cut-defaults :scan/escort-analysis :part/orientation :mount/pos :mount/axis :mount/roll :mount/magnet
                 :mount/facet :mount/split :mount/cut :mount/outline :mount/mirror-plane :mount/mirror-offset :chunk/payload
                 :slot/path :target/path :layer/preview-color :material/base :material/metalness
                 :material/roughness :material/glow :material/paint :paint/fields])

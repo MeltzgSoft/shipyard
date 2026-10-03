@@ -24,7 +24,8 @@
     (try
       (s/go! driver (s/base-url @running))
       (s/wait-visible! driver "#bulk-orient-filters")
-      (s/click! driver ".settings__summary")
+      (s/click! driver "[data-workspace-mode=settings]")
+      (s/wait-visible! driver "#settings-workspace")
       (s/choose-path! driver "#settings" candidate)
       (is (= (str (:root started)) (index/root! library)) "selection alone does not relocate")
       (testing "cancel leaves the selection unchanged"
@@ -55,7 +56,7 @@
           (is (str/includes? (s/text driver "#settings-message") "Database commit failed"))
           (is (= (str (:root started)) (index/root! library)))
           (is (= (str (:root started)) (settings/library-root! database)))
-          (is (pos? (s/count-els driver "[data-part-row]")))))
+          (is (pos? (count (index/parts! library))))))
       (testing "the same form succeeds after database writes recover"
         (s/click! driver ".settings__save")
         (is (s/wait-until #(= (str candidate) (index/root! library))))
@@ -71,7 +72,8 @@
           (is (nil? (get-in cfg [:shipyard.library/index :root])))
           (reset! running (system/start! cfg)))
         (s/go! driver (s/base-url @running))
-        (s/click! driver ".settings__summary")
+        (s/click! driver "[data-workspace-mode=settings]")
+        (s/wait-visible! driver "#settings-workspace")
         (s/wait-visible! driver ".settings__current")
         (is (str/includes? (s/text driver ".settings__current") (str candidate)))
         (is (= (str candidate) (index/root! (:shipyard.library/index @running))))

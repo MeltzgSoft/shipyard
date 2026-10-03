@@ -8,6 +8,7 @@
             [datalevin.core :as d]
             [integrant.core :as ig]
             [shipyard.store.db :as store]
+            [shipyard.settings.transforms :as transforms]
             [shipyard.system :as system]))
 
 (defn library-root! [database]
@@ -21,6 +22,17 @@
   (store/write! database
                 #(d/transact! % [{:store/key "shipyard" :settings/library-root root}]))
   root)
+
+(defn cut-defaults! [database]
+  (or (store/read! database
+                   #(:settings/mount-cut-defaults (d/pull % [:settings/mount-cut-defaults]
+                                                          [:store/key "shipyard"])))
+      transforms/cut-defaults))
+
+(defn save-cut-defaults! [database values]
+  (store/write! database
+                #(d/transact! % [{:store/key "shipyard" :settings/mount-cut-defaults values}]))
+  values)
 
 (defn- legacy-root! [config-dir]
   (when config-dir

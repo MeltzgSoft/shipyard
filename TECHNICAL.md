@@ -2224,6 +2224,12 @@ class edits or custom paint. Table filters are separate from assembly hull filte
 individual `:selection` and a separate `:bulk-selection`. Its table filters and scroll
 position survive opening an individual part and returning. `/orient/*` routes are
 owned by `:browse`, whose entry point is `/workspace/browse`.
+Settings is owned by `:settings`, with `/workspace/settings` as its entry point and
+`/settings/*` mutations guarded by the same workspace activation boundary. It owns
+folder/default form drafts on the server and an empty client runtime sharing the
+renderer. The existing canvas remains mounted while the Settings page occupies the
+layout. Model runtimes keep their selections, poses and display settings.
+
 Client display state must have the same workspace ownership. A single shared renderer
 and canvas may be reused without sharing the logical selection or display settings.
 
@@ -2238,6 +2244,15 @@ selection/toggle state and callers that violate this contract; hiding panels, ad
 workspace-specific reset callbacks, or restoring only the visible checkbox does not
 establish independent state. Workspace switching itself must preserve each workspace's
 working state. Opening a class and Duplicate explicitly load the assembly model (§14.3).
+
+Classification management materializes only labels, revisions and socket acceptance
+lists for all stored parts, including other libraries and absent sources. Pure plans
+validate names, collisions, built-in protection and usage. The store write boundary
+reads a coherent snapshot and applies renames or unused deletions atomically; renames
+write authored overrides, socket acceptance datoms and one revision increment per
+affected part. Registered vocabulary values share that transaction. Active import
+review blocks these durable mutations. Cut defaults use `:settings/mount-cut-defaults`
+on the application settings entity; HTTP passes them explicitly to mount form views.
 
 Catalog table queries use `catalog/listing!`, a metadata-only projection that excludes
 mount geometry and dense region masks. Compact mount kind/acceptance/capacity fields

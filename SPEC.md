@@ -681,6 +681,7 @@ All server-rendered hiccup driven by htmx, except the viewport.
   `:mount/origin` so mirrored and seeded mounts can be confirmed.
 - **Paint inspector tab** - named ships, custom layer/instance/group materials and visible-face detail brushing in Ship Browser.
 - **Fleet roster** - list of loadouts, select to load into the viewport.
+- **Settings** - library folder selection, shared classification management and defaults for new pit/recess cuts. See §9.6.
 - **Ship Browser** - a table of saved classes and named ships that opens the Assemble editor. See §9.3.
 
 ### 9.1 Thumbnails
@@ -717,7 +718,7 @@ before discarding staging data and leaves the common pool available to other job
 
 ### 9.2 Independent workspace state
 
-Each workspace, Part Browser and Ship Browser, owns its
+Each workspace, Part Browser, Ship Browser and Settings, owns its
 own selection, transient working state, filters and viewport display settings.
 Switching workspaces restores the destination's state on both the server and in the
 viewport. A workspace with no selection shows its own empty state. Returning to a
@@ -894,6 +895,27 @@ the review for correction, and cancel discards it without changing library parts
 Successful manual grouping clears the import selection, including selected rows
 hidden by filters. A second grouping operation must preserve unrelated groups and
 their reviewed labels. Group submission waits for pending checkbox selection updates.
+
+### 9.6 Settings
+
+Settings is a third workspace with no model selection. It owns unsaved library-folder
+and mount-cut default fields and preserves both model workspaces on a round trip.
+Library selection appears only here, with direct path entry and the desktop chooser.
+A successful folder change rescans the library and clears obsolete Part Browser
+selection and filters; a failed change preserves the active library and allows retry.
+
+Faction, class and role values are shared across libraries. Settings includes registered
+values and values used by all durable parts and socket acceptance lists, including
+missing parts. Rename updates all effective part labels and role acceptance lists in
+one transaction, preserving identity, geometry, paint and downstream references.
+Renaming to an existing value is rejected. Delete is allowed only when unused. Built-in
+roles cannot be renamed or deleted. Library and classification changes are blocked
+while an import review is active; staging is preserved across workspace navigation.
+
+Pit depth/diameter and recess depth/border are separate durable application defaults
+in millimeters. Depth and diameter are finite positive numbers; border is finite and
+nonnegative. New cuts use the defaults, while saved cuts and user-entered dimensions
+are retained. Defaults do not enable cutting or regenerate existing STL variants.
 
 ## 10. Delivery planning
 

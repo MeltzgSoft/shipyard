@@ -250,7 +250,7 @@
 
 (defn detail-ready
   ([part mesh-key] (detail-ready part mesh-key nil))
-  ([part mesh-key {:keys [error orientation-error preview repeat-values region-layers roles mount-active? preserve-regions?]}]
+  ([part mesh-key {:keys [error orientation-error preview repeat-values region-layers roles cut-defaults mount-active? preserve-regions?]}]
    (let [mount-active? (if (some? mount-active?) mount-active? (boolean (or preview error)))]
      [:div.detail.detail--ready
       (part-back)
@@ -291,7 +291,7 @@
           repeat-values (assoc :data-repeat-values (pr-str repeat-values)))
         [:div#facet-preview
          (cond
-           preview (facet-preview (assoc preview :roles roles))
+           preview (facet-preview (assoc preview :roles roles :cut-defaults cut-defaults))
            error (facet-error error part))]]]])))
 
 (defn detail-failed [{:part/keys [id] :as part} message]
@@ -330,7 +330,7 @@
   (cond-> {:data-socket-only "true"}
     (= :plug kind) (assoc :hidden true :disabled true)))
 
-(defn- mount-form [{:keys [part frame mesh-key facet-indices kind-hint mode original-mount-id values roles]}]
+(defn- mount-form [{:keys [part frame mesh-key facet-indices kind-hint mode original-mount-id values roles cut-defaults]}]
   (let [kind (or (:kind values) (default-kind part))
         accepts (or (:accepts values) #{:weapon})
         profiles (wizard/acceptance-profiles (:part/role-hint part) (or roles wizard/role-options))
@@ -350,6 +350,7 @@
         mirror-offset (or (:mirror-offset values) 0)
         edit? (= :edit mode)
         cut-kind (if (#{:pit :recess} (:cut-kind values)) (:cut-kind values) (cut/default-kind kind))
+        defaults (or cut-defaults {:pit {:depth 1 :diameter 2} :recess {:depth 1 :border 0.5}})
         cut-enabled? (boolean (and (:cut-kind values) (not= :none (:cut-kind values))))]
     [:form.mount-wizard__form
      {:method "post" :action "/mounts" :hx-post "/mounts"
@@ -423,13 +424,16 @@
         (for [[k label] [[:pit "Pit"] [:recess "Recess"]]]
           [:option {:value (name k) :selected (= k cut-kind)} label])]]
       [:label.mount-wizard__field {:hidden (not cut-enabled?)} "Depth (mm)"
-       [:input {:type "number" :name "cut-depth" :disabled (not cut-enabled?) :value (or (:cut-depth values) 1)
+       [:input {:type "number" :name "cut-depth" :disabled (not cut-enabled?) :value (or (:cut-depth values) (get-in defaults [cut-kind :depth]))
+                :data-pit-depth (get-in defaults [:pit :depth])
+                :data-recess-depth (get-in defaults [:recess :depth])
+                :data-cut-depth-default (when-not (:cut-depth values) (get-in defaults [cut-kind :depth]))
                 :min "0" :step "any"}]]
       [:label.mount-wizard__field {:data-cut-field "pit" :hidden (not (and cut-enabled? (= :pit cut-kind)))} "Diameter (mm)"
-       [:input {:type "number" :name "cut-diameter" :disabled (not (and cut-enabled? (= :pit cut-kind))) :value (or (:cut-diameter values) 2)
+       [:input {:type "number" :name "cut-diameter" :disabled (not (and cut-enabled? (= :pit cut-kind))) :value (or (:cut-diameter values) (get-in defaults [:pit :diameter]))
                 :min "0" :step "any"}]]
       [:label.mount-wizard__field {:data-cut-field "recess" :hidden (not (and cut-enabled? (= :recess cut-kind)))} "Border (mm)"
-       [:input {:type "number" :name "cut-border" :disabled (not (and cut-enabled? (= :recess cut-kind))) :value (or (:cut-border values) 0.5)
+       [:input {:type "number" :name "cut-border" :disabled (not (and cut-enabled? (= :recess cut-kind))) :value (or (:cut-border values) (get-in defaults [:recess :border]))
                 :min "0" :step "any"}]]
       [:p.muted {:hidden (not cut-enabled?)} "Save regenerates the source model’s -pitted.stl variant. The original stays intact."]]
      [:div.mount-wizard__actions
@@ -471,12 +475,7 @@
 ;; --- the library location ---------------------------------------------------
 
 (defn settings-form
-  "Where the library is, and how to change it (issue #35).
-
-  `id` because this form appears twice on a first run - collapsed in the panel
-  header, and open in the results area where the parts would have been - and
-  two elements cannot share one. htmx targets the message box by id, so the two
-  copies must not fight over it."
+  "Library folder selection in the Settings workspace."
   [{:keys [id root error]}]
   [:form.settings__form
    {:id        id
@@ -487,16 +486,6 @@
    [:button.settings__save {:type "submit"} "Use this folder"]
    [:div.settings__message {:id (str id "-message")}
     (when error [:p.detail__error error])]])
-
-(defn settings-panel
-  "The always-available copy, collapsed. A library you have already found is
-  not something you want a form about, but changing it must not require finding
-  a config file."
-  [root]
-  [:details.settings
-   [:summary.settings__summary "Library folder"]
-   [:p.settings__current (if root [:code root] [:span.muted "not set"])]
-   (settings-form {:id "settings" :root root})])
 
 ;; --- shell ------------------------------------------------------------------
 
@@ -531,7 +520,7 @@
   holding a WebGL context and hundreds of megabytes of GPU buffers, so it is
   marked `hx-preserve` and is never the target of a swap (SPEC §6.1)."
   ([facets root] (shell facets root {:workspace :browse :activation 0} true))
-  ([facets root context colors]
+  ([facets _root context colors]
    [:html {:lang "en"}
     [:head
      [:meta {:charset "utf-8"}]
@@ -557,7 +546,6 @@
         [:section#library.panel]
         [:section#library.panel
          [:h2.panel__title "Library"]
-         (settings-panel root)
          (filter-form facets)
          [:div#library-results.results
           [:p.muted "Loading the library…"]]])
@@ -576,6 +564,11 @@
                   :hx-trigger "load" :hx-swap "innerHTML settle:0ms"}))
         (detail-empty)]]]]]))
 
+(defn- settings-link []
+  [:button (merge workspace-views/transition-attrs
+                  {:type "button" :data-workspace-transition "true" :hx-get "/workspace/settings"
+                   :hx-target "#detail" :hx-include workspace-views/navigation-include}) "Open Settings to choose a library folder"])
+
 (defn library-needs-root
   "First run: no root has ever been set. Ask for one where the parts would have
   been, rather than reporting an empty library - which would be true and
@@ -583,7 +576,7 @@
   []
   [:div#library-results.results
    [:p "Shipyard does not know where your models are yet."]
-   (settings-form {:id "setup" :root nil})])
+   (settings-link)])
 
 (defn library-unavailable
   "A root was set, and it is not there any more - a renamed folder, or an
@@ -593,4 +586,4 @@
   [:div#library-results.results
    [:p.detail__error "No library at " [:code root] "."]
    [:p.muted "The folder may have moved, or the drive it is on may not be mounted."]
-   (settings-form {:id "setup" :root root})])
+   (settings-link)])

@@ -14,7 +14,7 @@
                                               :responses contracts/html-responses}}]
          ["/workspace/display/colors" {:post {:handler (partial handlers/colors! deps) :responses contracts/html-responses}}]
          ["/workspace/:mode" {:get {:handler (partial handlers/transition! deps)
-                                    :parameters {:path [:map [:mode [:enum "browse" "ships"]]]}
+                                    :parameters {:path [:map [:mode [:enum "browse" "ships" "settings"]]]}
                                     :responses contracts/html-responses}}]
          ["/ships/tab/:tab" {:get {:handler (partial handlers/ship-tab! deps)
                                    :parameters {:path [:map [:tab [:enum "assembly" "schemes" "paint"]]]}

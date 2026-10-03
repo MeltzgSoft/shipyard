@@ -873,6 +873,13 @@
       (when (not= kind (.getAttribute selector "data-cut-kind"))
         (set! (.-value selector) (name (cut/default-kind (keyword kind))))
         (.setAttribute selector "data-cut-kind" kind))
+      (when-let [depth (.querySelector form "input[name=cut-depth]")]
+        (when-let [automatic (.getAttribute depth "data-cut-depth-default")]
+          (if (= (js/Number automatic) (js/Number (.-value depth)))
+            (let [value (.getAttribute depth (str "data-" (.-value selector) "-depth"))]
+              (set! (.-value depth) value)
+              (.setAttribute depth "data-cut-depth-default" value))
+            (.removeAttribute depth "data-cut-depth-default"))))
       (doseq [^js control (array-seq (.querySelectorAll form ".mount-wizard__cut select, .mount-wizard__cut input[type=number]"))]
         (set! (.-disabled control) (not enabled?)))
       (doseq [^js field (array-seq (.querySelectorAll form ".mount-wizard__cut .mount-wizard__field, .mount-wizard__cut .muted"))]
@@ -1846,7 +1853,7 @@
       (reset! (:bulk-refresh? next) true)
       (reset! (:active next) true)
       (reset! (:activation next) (.-activation detail))
-      (set! (.-enabled (:controls next)) true)
+      (set! (.-enabled (:controls next)) (not= destination :settings))
       (set-mount-colors! next (.-colors detail))
       (sync-inspector-tool! next)
       (resize! next))))
@@ -1858,7 +1865,7 @@
     (let [browse (runtime! canvas renderer :browse nil)
           environment (.-environment ^js (:scene browse))
           runtimes (into {:browse browse} (map (fn [mode] [mode (runtime! canvas renderer mode environment)]))
-                         [:ships])
+                         [:ships :settings])
           app {:runtimes runtimes :active-workspace (atom :browse)}]
       (set! (.-outputColorSpace renderer) three/SRGBColorSpace)
       (.setPixelRatio renderer (min 2 (.-devicePixelRatio js/window)))

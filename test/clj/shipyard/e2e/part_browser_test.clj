@@ -18,7 +18,7 @@
     (try
       (s/go! driver (s/base-url (:system started)))
       (s/wait-visible! driver (table/row a))
-      (is (= ["Part Browser" "Ship Browser"]
+      (is (= ["Part Browser" "Ship Browser" "Settings"]
              (s/js driver "() => [...document.querySelectorAll('.masthead__mode')].map(e=>e.textContent)")))
       (s/scroll-into-view! driver (table/row a))
       (s/wait-visible! driver (str (table/row a) " .part-thumbnail img"))

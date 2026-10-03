@@ -5,7 +5,7 @@
             [shipyard.importer.db :as importer]
             [shipyard.workspace.transforms :as transforms]))
 
-(def modes #{:browse :ships})
+(def modes #{:browse :ships :settings})
 (def ^:dynamic *context* nil)
 (def ^:dynamic *scene-sequence* nil)
 
@@ -14,7 +14,8 @@
                  :workspaces (-> (zipmap modes (repeat {:filters {} :colors true}))
                                  (assoc-in [:ships :assembly] assembly)
                                  (assoc-in [:ships :model] preview)
-                                 (assoc-in [:ships :colors] false))})})
+                                 (assoc-in [:ships :colors] false)
+                                 (assoc-in [:settings :colors] false))})})
 
 (defn workspace! [{:keys [state]} mode] (get-in @state [:workspaces mode]))
 (defn update-workspace! [{:keys [state]} mode f & args]
@@ -22,6 +23,8 @@
 
 (defn owner [uri]
   (cond
+    (or (= uri "/settings") (str/starts-with? uri "/settings/")
+        (= uri "/files/choose/settings-root")) :settings
     (or (str/starts-with? uri "/orient") (str/starts-with? uri "/imports") (= uri "/classifications")) :browse
     (str/starts-with? uri "/assembly") :ships
     (str/starts-with? uri "/ships") :ships
@@ -70,7 +73,7 @@
                            (str/starts-with? (:uri request) "/parts/regions")
                            (= "/parts/role" (:uri request))
                            (= "/parts/orientation" (:uri request))))
-                {:status 409 :headers {"content-type" "text/html"} :body "Mount authoring and region painting are unavailable during import. Finish or cancel the import first."}
+                {:status 409 :headers {"content-type" "text/html"} :body (if (= "/settings" (:uri request)) "Finish or cancel the import before changing the library." "Mount authoring and region painting are unavailable during import. Finish or cancel the import first.")}
                 (handler request))))))
       (handler request))))
 
@@ -80,7 +83,10 @@
 
 (defn outgoing! [{:keys [workspace assembly]} params]
   (let [mode (:workspace (active-context! workspace))]
-    (when-not (and (= mode :ships) (= :editor (:view (workspace! workspace :ships))))
+    (when (= mode :settings)
+      (update-workspace! workspace mode update :draft merge
+                         (select-keys params ["root" "pit-depth" "pit-diameter" "recess-depth" "recess-border"])))
+    (when-not (or (= mode :settings) (and (= mode :ships) (= :editor (:view (workspace! workspace :ships)))))
       (remember! workspace mode params))
     (when (and (= mode :ships) (= "assembly" (:inspector-tab (workspace! workspace :ships))) (contains? params "name"))
       (swap! (:state assembly) assoc-in [:draft :name] (get params "name")))))

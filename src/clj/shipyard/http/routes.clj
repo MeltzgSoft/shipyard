@@ -26,6 +26,8 @@
             [shipyard.http.htmx :as htmx]
             [shipyard.http.jobs :as jobs]
             [shipyard.http.settings :as settings]
+            [shipyard.settings.db :as settings-db]
+            [shipyard.settings.routes :as settings-routes]
             [shipyard.http.urls :as urls]
             [shipyard.http.validation :as validation]
             [shipyard.http.views :as views]
@@ -109,7 +111,7 @@
     (htmx/fragment (views/detail-preparing part)
                    {:events {:status {:state :preparing
                                       :message "Restoring saved mount faces."}}})
-    (htmx/fragment (views/detail-ready part mesh-key {:region-layers (db/region-registry! (:catalog deps)) :roles (vocabulary/roles! (:catalog deps))})
+    (htmx/fragment (views/detail-ready part mesh-key {:region-layers (db/region-registry! (:catalog deps)) :roles (vocabulary/roles! (:catalog deps)) :cut-defaults (settings-db/cut-defaults! (:store (:catalog deps)))})
                    {:headers {"HX-Trigger-After-Swap"
                               (htmx/trigger {:load-mesh {:url     (urls/mesh-url mesh-key 0)
                                                          :part-id (:part/id part)
@@ -260,7 +262,7 @@
                                 (assoc :mode :edit
                                        :original-mount-id (:original-mount-id edit)))]
                   (htmx/fragment
-                   (views/facet-preview (assoc preview :roles (vocabulary/roles! catalog)))
+                   (views/facet-preview (assoc preview :roles (vocabulary/roles! catalog) :cut-defaults (settings-db/cut-defaults! (:store catalog))))
                    {:events {:facet-preview {:part-id part-id
                                              :mesh-key mesh-key
                                              :triangle-index triangle-index
@@ -290,7 +292,7 @@
          mesh-key (index/mesh-key! library part-id)]
      (if (and (:part/id part) mesh-key)
        (htmx/fragment (views/detail-ready part mesh-key (assoc (merge {:mount-active? true :preserve-regions? true} view-options)
-                                                               :region-layers (db/region-registry! catalog) :roles (vocabulary/roles! catalog)))
+                                                               :region-layers (db/region-registry! catalog) :roles (vocabulary/roles! catalog) :cut-defaults (settings-db/cut-defaults! (:store catalog))))
                       {:events (assoc events :interfaces {:part-id part-id
                                                           :mesh-key mesh-key
                                                           :mounts (catalog-part/durable-mounts
@@ -537,13 +539,18 @@
   one, and so was every part id the detail panel and the viewport are holding -
   and re-rendering only the results list would leave a page describing two
   different libraries at once."
-  [deps {:keys [params]}]
+  [{:keys [workspace] :as deps} {:keys [params]}]
   (if-let [refused (settings/relocate! deps (get params "root"))]
     (htmx/fragment [:p.detail__error refused] {:status 422})
-    {:status  204
-     :headers {"HX-Refresh"    "true"
-               "cache-control" htmx/fragment-cache-control}
-     :body    ""}))
+    (do
+      (when workspace
+        (workspace/update-workspace! workspace :settings update :draft dissoc "root")
+        (workspace/update-workspace! workspace :browse dissoc :selection :bulk-selection :drawers)
+        (workspace/update-workspace! workspace :browse assoc :view :table :filters {}))
+      {:status  204
+       :headers {"HX-Refresh"    "true"
+                 "cache-control" htmx/fragment-cache-control}
+       :body    ""})))
 
 ;; --- mesh -------------------------------------------------------------------
 
@@ -633,6 +640,7 @@
            (concat (file-picker/routes deps)
                    (thumbnail-routes/routes deps)
                    (vocabulary-routes/routes deps)
+                   (settings-routes/routes deps)
                    (bulk-routes/routes deps)
                    (when (:workspace deps) (import-routes/routes deps))
                    (when (:assembly deps) (assembly-routes/routes deps))

@@ -21,6 +21,7 @@
             [shipyard.scheme.material :as material]
             [shipyard.catalog.db :as catalog]
             [shipyard.ship.db :as named-ships]
+            [shipyard.settings.handlers :as settings]
             [shipyard.workspace.db :as workspace]
             [shipyard.workspace.transforms :as transforms]
             [shipyard.workspace.views :as workspace-views]))
@@ -205,6 +206,9 @@
            workspace
            (cond->
             (case mode
+              :settings (-> (htmx/fragment (views/detail-empty))
+                            (append [:section#library.panel {:hx-swap-oob "outerHTML" :data-settings-view "true"}
+                                     (html/raw (:body (settings/current! deps {})))]))
               :ships (ships! deps {:params (cond-> (select-keys params ["error" "part-id"]) same-ships? (assoc "poll" "1"))})
               :browse
               (if (= view :part)

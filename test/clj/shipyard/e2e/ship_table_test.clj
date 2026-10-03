@@ -15,7 +15,7 @@
       (classes/put! class-db class :create)
       (s/go! driver (s/base-url sys))
       (s/ship-table! driver)
-      (is (= ["Part Browser" "Ship Browser"] (s/js driver "() => [...document.querySelectorAll('.masthead__mode')].map(e=>e.textContent)")))
+      (is (= ["Part Browser" "Ship Browser" "Settings"] (s/js driver "() => [...document.querySelectorAll('.masthead__mode')].map(e=>e.textContent)")))
       (is (> (s/width driver "#library") 1000))
       (s/fill! driver "#ship-filters input[name=q]" "Cruiser")
       (is (s/wait-until #(= 1 (s/count-els driver ".ship-card"))))
