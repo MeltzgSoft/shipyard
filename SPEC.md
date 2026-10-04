@@ -808,7 +808,7 @@ or deselects every filtered result, including unloaded rows, retaining hidden se
 It reflects all, some or no matching rows selected. Clear selection beside the filters
 clears the entire selection. Both controls are available during import review.
 
-Each part and import row expands into a drawer with a larger preview and name, faction/bundle, class and role fields. Save part atomically saves that row independently of bulk selection; typing and closing a drawer do not save. Import edits remain staged until publication. Saving one row preserves other open drawers and their drafts. Orientation remains in the orientation editor.
+Each part and import row expands into a drawer with a larger preview and name, faction/bundle, class, role and yaw/pitch/roll degree fields. Save part atomically saves that row's labels and explicitly edited orientation independently of bulk selection; typing, resetting and closing a drawer do not save. Untouched orientation fields preserve the exact saved quaternion or Unset state. Reset orientation drafts the source pose (zero angles). Invalid angles or metadata commit neither. Orientation requires an unambiguous unsupported source; other rows keep metadata editing with disabled orientation controls and explanatory text. Import edits remain staged until publication and are discarded on cancel. Saving one row preserves other open drawers and their drafts; successful saves refresh its angle/status columns and thumbnail.
 
 The bulk-edit Value control in Part Browser and import review is an editable selector
 for faction/bundle, class and role. It lists saved values, filters as the user types,
@@ -830,7 +830,7 @@ scrolling and resizing must keep each model within its own card.
 hidden by filters. Names support setting a value, literal find/replace, prefix and
 suffix. An edit is atomic and rejects missing parts or blank resulting labels.
 Authored values survive library rescans and preserve part identity, source paths,
-mounts, regions and references. Orientation edits remain in the preview grid.
+mounts, regions and references. Bulk orientation changes use the preview grid; individual row drawers also provide absolute angle fields.
 
 **Preview.** One toolbar applies to every loaded model in the selection:
 

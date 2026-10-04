@@ -205,7 +205,7 @@
       :class "From folder"
       "Inferred")]])
 
-(defn- display-angle [value]
+(defn display-angle [value]
   (let [rounded (Math/round (* 100.0 (double value)))]
     (/ rounded 100.0)))
 

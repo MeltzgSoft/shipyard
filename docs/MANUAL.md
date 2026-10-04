@@ -391,7 +391,11 @@ An empty angle field means `0` degrees; invalid or non-finite values are rejecte
 Invalid orientation data in a bulk save is rejected before any part is written;
 previous saved poses remain unchanged.
 
-Click a part or import row to expand its drawer. The drawer shows a larger thumbnail and editable **Name**, **Bundle / faction**, **Class** and **Role** fields. Classification fields offer saved choices and accept new values. **Save part** saves only that row; bulk selection and other open drafts stay intact. Closing a drawer does not save. During import, saved row edits remain in the review until publication; Cancel discards them. Expand **files** inside an import drawer to assign original-file variants or split a group. Orientation changes remain in **Orient selection** or the individual part editor.
+Click a part or import row to expand its drawer. The drawer shows a larger thumbnail and editable **Name**, **Bundle / faction**, **Class** and **Role** fields. Classification fields offer saved choices and accept new values.
+
+The drawer also has **Yaw (Y)**, **Pitch (X)** and **Roll (Z)** fields in degrees. **Reset orientation** sets these fields to zero; it does not save. **Save part** saves that row's labels and edited angles together. Invalid fields save neither change, and untouched angles preserve the saved orientation or Unset state. Orientation controls require an unambiguous unsupported source; rows without one keep their label controls available and explain why orientation is disabled. Use **Orient selection** for bulk orientation changes.
+
+Saving a row preserves bulk selection and other open drafts. Closing a drawer does not save. During import, saved row edits remain in the review until publication; Cancel discards them. Expand **files** inside an import drawer to assign original-file variants or split a group.
 
 For a set of parts, open the **Part Browser** table. Filter by bundle,
 class, role, name, or whether an orientation has already been saved, then select the

@@ -246,7 +246,7 @@
                       expected (assoc :part (t/part-value (d/pull db store/part-pattern ref) shared))))))))
 
 (defn save-metadata!
-  "Apply one validated bulk edit atomically. Missing parts abort the whole edit."
+  "Apply validated label/pose edits atomically. Missing parts abort the whole edit."
   [{:keys [store state]} changes]
   (store/write! store
                 (fn [conn]

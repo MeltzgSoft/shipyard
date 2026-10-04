@@ -1136,3 +1136,10 @@ body:has(#workspace-context[data-workspace="settings"]) .stage { display: none; 
 .customize-ships tr[aria-current=true] { background: var(--panel-2); }
 .named-ship-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .named-ship-actions form { margin: 0; }
+
+.part-row-edit__orientation { grid-column: 1 / -1; min-width: 0; margin: 0; padding: 10px; border: 1px solid var(--line); border-radius: 4px; }
+.part-row-edit__orientation legend { padding: 0 4px; font-size: 12px; }
+.part-row-edit__angles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 8px; }
+.part-row-edit__angles label { display: grid; gap: 4px; font-size: 11px; }
+.part-row-edit__orientation p { margin: 6px 0 0; font-size: 11px; }
+.part-row-edit__orientation:disabled { opacity: .6; }

@@ -1,7 +1,8 @@
 (ns shipyard.part-browser.transforms
-  "Pure edits to authored catalog labels; source identity never changes."
+  "Pure edits to authored catalog labels and poses; source identity never changes."
   (:require [clojure.string :as str]
-            [shipyard.vocabulary.transforms :as vocabulary]))
+            [shipyard.vocabulary.transforms :as vocabulary]
+            [shipyard.part.orientation :as orientation]))
 
 (defn listed? [part importing?]
   (or importing?
@@ -42,9 +43,20 @@
       {:error "Names, bundles and classes cannot be blank."}
       :else {:changes changes})))
 
+(def angle-fields ["part-yaw-deg" "part-pitch-deg" "part-roll-deg"])
+
 (defn row-edits [part params]
   (if-not part
     {:error "This part is unavailable. Refresh the table and retry."}
     (let [results (mapv (fn [field] (edits [part] {"field" field "operation" "set" "value" (get params field)}))
-                        ["name" "bundle" "class" "role"])]
-      (or (first (filter :error results)) {:changes (vec (mapcat :changes results))}))))
+                        ["name" "bundle" "class" "role"])
+          save-pose? (= "save" (get params "orientation-action"))
+          pose (when (or save-pose? (some #(contains? params %) angle-fields))
+                 (orientation/save-request (assoc (select-keys params angle-fields) "action" "save")))]
+      (cond
+        (some :error results) (first (filter :error results))
+        (:error pose) {:error (:error pose)}
+        (and save-pose? (not (:part/renderable part)))
+        {:error "Orientation editing needs an unambiguous unsupported source. Assign variants or restore the source first."}
+        :else {:changes (cond-> (vec (mapcat :changes results))
+                          save-pose? (conj {:id (:part/id part) :attribute :part/orientation :value (:orientation pose)}))}))))

@@ -2328,8 +2328,18 @@ mount geometry and dense region masks. Compact mount kind/acceptance/capacity fi
 produce row summaries; mask reference existence supplies the saved-regions boolean
 without loading face chunks. Bulk label edits write dedicated name/bundle/class
 and role override attributes in one Datalevin transaction; scan observations remain
-separate. Source identity and downstream references do not change. Thumbnails use
-lazy intersection-triggered HTMX requests, existing preparation jobs and the lowest
+separate. Source identity and downstream references do not change.
+
+Row saves can include an explicit pose edit in the same transaction as labels.
+Server-rendered degree fields reuse shared Euler math and angle validation; ordinary
+form input marks an edited pose without creating a browser model store. Unchanged
+fields retain the exact quaternion or absence of a saved pose. The view passes
+renderability explicitly, and pure edit plans reject pose writes without an unambiguous
+unsupported source. Import rows use the staging catalog/store and existing publication
+and cancellation boundaries. A row response refreshes only that drawer and its preview,
+preserving other row drafts and bulk selection.
+
+Thumbnails use lazy intersection-triggered HTMX requests, existing preparation jobs and the lowest
 cached mesh LOD, except part regions require tier 0 for stable face identities.
 Part thumbnail workers load only their own region map on a cache miss and use persisted
 region-type preview colors before applying the saved pose. Incompatible source masks are ignored.

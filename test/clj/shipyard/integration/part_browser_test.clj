@@ -1,5 +1,10 @@
 (ns shipyard.integration.part-browser-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [babashka.fs :as fs]
+            [clojure.string :as str]
+            [shipyard.import-fixture :as archives]
+            [shipyard.importer.db :as importer]
+            [shipyard.part.orientation :as orientation]
+            [clojure.test :refer [deftest is]]
             [ring.mock.request :as mock]
             [shipyard.assembly-fixture :as fixture]
             [shipyard.catalog.db :as catalog]))
@@ -70,3 +75,57 @@
                (select-keys part [:part/id :part/uid :part/mounts :part/paint-regions :part/orientation])))
         (is (= (pr-str [b]) (get-in @state [:workspaces :browse :bulk-selection]))))
       (finally (fixture/stop! started)))))
+
+(deftest drawer-orientation-and-labels-save-atomically
+  (let [started (fixture/start!) sys (:system started) handler (:handler started)
+        cat (:shipyard.catalog/db sys) id (:prow fixture/ids)
+        before (catalog/snapshot! cat)
+        params {"part-id" id "name" "Oriented Prow" "bundle" "Pose Fleet" "class" "Pose Cruiser" "role" "prow"
+                "orientation-action" "save" "part-yaw-deg" "30" "part-pitch-deg" "-15" "part-roll-deg" "5.5"}
+        post! #(handler (mock/request :post "/parts/metadata/row" %))]
+    (try
+      (is (= 400 (:status (post! (assoc params "orientation-action" "bad")))))
+      (doseq [value ["NaN" "Infinity" "bad" "36001"]]
+        (is (= 422 (:status (post! (assoc params "part-yaw-deg" value))))))
+      (is (= 422 (:status (post! (dissoc params "part-roll-deg")))))
+      (is (= 422 (:status (post! (assoc params "role" "bad/role")))))
+      (is (= before (catalog/snapshot! cat)))
+      (let [response (post! params) part (catalog/part (catalog/snapshot! cat) id)]
+        (is (= 200 (:status response)))
+        (is (= "Oriented Prow" (:part/name part)))
+        (is (= (orientation/from-euler-degrees 30 -15 5.5) (:part/orientation part)))
+        (is (str/includes? (:body response) "30.0°"))
+        (is (= (select-keys (catalog/part before id) [:part/id :part/uid :part/mounts :part/paint-regions :part/source :part/variants])
+               (select-keys part [:part/id :part/uid :part/mounts :part/paint-regions :part/source :part/variants]))))
+      (let [pose (:part/orientation (catalog/summary! cat id))]
+        (is (= 200 (:status (post! (assoc params "orientation-action" "keep" "name" "Renamed Prow" "part-yaw-deg" "0")))))
+        (is (= pose (:part/orientation (catalog/summary! cat id))) "Untouched pose is preserved exactly"))
+      (is (= 200 (:status (post! (merge params (zipmap ["part-yaw-deg" "part-pitch-deg" "part-roll-deg"] (repeat "0")))))))
+      (is (= orientation/identity-quaternion (:part/orientation (catalog/summary! cat id))))
+      (let [before (catalog/snapshot! cat)]
+        (is (= 422 (:status (post! (assoc params "part-id" (:supported fixture/ids))))))
+        (is (= before (catalog/snapshot! cat))))
+      (finally (fixture/stop! started)))))
+
+(deftest drawer-import-orientation-stays-staged-until-publication
+  (let [started (fixture/start!) sys (:system started) handler (:handler started)
+        cat (:shipyard.catalog/db sys) ws (:shipyard.workspace/db sys)
+        before (catalog/snapshot! cat) directory (fs/create-temp-dir) zip (archives/archive! directory)
+        post! #(handler (mock/request :post %1 %2))
+        session! #(importer/session! {:workspace ws})
+        params {"name" "Row Hull" "bundle" "Pose Fleet" "class" "Carrier" "role" "hull"
+                "orientation-action" "save" "part-yaw-deg" "90" "part-pitch-deg" "0" "part-roll-deg" "0"}]
+    (try
+      (doseq [finish ["/imports/cancel" "/imports/commit"]]
+        (is (= 200 (:status (post! "/imports/start" {"archive" (str zip)}))))
+        (let [staged (:catalog (session!))
+              id (:part/id (first (filter #(= "Hull" (:part/name %)) (catalog/browse (catalog/listing! staged) {}))))]
+          (is (= 200 (:status (post! "/parts/metadata/row" (assoc params "part-id" id)))))
+          (is (= (orientation/from-euler-degrees 90 0 0) (:part/orientation (catalog/summary! staged id))))
+          (is (= before (catalog/snapshot! cat)))
+          (is (= 200 (:status (post! finish {}))))
+          (if (= finish "/imports/cancel")
+            (is (= before (catalog/snapshot! cat)))
+            (is (= (orientation/from-euler-degrees 90 0 0)
+                   (:part/orientation (catalog/summary! cat "Pose Fleet/Carrier/Row Hull")))))))
+      (finally (fixture/stop! started) (fs/delete-tree directory)))))

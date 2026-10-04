@@ -48,6 +48,23 @@
                  :hx-disabled-elt "#library button, #library select, [data-bulk-select]"}
         "Split into separate rows"])]))
 
+(defn- row-orientation [part]
+  (let [editable? (boolean (:part/renderable part))
+        angles (orientation/to-euler-degrees (:part/orientation part))]
+    [:fieldset.part-row-edit__orientation {:disabled (not editable?)}
+     [:legend "Orientation"]
+     [:input {:type "hidden" :name "orientation-action" :value "keep"}]
+     [:div.part-row-edit__angles
+      (for [[label field value] (map vector ["Yaw (Y) °" "Pitch (X) °" "Roll (Z) °"] parts/angle-fields angles)]
+        [:label label
+         [:input {:type "number" :name field :value (http-views/display-angle value) :step "any" :data-row-angle true
+                  :hx-on:input "this.form.elements['orientation-action'].value='save'"}]])]
+     [:button {:type "button" :data-row-orientation-reset true
+               :hx-on:click "this.form.querySelectorAll('[data-row-angle]').forEach(i=>i.value='0');this.form.elements['orientation-action'].value='save'"}
+      "Reset orientation"]
+     [:p.muted (if editable? "Angles are saved with Save part. Reset restores the source orientation."
+                   "Orientation needs an unambiguous unsupported source. Assign variants or restore the source first.")]]))
+
 (defn row-editor [part message]
   (let [id (:part/id part) prefix (str "part-row-" (urls/encode-id id))]
     [:div.part-drawer__body
@@ -66,6 +83,7 @@
        (vocabulary/field-picker (str prefix "-bundle") "bundle" "Bundle / faction" (:part/bundle part))
        (vocabulary/field-picker (str prefix "-class") "class" "Class" (:part/class part))
        (vocabulary/field-picker (str prefix "-role") "role" "Role" (name (or (:part/role-hint part) :unknown)))
+       (row-orientation part)
        [:div.part-row-edit__actions [:button {:type "submit"} "Save part"]
         [:span {:role "status"} message]]]]
      (when (:import/source part) (import-files part))]))

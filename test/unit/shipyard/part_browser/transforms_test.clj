@@ -1,7 +1,8 @@
 (ns shipyard.part-browser.transforms-test
   (:require [clojure.test :refer [deftest is]]
             [shipyard.part-browser.transforms :as t]
-            [shipyard.part-browser.thumbnail :as thumbnail]))
+            [shipyard.part-browser.thumbnail :as thumbnail]
+            [shipyard.part.orientation :as orientation]))
 
 (deftest listed-test
   (is (not (t/listed? {:part/variants [:supported]} false)))
@@ -44,3 +45,21 @@
     (is (:error (t/row-edits nil params)))
     (is (:error (t/row-edits part (assoc params "class" " "))))
     (is (:error (t/row-edits part (assoc params "role" "bad/role"))))))
+
+(deftest row-orientation-edits-test
+  (let [part {:part/id "a" :part/renderable true}
+        params {"name" "Hull" "bundle" "Fleet" "class" "Cruiser" "role" "hull"
+                "orientation-action" "save" "part-yaw-deg" "90" "part-pitch-deg" "15.5" "part-roll-deg" "-30"}
+        edit #(t/row-edits part (merge params %))]
+    (is (= {:id "a" :attribute :part/orientation :value (orientation/from-euler-degrees 90 15.5 -30)}
+           (last (:changes (edit {})))))
+    (is (= 5 (count (:changes (edit {})))))
+    (is (= 4 (count (:changes (edit {"orientation-action" "keep"})))))
+    (doseq [value ["NaN" "Infinity" "-Infinity" "bad" "36001"]]
+      (is (:error (edit {"part-yaw-deg" value}))))
+    (is (:error (t/row-edits part (dissoc params "part-roll-deg"))))
+    (is (:error (edit {"role" "bad/role"})))
+    (is (:error (t/row-edits (assoc part :part/renderable false) params)))
+    (is (:error (edit {"orientation-action" "keep" "part-yaw-deg" "NaN"})))
+    (let [result (edit (zipmap t/angle-fields (repeat "0")))]
+      (is (= orientation/identity-quaternion (:value (last (:changes result))))))))

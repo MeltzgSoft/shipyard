@@ -11,7 +11,11 @@
    ["/parts/metadata/row" {:get {:handler (partial handlers/row-editor! deps)
                                  :parameters {:query [:map [:part-id string?]]} :responses contracts/html-responses}
                            :post {:handler (partial handlers/row-metadata! deps)
-                                  :parameters {:form [:map [:part-id string?] [:name string?] [:bundle string?] [:class string?] [:role string?]]}
+                                  :parameters {:form [:map [:part-id string?] [:name string?] [:bundle string?] [:class string?] [:role string?]
+                                                      [:orientation-action {:optional true} [:enum "keep" "save"]]
+                                                      [:part-yaw-deg {:optional true} string?]
+                                                      [:part-pitch-deg {:optional true} string?]
+                                                      [:part-roll-deg {:optional true} string?]]}
                                   :responses contracts/html-responses}}]
    ["/parts/metadata" {:post {:handler (partial handlers/metadata! deps)
                               :parameters {:form [:map [:field [:enum "bundle" "class" "role" "name" "variant"]]
