@@ -366,6 +366,18 @@
        [:input {:type "hidden" :name "mesh-key" :value mesh-key}])
      (when edit?
        [:input {:type "hidden" :name "original-mount-id" :value (name original-mount-id)}])
+     (when (and mesh-key facet-indices)
+       [:fieldset.mount-wizard__faces
+        [:legend "Mount faces"]
+        [:label.mount-wizard__check [:input {:type "checkbox" :name "face-edit" :data-mount-face-edit true}] " Trim faces (erase brush)"]
+        [:div {:data-mount-face-controls true :hidden true}
+         [:label.mount-wizard__field "Brush radius (screen pixels)"
+          [:input {:type "range" :min 2 :max 128 :value 12 :data-mount-face-radius true}]]
+         [:div.mount-wizard__face-actions
+          [:button {:type "button" :data-mount-faces-undo true :disabled true} "Undo erase"]
+          [:button {:type "button" :data-mount-faces-reset true} "Reset faces"]]]
+        [:p {:data-mount-face-status true :role "status"} (str (count facet-indices) " triangles selected.")]
+        [:small {:data-mount-face-controls true :hidden true} "Left-drag removes whole visible triangles. Alt+drag orbits. Save commits the selection; the mount frame and capacity positions stay fixed."]])
      [:label.mount-wizard__field "Mount id"
       [:input {:type "text" :name "mount-id" :value mount-id
                :data-mount-prefix (name id-prefix)

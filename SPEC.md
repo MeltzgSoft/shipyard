@@ -268,6 +268,13 @@ Recording mounts as first-class data makes them serve three purposes at once: al
 frames for the virtual preview, magnet drill locations for the physical build, and a
 reproducible recipe that can be re-applied when a designer ships an updated STL.
 
+Mount authoring includes draft face trimming: show triangle borders and erase visible
+triangles with an adjustable screen-space brush. Provide Undo/Reset and orbit access.
+Save commits exact nonempty source-bound membership and updates recess boundaries;
+trimming preserves the mount frame and capacity placements and never modifies the
+source STL. Cancel discards trimming. Reject stale, invalid or unsupported selections
+without committing partial authoring changes.
+
 ---
 
 ## 6. Architecture

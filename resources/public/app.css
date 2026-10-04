@@ -473,7 +473,7 @@ body:has(.stage__mount-colors-toggle[aria-pressed="false"]) .assembly__candidate
   font-size: 0.78rem;
 }
 .mount-wizard__actions { grid-column: 1 / -1; display: flex; gap: 0.4rem; flex-wrap: wrap; }
-.mount-wizard__actions button, .mounts__action button {
+.mount-wizard__actions button, .mount-wizard__face-actions button, .mounts__action button {
   background: var(--panel-2);
   color: var(--ink);
   border: 1px solid var(--line);
@@ -483,7 +483,8 @@ body:has(.stage__mount-colors-toggle[aria-pressed="false"]) .assembly__candidate
   font-size: 0.78rem;
   cursor: pointer;
 }
-.mount-wizard__actions button:hover, .mounts__action button:hover, .part-metadata__form button:hover, .part-orientation__actions button:hover, .detail__dismiss:hover { border-color: var(--accent); }
+.mount-wizard__actions button:hover, .mount-wizard__face-actions button:hover, .mounts__action button:hover, .part-metadata__form button:hover, .part-orientation__actions button:hover, .detail__dismiss:hover { border-color: var(--accent); }
+.mount-wizard__face-actions button:disabled { opacity: 0.5; cursor: default; }
 .stage__canvas--authoring { cursor: crosshair; }
 
 @media (min-width: 72rem) {
@@ -1144,3 +1145,12 @@ body:has(#workspace-context[data-workspace="settings"]) .stage { display: none; 
 .part-row-edit__angles label { display: grid; gap: 4px; font-size: 11px; }
 .part-row-edit__orientation p { margin: 6px 0 0; font-size: 11px; }
 .part-row-edit__orientation:disabled { opacity: .6; }
+
+.mount-wizard__faces { grid-column: 1 / -1; min-width: 0; margin: 0; padding: 0.35rem 0.45rem; border: 1px solid var(--line); border-radius: var(--radius); }
+.mount-wizard__faces legend { font-size: 0.78rem; color: var(--ink-dim); }
+.mount-wizard__faces p { margin: 0.35rem 0; font-size: 0.78rem; }
+.mount-wizard__faces small:not([hidden]) { display: block; }
+.mount-wizard__faces [data-mount-face-controls][hidden] { display: none; }
+.mount-wizard__face-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.mount-wizard__actions { position: sticky; bottom: 0; z-index: 2; padding: 8px 0; background: var(--panel); }

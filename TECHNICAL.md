@@ -1712,6 +1712,24 @@ changes. A confirmed mount therefore retains its selected facet only as
 `{:mesh-key ... :indices [...]}`: the entries are ignored unless the current mesh key
 matches and can always be regenerated from the static tier-0 mesh.
 
+#### Mount face trimming
+
+`shipyard.mount.face-brush` reuses the depth-tested visible ID pass from Paint.
+Erase strokes remove touched tier-0 triangle ordinals from a form-local draft; no
+network write occurs until the mount form is submitted. The viewport adds triangle
+wireframes for the selection opened by the form, while preview highlighting follows
+the retained subset. History is capped at 30 strokes and supports Undo/Reset. Alt-drag
+retains orbit control, and interrupted strokes restore their preceding selection.
+
+Save accepts a bounded, distinct, nonempty vector (at most 4096 indices) from one
+connected authoritative facet. It checks current mesh key, source stamps, cache
+presence, bounds and facet membership before storing anything. Invalid selections
+return feedback into the form status without replacing the erase draft. Trimmed
+boundaries are reconstructed from tier-0 triangles and unsupported loops are rejected.
+Mount position/axes/roll and capacity bounds stay fixed; only membership and the cut
+outline change. Linked mirrors reflect the original subset. Definitions and cut
+exports retain the existing atomic publication contract.
+
 ### 12.2 Geometric edges and facet growth
 
 Crease splitting deliberately gives one geometric point several vertex ids (§6.2), so

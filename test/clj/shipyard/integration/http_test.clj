@@ -952,3 +952,42 @@
     ;; The folder is renamed, or its drive unmounted, under a running server.
     (index/set-root! (:library sys) "/no/such/library")
     (is (str/includes? (:body (GET h "/library")) "No library at"))))
+
+(deftest trimmed-facet-membership-is-validated-and-rebuilds-the-outline
+  (let [sys (system (library-tree)) h (handler sys) key (seed-authoring-cache! sys)
+        preview (get (triggers (facet-post h hull-id key 0)) "shipyard:facet-preview")
+        params {:part-id hull-id :mesh-key key :mount-id "trimmed" :kind "socket" :accepts "weapon"
+                :capacity "2" :frame (pr-str (:frame preview)) :facet-indices "[0]" :action "create"}]
+    (doseq [[expected invalid] [[400 (assoc params :facet-indices "[]")] [400 (assoc params :facet-indices "[0 0]")]
+                                [422 (assoc params :facet-indices "[999]")] [422 (assoc params :mesh-key (apply str (repeat 64 "0")))]]]
+      (is (= expected (:status (mount-post h invalid))))
+      (is (empty? (:part/mounts (:part (catalog-db/part-context! (:catalog sys) hull-id))))))
+    (is (= 200 (:status (mount-post h params))))
+    (let [mount (first (:part/mounts (:part (catalog-db/part-context! (:catalog sys) hull-id))))]
+      (is (= [0] (get-in mount [:mount/facet :indices])))
+      (is (= 3 (count (first (:mount/outline mount)))))
+      (is (= (:mount/pos (:frame preview)) (:mount/pos mount)))
+      (is (= 2 (:mount/capacity mount))))
+    (let [before (:part/mounts (:part (catalog-db/part-context! (:catalog sys) hull-id)))
+          source (io/file (str (index/root! (:library sys))) hull-id "unsupported.stl")]
+      (.setLastModified source (+ 10000 (.lastModified source)))
+      (is (= 422 (:status (mount-post h (assoc params :action "replace")))))
+      (is (= before (:part/mounts (:part (catalog-db/part-context! (:catalog sys) hull-id))))))))
+
+(deftest trimmed-boundary-errors-preserve-the-form-and-undo-history
+  (let [sys (system (library-tree)) h (handler sys)
+        mesh (authoring-mesh (mapcat (fn [[x y]]
+                                       [[[x y 0] [(inc x) y 0] [x (inc y) 0]]
+                                        [[(inc x) y 0] [(inc x) (inc y) 0] [x (inc y) 0]]])
+                                     [[0 0] [1 0] [0 1] [1 1]]))
+        key (seed-authoring-cache! sys (apply str (repeat 64 "1")) mesh)
+        preview (get (triggers (facet-post h hull-id key 0)) "shipyard:facet-preview")
+        ;; These triangles touch at only one vertex, making the selected
+        ;; boundary ambiguous, although both belong to the original facet.
+        response (mount-post h {:part-id hull-id :mesh-key key :mount-id "trimmed" :kind "socket" :accepts "weapon"
+                                :capacity "1" :frame (pr-str (:frame preview)) :facet-indices "[1 6]" :action "create"})]
+    (is (= 422 (:status response)))
+    (is (= "find [data-mount-face-status]" (get-in response [:headers "HX-Retarget"])))
+    (is (= "innerHTML" (get-in response [:headers "HX-Reswap"])))
+    (is (str/includes? (:body response) "Undo the erase"))
+    (is (empty? (:part/mounts (:part (catalog-db/part-context! (:catalog sys) hull-id)))))))

@@ -26,6 +26,7 @@
             [shipyard.math :as math]
             [shipyard.triangle :as triangle]
             [shipyard.mount.split :as split]
+            [shipyard.mount.face-brush :as mount-face-brush]
             [shipyard.mount.cut :as cut]
             [shipyard.mount.cut-render :as cut-render]
             [shipyard.part.orientation :as orientation]
@@ -612,8 +613,9 @@
      :misses (mapv #(dissoc % :object) (remove :object items))}))
 
 (defn- preview-facet-indices [^js obj facet-indices frame]
-  (or (seq facet-indices)
-      (some-> (interface-facet obj frame) :indices seq)))
+  (if (some? facet-indices)
+    facet-indices
+    (some-> (interface-facet obj frame) :indices seq)))
 
 (defn- form-twist-degrees []
   (some-> (.querySelector js/document ".mount-wizard__form input[name=twist-deg]")
@@ -692,6 +694,11 @@
               mirrored (cond-> mirrored (:mount/split mount)
                                (update-in [:mount/split :bounds] (fn [[[xmin ymin] [xmax ymax]]] [[xmin (- ymax)] [xmax (- ymin)]])))]
           (when-let [cutting (cut-render/object! mirrored)] (.add group cutting)))))
+    (when (mount-face-brush/enabled?)
+      (let [geometry (facet-geometry obj (mount-face-brush/border-indices) axis nil)
+            borders (three/WireframeGeometry. geometry)]
+        (.dispose geometry)
+        (.add group (three/LineSegments. borders (three/LineBasicMaterial. #js {:color 0xffffff :depthTest false})))))
     (when highlight
       (.add group highlight))
     (when mirrored-frame
@@ -1052,7 +1059,7 @@
       (set! (.-hidden panel) (not= tab (.. panel -dataset -detailPanel))))))
 
 (defn- pick-face! [{:keys [^js canvas ^js camera parts authoring ^js raycaster ^js pointer] :as sys} ^js e]
-  (when (and (= 0 (.-button e)) (not (.-altKey e)))
+  (when (and (= 0 (.-button e)) (not (.-altKey e)) (not (mount-face-brush/enabled?)))
     (when-let [{:keys [part-id]} @authoring]
       (when-let [obj (get @parts part-id)]
         (canvas-pointer! pointer canvas e)
@@ -1816,6 +1823,16 @@
     (listen! sys)
     (when (= mode :ships) (brush/listen! sys apply-material!))
     (when (= mode :browse) (region-brush/install! sys apply-material!))
+    (when (= mode :browse)
+      (mount-face-brush/install! sys
+                                 (fn [indices]
+                                   (when-let [preview @(:preview sys)]
+                                     (let [^js obj (get @(:parts sys) (:part-id preview))
+                                           outline (cut/outline (mapv #(paint-render/triangle-points (.-geometry obj) %) indices))
+                                           form (mount-face-brush/form!)
+                                           hidden (.querySelector form "input[name=frame]")]
+                                       (set! (.-value hidden) (pr-str (assoc (edn/read-string (.-value hidden)) :mount/outline outline)))
+                                       (install-preview! sys (assoc (preview-data preview) :facet-indices indices)))))))
     sys))
 
 (defn- active-runtime [{:keys [runtimes active-workspace]}]

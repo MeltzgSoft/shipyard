@@ -344,6 +344,19 @@ and arrows show each section's center. Capacity and Twist changes update the pre
 Saved splits are stored with the mount in the database, including when mirrored. Older
 capacity-only mounts need their face picked again to define the split.
 
+When a flat face extends beyond the mounting area, enable **Trim faces (erase brush)**
+in **Mount faces**. White triangle borders show the selection you opened. Left-drag
+removes whole visible triangles under the circle; adjust **Brush radius** in screen
+pixels. Alt+drag still orbits. **Undo erase** restores the previous stroke (up to 30),
+and **Reset faces** restores the selection from when the form opened. Re-pick a face
+to start over from its full planar surface.
+
+Trimming changes only the draft until **Save mount** or **Save changes**. Keep at least
+one triangle. The mount frame and capacity positions remain fixed; recess outlines
+follow the retained triangles. Mirrored highlights and recess outlines reflect the
+trimmed original selection. Cancel discards the edits and source STL bytes stay intact.
+A stale source or an invalid boundary must be corrected before saving.
+
 To make a printable variant, enable **Create pitted version** in the last section
 of the mount form, just above its save buttons.
 Plugs initially offer **Recess**; sockets offer **Pit**, and either choice can be changed.

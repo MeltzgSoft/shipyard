@@ -6,6 +6,7 @@
             [shipyard.domain.schemas :as schemas]
             [shipyard.math :as math]
             [shipyard.mount.split :as split]
+            [shipyard.mount.facet-input :as facet-input]
             [shipyard.mount.cut :as cut]
             [shipyard.part.orientation :as orientation]
             [shipyard.vocabulary.transforms :as vocabulary]))
@@ -297,7 +298,9 @@
         original-mount-id (parse-mount-id (get params "original-mount-id"))]
     (cond-> {:part part
              :values (preview-values params (:part/role-hint part))
-             :error error}
+             :error error
+             :mesh-key (get params "mesh-key")
+             :facet-indices (facet-input/parse-indices (get params "facet-indices"))}
       frame (assoc :frame frame)
       original-mount-id (assoc :mode :edit
                                :original-mount-id original-mount-id))))

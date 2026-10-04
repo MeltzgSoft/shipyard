@@ -309,12 +309,14 @@
     (mount-response! deps part-id events view-options)
     (htmx/fragment (views/facet-error error))))
 
-(defn- selected-facet-indices [cache params mesh-key]
+(defn- selected-facet-indices [cache library params mesh-key]
   (when (and (= mesh-key (get params "mesh-key"))
+             (index/fresh-source-file! library (get params "part-id"))
+             (fs/regular-file? (cache/tier-file cache mesh-key 0))
              (facet-input/valid-input? (get params "facet-indices")))
     (let [indices (facet-input/parse-indices (get params "facet-indices"))
           mesh (wire/decode (read-bytes! (cache/tier-file cache mesh-key 0)))]
-      (when (facet-input/in-mesh? mesh indices)
+      (when (facet-input/in-facet? mesh indices (select-keys cache [:facet-angle-deg :facet-plane-epsilon-mm]))
         indices))))
 
 (defn- attach-selected-facet [result mesh-key facet-indices]
@@ -328,6 +330,10 @@
                          (assoc % :mount/facet face)
                          %)
                       mounts))))))
+
+(defn- selection-error-response [message]
+  (htmx/fragment [:span.detail__error message]
+                 {:status 422 :headers {"HX-Retarget" "find [data-mount-face-status]" "HX-Reswap" "innerHTML"}}))
 
 (defn- attach-cut-outline!
   [result part cache mesh-key facet-indices params]
@@ -352,9 +358,11 @@
           mirrored (when (:mirrored-mount result)
                      (wizard/mirror-mount base (:mount/mirror-plane base) (:mount/mirror-offset base)
                                           (:mount/mirror-id base) (:part/orientation part)))]
-      (if (and cut? (nil? indices))
-        {:error "The source mesh changed. Pick the mount face again before generating cuts."}
-        (assoc result :mounts (if mirrored (wizard/replace-mount mounts mirrored) mounts))))))
+      (cond
+        (and indices (nil? outline)) {:error "The selected triangles do not have a supported boundary. Undo the erase or pick the face again."
+                                      :invalid-selection? true}
+        (and cut? (nil? indices)) {:error "The source mesh changed. Pick the mount face again before generating cuts."}
+        :else (assoc result :mounts (if mirrored (wizard/replace-mount mounts mirrored) mounts))))))
 
 (defn- save-mount!
   [{:keys [catalog library cache] :as deps} {:keys [params]}]
@@ -366,12 +374,9 @@
       (facet-error :part-not-found "That part is no longer in the library." part-id 404)
 
       :else
-      (let [facet-indices (selected-facet-indices cache params mesh-key)]
+      (let [facet-indices (selected-facet-indices cache library params mesh-key)]
         (if (and (contains? params "facet-indices") (nil? facet-indices))
-          (facet-error :invalid-facet-selection
-                       "The selected face is no longer present in this mesh. Pick it again."
-                       part-id
-                       422)
+          (selection-error-response "Keep a nonempty selection from one current mount face. Undo/reset the erase, or reopen the part if the source STL changed.")
           (let [result (-> (wizard/save-request params
                                                 (catalog-part/durable-mounts (:part/mounts part))
                                                 (:part/orientation part)
@@ -379,14 +384,16 @@
                            (attach-selected-facet mesh-key facet-indices)
                            (attach-cut-outline! part cache mesh-key facet-indices params))]
             (if-let [error (:error result)]
-              (mount-error-response!
-               deps
-               part-id
-               error
-               {:authoring {:state :enter
-                            :part-id part-id
-                            :mesh-key (index/mesh-key! library part-id)}}
-               {:preview (wizard/error-preview part params error)})
+              (if (:invalid-selection? result)
+                (selection-error-response error)
+                (mount-error-response!
+                 deps
+                 part-id
+                 error
+                 {:authoring {:state :enter
+                              :part-id part-id
+                              :mesh-key (index/mesh-key! library part-id)}}
+                 {:preview (wizard/error-preview part params error)}))
               (try
                 (pitting/save! deps part-id (:mounts result) (:part/revision part))
                 (if-let [repeat-values (:repeat-values result)]
