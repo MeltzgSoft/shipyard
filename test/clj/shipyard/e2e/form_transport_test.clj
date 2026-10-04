@@ -5,7 +5,9 @@
             [shipyard.e2e.workspace-test :as workspace]
             [shipyard.e2e.orient-save-test :as orient]
             [shipyard.loadout-fixture :as lf]
-            [shipyard.loadout.db :as loadouts]))
+            [shipyard.loadout.db :as loadouts]
+            [ring.util.codec :as codec])
+  (:import [com.microsoft.playwright Page Request]))
 
 (defn- assert-post-forms! [driver expected]
   (let [forms (s/js driver "() => Array.from(document.querySelectorAll('form[hx-post]'), f => ({endpoint:f.getAttribute('hx-post'), method:f.method, action:f.getAttribute('action')}))")
@@ -36,8 +38,17 @@
       (testing "Bulk selection, render and orientation payloads"
         (s/click! driver "[data-part-back]")
         (s/wait-visible! driver "[data-bulk-select]")
-        (assert-post-forms! driver ["/orient/selection" "/orient/render"])
-        (s/check! driver (str "[data-bulk-select][value='" (:weapon fixture/ids) "']"))
+        (assert-post-forms! driver ["/orient/render"])
+        ;; Row drawers contain forms, so the selection table is a group whose
+        ;; checkbox changes send HTMX requests rather than a native form.
+        (let [^Request request (.waitForRequest ^Page (:page driver)
+                                                (str (s/base-url sys) "/orient/selection")
+                                                ^Runnable #(s/check! driver (str "[data-bulk-select][value='" (:weapon fixture/ids) "']")))
+              params (codec/form-decode (.postData request))]
+          (is (= "POST" (.method request)))
+          (is (= (:weapon fixture/ids) (get params "selected")))
+          (is (contains? params "visible")))
+        (is (s/wait-until #(= "1 selected" (s/text driver "[data-bulk-count]"))))
         (s/click! driver "[data-bulk-render-button]")
         (s/wait-visible! driver "[data-bulk-save]")
         (assert-post-forms! driver ["/orient/save"])
