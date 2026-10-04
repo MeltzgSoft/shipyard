@@ -136,6 +136,10 @@ After a part has loaded, open the **Mounts** inspector tab and click the desired
 The crosshair cursor indicates face picking. Opening **Regions** switches to the
 region brush; opening **Part** returns to normal navigation. A newly selected part
 opens its Part tab. Hold Alt while dragging to orbit without picking a face.
+Saved mounts retain the selected faces. **Edit** reopens that exact selection; a linked
+mirrored mount shows the reflected original selection, as it did before Save. Legacy
+mounts recover the surface nearest their position.
+
 Shipyard highlights the selected flat facet and draws its complete orientation frame:
 the outward normal (`+Z`), in-plane twist reference (`+X`), and derived up direction (`+Y`).
 Configured interfaces are always colored in the viewer when the part is loaded; the

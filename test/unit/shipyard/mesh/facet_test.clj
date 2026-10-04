@@ -183,3 +183,10 @@
     (let [m (mesh [[[-0.0 0 0] [1 0 0] [0 1 0]]
                    [[1 0 0] [1 1 0] [0.0 1 0]]])]
       (is (= [0 1] (:facet-indices (facet/select m 0)))))))
+
+(deftest recovery-uses-surface-distance-instead-of-centroid-distance
+  (let [large-a [[-12 0 0] [-3 0 0] [-12 40 0]]
+        large-b [[-3 0 0] [-3 40 0] [-12 40 0]]
+        decoy [[-14 19 0] [-13 19 0] [-14 21 0]]
+        m (mesh [large-a decoy large-b])]
+    (is (= [0 2] (facet/match-frame m {:mount/pos [-7.5 20 0] :mount/axis [0 0 1]})))))

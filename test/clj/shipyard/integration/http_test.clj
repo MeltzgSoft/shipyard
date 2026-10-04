@@ -547,6 +547,8 @@
                               :kind "socket"
                               :accepts "weapon"
                               :capacity "2"
+                              :mesh-key mesh-key
+                              :facet-indices (pr-str (:facet-indices preview))
                               :frame (pr-str (:frame preview))
                               :roll-deg "0"
                               :action "create"})
@@ -564,6 +566,9 @@
            (get edit-events "shipyard:authoring")))
     (is (= (:frame preview) (:frame edit-preview)))
     (is (= :saved-mount (:roll-source edit-preview)))
+    (is (= (:facet-indices preview) (:facet-indices edit-preview)))
+    (is (str/includes? (:body edit) "name=\"facet-indices\""))
+    (is (str/includes? (:body edit) (str "value=\"" mesh-key "\"")))
     (testing "picking another face preserves edit mode and non-kind values"
       (let [repicked (facet-post h hull-id mesh-key 0
                                  {"original-mount-id" "port-1"

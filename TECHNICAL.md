@@ -1543,6 +1543,17 @@ the settings form may have relocated the library. If the root changes mid-reques
 old coherent view may still return a preview, but it belongs to the part and mesh named
 in the event; the next authoring action will be against the new root.
 
+Editing passes a valid retained facet directly to both the form and preview; it does
+not infer a replacement from the mount frame. Saved mirrored highlights reflect the
+linked original selection using the same part-oriented mirror plane as the preview,
+so their display remains exact even when legacy mirror recovery selected a different
+nearby component. Frame and capacity guides remain durable source-space geometry.
+For legacy mounts without retained IDs, both server and browser choose the nearest
+point on a candidate triangle surface, then grow the connected coplanar component.
+Triangle centers cannot rank surfaces: a small nearby detail may have a closer center
+than the large face containing the mount position. This distance calculation is shared
+with proof tools in `shipyard.triangle`.
+
 Triangle order is derived cache state and may change when the STL or mesh pipeline
 changes. A confirmed mount therefore retains its selected facet only as
 `{:mesh-key ... :indices [...]}`: the entries are ignored unless the current mesh key

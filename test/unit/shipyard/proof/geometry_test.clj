@@ -1,6 +1,7 @@
 (ns shipyard.proof.geometry-test
   (:require [clojure.test :refer [deftest is testing]]
-            [shipyard.proof.geometry :as geometry]))
+            [shipyard.proof.geometry :as geometry]
+            [shipyard.triangle :as triangle]))
 
 (def a [0.0 0.0 0.0])
 (def b [2.0 0.0 0.0])
@@ -8,10 +9,10 @@
 
 (deftest closest-point-on-triangle-test
   (testing "points above a face project onto its interior"
-    (is (= [0.5 0.5 0.0] (geometry/closest-point-on-triangle [0.5 0.5 3.0] a b c))))
+    (is (= [0.5 0.5 0.0] (triangle/closest-point-on-triangle [0.5 0.5 3.0] a b c))))
   (testing "points beyond an edge and vertex clamp to that feature"
-    (is (= [1.0 0.0 0.0] (geometry/closest-point-on-triangle [1.0 -1.0 0.0] a b c)))
-    (is (= b (geometry/closest-point-on-triangle [4.0 -1.0 0.0] a b c)))))
+    (is (= [1.0 0.0 0.0] (triangle/closest-point-on-triangle [1.0 -1.0 0.0] a b c)))
+    (is (= b (triangle/closest-point-on-triangle [4.0 -1.0 0.0] a b c)))))
 
 (deftest nearest-surface-test
   (let [mesh {:triangle-count 2

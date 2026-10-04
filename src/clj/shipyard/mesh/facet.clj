@@ -4,6 +4,7 @@
   Input is the tier-0 `.symesh` decoded by `shipyard.wire/decode`: positions,
   indices, and counts in the exact triangle order the browser clicked."
   (:require [shipyard.math :as math]
+            [shipyard.triangle :as triangle]
             [shipyard.mesh.float :as mesh-float]))
 
 (def default-options
@@ -139,11 +140,6 @@
               (recur (next queue) seen))))
         (vec (sort seen))))))
 
-(defn- triangle-center [points]
-  (mapv (fn [component]
-          (/ (reduce + (map #(nth % component) points)) 3.0))
-        (range 3)))
-
 (defn- distance-squared [a b]
   (math/dot (math/subtract a b) (math/subtract a b)))
 
@@ -158,7 +154,7 @@
   "Return the connected tier-0 facet described by a durable mount frame.
 
   This is a server-only compatibility path for mounts authored before selected
-  facet indices were retained. It reproduces the old viewport matching rule,
+  facet indices were retained. It chooses the nearest triangle surface, then grows the connected coplanar face;
   then callers persist the result against the current mesh key so this work is
   performed at most once per legacy mount and mesh revision."
   ([mesh mount] (match-frame mesh mount nil))
@@ -172,7 +168,7 @@
                                     {:index triangle-index :points (:points triangle)})))
                               (range (triangle-count mesh)))]
          (when (seq candidates)
-           (let [start (:index (first (sort-by #(distance-squared (triangle-center (:points %)) pos)
+           (let [start (:index (first (sort-by #(distance-squared (apply triangle/closest-point-on-triangle pos (:points %)) pos)
                                                candidates)))
                  candidate-indices (map :index candidates)
                  adjacent (adjacency mesh candidate-indices)]

@@ -24,6 +24,7 @@
             [shipyard.bulk-orientation.save-state :as bulk-saves]
             [shipyard.interface-colors :as interface-colors]
             [shipyard.math :as math]
+            [shipyard.triangle :as triangle]
             [shipyard.mount.split :as split]
             [shipyard.part.orientation :as orientation]
             [shipyard.paint.render :as paint-render]
@@ -367,10 +368,6 @@
 (defn- triangle-normal [[a b c]]
   (math/normalize (math/cross (math/subtract b a) (math/subtract c a))))
 
-(defn- triangle-center [points]
-  (mapv (fn [idx] (/ (reduce + (map #(nth % idx) points)) 3.0))
-        (range 3)))
-
 (defn- point-on-mount-plane? [pos axis p]
   (<= (Math/abs (math/dot axis (math/subtract p pos))) interface-plane-epsilon))
 
@@ -434,7 +431,7 @@
       (when (seq triangles)
         (let [start (first (first (sort-by (fn [[_ points]]
                                              (length-sq
-                                              (math/subtract (triangle-center points) pos)))
+                                              (math/subtract (apply triangle/closest-point-on-triangle pos points) pos)))
                                            triangles)))]
           {:indices (connected-indices (adjacency triangles) start)
            :candidates (count triangles)})))))
@@ -557,30 +554,43 @@
   (when (= mesh-key (get-in mount [:mount/facet :mesh-key]))
     (seq (get-in mount [:mount/facet :indices]))))
 
-(defn- interface-highlight-object [^js obj mesh-key mount]
+(defn- interface-highlight-object [^js obj mesh-key mount mirror-source mirror]
   (let [interface-type (interface-colors/type-of mount)
         color (color-int interface-type)
-        ;; A newly saved mirror has no server-side triangle ids yet. Recover the
-        ;; connected face from its durable frame in the live mesh so it is
-        ;; coloured immediately; the next server read may cache those ids.
-        facet-indices (or (saved-facet-indices mesh-key mount)
+        ;; A linked mirror uses the exact reflected source selection. Legacy
+        ;; standalone definitions recover by nearest surface only when IDs are absent.
+        facet-indices (or (when mirror-source (saved-facet-indices mesh-key mirror-source))
+                          (saved-facet-indices mesh-key mount)
                           (some-> (interface-facet obj mount) :indices seq))
         split-guide (split-guide-object mount color)
-        group (three/Group.)]
-    (when facet-indices
-      (.add group (face-highlight obj facet-indices mount nil color 0.42)))
+        group (three/Group.)
+        highlight (when facet-indices (face-highlight obj facet-indices mount mirror color 0.42))
+        bounds (when highlight
+                 (.computeBoundingBox (.-geometry highlight))
+                 [(vec (.toArray (.. highlight -geometry -boundingBox -min)))
+                  (vec (.toArray (.. highlight -geometry -boundingBox -max)))])]
+    (when highlight (.add group highlight))
     (when-let [split-object (:object split-guide)]
       (.add group split-object))
     {:type interface-type
      :mount-id (:mount/id mount)
+     :facet-indices (vec facet-indices)
+     :face-bounds bounds
      :triangles (count facet-indices)
      :candidates (count facet-indices)
      :split-lines (or (:split-lines split-guide) [])
      :split-centers (or (:split-centers split-guide) [])
      :object (when (or facet-indices split-guide) group)}))
 
-(defn- interface-highlights [^js obj mesh-key mounts]
-  (let [items (keep #(interface-highlight-object obj mesh-key %) mounts)
+(defn- interface-highlights [^js obj mesh-key mounts part-orientation]
+  (let [by-id (into {} (map (juxt :mount/id identity)) mounts)
+        items (keep (fn [mount]
+                      (let [source (when (= :mirrored (:mount/origin mount)) (get by-id (:mount/mirror-id mount)))
+                            source (when (saved-facet-indices mesh-key source) source)
+                            mirror (when source {:plane-keyword (:mount/mirror-plane source)
+                                                 :offset (:mount/mirror-offset source)
+                                                 :orientation part-orientation})]
+                        (interface-highlight-object obj mesh-key mount source mirror))) mounts)
         group (three/Group.)]
     (doseq [{:keys [^js object]} items]
       (when object
@@ -721,7 +731,7 @@
         (when (not= source (:source @interfaces))
           (clear-interface-highlights! sys)
           (try
-            (let [{:keys [^js object items misses]} (interface-highlights obj mesh-key mounts)]
+            (let [{:keys [^js object items misses]} (interface-highlights obj mesh-key mounts orientation)]
               (orient-object! object orientation)
               (set! (.-visible object) @(:mount-colors-enabled sys))
               (when (seq items) (.add scene object))
@@ -1351,9 +1361,11 @@
 
 (defn- interface-stats [{:keys [interfaces]}]
   (when-let [{:keys [^js object part-id mesh-key items misses error]} @interfaces]
-    (let [item-stats (fn [{:keys [type mount-id triangles candidates split-lines split-centers]}]
+    (let [item-stats (fn [{:keys [type mount-id triangles candidates split-lines split-centers facet-indices face-bounds]}]
                        {:type (name type)
                         :mount-id (name mount-id)
+                        :facet-indices facet-indices
+                        :face-bounds face-bounds
                         :triangles triangles
                         :candidates candidates
                         :split-lines split-lines

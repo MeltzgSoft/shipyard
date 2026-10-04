@@ -384,7 +384,9 @@
                                  error
                                  {}
                                  {:error error})
-          (let [frame (:frame result)]
+          (let [frame (:frame result)
+                selected (get-in result [:mount :mount/facet])
+                indices (when (= mesh-key (:mesh-key selected)) (:indices selected))]
             (mount-response!
              deps
              part-id
@@ -394,9 +396,12 @@
               :facet-preview {:part-id part-id
                               :mesh-key mesh-key
                               :frame frame
+                              :facet-indices indices
                               :roll-source :saved-mount}}
              {:preview {:part part
                         :frame frame
+                        :mesh-key mesh-key
+                        :facet-indices indices
                         :mode :edit
                         :original-mount-id (:original-mount-id result)
                         :values (:values result)}})))))))
