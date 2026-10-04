@@ -495,11 +495,14 @@
     (is (s/wait-until #(nil? (:authoring (s/stats *driver*)))))))
 
 (deftest mount-cuts-preview-save-regenerate-and-reload
-  ;; Use a closed solid with the same front face as the picking-only plate.
+  ;; A small second solid shares a complete edge with the plate. This covers
+  ;; the balanced four-face edges found in the Tiamat hull and gun battery.
   (let [library (:shipyard.library/index *system*)
         root (index/root! library)
         source (io/file root s/mount-plate-id "unsupported.stl")
-        solid (mapv (fn [tri] (mapv (fn [[x y z]] [(+ 2.0 (* 2.0 x)) (+ 1.0 y) (- (/ z 2.0) 0.5)]) tri)) (f/cube 2.0))]
+        solid (into (mapv (fn [tri] (mapv (fn [[x y z]] [(+ 2.0 (* 2.0 x)) (+ 1.0 y) (- (/ z 2.0) 0.5)]) tri)) (f/cube 2.0))
+                    (map (fn [tri] (mapv (fn [[x y z]] [(+ 4.25 (* 0.25 x)) (+ 2.25 (* 0.25 y)) (- (/ z 2.0) 0.5)]) tri))
+                         (f/cube 2.0)))]
     (with-open [out (io/output-stream source)] (.write out ^bytes (f/->binary-stl solid)))
     (index/set-root! library root)
     (catalog/reingest! (:shipyard.catalog/db *system*) (index/parts! library) root))
@@ -551,6 +554,7 @@
     (is (s/wait-until #(= 2 (count (get-in (s/stats *driver*) [:interfaces :cuts])))))
     (is (= 2 (count (get-in (catalog/part-context! (:shipyard.catalog/db *system*) s/mount-plate-id) [:part :part/mounts]))))
     (is (> (:triangle-count (stl/parse-file! target)) (:triangle-count (stl/parse-file! source))))
+    (is (= (seq original) (seq (java.nio.file.Files/readAllBytes (.toPath source)))))
     (testing "saved cuts follow Mount colors across inspector tabs"
       (doseq [tab ["part" "regions" "mounts"]]
         (s/click! *driver* (str "[data-detail-tab=" tab "]"))
