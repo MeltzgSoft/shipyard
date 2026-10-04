@@ -57,7 +57,7 @@
       (compact! (get! "/ships/customize/ships?page=1"))
       (get! "/workspace/browse")
       (get! (str "/part/" (urls/encode-id (:hull fixture/ids))))
-      (compact! (post "/parts/role" {:part-id (:hull fixture/ids) :part-role "hull"}))
+      (compact! (post "/parts/metadata/individual" {:part-id (:hull fixture/ids) :name "hull" :bundle "Synthetic Navy" :class "Cruiser" :role "hull"}))
       (is (seq (get-in (catalog/part-context! cat (:hull fixture/ids)) [:part :part/paint-regions :faces])))
       (let [id (:hull fixture/ids) mesh-key (index/mesh-key! (:library deps) id)
             before (get-in (catalog/part-context! cat id) [:part :part/paint-regions])

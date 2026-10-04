@@ -810,6 +810,13 @@ clears the entire selection. Both controls are available during import review.
 
 Each part and import row expands into a drawer with a larger preview and name, faction/bundle, class, role and yaw/pitch/roll degree fields. Save part atomically saves that row's labels and explicitly edited orientation independently of bulk selection; typing, resetting and closing a drawer do not save. Untouched orientation fields preserve the exact saved quaternion or Unset state. Reset orientation drafts the source pose (zero angles). Invalid angles or metadata commit neither. Orientation requires an unambiguous unsupported source; other rows keep metadata editing with disabled orientation controls and explanatory text. Import edits remain staged until publication and are discarded on cancel. Saving one row preserves other open drawers and their drafts; successful saves refresh its angle/status columns and thumbnail.
 
+The individual Part view exposes the same Name, Bundle / faction, Class and Role
+inputs as row drawers. All classification fields use the shared picker and vocabulary,
+including adding valid typed values. Save metadata writes the four labels atomically;
+invalid fields commit no changes and retain the draft. Saving refreshes the heading and
+labels while preserving authored data, source identity, region editor and loaded pose.
+Individual editing remains unavailable during import review.
+
 The bulk-edit Value control in Part Browser and import review is an editable selector
 for faction/bundle, class and role. It lists saved values, filters as the user types,
 and offers a missing typed value for addition. Choosing or typing a value does not save;

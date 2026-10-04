@@ -373,8 +373,13 @@ Generation requires a closed source mesh with consistently oriented faces;
 repair an open or malformed STL in your mesh tool before generating cuts.
 
 Part-level metadata is edited outside the mount picker. Use **Part metadata** in the
-detail panel to set the role Shipyard should trust for that part from now on. It
-replaces the inferred role shown by browsing.
+detail panel to edit **Name**, **Bundle / faction**, **Class** and **Role**. These use
+the same fields and classification selectors as table row drawers and bulk editing;
+selectors offer saved values and let you add valid typed values. **Save metadata**
+saves the four fields together. Invalid fields save no changes and keep your input
+available to correct. Saved overrides replace inferred labels in browsing while
+preserving the source identity, mounts, orientation, regions and loaded model. During
+import, edit metadata in the review rows; the individual part editor is unavailable.
 
 Use **Part orientation** to put the source mesh into Shipyard's canonical pose: `+Y` is
 up, `+Z` is forward, and `+X` is starboard/right. Yaw rotates around Y, pitch around X,
@@ -467,7 +472,7 @@ does not mean Universal.
 
 Roles inferred from names or folders work in Assemble
 and when saving, previewing, editing or duplicating a ship. You do not need to save each
-role manually; use **Part metadata → Save role** when a role needs correcting. Mounts
+role manually; use **Part metadata → Save metadata** when a role needs correcting. Mounts
 still need to be authored.
 Missing capacity splits require reauthoring.
 Cold parts prepare in the background; failed preparation offers **Retry**. If the draft

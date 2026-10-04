@@ -27,6 +27,8 @@
     (is (:error (edit {"value" " "})))
     (is (:error (edit {"field" "role" "value" "bad/role"})))
     (is (= :prow (-> (edit {"field" "role" "value" "prow"}) :changes first :value)))
+    (doseq [field ["bundle" "class"] value ["../bad" "a/b" "bad?" (apply str (repeat 121 "a"))]]
+      (is (:error (edit {"field" field "value" value}))))
     (is (:error (t/edits [] {})))))
 
 (deftest triangles-test

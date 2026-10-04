@@ -39,6 +39,8 @@
       (and (= operation "replace") (str/blank? find)) {:error "Enter the text to find."}
       (and (= field "role") (nil? (vocabulary/role value)))
       {:error "Choose a valid role."}
+      (and (#{"bundle" "class"} field) (:error (vocabulary/entry field value)))
+      (select-keys (vocabulary/entry field value) [:error])
       (some #(and (string? (:value %)) (str/blank? (:value %))) changes)
       {:error "Names, bundles and classes cannot be blank."}
       :else {:changes changes})))

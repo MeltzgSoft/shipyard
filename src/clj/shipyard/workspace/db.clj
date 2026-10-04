@@ -71,7 +71,7 @@
                            (str/starts-with? (:uri request) "/mounts")
                            (str/starts-with? (:uri request) "/part/")
                            (str/starts-with? (:uri request) "/parts/regions")
-                           (= "/parts/role" (:uri request))
+                           (= "/parts/metadata/individual" (:uri request))
                            (= "/parts/orientation" (:uri request))))
                 {:status 409 :headers {"content-type" "text/html"} :body (if (= "/settings" (:uri request)) "Finish or cancel the import before changing the library." "Mount authoring and region painting are unavailable during import. Finish or cancel the import first.")}
                 (handler request))))))

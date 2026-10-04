@@ -7,6 +7,7 @@
             [shipyard.http.urls :as urls]
             [shipyard.http.pagination :as pagination]
             [shipyard.vocabulary.views :as vocabulary]
+            [shipyard.part-browser.views :as metadata]
             [shipyard.part.orientation :as orientation]
             [shipyard.part-browser.transforms :as parts]
             [shipyard.workspace.views :as workspace-views]
@@ -79,10 +80,7 @@
                            :hx-disabled-elt "find fieldset, [data-bulk-select], [data-select-all], [data-workspace-mode], [data-workspace-transition], .part-bulk-edit button"}
       [:input {:type "hidden" :name "part-id" :value id}]
       [:fieldset.part-row-edit__fields
-       [:label.part-row-edit__name "Name" [:input {:name "name" :value (:part/name part) :required true}]]
-       (vocabulary/field-picker (str prefix "-bundle") "bundle" "Bundle / faction" (:part/bundle part))
-       (vocabulary/field-picker (str prefix "-class") "class" "Class" (:part/class part))
-       (vocabulary/field-picker (str prefix "-role") "role" "Role" (name (or (:part/role-hint part) :unknown)))
+       (metadata/metadata-fields prefix part)
        (row-orientation part)
        [:div.part-row-edit__actions [:button {:type "submit"} "Save part"]
         [:span {:role "status"} message]]]]

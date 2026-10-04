@@ -251,17 +251,19 @@ body:has(.stage__mount-colors-toggle[aria-pressed="false"]) .assembly__candidate
 }
 .part-metadata__form {
   display: grid;
-  grid-template-columns: minmax(8rem, 1fr) auto;
   gap: 0.4rem;
-  align-items: end;
 }
+.part-metadata__fields { display: grid; gap: 10px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.part-metadata__actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .part-metadata__field {
   display: grid;
   gap: 0.2rem;
   font-size: 0.78rem;
   color: var(--ink-dim);
 }
-.part-metadata__field select {
+.part-metadata__field input {
+  width: 100%;
+  box-sizing: border-box;
   min-width: 0;
   background: var(--panel-2);
   color: var(--ink);
@@ -1094,7 +1096,6 @@ body:has(#workspace-context[data-workspace="ships"]) #library[data-ship-view="ed
 .part-drawer__body { display: grid; grid-template-columns: 256px minmax(0, 1fr); gap: 16px; padding: 16px; background: var(--panel); cursor: default; }
 .part-thumbnail--large, .part-thumbnail--large img { width: 256px; height: 176px; }
 .part-row-edit { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-content: start; }
-.part-row-edit__name { display: grid; gap: 4px; font-size: 11px; }
 .part-row-edit input { width: 100%; box-sizing: border-box; padding: 6px 8px; color: var(--ink); background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px; }
 .part-row-edit .classification-picker { min-width: 0; }
 .part-row-edit .classification-picker__options { top: calc(100% + 4px); bottom: auto; }

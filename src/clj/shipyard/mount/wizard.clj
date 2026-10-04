@@ -292,11 +292,6 @@
                                 :mirror-offset (:mount/mirror-offset mount)
                                 :mirror-locked? true))})))
 
-(defn part-role-request [params]
-  (if-let [role (vocabulary/role (get params "part-role"))]
-    {:part-role role}
-    {:error "Choose the role this part should use from now on."}))
-
 (defn error-preview [part params error]
   (let [frame (normalize-frame (parse-edn (get params "frame")))
         original-mount-id (parse-mount-id (get params "original-mount-id"))]

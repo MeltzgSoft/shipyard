@@ -2330,6 +2330,16 @@ without loading face chunks. Bulk label edits write dedicated name/bundle/class
 and role override attributes in one Datalevin transaction; scan observations remain
 separate. Source identity and downstream references do not change.
 
+`part-browser.views/metadata-fields` owns the Name/Bundle/Class/Role field set for
+individual forms and drawers; classification fields and the bulk Value input use
+`vocabulary.views` and its shared picker behavior. Individual saves use the same pure
+row edit plan and atomic catalog transaction with only metadata parameters. The response
+refreshes the detail panel and shared vocabulary suggestions, preserves the region
+editor with `hx-preserve`, and retains the loaded model/pose through the existing
+interface refresh event. Transport schemas share the metadata field contract. The old
+role-only form, endpoint and request parser are removed. Workspace guards continue to
+block the individual editor during imports and reject stale activations.
+
 Row saves can include an explicit pose edit in the same transaction as labels.
 Server-rendered degree fields reuse shared Euler math and angle validation; ordinary
 form input marks an edited pose without creating a browser model store. Unchanged

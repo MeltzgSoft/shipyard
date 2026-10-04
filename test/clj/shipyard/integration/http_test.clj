@@ -236,7 +236,7 @@
   (POST h "/mounts/delete" params))
 
 (defn- part-role-post [h params]
-  (POST h "/parts/role" params))
+  (POST h "/parts/metadata/individual" (-> params (assoc :name "Hull" :bundle "Human Navy Fleet Bundle" :class "Cruiser" :role (:part-role params)) (dissoc :part-role))))
 
 (defn- part-orientation-post [h params]
   (POST h "/parts/orientation" params))

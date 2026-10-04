@@ -33,6 +33,8 @@
             [shipyard.http.views :as views]
             [shipyard.vocabulary.routes :as vocabulary-routes]
             [shipyard.vocabulary.db :as vocabulary]
+            [shipyard.vocabulary.views :as vocabulary-views]
+            [shipyard.part-browser.transforms :as metadata]
             [shipyard.thumbnail.routes :as thumbnail-routes]
             [shipyard.library.index :as index]
             [shipyard.importer.routes :as import-routes]
@@ -444,7 +446,7 @@
                         :original-mount-id (:original-mount-id result)
                         :values (:values result)}})))))))
 
-(defn- save-part-role!
+(defn- save-part-metadata!
   [{:keys [catalog] :as deps} {:keys [params]}]
   (let [part-id (get params "part-id")
         part (:part (db/part-context! catalog part-id))]
@@ -453,17 +455,21 @@
       (facet-error :part-not-found "That part is no longer in the library." part-id 404)
 
       :else
-      (let [result (wizard/part-role-request params)]
+      (let [result (metadata/row-edits part (select-keys params ["name" "bundle" "class" "role"]))]
         (if-let [error (:error result)]
-          (mount-response! deps part-id {} {:error error})
+          (htmx/fragment [:span.detail__error error]
+                         {:status 422 :headers {"HX-Retarget" "find [role=status]" "HX-Reswap" "innerHTML"}})
           (try
-            (db/save-part-role! catalog part-id (:part-role result))
-            (mount-response! deps part-id {} {:mount-active? false})
-            (catch Exception _
-              (facet-error :part-role-save-failed
-                           "The part role was written, but the catalog did not update. Restart Shipyard to re-ingest it."
-                           part-id
-                           500))))))))
+            (db/save-metadata! catalog (:changes result))
+            (update (if (:part/renderable part)
+                      (mount-response! deps part-id {} {:mount-active? false :metadata-message "Saved."})
+                      (let [part (:part (db/part-context! catalog part-id))]
+                        (htmx/fragment (views/detail-unrenderable part (views/unrenderable-reason part) "Saved."))))
+                    :body str (:body (htmx/fragment (into [:div#classification-values {:hx-swap-oob "outerHTML"}]
+                                                          (rest (vocabulary-views/choices (:values (facets! catalog))))))))
+            (catch Exception e
+              (htmx/fragment [:span.detail__error (.getMessage e)]
+                             {:status 422 :headers {"HX-Retarget" "find [role=status]" "HX-Reswap" "innerHTML"}}))))))))
 
 (defn- save-part-orientation!
   [{:keys [catalog] :as deps} {:keys [params]}]
@@ -618,9 +624,9 @@
                                                  [:layer-revision {:optional true} [:int {:min 0}]]
                                                  [:angle {:optional true} [:int {:min 0 :max 90}]]]}
                              :responses contracts/html-responses}}]
-   ["/parts/role" {:post {:handler (partial save-part-role! deps)
-                          :parameters {:form contracts/role-form}
-                          :responses contracts/html-responses}}]
+   ["/parts/metadata/individual" {:post {:handler (partial save-part-metadata! deps)
+                                         :parameters {:form contracts/metadata-form}
+                                         :responses contracts/html-responses}}]
    ["/parts/orientation" {:post {:handler (partial save-part-orientation! deps)
                                  :parameters {:form contracts/orientation-form}
                                  :responses contracts/html-responses}}]

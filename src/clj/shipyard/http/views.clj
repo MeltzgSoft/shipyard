@@ -17,6 +17,7 @@
             [shipyard.mount.wizard :as wizard]
             [shipyard.mount.cut :as cut]
             [shipyard.part.orientation :as orientation]
+            [shipyard.part-browser.views :as metadata]
             [shipyard.workspace.views :as workspace-views]))
 
 ;; --- parts ------------------------------------------------------------------
@@ -183,22 +184,20 @@
     :hx-swap   "innerHTML"}
    "Dismiss"])
 
-(defn- role-choice [selected role]
-  [:option {:value (name role) :selected (= selected role)} (name role)])
-
-(defn- part-metadata [{:part/keys [id role-hint role-source]} roles]
+(defn- part-metadata [{:part/keys [id role-source] :as part} message]
   [:section.part-metadata
    [:h3.part-metadata__title "Part metadata"]
    [:form.part-metadata__form
-    {:method "post" :action "/parts/role" :hx-post "/parts/role"
-     :hx-sync "this:drop" :hx-disabled-elt "find button"
+    {:method "post" :action "/parts/metadata/individual" :hx-post "/parts/metadata/individual"
+     :hx-params "*" :hx-include "unset" :hx-sync "this:drop" :hx-disabled-elt "find fieldset"
      :hx-target "#detail"
      :hx-swap   "innerHTML"}
     [:input {:type "hidden" :name "part-id" :value id}]
-    [:label.part-metadata__field "Role"
-     [:select {:name "part-role"}
-      (map (partial role-choice (or role-hint :unknown)) (or roles wizard/role-options))]]
-    [:button {:type "submit"} "Save role"]]
+    [:fieldset.part-metadata__fields
+     (metadata/metadata-fields (str "part-detail-" (urls/encode-id id)) part)
+     [:div.part-metadata__actions
+      [:button {:type "submit"} "Save metadata"]
+      [:span {:role "status"} message]]]]
    [:p.part-metadata__source
     (case role-source
       :manual "Manual"
@@ -250,7 +249,7 @@
 
 (defn detail-ready
   ([part mesh-key] (detail-ready part mesh-key nil))
-  ([part mesh-key {:keys [error orientation-error preview repeat-values region-layers roles cut-defaults mount-active? preserve-regions?]}]
+  ([part mesh-key {:keys [error orientation-error preview repeat-values region-layers roles cut-defaults mount-active? preserve-regions? metadata-message]}]
    (let [mount-active? (if (some? mount-active?) mount-active? (boolean (or preview error)))]
      [:div.detail.detail--ready
       (part-back)
@@ -274,7 +273,7 @@
                                                            :hx-target "#detail"
                                                            :hx-include workspace-views/navigation-include :hx-swap "innerHTML settle:0ms"
                                                            :data-workspace-mode "ships" :data-hull (:part/id part)}) "Assemble this hull"])
-       (part-metadata part roles)
+       (part-metadata part metadata-message)
        (part-orientation part orientation-error)]
       [:div.detail__tab-panel {:data-detail-panel "regions" :role "tabpanel" :hidden true}
        (if preserve-regions?
@@ -305,10 +304,13 @@
      :hx-swap   "innerHTML"}
     "Try again"]])
 
-(defn detail-unrenderable [part reason]
-  [:div.detail.detail--unrenderable
-   (detail-head part)
-   [:p.detail__reason reason]])
+(defn detail-unrenderable
+  ([part reason] (detail-unrenderable part reason nil))
+  ([part reason message]
+   [:div.detail.detail--unrenderable
+    (detail-head part)
+    [:p.detail__reason reason]
+    (part-metadata part message)]))
 
 (defn detail-empty []
   [:div.detail.detail--empty

@@ -131,7 +131,7 @@
   (let [started (fixture/start! true) driver (s/make-driver)
         held (atom nil) ^Page page (:page driver)]
     (try
-      (.route page "**/parts/role"
+      (.route page "**/parts/metadata/individual"
               (reify Consumer
                 (accept [_ value]
                   (let [^Route route value]
@@ -140,10 +140,10 @@
                       (.resume route))))))
       (s/go! driver (s/base-url (:system started)))
       (s/wait-visible! driver "#bulk-orient-results .bulk-orient__row")
-      (s/js driver "() => { window.lateCompleted=false; window.lateCaptured=false; document.body.addEventListener('htmx:beforeRequest', e => { if(!window.lateCaptured && e.detail.pathInfo.requestPath.includes('/parts/role')) { window.lateCaptured=true; e.detail.xhr.addEventListener('loadend', () => window.lateCompleted=true); } }); }")
+      (s/js driver "() => { window.lateCompleted=false; window.lateCaptured=false; document.body.addEventListener('htmx:beforeRequest', e => { if(!window.lateCaptured && e.detail.pathInfo.requestPath.includes('/parts/metadata/individual')) { window.lateCaptured=true; e.detail.xhr.addEventListener('loadend', () => window.lateCompleted=true); } }); }")
       (s/open-part! driver "bridge")
       (s/await-part driver (:bridge fixture/ids))
-      (s/click! driver ".part-metadata__form button")
+      (s/click! driver ".part-metadata__form button:text-is('Save metadata')")
       (is (s/wait-until #(do (s/stats driver) (some? @held))))
       (switch! driver "assembly")
       (s/wait-visible! driver ".assembly__hull")

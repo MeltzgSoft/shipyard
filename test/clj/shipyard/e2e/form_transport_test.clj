@@ -30,7 +30,7 @@
       (s/go! driver (s/base-url sys))
       (testing "Part metadata, mounts, settings and region forms"
         (s/open-prepared-part! driver sys "weapon" (:weapon fixture/ids))
-        (assert-post-forms! driver ["/parts/role" "/parts/orientation" "/mounts/edit" "/mounts/delete" "/parts/regions"])
+        (assert-post-forms! driver ["/parts/metadata/individual" "/parts/orientation" "/mounts/edit" "/mounts/delete" "/parts/regions"])
         (s/click! driver "[data-detail-tab=mounts]")
         (s/click! driver ".mounts__action button:text-is('Edit') >> nth=0")
         (s/wait-visible! driver ".mount-wizard__form")

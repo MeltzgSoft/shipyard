@@ -149,7 +149,10 @@
 (deftest configured-interface-legend-matches-mount-types
   (let [html (render (views/detail-ready hull-with-mounts (apply str (repeat 64 "1"))))]
     (is (str/includes? html "Part metadata"))
-    (is (str/includes? html "hx-post=\"/parts/role\""))
+    (is (str/includes? html "hx-post=\"/parts/metadata/individual\""))
+    (doseq [field ["name" "bundle" "class" "role"]]
+      (is (str/includes? html (str "name=\"" field "\""))))
+    (is (not (str/includes? html "name=\"part-role\"")))
     (is (str/includes? html "Part orientation"))
     (is (str/includes? html "hx-post=\"/parts/orientation\""))
     (is (str/includes? html "name=\"part-yaw-deg\""))

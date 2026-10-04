@@ -78,10 +78,10 @@
    [:part-id string?]
    [:mount-id string?]])
 
-(def role-form
+(def metadata-form
   [:map {:closed false}
    [:part-id string?]
-   [:part-role string?]])
+   [:name string?] [:bundle string?] [:class string?] [:role string?]])
 
 (def orientation-form
   [:map {:closed false}

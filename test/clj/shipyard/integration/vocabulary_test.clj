@@ -40,7 +40,7 @@
       (let [lib (:shipyard.library/index sys) id (:bridge fixture/ids)
             {:keys [mesh-key tris]} (cache/ensure! (:shipyard.mesh/cache sys) (index/fresh-source-file! lib id))]
         (index/record-mesh-key! lib id mesh-key tris))
-      (is (= 200 (:status (post! "/parts/role" {"part-id" (:bridge fixture/ids) "part-role" "sensor-array"}))))
+      (is (= 200 (:status (post! "/parts/metadata/individual" {"part-id" (:bridge fixture/ids) "name" "bridge" "bundle" "Synthetic Navy" "class" "Cruiser" "role" "sensor-array"}))))
       (is (= :sensor-array (:part/role-hint (catalog/summary! cat (:bridge fixture/ids)))))
       (is (some #(= #{:sensor-array} (:accepts %)) (wizard/acceptance-profiles :hull (vocabulary/roles! cat))))
       (let [result (wizard/save-request {"mount-id" "sensor" "kind" "socket" "accepts" "sensor-array" "action" "create"
