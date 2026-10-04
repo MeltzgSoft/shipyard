@@ -36,7 +36,13 @@
           (is (str/includes? (:body response) "classification-values"))
           (is (str/includes? (:body response) "Saved."))
           (is (= "Named Battery" (get-in (persisted/catalog! cat) [:parts id :part/name])))
-          (is (contains? (:class (vocabulary/choices! cat)) "Carrier"))))
+          (is (contains? (:class (vocabulary/choices! cat)) "Carrier")))
+        (let [response (handler (assoc-in (mock/request :get "/workspace/browse" {"part-id" id})
+                                          [:headers "hx-request"] "true"))]
+          (is (= 200 (:status response)))
+          (is (str/includes? (:body response) "data-part-view=\"part\""))
+          (doseq [value ["Shared Navy" "Carrier" "sensor-array"]]
+            (is (str/includes? (:body response) (str "<option value=\"" value "\""))))))
       (let [supported (:supported fixture/ids)
             response (post! (assoc params "part-id" supported "name" "Supported Battery"))]
         (is (= 200 (:status response)))

@@ -2333,7 +2333,9 @@ separate. Source identity and downstream references do not change.
 `part-browser.views/metadata-fields` owns the Name/Bundle/Class/Role field set for
 individual forms and drawers; classification fields and the bulk Value input use
 `vocabulary.views` and its shared picker behavior. Individual saves use the same pure
-row edit plan and atomic catalog transaction with only metadata parameters. The response
+row edit plan and atomic catalog transaction with only metadata parameters. Opening
+an individual part retains the server-rendered vocabulary datalists in the hidden
+library panel so classification suggestions survive removal of the table. The response
 refreshes the detail panel and shared vocabulary suggestions, preserves the region
 editor with `hx-preserve`, and retains the loaded model/pose through the existing
 interface refresh event. Transport schemas share the metadata field contract. The old

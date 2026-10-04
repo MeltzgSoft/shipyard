@@ -22,6 +22,7 @@
             [shipyard.catalog.db :as catalog]
             [shipyard.ship.db :as named-ships]
             [shipyard.settings.handlers :as settings]
+            [shipyard.vocabulary.views :as vocabulary-views]
             [shipyard.workspace.db :as workspace]
             [shipyard.workspace.transforms :as transforms]
             [shipyard.workspace.views :as workspace-views]))
@@ -214,7 +215,8 @@
               (if (= view :part)
                 (-> (if selection (part-handler {:params {} :path-params {:id selection}})
                         (htmx/fragment (views/detail-empty) {:events {:clear nil}}))
-                    (append [:section#library.panel {:hx-swap-oob "outerHTML" :data-part-view "part"}])
+                    (append [:section#library.panel {:hx-swap-oob "outerHTML" :data-part-view "part"}
+                             (vocabulary-views/choices (:values (facets)))])
                     (append [:section#bulk-orient.bulk-orient__stage {:hx-swap-oob "innerHTML"}]))
                 (let [grid (when (= view :grid) (orient/render! deps {:params {"part-ids" bulk-selection}}))
                       panel (transforms/selected-filters (orient-views/panel (orient/facets! (importer/effective! deps))

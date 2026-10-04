@@ -375,7 +375,8 @@ repair an open or malformed STL in your mesh tool before generating cuts.
 Part-level metadata is edited outside the mount picker. Use **Part metadata** in the
 detail panel to edit **Name**, **Bundle / faction**, **Class** and **Role**. These use
 the same fields and classification selectors as table row drawers and bulk editing;
-selectors offer saved values and let you add valid typed values. **Save metadata**
+each classification selector offers the same saved values as the table and lets you
+add valid typed values. **Save metadata**
 saves the four fields together. Invalid fields save no changes and keep your input
 available to correct. Saved overrides replace inferred labels in browsing while
 preserving the source identity, mounts, orientation, regions and loaded model. During

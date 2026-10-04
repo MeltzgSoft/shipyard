@@ -6,6 +6,7 @@
   (:import [com.microsoft.playwright Page]))
 
 (deftest new-values-are-reusable-in-filters-and-editors
+  (s/assert-bundle!)
   (let [started (fixture/start! true) driver (s/make-driver) sys (:system started)
         cat (:shipyard.catalog/db sys) id (:prow fixture/ids)]
     (try
@@ -49,9 +50,17 @@
       (is (s/wait-until #(= 1 (s/count-els driver ".bulk-orient__row"))))
       (.dblclick ^Page (:page driver) ".bulk-orient__part")
       (s/await-part driver id)
-      (is (= 1 (s/count-els driver ".part-metadata select option[value='sensor-array']")))
-      (s/select-option! driver ".part-metadata select" "sensor-array")
-      (s/click! driver ".part-metadata button")
+      (doseq [[field value] [["bundle" "Custom Fleet"] ["class" "Custom Carrier"] ["role" "sensor-array"]]]
+        (is (= 1 (s/count-els driver (str "#part-" field "-values option[value='" value "']")))))
+      (s/click! driver ".part-metadata__form input[name=role]")
+      (let [option ".part-metadata__form .classification-picker:has(input[name=role]) [role=option]:text-is('sensor-array')"]
+        (s/wait-visible! driver option)
+        (is (= 1 (s/count-els driver option)))
+        (s/click! driver option))
+      (is (= "sensor-array" (s/js driver "() => document.querySelector('.part-metadata__form input[name=role]').value")))
+      (s/click! driver ".part-metadata__form button:text-is('Save metadata')")
+      (s/wait-visible! driver ".part-metadata__form [role=status]:text-is('Saved.')")
+      (is (= :sensor-array (:part/role-hint (catalog/summary! cat id))))
       (s/wait-visible! driver "[data-part-back]")
       (s/click! driver "[data-part-back]")
       (s/wait-visible! driver "#bulk-orient-filters")
