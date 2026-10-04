@@ -26,10 +26,10 @@
             {:id child-id :part (catalog/part database assigned)}))
         descendant-slots))
 
-(defn- slot-view [database root revision available bundle class drawers slots children
+(defn- slot-view [database root revision available bundle class drawers slots options children
                   {:keys [id mount parent-role ancestors assigned]}]
   (let [candidates (filter #(available (:part/id %))
-                           (model/candidates database root parent-role mount ancestors))
+                           (model/candidates database root parent-role mount ancestors options))
         current (when assigned (catalog/part database assigned))
         nested-slots (descendant-slots slots id)
         complete? (and (some? assigned) (every? :assigned nested-slots))
@@ -67,8 +67,9 @@
              {:type "submit" :name "part-id" :value (:part/id part)
               :class (when (= assigned (:part/id part)) "assembly__candidate--selected")}
              [:span.assembly__candidate-name (:part/name part)]
-             [:span.assembly__candidate-meta (name (:part/role-hint part))]])]]
-        [:p.assembly__empty "No compatible parts in this bundle."])
+             [:span.assembly__candidate-meta
+              (str/join " · " (keep identity [(:part/bundle part) (:part/class part) (name (:part/role-hint part))]))]])]]
+        [:p.assembly__empty "No compatible parts for this mount."])
       (when (seq children)
         [:div.assembly__nested children])]
      [:div.assembly__mount-actions
@@ -77,10 +78,10 @@
        (hidden "bundle" bundle) (hidden "class" class)
        [:button {:type "submit" :disabled (nil? assigned)} "Clear"]]]]))
 
-(defn- slot-tree [database root revision available bundle class drawers slots]
+(defn- slot-tree [database root revision available bundle class drawers slots options]
   (let [children-by-parent (group-by :parent slots)]
     (letfn [(render-slot [slot]
-              (slot-view database root revision available bundle class drawers slots
+              (slot-view database root revision available bundle class drawers slots options
                          (map render-slot (get children-by-parent (:id slot)))
                          slot))]
       (map render-slot (get children-by-parent [])))))
@@ -107,6 +108,15 @@
                     (for [part hulls] [:option {:value (:part/id part) :selected (= (or hull selected-hull) (:part/id part))} (:part/name part)])]]
     [:button {:type "submit" :disabled (empty? hulls)} "Start assembly"]]
    (when hull
+     [:form.assembly__compatibility (assoc (form-attrs "/assembly/compatibility")
+                                           :hx-trigger "change" :hx-include ".assembly__save input[name=name]")
+      (hidden "revision" revision)
+      (hidden "bundle" selected-bundle) (hidden "class" selected-class)
+      [:label [:input {:type "checkbox" :name "allow-other-factions" :value "true"
+                       :checked (boolean (:allow-other-factions? draft))}]
+       " Allow parts from other factions"]
+      [:p.muted "Universal-class parts fit any hull class. Other classes must match the hull."]])
+   (when hull
      [:form.assembly__save (form-attrs "/assembly/save")
       (hidden "revision" revision)
       [:label "Class name" [:input {:name "name" :value (or (:name draft) "") :required true :maxlength 200}]]
@@ -117,12 +127,12 @@
    [:p.assembly__rail-count (str (count hulls) " compatible hulls")]
    (when root
      [:div.assembly__rail-slots {:data-hull-id hull}
-      (slot-tree database root revision available selected-bundle selected-class drawers slots)])])
+      (slot-tree database root revision available selected-bundle selected-class drawers slots draft)])])
 
 (defn panel [{:keys [database draft available prepared error saved? selected-hull selected-bundle selected-class drawers scroll]}]
   (let [{:keys [revision hull assignments]} draft
         root (when hull (catalog/part database hull))
-        derived (when hull (model/slots database hull assignments))
+        derived (when hull (model/slots database hull assignments draft))
         slots (vec (:slots derived))
         hulls (->> (catalog/browse database {})
                    (remove model/root-error) (filter #(available (:part/id %)))

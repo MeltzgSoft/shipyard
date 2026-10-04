@@ -16,7 +16,7 @@
               :let [part-counts (frequencies (keep #(effective % field) parts))
                     socket-counts (when (= field :role)
                                     (frequencies (map name (mapcat :mount/accepts (mapcat :part/mounts parts)))))
-                    builtins (when (= field :role) (set (map name t/roles)))]]
+                    builtins (get t/builtins field)]]
           [field (mapv (fn [value] {:value value :parts (get part-counts value 0)
                                     :sockets (get socket-counts value 0) :builtin? (contains? builtins value)})
                        (sort (into (set (concat (keys part-counts) (keys socket-counts) builtins))
@@ -36,7 +36,7 @@
       error {:error error}
       (= action :add) {:tx [(registration field value)]}
       (nil? existing) {:error "This value no longer exists. Refresh Settings."}
-      (:builtin? existing) {:error "Built-in roles cannot be renamed or deleted."}
+      (:builtin? existing) {:error "Built-in classification values cannot be renamed or deleted."}
       (= action :delete)
       (if (pos? (+ (:parts existing) (:sockets existing)))
         {:error "This value is in use. Rename it to update its uses; only unused values can be deleted."}

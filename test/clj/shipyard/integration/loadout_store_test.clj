@@ -11,6 +11,10 @@
     (try
       (is (= record (:loadout (db/put! facade record :create))))
       (is (= record (get-in (persisted/records! facade :loadouts) [:loadouts (:loadout/id record)])))
+      (doseq [record [(assoc record :loadout/allow-other-factions? true)
+                      (assoc record :loadout/allow-other-factions? false) record]]
+        (is (= record (:loadout (db/put! facade record :update))))
+        (is (= record (get-in (persisted/records! facade :loadouts) [:loadouts (:loadout/id record)]))))
       (is (= :id-exists (:error (db/put! facade record :create))))
       (is (= :missing-loadout (:error (db/put! facade (assoc record :loadout/id (random-uuid)) :update))))
       (let [copies (vec (repeatedly 8 #(assoc record :loadout/id (random-uuid))))]

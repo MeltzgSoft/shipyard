@@ -27,6 +27,12 @@
    ["/assembly/save" {:post {:handler (partial handlers/save! deps)
                              :parameters {:form [:map [:revision revision-schema] [:name string?]]}
                              :responses contracts/html-responses}}]
+   ["/assembly/compatibility" {:post {:handler (partial handlers/mutate! deps :compatibility)
+                                      :parameters {:form [:map [:revision revision-schema]
+                                                          [:allow-other-factions {:optional true} [:enum "true"]]
+                                                          [:bundle {:optional true} string?] [:class {:optional true} string?]
+                                                          [:name {:optional true} string?]]}
+                                      :responses contracts/html-responses}}]
    ["/assembly" {:get {:handler (partial handlers/current! deps)
                        :responses contracts/html-responses}}]
    ["/assembly/hull" {:post {:handler (partial handlers/mutate! deps :hull)

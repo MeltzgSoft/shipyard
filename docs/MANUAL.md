@@ -63,7 +63,7 @@ Each row shows how many parts and socket acceptance lists use it, including miss
 parts and parts in other libraries. **Save** renames the value everywhere without
 changing source paths, mount geometry or paint. A name already in use cannot be the
 rename destination. **Delete** is available only for unused values. Built-in roles
-cannot be renamed or deleted. During import review, library and classification
+and the Universal class cannot be renamed or deleted. During import review, library and classification
 changes are disabled; finish or cancel the import first.
 
 **Pit and recess defaults** sets pit depth and diameter, and recess depth and border,
@@ -431,12 +431,23 @@ their mount's color. Split-capacity positions have distinct colors. Use **Mount 
 to toggle these cues. Completed mount subtrees collapse by default and summarize their
 selected descendants; incomplete subtrees stay open so their remaining choices are visible.
 
-A compatible role, a single valid plug, available unsupported geometry, and matching
-bundle/class authorize a choice. Roles inferred from names or folders work in Assemble
+A compatible role, a single valid plug, and available unsupported geometry authorize
+a choice within the hull's faction and class. Enable **Allow parts from other factions**
+to include pieces from other factions. The setting is saved with the ship class and
+retained when reopening or duplicating it. To turn it off, first clear any assigned
+parts from other factions; a rejected toggle keeps your assembly intact.
+
+Set a reusable piece's **Class** to **Universal** in the part or import classification
+controls to use it on every hull class. Universal is a built-in value protected in
+Settings. It bypasses the class match; using a Universal piece from another faction
+still requires the toggle. Other class values must match the hull. A missing class
+does not mean Universal.
+
+Roles inferred from names or folders work in Assemble
 and when saving, previewing, editing or duplicating a ship. You do not need to save each
 role manually; use **Part metadata → Save role** when a role needs correcting. Mounts
 still need to be authored.
-Single-ship bundles are self-contained. Missing capacity splits require reauthoring.
+Missing capacity splits require reauthoring.
 Cold parts prepare in the background; failed preparation offers **Retry**. If the draft
 changed elsewhere, review the refreshed panel before trying again. The choices remain
 usable if the viewport bundle is unavailable. When the viewport is available, every

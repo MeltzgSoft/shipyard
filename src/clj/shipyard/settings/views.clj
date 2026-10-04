@@ -51,5 +51,6 @@
                     :value (get draft (str (name kind) "-" (name dimension)) (get-in defaults [kind dimension])) :required true :min "0" :step "any"}]])])
      [:button {:type "submit"} "Save defaults"]]]
    [:p.muted "Classification values are shared across libraries. Renaming updates all part labels and socket acceptance lists. Only unused values can be deleted."]
+   [:p.muted "The built-in Universal class lets parts fit every hull class. Parts from another faction still require the assembly toggle."]
    (for [[field label] [[:bundle "Faction"] [:class "Class"] [:role "Role"]]]
      (classification-section field label (get entries field) blocked?))])

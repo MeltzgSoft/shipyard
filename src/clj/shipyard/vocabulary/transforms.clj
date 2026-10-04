@@ -5,6 +5,9 @@
 (def roles [:hull :hull-section :prow :bridge :antenna :engine :weapon :turret
             :stern :fin :section :detail :ordinance :terrain :unknown])
 
+(def universal-class "Universal")
+(def builtins {:bundle #{} :class #{universal-class} :role (set (map name roles))})
+
 (defn role [value]
   (let [s (some-> value (str) (str/trim) (str/lower-case) (str/replace #"\s+" "-"))]
     (when (and s (<= (count s) 80) (re-matches #"[a-z][a-z0-9_-]*" s)

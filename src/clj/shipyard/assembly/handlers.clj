@@ -12,7 +12,7 @@
 
 (defn- response [{:keys [workspace]} result]
   (let [draft (:draft result)
-        slots (:slots (when (:hull draft) (model/slots (:database result) (:hull draft) (:assignments draft))))
+        slots (:slots (when (:hull draft) (model/slots (:database result) (:hull draft) (:assignments draft) draft)))
         ship-workspace (when workspace (workspace/workspace! workspace :ships))
         drawers (workspace-transforms/drawer-states (:drawers ship-workspace) slots)]
     (when workspace (workspace/update-workspace! workspace :ships assoc :drawers drawers))
@@ -39,8 +39,8 @@
     (let [{:keys [revision slot part-id bundle class discard-revision] :as form} (:form parameters)
           current-revision (get-in @state [:draft :revision])
           current? (= (parse-long revision) current-revision)]
-      ;; A hull request includes the current name field, including an unsaved rename.
-      (when (and current? (= op :hull) (contains? form :name)
+      ;; Panel mutations include the working name to preserve an unsaved rename.
+      (when (and current? (#{:hull :compatibility} op) (contains? form :name)
                  (not= (:name form) (or (get-in @state [:draft :name]) "")))
         (swap! state assoc-in [:draft :name] (:name form)))
       (if (and current? (= op :hull) (loadouts/unsaved? deps)
@@ -50,7 +50,8 @@
                                                                                 "/assembly?poll=1" form current-revision false)))
         (let [result (db/request! (assoc deps :paint-profile nil)
                                   (cond-> {:op op :revision (parse-long revision) :part-id part-id}
-                                    slot (assoc :slot (edn/read-string slot))) {})]
+                                    slot (assoc :slot (edn/read-string slot))
+                                    (= op :compatibility) (assoc :allow-other-factions? (= "true" (:allow-other-factions form)))) {})]
           (when (and (:workspace deps) (#{:hull :reset} op) (not (:error result)))
             (workspace/update-workspace! (:workspace deps) :ships dissoc :drawers :assembly-scroll))
           (response deps (assoc result :selected-bundle (not-empty bundle)

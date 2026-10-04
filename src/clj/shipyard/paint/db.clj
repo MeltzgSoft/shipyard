@@ -38,7 +38,8 @@
                        (cond-> {:revision (:revision draft) :hull (:loadout/hull class) :assignments (:loadout/slots class)
                                 :class-id class-id :class-name (:loadout/name class)
                                 :scheme (if ship (:ship/scheme ship) (:scheme draft))}
-                         ship (assoc :ship-id (:ship/id ship) :name (:ship/name ship))))
+                         ship (assoc :ship-id (:ship/id ship) :name (:ship/name ship))
+                         (:loadout/allow-other-factions? class) (assoc :allow-other-factions? true)))
                 {}))))
 
 (defn save! [{:keys [named-ships paint loadouts] {ship-lock :lock} :named-ships :as deps} profile]
@@ -53,9 +54,10 @@
 (defn transfer! [{:keys [paint library catalog loadouts]} source scheme]
   (let [class-id (or (get-in @(:state source) [:draft :class-id]) (get-in @(:state source) [:draft :loadout-id]))
         class (get-in (classes/snapshot! loadouts) [:loadouts class-id])
-        draft (when class {:revision (inc (get-in @(:state paint) [:draft :revision] 0))
-                           :hull (:loadout/hull class) :assignments (:loadout/slots class)
-                           :class-id class-id :class-name (:loadout/name class) :scheme scheme})
+        draft (when class (cond-> {:revision (inc (get-in @(:state paint) [:draft :revision] 0))
+                                   :hull (:loadout/hull class) :assignments (:loadout/slots class)
+                                   :class-id class-id :class-name (:loadout/name class) :scheme scheme}
+                            (:loadout/allow-other-factions? class) (assoc :allow-other-factions? true)))
         available (set (filter #(index/fresh-source-file! library %) (cons (:hull draft) (vals (:assignments draft)))))
         result (if class (loadout/validate (catalog/assembly-snapshot! catalog) draft available)
                    {:error :missing-class})]

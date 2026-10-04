@@ -8,7 +8,7 @@
 (defn validate
   [database {:keys [hull assignments] :as value} available]
   (let [parts (cons hull (vals assignments))
-        derived (assembly/slots database hull assignments)
+        derived (assembly/slots database hull assignments value)
         error (or (when-not hull :no-draft)
                   (some (fn [id]
                           (let [part (catalog/part database id)]
@@ -25,17 +25,19 @@
 (defn from-record [record revision mode]
   (cond-> {:revision revision :hull (:loadout/hull record) :assignments (:loadout/slots record)
            :name (str (:loadout/name record) (when (= :duplicate mode) " - Copy"))}
-    (not= :duplicate mode) (assoc :loadout-id (:loadout/id record))))
+    (not= :duplicate mode) (assoc :loadout-id (:loadout/id record))
+    (:loadout/allow-other-factions? record) (assoc :allow-other-factions? true)))
 
 (defn to-record [draft id name]
   (when (store/name? name)
-    {:loadout/id id :loadout/name name :loadout/hull (:hull draft)
-     :loadout/slots (:assignments draft)}))
+    (cond-> {:loadout/id id :loadout/name name :loadout/hull (:hull draft)
+             :loadout/slots (:assignments draft)}
+      (:allow-other-factions? draft) (assoc :loadout/allow-other-factions? true))))
 
 (defn empty-mount-count
   "Count reachable, unassigned mounts; invalid trees have no reliable count."
-  [database {:loadout/keys [hull slots]}]
-  (let [derived (assembly/slots database hull slots)]
+  [database {:loadout/keys [hull slots allow-other-factions?]}]
+  (let [derived (assembly/slots database hull slots {:allow-other-factions? allow-other-factions?})]
     (when-not (seq (:errors derived))
       (count (remove :assigned (:slots derived))))))
 
@@ -81,6 +83,8 @@
   [value records]
   (boolean
    (and (:hull value)
-        (let [id (:loadout-id value) record (get records id)]
+        (let [id (:loadout-id value) record (get records id)
+              record (cond-> record
+                       (false? (:loadout/allow-other-factions? record)) (dissoc :loadout/allow-other-factions?))]
           (or (nil? record)
               (not= record (to-record value id (:name value))))))))

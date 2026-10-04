@@ -11,9 +11,9 @@
 
 (defn transition
   "Validate each mutation against one catalog value and an explicit set of available sources."
-  [database draft {:keys [op revision slot part-id]} available]
+  [database draft {:keys [op revision slot part-id allow-other-factions?]} available]
   (let [root (when (:hull draft) (catalog/part database (:hull draft)))
-        derived (when root (model/slots database (:hull draft) (:assignments draft)))
+        derived (when root (model/slots database (:hull draft) (:assignments draft) draft))
         target (first (filter #(= slot (:id %)) (:slots derived)))
         candidate (when part-id (catalog/part database part-id))
         error (cond
@@ -22,16 +22,19 @@
                 (= op :hull) (or (model/root-error candidate)
                                  (when-not (available part-id) :unavailable-mesh))
                 (nil? (:hull draft)) :no-draft
+                (= op :compatibility) (when-not (boolean? allow-other-factions?) :invalid-compatibility)
                 (= op :clear) (when-not (contains? (:assignments draft) slot) :stale-slot)
                 (not= op :assign) :unknown-operation
                 (nil? target) :stale-slot
                 :else (or (model/candidate-error root (:parent-role target) (:mount target)
-                                                 (:ancestors target) candidate)
+                                                 (:ancestors target) candidate draft)
                           (when-not (available part-id) :unavailable-mesh)))
         next-draft (when-not error
                      (case op
                        :reset (assoc empty-draft :revision (inc revision))
                        :hull {:revision (inc revision) :hull part-id :assignments {}}
+                       :compatibility (-> draft (update :revision inc)
+                                          (assoc :allow-other-factions? allow-other-factions?))
                        :clear (-> draft
                                   (update :revision inc)
                                   (update :assignments model/prune slot))
@@ -39,11 +42,13 @@
                                    (update :revision inc)
                                    (update :assignments #(assoc (model/prune % slot) slot part-id)))))
         next-model (when (:hull next-draft)
-                     (model/slots database (:hull next-draft) (:assignments next-draft)))
+                     (model/slots database (:hull next-draft) (:assignments next-draft) next-draft))
         assigned-errors (filter #(contains? (:assignments next-draft) (:slot %)) (:errors next-model))
         missing (when (= op :assign)
                   (first (remove available (cons (:hull next-draft) (vals (:assignments next-draft))))))
-        error (or error (when (seq assigned-errors) :stale-draft)
+        error (or error (when (and (= op :compatibility) (not allow-other-factions?)
+                                   (some #(= :different-bundle (:code %)) assigned-errors)) :other-factions-in-use)
+                  (when (seq assigned-errors) :stale-draft)
                   (when missing :unavailable-mesh))]
     (if error
       {:draft draft :error error :diagnostics (vec assigned-errors)
@@ -56,7 +61,7 @@
   (if-not (:hull draft)
     {}
     (let [root (catalog/part database (:hull draft))
-          {:keys [slots errors]} (model/slots database (:hull draft) (:assignments draft))
+          {:keys [slots errors]} (model/slots database (:hull draft) (:assignments draft) draft)
           invalid (set (map :slot errors))]
       (if (model/root-error root)
         {}
@@ -145,7 +150,7 @@
                      (if-let [root (catalog/part database (:hull draft))]
                        {[] {:matrix (geom/orientation-matrix (:part/orientation root))}}
                        {}))
-        {:keys [slots]} (model/slots database (:hull draft) (:assignments draft))]
+        {:keys [slots]} (model/slots database (:hull draft) (:assignments draft) draft)]
     (into {}
           (keep (fn [{:keys [id parent mount]}]
                   (when-let [parent-matrix (get-in placements [parent :matrix])]

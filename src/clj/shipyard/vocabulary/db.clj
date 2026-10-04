@@ -9,7 +9,7 @@
   (store/read! database
                (fn [db]
                  (reduce (fn [m [field value]] (update m field (fnil conj #{}) value))
-                         {:bundle #{} :class #{} :role (set (map name t/roles))}
+                         t/builtins
                          (d/q '[:find ?field ?value :where [?e :vocabulary/field ?field]
                                 [?e :vocabulary/value ?value]] db)))))
 

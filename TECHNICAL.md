@@ -2059,11 +2059,22 @@ The current catalog stores a durable `:part/role-override` as `:part/role-hint` 
 regardless of whether its source is `:manual`, `:inferred` or `:class`; a manual role
 overrides scan inference. Filter the immutable catalog for accepted roles, then validate exactly
 one plug, finite orthonormal frames, renderability and
-source availability. Bundle AND class must match the root. Missing class is a value
-for this comparison only: two classless parts match only in the same bundle.
-Single-ship bundles are self-contained, including their manually joined hull sections.
+source availability. Bundle must match the root unless the draft's
+`:allow-other-factions?` setting is true. Class must match the root unless the candidate
+has the built-in `Universal` class. Missing class is an ordinary value, not a wildcard;
+Universal candidates also work on classless hulls. The shared model receives the same
+explicit options for candidate lists, assignments, nested slots, placements, mount
+markers and saved-class validation. Disabling cross-faction use validates the whole
+tree and rejects foreign assignments without pruning the draft. The checkbox is a
+revision-guarded server mutation; it does not create a browser model store.
 Selecting a root requires a renderable `:hull` or `:hull-section`. Save, preview, edit
 and duplicate reuse these assembly rules without imposing a manual-role requirement.
+
+Save stores the optional `:loadout/allow-other-factions?` boolean on the loadout entity.
+Missing values default false. Edit, Duplicate, previews and named ships carry it into
+their own draft projections. Canonical draft saves omit false, and dirty detection
+treats explicit false as equivalent to absence. Universal is owned by the shared
+vocabulary built-ins and cannot be renamed or deleted in Settings.
 
 The Integrant-managed draft is immutable data held in one atom, with no durable writes:
 
@@ -2174,6 +2185,7 @@ draft as EDN data and the viewport commands as the event above.
 | POST /assembly/hull | part-id, revision | New root, empty assignments |
 | POST /assembly/assign | slot, part-id, revision | Validated assignment/replacement |
 | POST /assembly/clear | slot, revision | Remove assignment and descendants |
+| POST /assembly/compatibility | revision, optional allow-other-factions=true | Validate and update faction permission; unchecked means false |
 | POST /assembly/reset | revision | Empty draft |
 
 Malformed transport returns 400 through middleware. Recoverable domain errors render

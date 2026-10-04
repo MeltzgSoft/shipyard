@@ -471,9 +471,13 @@ Candidates need a role accepted by the socket, exactly one valid plug, and an
 available unsupported mesh source. Roles may come from a manual override, a folder,
 or filename inference; manual overrides take precedence. Save, preview, edit and
 duplicate use the same role and compatibility rules as Assemble. Candidates must
-share the root's bundle and class. Single-ship bundles are
-self-contained: absent class matches absent class within that same bundle, never
-another bundle. Multi-section ships use one manually selected root hull and authored
+share the root's bundle unless the assembly enables **Allow parts from other factions**.
+Candidates must match the root's class, except parts classified as **Universal** can
+be used with any hull class. Universal does not bypass the faction setting. An absent
+class matches another absent class; it is not a wildcard. The faction setting defaults
+off, is saved with the reusable class, and applies to nested parts and all saved-class
+operations. Disabling it while foreign-faction parts are assigned is rejected without
+changing the draft or removing parts. Multi-section ships use one manually selected root hull and authored
 plugs/sockets joining its sections; filenames never imply those attachments.
 
 The draft retains its working name and optional saved-class identity in memory.
@@ -486,6 +490,7 @@ A reusable ship class: a named hull and slot configuration. Named painted ships 
 {:loadout/id      #uuid "…"
  :loadout/name    "Dominator-pattern, Voss ram"
  :loadout/hull    "human-navy/cruiser/hull"
+ :loadout/allow-other-factions? true ; optional, absent means false
  :loadout/slots   {[[:prow 0]]   "human-navy/cruiser/voss-ram-prow"
                    [[:bridge 0]] "human-navy/cruiser/bridge"
                    [[:port-1 0]] "human-navy/cruiser/lance-battery"

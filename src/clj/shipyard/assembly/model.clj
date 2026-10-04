@@ -2,7 +2,8 @@
   "Pure catalog queries and authored assembly decisions. No filesystem or mutable state."
   (:require [shipyard.catalog.db :as db]
             [shipyard.mount.split :as split]
-            [shipyard.mount.wizard :as wizard]))
+            [shipyard.mount.wizard :as wizard]
+            [shipyard.vocabulary.transforms :as vocabulary]))
 
 (defn root-error [part]
   (cond
@@ -35,28 +36,33 @@
 
 (defn candidate-error
   "First authoritative rejection reason, independent of browser hints or scene state."
-  [root parent-role parent-mount ancestors candidate]
-  (let [attachment-mounts (attachment-mounts parent-role parent-mount candidate)
-        socket? (= :socket (:mount/kind parent-mount))]
-    (cond
-      (nil? (:part/id candidate)) :missing-part
-      (not (and (:part/renderable candidate) (:part/source candidate))) :unavailable-mesh
-      (not= (:part/bundle root) (:part/bundle candidate)) :different-bundle
-      (not= (:part/class root) (:part/class candidate)) :different-class
-      (and socket? (not (contains? (set (:mount/accepts parent-mount)) (:part/role-hint candidate)))) :incompatible-role
-      (not= 1 (count attachment-mounts)) (if socket? :plug-count :socket-count)
-      (not (wizard/valid-frame? (first attachment-mounts))) (if socket? :invalid-plug :invalid-socket)
-      (contains? (set ancestors) (:part/id candidate)) :cycle
-      :else nil)))
+  ([root parent-role parent-mount ancestors candidate]
+   (candidate-error root parent-role parent-mount ancestors candidate {}))
+  ([root parent-role parent-mount ancestors candidate {:keys [allow-other-factions?]}]
+   (let [attachment-mounts (attachment-mounts parent-role parent-mount candidate)
+         socket? (= :socket (:mount/kind parent-mount))]
+     (cond
+       (nil? (:part/id candidate)) :missing-part
+       (not (and (:part/renderable candidate) (:part/source candidate))) :unavailable-mesh
+       (and (not allow-other-factions?) (not= (:part/bundle root) (:part/bundle candidate))) :different-bundle
+       (and (not= vocabulary/universal-class (some-> (:part/class candidate) name))
+            (not= (:part/class root) (:part/class candidate))) :different-class
+       (and socket? (not (contains? (set (:mount/accepts parent-mount)) (:part/role-hint candidate)))) :incompatible-role
+       (not= 1 (count attachment-mounts)) (if socket? :plug-count :socket-count)
+       (not (wizard/valid-frame? (first attachment-mounts))) (if socket? :invalid-plug :invalid-socket)
+       (contains? (set ancestors) (:part/id candidate)) :cycle
+       :else nil))))
 
 (defn candidates
   "Select accepted part roles from the immutable catalog; return only valid candidates."
-  [database root parent-role parent-mount ancestors]
-  (let [parts (db/browse database {:bundle (:part/bundle root)})]
-    (->> parts
-         (remove #(candidate-error root parent-role parent-mount ancestors %))
-         (sort-by :part/id)
-         (vec))))
+  ([database root parent-role parent-mount ancestors]
+   (candidates database root parent-role parent-mount ancestors {}))
+  ([database root parent-role parent-mount ancestors options]
+   (let [parts (db/browse database (when-not (:allow-other-factions? options) {:bundle (:part/bundle root)}))]
+     (->> parts
+          (remove #(candidate-error root parent-role parent-mount ancestors % options))
+          (sort-by :part/id)
+          (vec)))))
 
 (defn descendant?
   "Whether child is strictly below parent; paths use stable mount ids and ordinals."
@@ -72,60 +78,61 @@
 (defn slots
   "Enumerate reachable slot instances deterministically, diagnosing stale/cyclic authoring.
   Invalid subtrees are not traversed; independent valid mount faces remain visible."
-  [database hull-id assignments]
-  (let [root (when hull-id (db/part database hull-id))
-        errors (fn [code path part-id] {:code code :slot path :part-id part-id})]
-    (if-let [error (root-error root)]
-      {:slots [] :errors [(errors error [] hull-id)]}
-      (loop [pending [[[] root [hull-id] nil]] result [] problems []]
-        (if-let [[parent part ancestors upstream-role] (first pending)]
-          (let [mounts (->> (:part/mounts part)
-                            (filter #(or (= :socket (:mount/kind %))
-                                         (and (empty? parent) (= :plug (:mount/kind %)))))
-                            (remove #(and upstream-role
-                                          (= :socket (:mount/kind %))
-                                          (contains? (set (:mount/accepts %)) upstream-role)))
-                            (sort-by (comp str :mount/id)))
-                duplicate-ids (->> mounts (map :mount/id) (frequencies)
-                                   (keep (fn [[id n]] (when (> n 1) id))) (set))
-                expanded
-                (mapv (fn [mount]
-                        (let [socket? (= :socket (:mount/kind mount))
-                              section (when (wizard/valid-frame? mount)
-                                        (if socket? (split/sections mount) {:frames [mount]}))
-                              error (cond
-                                      (or (nil? (:mount/id mount))
-                                          (duplicate-ids (:mount/id mount))) :duplicate-mount-id
-                                      (not (wizard/valid-frame? mount)) (if socket? :invalid-socket :invalid-plug)
-                                      (:error section) (:error section))]
-                          (if error
-                            {:errors [(errors error parent (:part/id part))]}
-                            {:slots (mapv (fn [ordinal frame]
-                                            (let [id (conj parent [(:mount/id mount) ordinal])]
-                                              {:id id :parent parent :part-id (:part/id part)
-                                               :mount frame :parent-role (:part/role-hint part)
-                                               :ancestors ancestors
-                                               :assigned (get assignments id)}))
-                                          (range) (:frames section))}))) mounts)
-                next-slots (vec (mapcat :slots expanded))
-                assigned (filter :assigned next-slots)
-                checked (mapv (fn [{:keys [id mount parent-role assigned] :as slot}]
-                                (let [child (db/part database assigned)
-                                      error (or (candidate-error root parent-role mount ancestors child)
-                                                (when (>= (count id) 16) :nesting-limit))]
-                                  (if error
-                                    {:error (errors error id assigned)}
-                                    {:pending [id child (conj (:ancestors slot) assigned)
-                                               (:part/role-hint part)]})))
-                              assigned)]
-            (if (> (+ (count result) (count next-slots)) 4096)
-              {:slots result :errors (conj problems (errors :slot-limit parent (:part/id part)))}
-              (recur (into (vec (rest pending)) (keep :pending checked))
-                     (into result next-slots)
-                     (into problems (concat (mapcat :errors expanded) (keep :error checked))))))
-          (let [reachable (set (map :id result))]
-            {:slots result
-             :errors (into problems
-                           (for [[path part-id] (sort-by (comp pr-str key) assignments)
-                                 :when (not (reachable path))]
-                             (errors :stale-slot path part-id)))}))))))
+  ([database hull-id assignments] (slots database hull-id assignments {}))
+  ([database hull-id assignments options]
+   (let [root (when hull-id (db/part database hull-id))
+         errors (fn [code path part-id] {:code code :slot path :part-id part-id})]
+     (if-let [error (root-error root)]
+       {:slots [] :errors [(errors error [] hull-id)]}
+       (loop [pending [[[] root [hull-id] nil]] result [] problems []]
+         (if-let [[parent part ancestors upstream-role] (first pending)]
+           (let [mounts (->> (:part/mounts part)
+                             (filter #(or (= :socket (:mount/kind %))
+                                          (and (empty? parent) (= :plug (:mount/kind %)))))
+                             (remove #(and upstream-role
+                                           (= :socket (:mount/kind %))
+                                           (contains? (set (:mount/accepts %)) upstream-role)))
+                             (sort-by (comp str :mount/id)))
+                 duplicate-ids (->> mounts (map :mount/id) (frequencies)
+                                    (keep (fn [[id n]] (when (> n 1) id))) (set))
+                 expanded
+                 (mapv (fn [mount]
+                         (let [socket? (= :socket (:mount/kind mount))
+                               section (when (wizard/valid-frame? mount)
+                                         (if socket? (split/sections mount) {:frames [mount]}))
+                               error (cond
+                                       (or (nil? (:mount/id mount))
+                                           (duplicate-ids (:mount/id mount))) :duplicate-mount-id
+                                       (not (wizard/valid-frame? mount)) (if socket? :invalid-socket :invalid-plug)
+                                       (:error section) (:error section))]
+                           (if error
+                             {:errors [(errors error parent (:part/id part))]}
+                             {:slots (mapv (fn [ordinal frame]
+                                             (let [id (conj parent [(:mount/id mount) ordinal])]
+                                               {:id id :parent parent :part-id (:part/id part)
+                                                :mount frame :parent-role (:part/role-hint part)
+                                                :ancestors ancestors
+                                                :assigned (get assignments id)}))
+                                           (range) (:frames section))}))) mounts)
+                 next-slots (vec (mapcat :slots expanded))
+                 assigned (filter :assigned next-slots)
+                 checked (mapv (fn [{:keys [id mount parent-role assigned] :as slot}]
+                                 (let [child (db/part database assigned)
+                                       error (or (candidate-error root parent-role mount ancestors child options)
+                                                 (when (>= (count id) 16) :nesting-limit))]
+                                   (if error
+                                     {:error (errors error id assigned)}
+                                     {:pending [id child (conj (:ancestors slot) assigned)
+                                                (:part/role-hint part)]})))
+                               assigned)]
+             (if (> (+ (count result) (count next-slots)) 4096)
+               {:slots result :errors (conj problems (errors :slot-limit parent (:part/id part)))}
+               (recur (into (vec (rest pending)) (keep :pending checked))
+                      (into result next-slots)
+                      (into problems (concat (mapcat :errors expanded) (keep :error checked))))))
+           (let [reachable (set (map :id result))]
+             {:slots result
+              :errors (into problems
+                            (for [[path part-id] (sort-by (comp pr-str key) assignments)
+                                  :when (not (reachable path))]
+                              (errors :stale-slot path part-id)))})))))))

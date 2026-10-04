@@ -73,10 +73,12 @@
       (:part/regions entity) (assoc :part/paint-regions (region (:part/regions entity) shared)))))
 
 (defn loadout-value [entity]
-  {:loadout/id (:loadout/id entity) :loadout/name (:loadout/name entity)
-   :loadout/hull (get-in entity [:loadout/hull :part/id])
-   :loadout/slots (into {} (map (fn [slot] [(:slot/path slot) (get-in slot [:slot/part :part/id])]))
-                        (:loadout/slots entity))})
+  (cond-> {:loadout/id (:loadout/id entity) :loadout/name (:loadout/name entity)
+           :loadout/hull (get-in entity [:loadout/hull :part/id])
+           :loadout/slots (into {} (map (fn [slot] [(:slot/path slot) (get-in slot [:slot/part :part/id])]))
+                                (:loadout/slots entity))}
+    (contains? entity :loadout/allow-other-factions?)
+    (assoc :loadout/allow-other-factions? (:loadout/allow-other-factions? entity))))
 
 (defn scheme-value [entity]
   {:scheme/id (:scheme/id entity) :scheme/name (:scheme/name entity)

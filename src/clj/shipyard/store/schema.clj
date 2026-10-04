@@ -21,7 +21,7 @@
                 :scheme/revision :ship/revision :loadout/revision :group/order :membership/order :fleet-entry/order :mount/capacity :mount/order])
    (attributes :db.type/boolean
                [:source/present? :part/present? :part/renderable :part/weapons? :part/turrets?
-                :part/accepts-turrets? :layer/deleted? :scheme/deleted? :loadout/deleted?
+                :part/accepts-turrets? :layer/deleted? :scheme/deleted? :loadout/deleted? :loadout/allow-other-factions?
                 :ship/deleted? :layer/builtin?])
    (attributes :db.type/keyword
                [:part/source :part/role-hint :part/role-source :part/role-override :mount/id :mount/kind

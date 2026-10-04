@@ -219,12 +219,17 @@
         old (d/pull @conn '[*] [:loadout/id id])]
     (d/transact! conn
                  (concat (retract-children @conn [:loadout/id id] [:loadout/slots])
-                         [{:loadout/id id :loadout/name (:loadout/name record)
-                           :loadout/deleted? false :loadout/revision (inc (or (:loadout/revision old) 0))
-                           :loadout/library [:library/id library]
-                           :loadout/hull (get parts (:loadout/hull record))
-                           :loadout/slots (mapv (fn [[path part]] {:slot/path path :slot/part (get parts part)})
-                                                (:loadout/slots record))}]))))
+                         (when (and (contains? old :loadout/allow-other-factions?)
+                                    (not (contains? record :loadout/allow-other-factions?)))
+                           [[:db/retract [:loadout/id id] :loadout/allow-other-factions? (:loadout/allow-other-factions? old)]])
+                         [(cond-> {:loadout/id id :loadout/name (:loadout/name record)
+                                   :loadout/deleted? false :loadout/revision (inc (or (:loadout/revision old) 0))
+                                   :loadout/library [:library/id library]
+                                   :loadout/hull (get parts (:loadout/hull record))
+                                   :loadout/slots (mapv (fn [[path part]] {:slot/path path :slot/part (get parts part)})
+                                                        (:loadout/slots record))}
+                            (contains? record :loadout/allow-other-factions?)
+                            (assoc :loadout/allow-other-factions? (:loadout/allow-other-factions? record)))]))))
 
 (defn put-scheme! [conn library record]
   (let [library (or (get-in (d/pull @conn [{:scheme/library [:library/id]}] [:scheme/id (:scheme/id record)]) [:scheme/library :library/id]) library)
