@@ -1741,7 +1741,13 @@ cut dimensions, recovers oriented boundary loops from face triangles, projects
 source-space frames and derives cylinder wireframes at capacity-section centers.
 
 `pitting.geometry` validates closed, consistently wound positive-volume source
-meshes and subtracts cuts using JCSG. JTS even-odd polygons, a negative mitered
+surfaces and subtracts cuts using JCSG. Each directed edge must have the same
+number of opposing uses, allowing balanced shared edges where closed sheets
+meet. Duplicate faces (regardless of winding), open edges, unbalanced winding,
+degenerate/nonfinite faces and nonpositive signed volume remain invalid. Inward
+cavity shells retain their winding. This validation does not fill holes, move
+vertices, repair self-intersections or require a manifold boundary; source
+coordinates remain unchanged. JTS even-odd polygons, a negative mitered
 buffer and polygon triangulation produce recesses that preserve concave face
 boundaries and holes; pits use 64 circular segments. Cutters extend from 0.02 mm
 outside the face to the requested inward depth. JCSG's polygon-bound optimization

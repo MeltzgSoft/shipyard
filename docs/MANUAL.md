@@ -75,6 +75,12 @@ Supported-only parts remain catalogued but do not appear in the regular Part Bro
 Parts with both supported and unsupported files appear once, using the unsupported
 geometry. Pitted-only parts remain listed with no preview.
 
+Physical cut geometry accepts closed surfaces whose shared edges have balanced
+opposing faces, including edge-touching shells. Open boundaries, inconsistent
+winding, duplicate or degenerate faces still require repair in a mesh tool.
+Source coordinates are preserved; cut generation does not fill holes or resolve
+self-intersections.
+
 ### Importing a ZIP archive
 
 Choose your library folder first. In **Part Browser**, click **Import ZIP…**.

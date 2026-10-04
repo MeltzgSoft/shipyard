@@ -65,4 +65,32 @@
       (is (not (geometry/closed-source? (conj triangles (first triangles)))))
       (is (not (geometry/closed-source? (assoc triangles 0 (vec (reverse (first triangles)))))))
       (is (not (geometry/closed-source? (mapv (comp vec reverse) triangles))))
-      (is (not (geometry/closed-source? []))))))
+      (is (not (geometry/closed-source? (conj triangles [[0 0 0] [1 0 0] [1 0 0]]))))
+      (is (not (geometry/closed-source? (assoc-in triangles [0 0 0] Double/NaN))))
+      (is (not (geometry/closed-source? [])))))
+  (testing "balanced edge-touching surfaces are closed, but duplicated solids are not"
+    (let [triangles (f/edge-touching-cubes 2.0)]
+      (is (geometry/closed-source? triangles))
+      (is (not (geometry/closed-source? (rest triangles))))
+      (is (not (geometry/closed-source? (assoc triangles 0 (vec (reverse (first triangles))))))))
+    (let [triangles (geometry/mesh-triangles cube)]
+      (is (not (geometry/closed-source? (into triangles triangles))))))
+  (testing "inward cavity shells retain their winding"
+    (let [triangles (into (f/cube 4.0) (map (comp vec reverse) (f/cube 2.0)))]
+      (is (geometry/closed-source? triangles))
+      (is (near? 56.0 (volume triangles))))))
+
+(deftest subtract-edge-touching-surfaces-test
+  (let [triangles (f/edge-touching-cubes 2.0)
+        mesh (stl/parse-bytes (f/->binary-stl triangles))
+        pit (assoc frame :mount/cut {:kind :pit :depth 0.5 :diameter 0.5})
+        recess (assoc frame :mount/outline [[[-1 -1 1] [1 -1 1] [1 1 1] [-1 1 1]]]
+                      :mount/cut {:kind :recess :depth 0.5 :border 0.25})]
+    (doseq [[mount removed] [[pit (* Math/PI 0.25 0.25 0.5)] [recess (* 1.5 1.5 0.5)]]]
+      (let [result (geometry/subtract mesh [mount])
+            points (apply concat result)]
+        (is (near? (- 16 removed) (volume result)))
+        (is (every? math/finite-number? (apply concat points)))
+        (is (= [-1.0 -1.0 -1.0] (mapv #(apply min (map (fn [p] (nth p %)) points)) (range 3))))
+        (is (= [3.0 3.0 1.0] (mapv #(apply max (map (fn [p] (nth p %)) points)) (range 3))))
+        (is (some #(near? 0.5 (last %)) points))))))

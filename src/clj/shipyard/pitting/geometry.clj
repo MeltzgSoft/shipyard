@@ -95,7 +95,11 @@
          (every? (fn [[a b c]]
                    (and (every? math/finite-number? (apply concat [a b c]))
                         (> (math/length (math/cross (math/subtract b a) (math/subtract c a))) 1.0e-12))) triangles)
-         (every? (fn [[[a b] count]] (and (= 1 count) (= 1 (get edges [b a])))) edges))))
+         ;; A closed oriented surface can have several sheets meeting along an
+         ;; edge. They remain closed when every directed use has an opposing
+         ;; use; requiring exactly two faces rejects edge-touching solids.
+         (= (count triangles) (count (set (map #(vec (sort %)) triangles))))
+         (every? (fn [[[a b] count]] (= count (get edges [b a]))) edges))))
 
 (defn subtract
   "Subtract every enabled mount cut from the original closed source mesh."

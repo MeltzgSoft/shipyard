@@ -65,6 +65,12 @@
     {:min (mapv (fn [k] (apply min (map #(nth % k) pts))) [0 1 2])
      :max (mapv (fn [k] (apply max (map #(nth % k) pts))) [0 1 2])}))
 
+(defn edge-touching-cubes
+  "Two outward cubes sharing one edge, with four faces incident on that edge."
+  [size]
+  (let [triangles (cube size) shift (double size)]
+    (into triangles (map (fn [triangle] (mapv (fn [[x y z]] [(+ x shift) (+ y shift) z]) triangle)) triangles))))
+
 (defn ->binary-stl
   "Encode triangles as a binary STL. `header` lets a test plant the classic trap
   of a binary file whose header text begins with \"solid\"."
