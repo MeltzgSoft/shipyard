@@ -6,6 +6,7 @@
             [shipyard.assembly-fixture :as fixture]
             [shipyard.catalog.db :as catalog]
             [shipyard.e2e.support :as s]
+            [shipyard.http.urls :as urls]
             [shipyard.loadout-fixture :as lf]
             [shipyard.loadout.db :as store]
             [shipyard.loadout.operations :as operations])
@@ -131,19 +132,20 @@
   (let [started (fixture/start! true) driver (s/make-driver)
         held (atom nil) ^Page page (:page driver)]
     (try
-      (.route page "**/parts/metadata/individual"
+      (s/go! driver (s/base-url (:system started)))
+      (s/wait-visible! driver "#bulk-orient-results .bulk-orient__row")
+      (s/open-part! driver "bridge")
+      (s/await-part driver (:bridge fixture/ids))
+      ;; Saves now lock navigation. Hold an independent part refresh instead,
+      ;; exercising stale response admission without bypassing the write lock.
+      (.route page (str "**" (urls/part-url (:bridge fixture/ids)))
               (reify Consumer
                 (accept [_ value]
                   (let [^Route route value]
                     (if (nil? @held)
                       (let [response (.fetch route)] (reset! held [route response]))
                       (.resume route))))))
-      (s/go! driver (s/base-url (:system started)))
-      (s/wait-visible! driver "#bulk-orient-results .bulk-orient__row")
-      (s/js driver "() => { window.lateCompleted=false; window.lateCaptured=false; document.body.addEventListener('htmx:beforeRequest', e => { if(!window.lateCaptured && e.detail.pathInfo.requestPath.includes('/parts/metadata/individual')) { window.lateCaptured=true; e.detail.xhr.addEventListener('loadend', () => window.lateCompleted=true); } }); }")
-      (s/open-part! driver "bridge")
-      (s/await-part driver (:bridge fixture/ids))
-      (s/click! driver ".part-metadata__form button:text-is('Save metadata')")
+      (s/js driver "() => { window.lateCompleted=false; document.body.addEventListener('htmx:beforeRequest', e => { if(e.detail.pathInfo.requestPath.startsWith('/part/')) e.detail.xhr.addEventListener('loadend', () => window.lateCompleted=true); }, {once:true}); htmx.ajax('GET', '/part/' + document.querySelector('.part-metadata__form input[name=part-id]').value.split('/').map(encodeURIComponent).join('/'), '#detail'); }")
       (is (s/wait-until #(do (s/stats driver) (some? @held))))
       (switch! driver "assembly")
       (s/wait-visible! driver ".assembly__hull")
