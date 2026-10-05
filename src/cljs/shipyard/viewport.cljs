@@ -566,11 +566,11 @@
 
 (defn- alignment-object [mount length]
   (when-let [points (alignment/line mount length)]
-    (doto (three/Line.
-           (doto (three/BufferGeometry.) (.setFromPoints (into-array (map v3 points))))
-           (three/LineBasicMaterial. #js {:color 0xffffff :depthTest false :depthWrite false}))
-      (aset "name" "mount-alignment")
-      (aset "renderOrder" 1100))))
+    (let [arrow (three/ArrowHelper. (v3 (alignment/direction mount)) (v3 (first points))
+                                    (* 2.0 length) 0xffffff (* length 0.3) (* length 0.14))]
+      (aset arrow "name" "mount-alignment")
+      (.traverse arrow (fn [^js child] (set! (.-renderOrder child) 1100)))
+      (frontmost! arrow))))
 
 (defn- interface-highlight-object [^js obj mesh-key mount mirror-source mirror]
   (let [interface-type (interface-colors/type-of mount)
@@ -1439,9 +1439,10 @@
       (.traverse object
                  (fn [^js child]
                    (when (= "mount-alignment" (.-name child))
-                     (let [points (.getAttribute (.-geometry child) "position")]
-                       (swap! lines conj (mapv (fn [i] [(.getX points i) (.getY points i) (.getZ points i)])
-                                               (range (.-count points)))))))))
+                     ;; ArrowHelper's cone origin is the actual rendered tip.
+                     (let [tail (.worldToLocal object (.getWorldPosition child (three/Vector3.)))
+                           tip (.worldToLocal object (.getWorldPosition (.-cone child) (three/Vector3.)))]
+                       (swap! lines conj [(vec (.toArray tail)) (vec (.toArray tip))]))))))
     @lines))
 
 (defn- preview-stats [{:keys [preview]}]

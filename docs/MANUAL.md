@@ -321,14 +321,15 @@ When the preview looks right, fill in the mount form:
   Human Navy Cruiser weapon sockets use capacity `2`.
 - **Twist** rotates the `+X` and `+Y` directions around the fixed outward `+Z` normal
   before saving. Most mounts should remain at zero once the part orientation is correct.
-- **Alignment axis** chooses **None**, **Horizontal (+X)** or **Vertical (+Y)** in the
-  mount plane. A white line previews the choice; **Twist** rotates that line. Set an
-  axis on both the socket and its mating plug to make their lines parallel in Assembly.
-  The child rotates about the mating-face normal while staying on the mount. The line
-  has no arrow, so Shipyard uses the smaller turn and treats opposite directions as
-  already aligned. For a battery that needs a quarter turn, choose Horizontal on one
-  mount and Vertical on the other; inspect the line previews before saving.
-  Saved mounts reopen with their axis selected. Choose None and **Save changes** to
+- **Alignment axis** chooses **None**, **Horizontal (+X)**, **Horizontal (−X)**,
+  **Vertical (+Y)** or **Vertical (−Y)** in the mount plane. A white arrow previews the
+  selected direction; **Twist** rotates it. Set a direction on both the socket and its
+  mating plug to make their arrows point the same way in Assembly. The child rotates
+  about the mating-face normal while staying on the mount. Opposite arrows require a
+  half turn. For a battery that needs a quarter turn, choose a horizontal direction on
+  one mount and a vertical direction on the other. Reverse the sign to turn the battery
+  toward the other side; inspect both arrow previews before saving.
+  Saved mounts reopen with their direction selected. Choose None and **Save changes** to
   clear it. If either mating mount is None, assembly uses its usual placement rule.
 - **Mirror** creates a linked second socket by reflecting the picked frame across a symmetry
   plane. Human Navy Cruiser hulls use the X plane at offset `0`; change the plane or

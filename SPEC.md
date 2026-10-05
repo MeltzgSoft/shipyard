@@ -189,16 +189,18 @@ the parent outward axis, default 0 - the virtual model mates flush, but a small 
 value can represent the physical standoff introduced by magnets if that turns out to
 matter visually.
 
-Mounts may additionally set an optional **Alignment axis**: **Horizontal** is the
-mount's in-plane +X (`roll`) line and **Vertical** is its +Y (`axis × roll`) line.
-These are undirected lines, not arrows. If both mating mounts set an axis, assembly
-adds the smaller turn about the parent outward normal to make those lines parallel.
-Antiparallel lines already agree. This explicit constraint may override the child's
-configured top; face mating, the gap and mount positions remain unchanged. Twist
-adjusts the authored line. If either axis is unset, that join uses the existing
-normal/forward rule. An ancestor's alignment correction is inherited by its descendants,
-including joins without their own alignment constraint. Incompatible face normals
-still require correcting the part orientation; alignment does not bypass that validation.
+Mounts may additionally set an optional directed **Alignment axis**: **Horizontal (+X)**
+is the mount's `roll` direction, **Horizontal (−X)** its opposite, **Vertical (+Y)**
+is `axis × roll`, and **Vertical (−Y)** its opposite. If both mating mounts set a
+direction, assembly turns the child about the parent outward normal until the arrows
+point the same way. Opposite arrows require a 180° turn; parallel but reversed axes
+do not satisfy the constraint. The signed turn lies in [-π, π]. This explicit
+constraint may override the child's configured top; face mating, the gap and mount
+positions remain unchanged. Twist adjusts the authored arrow. If either axis is unset,
+that join uses the existing normal/forward rule. An ancestor's alignment correction
+is inherited by its descendants, including joins without their own constraint.
+Incompatible face normals still require correcting the part orientation; alignment
+does not bypass that validation.
 
 Frames are persisted in source mesh coordinates. The root matrix is its
 source-to-canonical orientation; every child matrix already includes its saved pose and

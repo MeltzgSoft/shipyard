@@ -333,7 +333,7 @@
          existing-base (when base-id (mount-by-id existing-mounts base-id))
          alignment-axis (parse-keyword (get params "alignment-axis"
                                             (some-> (:mount/alignment-axis existing-base) (name)))
-                                       [:none :horizontal :vertical])
+                                       [:none :horizontal :horizontal-negative :vertical :vertical-negative])
          existing-mirror (linked-mount existing-mounts existing-base)
          replaced-ids (cond-> (if base-id #{base-id} #{})
                         existing-mirror (conj (:mount/id existing-mirror)))
@@ -360,7 +360,7 @@
        (:error cutting) cutting
 
        (and (contains? params "alignment-axis") (nil? alignment-axis))
-       {:error "Choose None, Horizontal, or Vertical for mount alignment."}
+       {:error "Choose None or a signed Horizontal/Vertical direction for mount alignment."}
 
        (and update? (nil? original-mount-id))
        {:error "Choose a mount to edit."}

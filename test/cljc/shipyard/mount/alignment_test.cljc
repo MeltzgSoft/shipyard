@@ -6,9 +6,9 @@
 (def mount {:mount/pos [1.0 2.0 3.0] :mount/axis [0.0 0.0 1.0] :mount/roll [1.0 0.0 0.0]})
 
 (deftest valid?-test
-  (testing "absence is legacy; only authored horizontal/vertical axes are accepted"
+  (testing "absence is legacy; only authored signed horizontal/vertical axes are accepted"
     (is (alignment/valid? mount))
-    (doseq [axis [:horizontal :vertical]] (is (alignment/valid? (assoc mount :mount/alignment-axis axis))))
+    (doseq [axis [:horizontal :horizontal-negative :vertical :vertical-negative]] (is (alignment/valid? (assoc mount :mount/alignment-axis axis))))
     (doseq [axis [nil :none :diagonal "horizontal"]]
       (is (false? (alignment/valid? (assoc mount :mount/alignment-axis axis)))))))
 
@@ -16,12 +16,18 @@
   (is (nil? (alignment/direction mount)))
   (is (= [1.0 0.0 0.0] (alignment/direction (assoc mount :mount/alignment-axis :horizontal))))
   (is (= [0.0 1.0 0.0] (alignment/direction (assoc mount :mount/alignment-axis :vertical))))
+  (is (= [-1.0 0.0 0.0] (alignment/direction (assoc mount :mount/alignment-axis :horizontal-negative))))
+  (is (= [0.0 -1.0 0.0] (alignment/direction (assoc mount :mount/alignment-axis :vertical-negative))))
   (is (thrown? #?(:clj Exception :cljs js/Error) (alignment/direction (assoc mount :mount/alignment-axis :bad)))))
 
 (deftest line-test
   (is (nil? (alignment/line mount 2.0)))
   (is (= [[-1.0 2.0 3.0] [3.0 2.0 3.0]] (alignment/line (assoc mount :mount/alignment-axis :horizontal) 2.0)))
   (is (= [[1.0 0.0 3.0] [1.0 4.0 3.0]] (alignment/line (assoc mount :mount/alignment-axis :vertical) 2.0))))
+
+(deftest negative-arrow-endpoints-test
+  (is (= [[3.0 2.0 3.0] [-1.0 2.0 3.0]] (alignment/line (assoc mount :mount/alignment-axis :horizontal-negative) 2.0)))
+  (is (= [[1.0 4.0 3.0] [1.0 0.0 3.0]] (alignment/line (assoc mount :mount/alignment-axis :vertical-negative) 2.0))))
 
 (deftest capacity-sections-retain-alignment-test
   (let [socket (assoc mount :mount/alignment-axis :vertical :mount/capacity 2

@@ -348,14 +348,15 @@
 
 (deftest alignment-axis-authoring-test
   (testing "create, preview, mirror and edit carry the authored axis"
-    (let [request (params {"alignment-axis" "horizontal" "mirror" "true" "mirror-plane" "x" "mirror-offset" "0"})
-          saved (wizard/save-request request [])
-          mount (:mount saved)]
-      (is (nil? (:error saved)))
-      (is (= :horizontal (:mount/alignment-axis mount)))
-      (is (= :horizontal (get-in saved [:mirrored-mount :mount/alignment-axis])))
-      (is (= :horizontal (:alignment-axis (wizard/preview-values request))))
-      (is (= :horizontal (:alignment-axis (wizard/mount-values mount))))))
+    (doseq [axis [:horizontal :horizontal-negative :vertical :vertical-negative]]
+      (let [request (params {"alignment-axis" (name axis) "mirror" "true" "mirror-plane" "x" "mirror-offset" "0"})
+            saved (wizard/save-request request [])
+            mount (:mount saved)]
+        (is (nil? (:error saved)))
+        (is (= axis (:mount/alignment-axis mount)))
+        (is (= axis (get-in saved [:mirrored-mount :mount/alignment-axis])))
+        (is (= axis (:alignment-axis (wizard/preview-values request))))
+        (is (= axis (:alignment-axis (wizard/mount-values mount)))))))
   (testing "omitted fields preserve an existing axis while explicit None clears it"
     (let [existing (assoc socket :mount/alignment-axis :vertical)
           request (params {"action" "update" "original-mount-id" "port-1"})]

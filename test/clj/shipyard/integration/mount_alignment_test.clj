@@ -12,7 +12,7 @@
   (let [started (fixture/start!) cat (get-in started [:system :shipyard.catalog/db])
         handler (:handler started) id (:weapon fixture/ids)
         params {:part-id id :mount-id "plug" :original-mount-id "plug" :action "update" :kind "plug"
-                :frame (pr-str fixture/plug) :alignment-axis "vertical"}
+                :frame (pr-str fixture/plug) :alignment-axis "vertical-negative"}
         post! (fn [values] (handler (mock/request :post "/mounts" values)))
         mounts #(get-in (persisted/catalog! cat) [:parts id :part/mounts])
         plug #(first (filter (comp #{:plug} :mount/kind) (mounts)))]
@@ -26,15 +26,15 @@
               (Thread/sleep 25) (recur)))))
       (testing "alignment is saved in the shared mount entity and survives reopening"
         (is (= 200 (:status (post! params))))
-        (is (= :vertical (:mount/alignment-axis (plug))))
+        (is (= :vertical-negative (:mount/alignment-axis (plug))))
         (let [body (:body (handler (mock/request :post "/mounts/edit" {:part-id id :mount-id "plug"})))]
           (is (str/includes? body "Alignment axis"))
-          (is (re-find #"<option[^>]*selected[^>]*value=\"vertical\"" body))))
+          (is (re-find #"<option[^>]*selected[^>]*value=\"vertical-negative\"" body))))
       (testing "invalid input preserves the full prior durable mount set"
         (let [before (mounts)]
           (let [response (post! (assoc params :alignment-axis "diagonal"))]
             (is (= 200 (:status response)))
-            (is (str/includes? (:body response) "Choose None, Horizontal, or Vertical")))
+            (is (str/includes? (:body response) "Choose None or a signed Horizontal/Vertical direction")))
           (is (= before (mounts)))
           (is (thrown? Exception (catalog/save-mounts! cat id [(assoc fixture/plug :mount/alignment-axis :bad)])))
           (is (= before (mounts)))))
