@@ -11,19 +11,27 @@
 (def toggle ".assembly__compatibility input[name=allow-other-factions]")
 (defn- slot [path] (str ".assembly__slot[data-slot='" (pr-str path) "']"))
 (defn- choice [path name] (str (slot path) " button[name=part-id]:has(.assembly__candidate-name:text-is('" name "'))"))
-(defn- ready! [driver] (is (s/wait-until #(zero? (s/count-els driver ".assembly__preparation")))))
+(defn- ready! [driver]
+  (is (s/wait-until #(zero? (s/count-els driver ".assembly__preparation, #detail .htmx-request, #detail .htmx-swapping, #detail .htmx-settling")))))
+;; The prior candidate can remain visible until HTMX swaps the toggle response.
+(defn- set-compatibility! [{:keys [^Page page] :as driver} enabled?]
+  (ready! driver)
+  (.waitForResponse page "**/assembly/compatibility"
+                    ^Runnable #(if enabled? (.check page toggle) (.uncheck page toggle)))
+  (ready! driver))
 (defn- assign! [driver path name]
   (ready! driver)
   (when-not (s/js driver (str "() => document.querySelector(" (pr-str (slot path)) ").open"))
     (s/click! driver (str (slot path) " > summary")))
   (s/click! driver (choice path name))
-  (is (s/wait-until #(= name (s/text driver (str (slot path) " > summary .assembly__mount-state"))))))
+  (is (s/wait-until #(= name (s/text driver (str (slot path) " > summary .assembly__mount-state")))))
+  (ready! driver))
 
 (deftest cross-faction-assembly-saves-reopens-and-retains-universal-parts
   (s/assert-bundle!)
   (let [started (fixture/start! true compatibility/library! compatibility/author!)
         sys (:system started) database (:shipyard.loadout/db sys) driver (s/make-driver)
-        ^Page page (:page driver) state (:state (:shipyard.assembly/db sys))]
+        state (:state (:shipyard.assembly/db sys))]
     (try
       (s/go! driver (s/base-url sys))
       (s/open-assembly! driver)
@@ -37,7 +45,7 @@
       (is (zero? (s/count-els driver (choice [[:weapon 0]] "Escort Weapon"))))
       (assign! driver [[:weapon 1]] "Universal Weapon")
       (s/fill-and-blur! driver ".assembly__save input[name=name]" "Mixed Cruiser")
-      (s/check! driver toggle)
+      (set-compatibility! driver true)
       (s/wait-visible! driver (choice [[:weapon 0]] "Foreign Universal"))
       (is (= "Mixed Cruiser" (s/js driver "() => document.querySelector('.assembly__save input[name=name]').value")))
       (is (= 1 (s/count-els driver (choice [[:weapon 0]] "Foreign Weapon"))))
@@ -46,7 +54,7 @@
       (assign! driver [[:weapon 0] [:turret 0]] "turret")
       (s/await-assembly-prepared! driver 4)
       (let [before (:draft @state) viewport (get-in (s/stats driver) [:assembly :slots])]
-        (.uncheck page toggle)
+        (set-compatibility! driver false)
         (s/wait-visible! driver "[role=alert]:has-text('Clear parts from other factions')")
         (is (= before (:draft @state)))
         (is (s/js driver "() => document.querySelector('.assembly__compatibility input[name=allow-other-factions]').checked"))
@@ -70,11 +78,12 @@
         (s/await-assembly-prepared! driver 4)
         (s/click! driver (str ".assembly__slot-wrap:has(> " (slot [[:weapon 0]]) ") > .assembly__mount-actions button"))
         (s/wait-visible! driver (str (slot [[:weapon 0]]) " .assembly__mount-state:text-is('Empty')"))
-        (.uncheck page toggle)
+        (set-compatibility! driver false)
         (is (s/wait-until #(false? (get-in @state [:draft :allow-other-factions?]))))
         (s/wait-visible! driver (choice [[:weapon 0]] "Universal Weapon"))
-        (is (zero? (s/count-els driver (choice [[:weapon 0]] "Foreign Universal"))))
+        (is (s/wait-until #(zero? (s/count-els driver (choice [[:weapon 0]] "Foreign Universal")))))
         (s/await-assembly-prepared! driver 2)
+        (ready! driver)
         (s/screenshot-el! driver "#assembly-rail" (java.io.File. "/tmp/shipyard-assembly-compatibility.png")))
       (s/click! driver "[data-workspace-mode=settings]")
       (s/wait-visible! driver "[data-classification-field=class][data-classification-value=Universal]")
