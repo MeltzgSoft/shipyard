@@ -2,6 +2,7 @@
   (:require [clojure.test :refer [deftest is testing]]
             [shipyard.math :as math]
             [shipyard.mount.cut :as cut]
+            [shipyard.mount-seam-fixture :as seam]
             [shipyard.mesh.facet :as facet]))
 
 (defn- mesh
@@ -171,11 +172,30 @@
       (is (= :plug (:kind-hint (facet/select flat 0)))))))
 
 (deftest non-manifold-edge-test
-  (testing "three triangles incident on one geometric edge are not unambiguous neighbours"
+  (testing "a non-coplanar third triangle does not block the two coplanar neighbours"
     (let [m (mesh [[[0 0 0] [2 0 0] [0 1 0]]
                    [[2 0 0] [0 0 0] [2 -1 0]]
                    [[0 0 0] [2 0 0] [1 0 1]]])]
-      (is (= [0] (:facet-indices (facet/select m 0)))))))
+      (is (= [0 1] (:facet-indices (facet/select m 0))))
+      (is (= [2] (:facet-indices (facet/select m 2))))))
+  (testing "opposing internal caps do not divide a same-facing mounting surface"
+    (let [m (mesh seam/triangles)
+          left (facet/select m 2) right (facet/select m 6)]
+      (is (= (vec (range 8)) (:facet-indices left) (:facet-indices right)))
+      (is (= (:frame left) (:frame right)))
+      (is (vec-close? [0 0 0] (get-in left [:frame :mount/pos])))
+      (is (vec-close? [0 1 0] (get-in left [:frame :mount/axis])))
+      (is (= :boundary-edge-normal (:roll-source left)))
+      (is (= [10 11] (:facet-indices (facet/select m 10))))))
+  (testing "all matching coplanar neighbours are included even with duplicated triangles"
+    (let [a [[0 0 0] [2 0 0] [0 1 0]]
+          b [[2 0 0] [0 0 0] [2 -1 0]]
+          wall [[0 0 0] [2 0 0] [1 0 1]]
+          reversed (vec (reverse a))
+          m (mesh [a b b wall reversed])]
+      (is (= [0 1 2] (:facet-indices (facet/select m 0))))
+      (is (= [3] (:facet-indices (facet/select m 3))))
+      (is (= [4] (:facet-indices (facet/select m 4)))))))
 
 (deftest exact-float-edge-keys-test
   (testing "-0.0 and 0.0 are the same geometric point"

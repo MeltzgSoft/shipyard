@@ -1754,11 +1754,12 @@ A geometric edge is the unordered pair of those point keys. This is sufficient b
 the measured source collection welds on exact bits; adding an M2-only spatial snap would
 make authoring disagree with the mesh pipeline it is meant to describe.
 
-Build an edge-to-triangles table from the decoded tier-0 mesh. An edge with exactly two
-incident triangles makes those triangles neighbours. Boundary edges make no link, and
-non-manifold edges with three or more incident triangles make no link: there is no
-unambiguous surface to cross. Edge direction and crease-split vertex ids do not affect
-the lookup, but triangle winding still matters to the coplanarity test below.
+Build an edge-to-triangles table from the decoded tier-0 mesh. Every other triangle
+sharing a geometric edge is a candidate for face picking, regardless of the total
+incident-triangle count. Mirrored closed hull halves can retain internal caps at their
+shared seam; those caps must not divide the coplanar exterior mounting surface.
+Boundary edges provide no other candidate. Edge direction and crease-split vertex ids
+do not affect the lookup, but triangle winding still matters to the tests below.
 
 Starting at the selected triangle, flood through neighbours that satisfy both tests
 against the **starting triangle**, not against the most recently visited triangle:
@@ -1781,6 +1782,14 @@ product (twice its area) is at most **1e-12 mm²**. A degenerate selected triang
 error. Degenerate neighbours and triangles whose winding reverses their normal are not
 crossed. The returned facet indices are sorted ascending for repeatable tests and event
 payloads, although they remain transient.
+
+Each candidate is queued at most once, including rejected internal faces. All connected
+triangles meeting the seed's plane/normal tests are included, even if the source has
+duplicated same-facing coplanar triangles. Picking does not repair or deduplicate source
+geometry; unsupported outlines retain the existing frame fallback and cut/trim validation.
+Disconnected coplanar islands are never joined by plane alone. The manifold-only adjacency
+used for boundary kind hints and legacy frame recovery retains its existing behavior;
+the expanded candidate rule belongs to explicit face picking.
 
 For a newly picked face, the wizard uses the facet boundary as a non-binding kind hint.
 If every non-coplanar boundary neighbour lies on the positive side of the selected

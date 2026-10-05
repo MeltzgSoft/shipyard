@@ -94,6 +94,15 @@
   (let [[a b c] (triangle-points mesh triangle-index)]
     [(edge-key a b) (edge-key b c) (edge-key c a)]))
 
+(defn- edge-triangles [mesh triangle-indices]
+  (reduce
+   (fn [edges triangle-index]
+     (reduce #(update %1 %2 (fnil conj []) triangle-index)
+             edges
+             (triangle-edge-keys mesh triangle-index)))
+   {}
+   triangle-indices))
+
 (defn- adjacency
   ([mesh] (adjacency mesh (range (triangle-count mesh))))
   ([mesh triangle-indices]
@@ -106,14 +115,7 @@
               (update b (fnil conj #{}) a)))
         adj))
     {}
-    (vals
-     (reduce
-      (fn [edges triangle-index]
-        (reduce #(update %1 %2 (fnil conj []) triangle-index)
-                edges
-                (triangle-edge-keys mesh triangle-index)))
-      {}
-      triangle-indices)))))
+    (vals (edge-triangles mesh triangle-indices)))))
 
 (defn- point-on-plane? [{:keys [normal points]} epsilon p]
   (<= (Math/abs (double (math/dot normal (math/subtract p (first points))))) epsilon))
@@ -124,20 +126,26 @@
 
 (defn- facet-indices [mesh triangle-index {:keys [facet-angle-deg facet-plane-epsilon-mm]}]
   (let [start (require-triangle mesh triangle-index)
-        adj (adjacency mesh)
+        edges (edge-triangles mesh (range (triangle-count mesh)))
+        neighbours #(into #{} (mapcat edges) (triangle-edge-keys mesh %))
+        initial (disj (neighbours triangle-index) triangle-index)
         cos-angle (Math/cos (Math/toRadians (double facet-angle-deg)))]
-    (loop [queue (seq (get adj triangle-index))
-           seen #{triangle-index}]
+    ;; Every triangle sharing an edge is a candidate, including at mirrored
+    ;; seams with internal caps. The seed's plane and oriented normal decide
+    ;; membership, rather than the edge's total incident-triangle count.
+    (loop [queue (seq (sort initial))
+           seen (conj initial triangle-index)
+           selected #{triangle-index}]
       (if-let [candidate-index (first queue)]
-        (if (contains? seen candidate-index)
-          (recur (next queue) seen)
-          (let [candidate (triangle-geometry mesh candidate-index)]
-            (if (and candidate
-                     (facet-neighbour? start candidate cos-angle facet-plane-epsilon-mm))
-              (recur (concat (next queue) (get adj candidate-index))
-                     (conj seen candidate-index))
-              (recur (next queue) seen))))
-        (vec (sort seen))))))
+        (let [candidate (triangle-geometry mesh candidate-index)]
+          (if (and candidate
+                   (facet-neighbour? start candidate cos-angle facet-plane-epsilon-mm))
+            (let [unseen (remove seen (neighbours candidate-index))]
+              (recur (concat (next queue) (sort unseen))
+                     (into seen unseen)
+                     (conj selected candidate-index)))
+            (recur (next queue) seen selected)))
+        (vec (sort selected))))))
 
 (defn- distance-squared [a b]
   (math/dot (math/subtract a b) (math/subtract a b)))

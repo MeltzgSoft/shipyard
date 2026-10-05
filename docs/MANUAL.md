@@ -305,6 +305,9 @@ Shipyard highlights the selected flat facet and draws its complete orientation f
 the outward normal (`+Z`), in-plane twist reference (`+X`), and derived up direction (`+Y`).
 Picking another face immediately replaces that preview, including densely triangulated
 faces; no Save or panel refresh is needed to see the new selection.
+Coplanar faces joined along a mirrored hull's center seam are picked together even
+when hidden internal faces share that seam. The mount is centered on the complete
+selected surface. Disconnected coplanar areas remain separate selections.
 Configured interfaces are always colored in the viewer when the part is loaded; the
 detail panel shows a legend for the plug and socket types present on that part.
 
