@@ -1155,3 +1155,8 @@ body:has(#workspace-context[data-workspace="settings"]) .stage { display: none; 
 .mount-wizard__face-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
 .mount-wizard__actions { position: sticky; bottom: 0; z-index: 2; padding: 8px 0; background: var(--panel); }
+
+.detail__navigation { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+.detail__navigation [data-part-back] { margin-bottom: 0; }
+.detail__navigation [data-part-nav] { border: 1px solid var(--line); border-radius: 4px; padding: 6px 9px; background: var(--panel-2); color: var(--ink); }
+.detail__navigation [data-part-nav]:disabled { opacity: 0.45; cursor: default; }

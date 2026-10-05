@@ -303,6 +303,7 @@
         original-mount-id (parse-mount-id (get params "original-mount-id"))]
     (cond-> {:part part
              :values (preview-values params (:part/role-hint part))
+             :draft? true
              :error error
              :mesh-key (get params "mesh-key")
              :facet-indices (facet-input/parse-indices (get params "facet-indices"))}

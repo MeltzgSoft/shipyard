@@ -17,6 +17,8 @@
             [shipyard.workspace.db :as workspace]
             [shipyard.workspace.routes :as workspace-routes]
             [shipyard.bulk-orientation.routes :as bulk-routes]
+            [shipyard.bulk-orientation.handlers :as bulk]
+            [shipyard.part-browser.navigation :as navigation]
             [shipyard.catalog.db :as db]
             [shipyard.catalog.part :as catalog-part]
             [shipyard.regions.handlers :as regions]
@@ -105,23 +107,32 @@
   [library {:part/keys [id source]}]
   (fs/file (index/root! library) id (index/name-of source)))
 
+(defn- with-navigation [{:keys [workspace catalog] :as deps} part]
+  (if-not workspace part
+          (let [{:keys [filters part-order]} (workspace/workspace! workspace :browse)
+                available (db/listing! catalog)
+                ids (filterv #(db/part available %) (or part-order (mapv :part/id (bulk/filtered-parts! deps filters))))]
+            (workspace/update-workspace! workspace :browse assoc :part-order ids)
+            (assoc part :part/navigation (navigation/neighbors ids (:part/id part))))))
+
 (defn- ready
   "Send mesh metadata after the swap, when the body-carried region mask is
   available. Face maps must never travel in size-limited HTTP headers."
   [deps part mesh-key]
-  (if (= :running (:state (facet-recovery/recover! deps part mesh-key)))
-    (htmx/fragment (views/detail-preparing part)
-                   {:events {:status {:state :preparing
-                                      :message "Restoring saved mount faces."}}})
-    (htmx/fragment (views/detail-ready part mesh-key {:region-layers (db/region-registry! (:catalog deps)) :roles (vocabulary/roles! (:catalog deps)) :cut-defaults (settings-db/cut-defaults! (:store (:catalog deps)))})
-                   {:headers {"HX-Trigger-After-Swap"
-                              (htmx/trigger {:load-mesh {:url     (urls/mesh-url mesh-key 0)
-                                                         :part-id (:part/id part)
-                                                         :mesh-key mesh-key
-                                                         :mounts  (catalog-part/durable-mounts (:part/mounts part))
-                                                         :orientation (orientation/orientation-of
-                                                                       (:part/orientation part))
-                                                         :frame   true}})}})))
+  (let [part (with-navigation deps part)]
+    (if (= :running (:state (facet-recovery/recover! deps part mesh-key)))
+      (htmx/fragment (views/detail-preparing part)
+                     {:events {:status {:state :preparing
+                                        :message "Restoring saved mount faces."}}})
+      (htmx/fragment (views/detail-ready part mesh-key {:region-layers (db/region-registry! (:catalog deps)) :roles (vocabulary/roles! (:catalog deps)) :cut-defaults (settings-db/cut-defaults! (:store (:catalog deps)))})
+                     {:headers {"HX-Trigger-After-Swap"
+                                (htmx/trigger {:load-mesh {:url     (urls/mesh-url mesh-key 0)
+                                                           :part-id (:part/id part)
+                                                           :mesh-key mesh-key
+                                                           :mounts  (catalog-part/durable-mounts (:part/mounts part))
+                                                           :orientation (orientation/orientation-of
+                                                                         (:part/orientation part))
+                                                           :frame   true}})}}))))
 
 (defn- preprocessing!
   "Submit the job if it is not already running and answer with whatever is true
@@ -147,7 +158,7 @@
   [{:keys [catalog library cache jobs] :as deps} {:keys [params path-params]}]
   (when (:workspace deps) (workspace/update-workspace! (:workspace deps) :browse assoc :view :part :selection (:id path-params)))
   (let [id   (:id path-params)
-        part (:part (db/part-context! catalog id))]
+        part (with-navigation deps (:part (db/part-context! catalog id)))]
     (cond
       (nil? (:part/id part))
       (htmx/fragment (views/detail-missing id) {:status 404 :events {:clear nil}})
@@ -257,6 +268,7 @@
                                        :mesh-key mesh-key
                                        :facet-indices facet-indices
                                        :kind-hint kind-hint
+                                       :draft? true
                                        :values (assoc (merge (:values edit)
                                                              (wizard/preview-values params))
                                                       :kind kind-hint)}
@@ -289,8 +301,8 @@
 
 (defn- mount-response!
   ([deps part-id events] (mount-response! deps part-id events nil))
-  ([{:keys [catalog library]} part-id events view-options]
-   (let [part (:part (db/part-context! catalog part-id))
+  ([{:keys [catalog library] :as deps} part-id events view-options]
+   (let [part (with-navigation deps (:part (db/part-context! catalog part-id)))
          mesh-key (index/mesh-key! library part-id)]
      (if (and (:part/id part) mesh-key)
        (htmx/fragment (views/detail-ready part mesh-key (assoc (merge {:mount-active? true :preserve-regions? true} view-options)
@@ -470,7 +482,7 @@
             (db/save-metadata! catalog (:changes result))
             (update (if (:part/renderable part)
                       (mount-response! deps part-id {} {:mount-active? false :metadata-message "Saved."})
-                      (let [part (:part (db/part-context! catalog part-id))]
+                      (let [part (with-navigation deps (:part (db/part-context! catalog part-id)))]
                         (htmx/fragment (views/detail-unrenderable part (views/unrenderable-reason part) "Saved."))))
                     :body str (:body (htmx/fragment (into [:div#classification-values {:hx-swap-oob "outerHTML"}]
                                                           (rest (vocabulary-views/choices (:values (facets! catalog))))))))

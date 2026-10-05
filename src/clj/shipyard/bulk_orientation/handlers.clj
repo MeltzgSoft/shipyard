@@ -30,7 +30,9 @@
     {:bundles (sort (:bundle values)) :classes (sort (:class values))
      :roles (map keyword (sort (:role values))) :values values}))
 
-(defn- orientation-parts [deps params]
+(defn filtered-parts!
+  "Complete ordered results, shared by the table and individual-part navigation."
+  [deps params]
   (->> (db/browse (importer/listing! deps)
                   {:bundle (blank->nil (get params "bundle"))
                    :class (blank->nil (get params "class"))
@@ -44,9 +46,11 @@
   (htmx/fragment (views/panel (facets! (importer/effective! deps)))))
 
 (defn- parts-view! [{:keys [workspace] :as deps} params]
-  (when workspace (workspace/remember! workspace :browse params))
+  (when workspace
+    (workspace/remember! workspace :browse params)
+    (workspace/update-workspace! workspace :browse dissoc :part-order))
   (let [{:keys [bulk-selection filters]} (when workspace (workspace/workspace! workspace :browse))]
-    (views/results (orientation-parts deps (merge filters params))
+    (views/results (filtered-parts! deps (merge filters params))
                    (set (bulk/selected-ids bulk-selection)) (get filters "table-scroll") (get filters "page") (= "1" (get params "chunk")))))
 
 (defn parts! [deps {:keys [params]}]
@@ -66,7 +70,7 @@
     (htmx/fragment
      (list (views/selection-updates selection)
            (update (views/matching-checkbox
-                    (orientation-parts (importer/effective! deps) (:filters (workspace/workspace! workspace :browse)))
+                    (filtered-parts! (importer/effective! deps) (:filters (workspace/workspace! workspace :browse)))
                     (set (bulk/selected-ids selection)))
                    1 assoc :hx-swap-oob "outerHTML")))))
 
@@ -184,7 +188,7 @@
   (workspace/remember! workspace :browse params)
   (let [{:keys [filters bulk-selection]} (workspace/workspace! workspace :browse)
         previous (set (bulk/selected-ids bulk-selection))
-        matching (set (map :part/id (orientation-parts (importer/effective! deps) filters)))]
+        matching (set (map :part/id (filtered-parts! (importer/effective! deps) filters)))]
     (select-ids! deps (case (get params "selection")
                         "all" (set/union previous matching)
                         "matching-none" (set/difference previous matching)

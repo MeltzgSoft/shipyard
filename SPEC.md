@@ -927,6 +927,14 @@ remain reviewable. Bulk label edits and the orientation grid operate on the stag
 import; mount authoring and region painting are unavailable. Switching workspaces
 preserves the review, without changing Ship Browser's catalog or draft.
 
+The individual Part Browser inspector offers Previous and Next beside Back to table.
+They follow the complete filtered table order, including unloaded pages, with disabled
+controls at boundaries. Back retains filters, pagination and scroll context. Unsaved
+metadata, orientation previews and mount authoring require discard confirmation before
+navigation; canceling leaves the server workspace and client preview unchanged. Saves
+lock navigation until completion and successful saves clear draft status. Part changes
+use the shared workspace activation/admission contract without altering another workspace.
+
 The Part Browser exposes the same grouping, splitting and per-file variant controls for
 published library rows. A variant filter includes supported-only rows when requested.
 Durable corrections retain the unsupported row's identity and authored data while moving

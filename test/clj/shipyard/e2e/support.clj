@@ -12,11 +12,12 @@
             [shipyard.fixtures :as f]
             [shipyard.file-picker.db :as picker])
   (:import [com.microsoft.playwright Browser Browser$NewPageOptions BrowserType$LaunchOptions
-            Locator$ScreenshotOptions Page Page$WaitForSelectorOptions
+            Dialog Locator$ScreenshotOptions Page Page$WaitForSelectorOptions
             Playwright]
            [com.microsoft.playwright.options BoundingBox SelectOption]
            [java.io File]
            [java.util.concurrent ExecutorService TimeUnit]
+           [java.util.function Consumer]
            [org.eclipse.jetty.server Server ServerConnector]))
 
 ;; --- the fixture library ----------------------------------------------------
@@ -256,7 +257,12 @@
 
 (defn- choose-part! [{:keys [^Page page] :as driver} part-name]
   (when (pos? (.count (.locator page "[data-part-back]")))
-    (click! driver "[data-part-back]"))
+    ;; This helper deliberately chooses a different part, discarding any draft.
+    ;; Tests of Cancel/Accept use the navigation buttons directly.
+    (let [listener (reify Consumer (accept [_ dialog] (.accept ^Dialog dialog)))]
+      (.onDialog page listener)
+      (try (click! driver "[data-part-back]")
+           (finally (.offDialog page listener)))))
   ;; Playwright does not treat a disabled div ancestor as a disabled control.
   (.dblclick (.locator page (str ".bulk-orient__row:not([disabled]) .bulk-orient__part:text-is('" part-name "')"))))
 

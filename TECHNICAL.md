@@ -2891,3 +2891,16 @@ Scheme deletion uses the same serialized database transaction boundary as scheme
 The UI confirms deletion and lists referencing saved ships. Their UUID references
 remain untouched; consumers resume with the existing missing-scheme warning. Only a
 successful deletion clears the Schemes inspector's palette selection.
+
+
+Individual Part Browser navigation snapshots the full `bulk-orientation.handlers/filtered-parts!`
+result order in the browse workspace's `:part-order`, using the same query as the table.
+Table refreshes discard the cohort so the next opened part uses the latest filters;
+individual saves retain order. Missing rows are pruned. A pure neighbor function handles
+boundaries. Previous/Next use the existing `/workspace/browse?part-id=…` transition and
+its generation guard, so stale saves, polls and mesh responses cannot cross activations.
+A DOM-local WeakMap records initial values of metadata, orientation and mount forms.
+New/re-picked mount drafts are explicitly marked by the server. HTMX confirmation runs
+before request configuration, sending no request on Cancel. Successful form replacement
+captures a fresh baseline. Individual save forms share the navigation request mutex and
+disable transition controls until completion. This introduces no browser workspace store.

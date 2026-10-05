@@ -58,6 +58,8 @@
       {:type      "button"
        :hx-get    (urls/part-url id)
        :hx-target "#detail"
+       :hx-sync "#workspace-navigation:drop"
+       :hx-disabled-elt "find input, find button, [data-workspace-transition], [data-workspace-mode]"
        :hx-swap   "innerHTML"}
       [:span.part__name (:part/name part)]
       (role-label part)]
@@ -86,16 +88,24 @@
 
 ;; --- part detail ------------------------------------------------------------
 
-(defn- part-back []
-  [:button (merge workspace-views/transition-attrs
-                  {:type "button" :data-part-back "true" :data-workspace-transition "true"
-                   :hx-get "/workspace/browse?table=1" :hx-target "#detail"}) "← Back to table"])
+(defn- part-back [part]
+  [:nav.detail__navigation {:aria-label "Part navigation"}
+   [:button (merge workspace-views/transition-attrs
+                   {:type "button" :data-part-back "true" :data-workspace-transition "true"
+                    :hx-get "/workspace/browse?table=1" :hx-target "#detail"}) "← Back to table"]
+   (for [[direction label] [[:previous "← Previous"] [:next "Next →"]]
+         :let [id (get-in part [:part/navigation direction])]]
+     [:button (merge workspace-views/transition-attrs
+                     {:type "button" :data-part-nav (name direction) :data-workspace-transition "true"
+                      :aria-label (str (if (= direction :previous) "Previous" "Next") " part")
+                      :disabled (nil? id) :hx-target "#detail"}
+                     (when id {:hx-get (str "/workspace/browse?part-id=" (urls/encode-id id))})) label])])
 
 (defn- detail-head
   ([part] (detail-head part true))
   ([{:part/keys [id bundle class] :as part} back?]
    [:header.detail__head
-    (when back? (part-back))
+    (when back? (part-back part))
     [:h2.detail__name (:part/name part)]
     [:p.detail__crumbs (str/join " › " (remove nil? [bundle class]))]
     [:p.detail__id id]]))
@@ -140,6 +150,8 @@
            [:div.mounts__actions
             [:form.mounts__action
              {:method "post" :action "/mounts/edit" :hx-post "/mounts/edit"
+              :hx-sync "#workspace-navigation:drop"
+              :hx-disabled-elt "find button, [data-workspace-transition], [data-workspace-mode]"
               :hx-target "#detail"
               :hx-swap   "innerHTML"}
              [:input {:type "hidden" :name "part-id" :value part-id}]
@@ -147,6 +159,8 @@
              [:button {:type "submit"} (if (:mount/mirror-id mount) "Edit pair" "Edit")]]
             [:form.mounts__action
              {:method "post" :action "/mounts/delete" :hx-post "/mounts/delete"
+              :hx-sync "#workspace-navigation:drop"
+              :hx-disabled-elt "find button, [data-workspace-transition], [data-workspace-mode]"
               :hx-target "#detail"
               :hx-swap   "innerHTML"}
              [:input {:type "hidden" :name "part-id" :value part-id}]
@@ -189,7 +203,7 @@
    [:h3.part-metadata__title "Part metadata"]
    [:form.part-metadata__form
     {:method "post" :action "/parts/metadata/individual" :hx-post "/parts/metadata/individual"
-     :hx-params "*" :hx-include "unset" :hx-sync "this:drop" :hx-disabled-elt "find fieldset"
+     :hx-params "*" :hx-include "unset" :hx-sync "#workspace-navigation:drop" :hx-disabled-elt "find fieldset, [data-workspace-transition], [data-workspace-mode]"
      :hx-target "#detail"
      :hx-swap   "innerHTML"}
     [:input {:type "hidden" :name "part-id" :value id}]
@@ -252,7 +266,7 @@
   ([part mesh-key {:keys [error orientation-error preview repeat-values region-layers roles cut-defaults mount-active? preserve-regions? metadata-message]}]
    (let [mount-active? (if (some? mount-active?) mount-active? (boolean (or preview error)))]
      [:div.detail.detail--ready
-      (part-back)
+      (part-back part)
       [:nav.detail__tabs {:role "tablist" :aria-label "Part inspector"}
        [:button.detail__tab
         {:type "button" :role "tab" :aria-selected (str (not mount-active?))
@@ -332,7 +346,7 @@
   (cond-> {:data-socket-only "true"}
     (= :plug kind) (assoc :hidden true :disabled true)))
 
-(defn- mount-form [{:keys [part frame mesh-key facet-indices kind-hint mode original-mount-id values roles cut-defaults]}]
+(defn- mount-form [{:keys [part frame mesh-key draft? facet-indices kind-hint mode original-mount-id values roles cut-defaults]}]
   (let [kind (or (:kind values) (default-kind part))
         accepts (or (:accepts values) #{:weapon})
         profiles (wizard/acceptance-profiles (:part/role-hint part) (or roles wizard/role-options))
@@ -356,6 +370,9 @@
         cut-enabled? (boolean (and (:cut-kind values) (not= :none (:cut-kind values))))]
     [:form.mount-wizard__form
      {:method "post" :action "/mounts" :hx-post "/mounts"
+      :data-mount-draft (str (boolean (or draft? (not edit?))))
+      :hx-sync "#workspace-navigation:drop"
+      :hx-disabled-elt "find button, [data-workspace-transition], [data-workspace-mode]"
       :hx-target "#detail"
       :hx-swap   "innerHTML"}
      [:input {:type "hidden" :name "part-id" :value (:part/id part)}]

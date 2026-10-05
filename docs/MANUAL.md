@@ -432,6 +432,17 @@ The drawer also has **Yaw (Y)**, **Pitch (X)** and **Roll (Z)** fields in degree
 
 Saving a row preserves bulk selection and other open drafts. Closing a drawer does not save. During import, saved row edits remain in the review until publication; Cancel discards them. Expand **files** inside an import drawer to assign original-file variants or split a group.
 
+In the individual part view, **Previous** and **Next** beside **Back to table** follow
+that table's complete filtered order, including rows beyond the loaded batch. The end
+buttons are disabled at the first and last result. Back restores the table's filters,
+loaded pages and scroll position. Navigation keeps the order from the table until you
+return and filter it again; removed rows are skipped.
+
+Leaving a part with unsaved metadata, an orientation preview or a mount draft asks for
+confirmation. **Cancel** keeps the part, fields and preview. Confirming discards that
+part's pending edits and opens the requested result. Saved changes do not prompt.
+Navigation is unavailable while a part save is in progress.
+
 The regular Part Browser also offers **Group selected rows** and each drawer's **files**
 controls. Choose **Variant → All variants** to include supported-only rows, select matching
 versions, and group them. An optional group name changes the displayed part name. The
