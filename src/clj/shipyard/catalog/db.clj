@@ -184,11 +184,14 @@
                        ;; Only attachment labels and mask references: never face chunks or mount geometry.
                        pattern (conj summary-pattern
                                      {:part/mounts [:mount/kind :mount/accepts :mount/capacity]
-                                      :part/regions [{:region/masks [:db/id]}]})]
+                                      :part/regions [{:region/masks [:db/id]}]
+                                      :part/sources [:db/id :source/path :source/variant :source/present?]})]
                    {:parts (into {}
                                  (map (fn [entity]
                                         [(:part/id entity)
                                          (assoc (dissoc (t/part-value (dissoc entity :part/regions :part/mounts) nil) :part/mounts)
+                                                :library/files (vec (for [source (:part/sources entity) :when (:source/present? source)]
+                                                                      {:key (str (:db/id source)) :chain [(:source/path source)] :variant (:source/variant source)}))
                                                 :part/mount-summary (part/mount-summary (:part/mounts entity))
                                                 :part/has-regions? (boolean (seq (get-in entity [:part/regions :region/masks]))))]))
                                  (when library (d/q '[:find [(pull ?part pattern) ...] :in $ ?library pattern

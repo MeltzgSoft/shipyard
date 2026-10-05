@@ -41,7 +41,7 @@
    [:class {:optional true} string?]
    [:role {:optional true} string?]
    [:orientation {:optional true} string?]
-   [:variant {:optional true} [:enum "" "unsupported" "supported" "unsupported-pitted"]]
+   [:variant {:optional true} [:enum "" "all" "unsupported" "supported" "unsupported-pitted"]]
    [:q {:optional true} string?]])
 
 (def bulk-render-form

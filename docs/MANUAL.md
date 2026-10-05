@@ -432,6 +432,24 @@ The drawer also has **Yaw (Y)**, **Pitch (X)** and **Roll (Z)** fields in degree
 
 Saving a row preserves bulk selection and other open drafts. Closing a drawer does not save. During import, saved row edits remain in the review until publication; Cancel discards them. Expand **files** inside an import drawer to assign original-file variants or split a group.
 
+The regular Part Browser also offers **Group selected rows** and each drawer's **files**
+controls. Choose **Variant → All variants** to include supported-only rows, select matching
+versions, and group them. An optional group name changes the displayed part name. The
+row containing the unsupported file keeps its identity, orientation, mounts and paint;
+the other variant files move into that row's folder without changing their bytes.
+Grouping clears the whole selection, including hidden rows. Library edits save immediately.
+
+Expand **files** to preview each source, change its variant, or **Split into separate rows**.
+Assigning an occupied variant swaps the pair's labels. Splitting keeps the unsupported
+file in place and restores moved files to their original folders when those are free;
+other files get separate sibling folders. Original row metadata is retained when restored.
+Files are never overwritten. Duplicate variants must be corrected before grouping.
+Shipyard refuses edits that would invalidate authored mounts, paint, or saved-ship references.
+Changing an unprotected unsupported source clears its orientation so it can be authored
+for the new geometry. If saving fails, moved files are restored. Keep backups of the
+source folders and database together; a process interruption during publication may
+require restoring files or rescanning.
+
 For a set of parts, open the **Part Browser** table. Filter by bundle,
 class, role, name, or whether an orientation has already been saved, then select the
 parts to edit and choose **Orient selection**. Shipyard lays the selected models out in

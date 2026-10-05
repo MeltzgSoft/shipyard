@@ -5,6 +5,8 @@
             [shipyard.http.htmx :as htmx]
             [shipyard.http.urls :as urls]
             [shipyard.mesh.cache :as cache]
+            [shipyard.library.index :as index]
+            [shipyard.part-browser.variants :as variants]
             [shipyard.importer.db :as importer]
             [shipyard.importer.transforms :as imports]
             [shipyard.part-browser.thumbnail :as thumbnail]
@@ -72,3 +74,30 @@
             (htmx/fragment (preview-views/preview result url target (last (:chain entry)))))
           :preparing (htmx/fragment [:span {:hx-get url :hx-trigger "load delay:600ms" :hx-target target} "…"])
           (htmx/fragment [:span "Preview unavailable"]))))))
+
+(defn library-file-thumbnail! [{:keys [catalog library cache thumbnails] :as deps} {:keys [path-params]}]
+  (let [key (:file path-params) entry (variants/file! catalog key)
+        id (str "library-file-" key) url (str "/parts/variants/thumbnails/" key)]
+    (if-not entry
+      (htmx/fragment [:span "Preview unavailable"])
+      (let [state (:state library)]
+        (locking state
+          (let [source (fs/file (index/root! library) (:path entry))
+                stamp (select-keys entry [:size :mtime])]
+            (swap! state (fn [current]
+                           (-> current
+                               (assoc-in [:source-files id] source)
+                               (assoc-in [:entries id] (merge stamp (when (and (= source (get-in current [:source-files id]))
+                                                                               (= stamp (select-keys (get-in current [:entries id]) [:size :mtime])))
+                                                                      (get-in current [:entries id])))))))))
+        (let [{:keys [state mesh-key]} (bulk/grid-entry! deps {:part/id id})]
+          (case state
+            :ready
+            (let [^java.io.File file (first (filter fs/regular-file? (map #(cache/tier-file cache mesh-key %)
+                                                                          (reverse (range (count (:lod-tiers cache)))))))
+                  pose orientation/identity-quaternion
+                  result (previews/request! thumbnails {:mesh mesh-key :tier (str (fs/file-name file)) :pose pose :regions nil}
+                                            #(thumbnail/png! (wire/decode (Files/readAllBytes (.toPath file))) pose))]
+              (htmx/fragment (preview-views/preview result url "closest .import-file-thumbnail" (:path entry))))
+            :preparing (htmx/fragment [:span {:hx-get url :hx-trigger "load delay:600ms" :hx-target "closest .import-file-thumbnail"} "…"])
+            (htmx/fragment [:span "Preview unavailable"])))))))

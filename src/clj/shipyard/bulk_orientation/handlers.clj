@@ -2,6 +2,7 @@
   "Ring orchestration for filtering, preparing, and saving orientation sets."
   (:require [babashka.fs :as fs]
             [clojure.set :as set]
+            [clojure.string :as str]
             [shipyard.bulk-orientation.transforms :as bulk]
             [shipyard.bulk-orientation.save-state :as saves]
             [shipyard.bulk-orientation.views :as views]
@@ -35,8 +36,8 @@
                    :class (blank->nil (get params "class"))
                    :role (some-> (get params "role") blank->nil keyword)
                    :q (blank->nil (get params "q"))})
-       (filter #(edits/listed? % (:import-session deps)))
-       (filter #(or (not (:import-session deps)) (imports/matches-variant? (get params "variant") %)))
+       (filter #(edits/listed? % (or (:import-session deps) (not (str/blank? (get params "variant"))))))
+       (filter #(imports/matches-variant? (when-not (= "all" (get params "variant")) (get params "variant")) %))
        (filter #(bulk/matches-orientation? (blank->nil (get params "orientation")) %))))
 
 (defn orient! [deps _]

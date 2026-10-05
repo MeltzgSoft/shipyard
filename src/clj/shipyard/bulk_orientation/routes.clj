@@ -3,10 +3,19 @@
   (:require [shipyard.bulk-orientation.handlers :as handlers]
             [shipyard.http.contracts :as contracts]
             [shipyard.part-browser.handlers :as browser]
+            [shipyard.part-browser.variant-handlers :as variants]
             [shipyard.workspace.handlers :as workspace]))
 
 (defn routes [deps]
-  [["/thumbnails/*id" {:get {:handler (partial browser/thumbnail! deps)
+  [["/parts/variants/group" {:post {:handler #(variants/edit! deps % :group) :responses contracts/html-responses}}]
+   ["/parts/variants/split" {:post {:handler #(variants/edit! deps % :split)
+                                    :parameters {:form [:map [:group string?]]} :responses contracts/html-responses}}]
+   ["/parts/variants/variant" {:post {:handler #(variants/edit! deps % :variant)
+                                      :parameters {:form [:map [:file string?] [:variant [:enum "unsupported" "supported" "unsupported-pitted"]]]}
+                                      :responses contracts/html-responses}}]
+   ["/parts/variants/thumbnails/:file" {:get {:handler (partial browser/library-file-thumbnail! deps)
+                                              :parameters {:path [:map [:file string?]]} :responses contracts/html-responses}}]
+   ["/thumbnails/*id" {:get {:handler (partial browser/thumbnail! deps)
                              :parameters {:path contracts/part-path} :responses contracts/html-responses}}]
    ["/parts/metadata/row" {:get {:handler (partial handlers/row-editor! deps)
                                  :parameters {:query [:map [:part-id string?]]} :responses contracts/html-responses}

@@ -646,6 +646,21 @@ import's existing cancelable job scope; PNG workers only read the shared mesh ca
 Supported, unsupported and pitted files share the normal content-addressed thumbnail
 cache, preserving image identity through grouping and variant reassignment.
 
+Published variant corrections use `part-browser.variant-plan` for pure ownership and
+variant decisions and `part-browser.variants` for filesystem/store effects. The library
+state lock and shared store lock guard preflight stamps, reference validation and
+publication. Source files stage in a hidden directory on the library filesystem; all
+moves complete without overwrite before a single Datalevin write transaction reparents
+existing source entities, updates their unique keys and rescans canonical folders.
+`:source/origin-part` is a part ref used to restore original row identity on split.
+Unchanged unsupported sources retain authored poses, mounts and regions. Source changes
+invalidate derived mesh entries and clear unprotected poses; protected sources are
+rejected. A transaction or move failure restores staged bytes to their previous paths.
+A process interruption between filesystem and database publication can require recovery
+from backups; there is no cross-filesystem/database crash transaction. Source previews
+use source-id aliases in the existing bounded job/cache pipeline; no new executor or
+durable catalog is introduced. Table listings pull only lightweight source metadata.
+
 Publication preflights folder names, duplicate content and existing destinations,
 rejecting symbolic-link destinations/ancestors. It moves staged files without replacing
 existing files, rescans the destination library and publishes reviewed role/orientation

@@ -1,0 +1,59 @@
+(ns shipyard.e2e.part-variants-test
+  (:require [clojure.test :refer [deftest is]]
+            [shipyard.assembly-fixture :as fixture]
+            [shipyard.catalog.db :as catalog]
+            [shipyard.e2e.support :as s]
+            [shipyard.e2e.orient-table-test :as table]
+            [shipyard.part-variants-fixture :as source])
+  (:import [com.microsoft.playwright Page]))
+
+(deftest correct-published-variants-through-the-browser
+  (s/assert-bundle!)
+  (let [started (fixture/start! true source/build! (fn [_])) sys (:system started)
+        cat (:shipyard.catalog/db sys) driver (s/make-driver)
+        part #(catalog/part (catalog/listing! cat) %)
+        group! (fn []
+                 (doseq [id [source/a source/b]] (s/check! driver (str "[data-bulk-select][value='" id "']")))
+                 (s/wait-visible! driver "[data-bulk-count]:text-is('2 selected')")
+                 (s/fill! driver "#bulk-orient-filters input[name=q]" "Other Battery")
+                 (is (s/wait-until #(= 1 (s/count-els driver ".bulk-orient__row"))))
+                 (s/click! driver "[data-variant-group]")
+                 (s/wait-visible! driver "[data-bulk-count]:text-is('0 selected')")
+                 (s/wait-visible! driver "#variant-status:text-is('Variants updated.')")
+                 (is (= "0 selected" (s/text driver "[data-bulk-count]")))
+                 (is (= #{:unsupported :supported} (set (:part/variants (part source/a)))))
+                 (is (nil? (part source/b)))
+                 (s/js driver "() => {const input=document.querySelector('#bulk-orient-filters input[name=q]'); input.value=''; input.dispatchEvent(new Event('search',{bubbles:true}));}")
+                 (s/wait-visible! driver (table/row source/a)))]
+    (try
+      (s/go! driver (s/base-url sys))
+      (s/wait-visible! driver (table/row source/a))
+      (is (zero? (s/count-els driver (table/row source/b))))
+      (s/select-option! driver "#bulk-orient-filters select[name=variant]" "All variants")
+      (s/wait-visible! driver (table/row source/b))
+      (group!)
+      (s/click! driver (str (table/row source/a) " > summary"))
+      (s/click! driver ".import-files > summary")
+      (s/scroll-into-view! driver ".import-files__file:last-of-type")
+      (is (s/wait-until #(= 2 (s/count-els driver ".import-file-thumbnail img"))))
+      (is (s/js driver "() => [...document.querySelectorAll('.import-file-thumbnail img')].every(i=>i.naturalWidth>0)"))
+      (s/select-option! driver ".import-files__file:has(option:checked:text-is('Supported')) select" "Unsupported (pitted)")
+      (is (s/wait-until #(= #{:unsupported :unsupported-pitted} (set (:part/variants (part source/a))))))
+      (s/click! driver (str (table/row source/a) " > summary"))
+      (s/click! driver ".import-files > summary")
+      (s/select-option! driver ".import-files__file:has(option:checked:text-is('Unsupported (pitted)')) select" "Supported")
+      (is (s/wait-until #(= #{:unsupported :supported} (set (:part/variants (part source/a))))))
+      (s/click! driver (str (table/row source/a) " > summary"))
+      (s/click! driver ".import-files > summary")
+      (s/click! driver "[data-import-split]")
+      (s/wait-visible! driver (table/row source/b))
+      (s/click! driver "[data-select-all=none]")
+      (s/wait-visible! driver "[data-bulk-count]:text-is('0 selected')")
+      (group!)
+      (.dblclick ^Page (:page driver) (str (table/row source/a) " .bulk-orient__part"))
+      (s/await-part driver source/a)
+      (s/click! driver "[data-part-back]")
+      (s/wait-visible! driver (table/row source/a))
+      (is (= "all" (s/js driver "() => document.querySelector('#bulk-orient-filters select[name=variant]').value")))
+      (is (= #{:unsupported :supported} (set (:part/variants (part source/a)))))
+      (finally (s/quit! driver) (fixture/stop! started)))))

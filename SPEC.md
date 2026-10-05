@@ -927,6 +927,15 @@ remain reviewable. Bulk label edits and the orientation grid operate on the stag
 import; mount authoring and region painting are unavailable. Switching workspaces
 preserves the review, without changing Ship Browser's catalog or draft.
 
+The Part Browser exposes the same grouping, splitting and per-file variant controls for
+published library rows. A variant filter includes supported-only rows when requested.
+Durable corrections retain the unsupported row's identity and authored data while moving
+variant bytes to canonical filenames in its folder, without overwriting files. Source
+entities follow their bytes; splitting can restore original rows. Missing/stale members,
+duplicate variants and changes that invalidate authored data or saved references are
+rejected before publication. Successful grouping clears all selected ids. Normal edits
+commit immediately in the shared store; import review remains staged.
+
 Commit moves extracted models into the canonical library hierarchy and names variants
 according to §4, persisting the reviewed roles and orientations. The original ZIPs
 remain intact. Identical entries sharing a destination can coalesce; different content

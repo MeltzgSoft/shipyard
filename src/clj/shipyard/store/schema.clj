@@ -32,7 +32,7 @@
                 :slot/path :target/path :layer/preview-color :material/base :material/metalness
                 :material/roughness :material/glow :material/paint :paint/fields])
    (attributes :db.type/ref
-               [:part/library :source/part :source/content :layer/library :mask/layer
+               [:part/library :source/part :source/origin-part :source/content :layer/library :mask/layer
                 :region/content :slot/part :ship/class :ship/scheme :ship/library :loadout/hull :loadout/library :scheme/library
                 :binding/layer :target/part :detail/content :fleet/default-scheme
                 :fleet-entry/loadout :mount/mirror])
