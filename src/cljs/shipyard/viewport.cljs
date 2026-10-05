@@ -462,7 +462,8 @@
     (reset! authoring {:part-id part-id :mesh-key mesh-key})
     (.add (.-classList canvas) "stage__canvas--authoring")))
 
-(defn- exit-authoring! [{:keys [^js canvas authoring repeat] :as sys}]
+(defn- exit-authoring! [{:keys [^js canvas authoring repeat facet-request] :as sys}]
+  (when facet-request (swap! facet-request inc))
   (clear-authoring-preview! sys)
   (reset! authoring nil)
   (reset! repeat nil)
@@ -857,28 +858,40 @@
        "alignment-axis" (input-value form "select[name=alignment-axis]")
        "twist-deg" (input-value form "input[name=twist-deg]")})))
 
-(defn- post-facet! [{:keys [authoring repeat]} triangle-index]
+(declare sync-viewport-events!)
+
+(defn- post-facet! [{:keys [authoring repeat active activation facet-request]} triangle-index]
   (let [target (.getElementById js/document "facet-preview")
-        {:keys [part-id mesh-key]} @authoring]
-    (when (and target part-id mesh-key)
-      (-> (js/fetch "/facet"
-                    #js {:method "POST"
-                         :headers #js {"Content-Type" "application/x-www-form-urlencoded"}
-                         :body (form-body (merge (dissoc @repeat "kind" :kind "mount-id" :mount-id)
-                                                 (dissoc (dom-repeat-values) "kind" :kind "mount-id" :mount-id)
-                                                 (dissoc (dom-edit-values) "kind" :kind)
-                                                 {"part-id" part-id
-                                                  "mesh-key" mesh-key
-                                                  "triangle-index" (str triangle-index)}))})
-          (.then (fn [^js res]
-                   (let [trigger (.get (.-headers res) "HX-Trigger")]
-                     (-> (.text res)
-                         (.then (fn [html]
-                                  (set! (.-innerHTML target) html)
-                                  (some-> js/window .-htmx (.process target))
-                                  (trigger-header! trigger)))))))
-          (.catch (fn [e]
-                    (js/console.error "shipyard: facet selection failed" e)))))))
+        {:keys [part-id mesh-key] :as selection} @authoring
+        generation @activation]
+    (when (and @active target part-id mesh-key)
+      (let [request (swap! facet-request inc)]
+        (-> (js/fetch "/facet"
+                      #js {:method "POST"
+                           :headers #js {"Content-Type" "application/x-www-form-urlencoded"}
+                           :body (form-body (merge (dissoc @repeat "kind" :kind "mount-id" :mount-id)
+                                                   (dissoc (dom-repeat-values) "kind" :kind "mount-id" :mount-id)
+                                                   (dissoc (dom-edit-values) "kind" :kind)
+                                                   {"part-id" part-id
+                                                    "mesh-key" mesh-key
+                                                    "triangle-index" (str triangle-index)}))})
+            (.then (fn [^js res]
+                     (let [trigger (.get (.-headers res) "HX-Trigger")]
+                       (-> (.text res)
+                           (.then (fn [html]
+                                    ;; A direct fetch does not emit HTMX's swap
+                                    ;; lifecycle. Admit this response before touching
+                                    ;; the form or dispatching either event transport.
+                                    (when (and @active (= generation @activation)
+                                               (= request @facet-request) (= selection @authoring)
+                                               (.-isConnected target)
+                                               (identical? target (.getElementById js/document "facet-preview")))
+                                      (set! (.-innerHTML target) html)
+                                      (some-> js/window .-htmx (.process target))
+                                      (trigger-header! trigger)
+                                      (sync-viewport-events! target))))))))
+            (.catch (fn [e]
+                      (js/console.error "shipyard: facet selection failed" e))))))))
 
 (defn- input-value [^js form selector]
   (some-> (.querySelector form selector) .-value))
@@ -1226,13 +1239,14 @@
               :when (not= (:token entry) (get-in before [:slots slot :token]))]
         (load-assembly-slot! sys slot entry)))))
 
-(defn- sync-viewport-events! []
-  (doseq [element (array-seq (.querySelectorAll js/document "[data-viewport-events]"))]
-    (let [events (js/JSON.parse (.getAttribute element "data-viewport-events"))]
-      (.remove element)
-      (doseq [name (array-seq (js/Object.keys events))]
-        (.dispatchEvent (.-body js/document)
-                        (js/CustomEvent. name #js {:bubbles true :detail #js {:value (aget events name)}}))))))
+(defn- sync-viewport-events!
+  ([] (sync-viewport-events! js/document))
+  ([root]
+   (doseq [element (array-seq (.querySelectorAll root "[data-viewport-events]"))]
+     (let [events (.getAttribute element "data-viewport-events")]
+       ;; Consume before dispatch so a later swap cannot replay the selection.
+       (.remove element)
+       (trigger-header! events)))))
 
 (defn- sync-assembly-from-dom! [sys]
   (doseq [element (array-seq (.querySelectorAll js/document "#detail [data-assembly-event]"))]
@@ -1838,6 +1852,7 @@
                   :orientation-camera orientation-camera
                   :controls controls :parts (atom {}) :status (atom {:state :idle})
                   :current (atom nil) :authoring (atom nil)
+                  :facet-request (atom 0)
                   :preview (atom nil)
                   :assembly (atom assembly-scene/empty-state) :browse-generation (atom 0)
                   :interfaces (atom nil) :orientation-guide (atom nil) :region-mirror-guide (atom nil)

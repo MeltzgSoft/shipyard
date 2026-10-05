@@ -2507,6 +2507,12 @@ the built-in weapon/turret and shared hull hardpoint constraints remain in force
 Variable-size viewport events exceeding 2 KiB are carried in escaped
 `data-viewport-events` body nodes instead of HX-Trigger headers. The viewport consumes
 and removes these nodes after an admitted swap, preserving existing event payloads.
+Direct mount-face picks use the same event consumer, scoped to their returned form,
+immediately after inserting and enhancing the fragment. They consume both header and
+body envelopes before any unrelated swap can replay them. The response must still match
+the latest pick request, Part Browser activation, authoring part/mesh and connected
+target element before it can replace a form or dispatch events. Leaving authoring
+invalidates pending picks, including leaving and returning to the same part/tab.
 Mount/role/orientation responses preserve the existing region-editor DOM island.
 HTMX's default settle delay is zero so new forms are enhanced before the next queued
 user action can submit them as ordinary document navigation.

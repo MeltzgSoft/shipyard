@@ -303,6 +303,8 @@ mounts recover the surface nearest their position.
 
 Shipyard highlights the selected flat facet and draws its complete orientation frame:
 the outward normal (`+Z`), in-plane twist reference (`+X`), and derived up direction (`+Y`).
+Picking another face immediately replaces that preview, including densely triangulated
+faces; no Save or panel refresh is needed to see the new selection.
 Configured interfaces are always colored in the viewer when the part is loaded; the
 detail panel shows a legend for the plug and socket types present on that part.
 
