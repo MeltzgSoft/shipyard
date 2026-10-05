@@ -377,3 +377,12 @@
           mirrored (wizard/mirror-mount mount :x 0.0 :mirror)]
       (is (= (orientation/reflect-direction orientation/identity-quaternion :x (alignment/direction mount))
              (alignment/direction mirrored))))))
+
+(deftest capacity-default-and-saved-direction-test
+  (let [source (assoc frame :face-points [[-4 -2 0] [4 -2 0] [-4 2 0] [4 2 0]])
+        request (params {"capacity" "3" "frame" (pr-str source)})
+        new-mount (:mount (wizard/save-request request []))
+        saved-source (assoc source :mount/split {:direction :vertical :bounds [[-4 -2] [4 2]]})
+        saved-mount (:mount (wizard/save-request (assoc request "frame" (pr-str saved-source)) []))]
+    (is (= :horizontal (get-in new-mount [:mount/split :direction])))
+    (is (= :vertical (get-in saved-mount [:mount/split :direction])))))

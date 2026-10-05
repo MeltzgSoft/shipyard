@@ -237,13 +237,13 @@
               :else
               (try
                 (let [mesh (wire/decode (read-bytes! tier0))
-                      {:keys [facet-indices frame points kind-hint]}
+                      {:keys [facet-indices frame points kind-hint roll-ambiguous? roll-source]}
                       (facet/select mesh triangle-index
                                     (select-keys cache [:facet-angle-deg :facet-plane-epsilon-mm]))
                       outline (cut/outline (pitting-geometry/mesh-triangles mesh facet-indices))
-                      frame (assoc (orientation/orient-mount-frame frame (:part/orientation part))
+                      frame (assoc frame
                                    :face-points points :mount/outline outline)
-                      frame (assoc frame :mount/split (split/metadata-for frame frame :vertical))
+                      frame (assoc frame :mount/split (split/metadata-for frame frame :horizontal))
                       edit (when-let [original-mount-id (get params "original-mount-id")]
                              (wizard/edit-request {"mount-id" original-mount-id}
                                                   (catalog-part/durable-mounts
@@ -270,8 +270,8 @@
                                              :triangle-index triangle-index
                                              :facet-indices facet-indices
                                              :frame (dissoc frame :face-points)
-                                             :roll-ambiguous? false
-                                             :roll-source :part-orientation}}}))
+                                             :roll-ambiguous? roll-ambiguous?
+                                             :roll-source roll-source}}}))
                 (catch clojure.lang.ExceptionInfo e
                   (case (:code (ex-data e))
                     :triangle-out-of-range

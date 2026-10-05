@@ -320,7 +320,8 @@ When the preview looks right, fill in the mount form:
 - **Capacity** is used for sockets whose selected face can hold more than one part.
   Human Navy Cruiser weapon sockets use capacity `2`.
 - **Twist** rotates the `+X` and `+Y` directions around the fixed outward `+Z` normal
-  before saving. Most mounts should remain at zero once the part orientation is correct.
+  before saving. A newly picked face uses +X perpendicular to its longest boundary edge;
+  equal edges use a repeatable edge choice. Adjust Twist to use another direction.
 - **Alignment axis** chooses **None**, **Horizontal (+X)**, **Horizontal (−X)**,
   **Vertical (+Y)** or **Vertical (−Y)** in the mount plane. A white arrow previews the
   selected direction; **Twist** rotates it. Set a direction on both the socket and its
@@ -350,7 +351,9 @@ The **Interface colors** legend also shows the mount frame directions: **Normal 
 **Twist reference (+X)** and **Up (+Y)**. These remain visible while authoring the first
 mount, before any interface colors have been configured.
 
-When capacity is above one, choose **Vertical — equal widths** or
+New faces default the capacity divider lines to perpendicular to the longest boundary
+edge, matching the initial Horizontal alignment direction. Saved mounts retain their
+authored frame and split choice. When capacity is above one, choose **Vertical — equal widths** or
 **Horizontal — equal heights**. The selected face is divided in its own frame:
 vertical cuts run along +Y, and horizontal cuts along +X. White lines show boundaries
 and arrows show each section's center. Capacity and Twist changes update the preview.

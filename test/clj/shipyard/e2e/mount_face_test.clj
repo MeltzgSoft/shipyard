@@ -6,6 +6,7 @@
             [shipyard.catalog.db :as catalog]
             [shipyard.e2e.support :as s]
             [shipyard.fixtures :as fixtures]
+            [shipyard.math :as math]
             [shipyard.paint.faces :as faces]
             [shipyard.part.orientation :as orientation]))
 
@@ -66,4 +67,56 @@
         (s/open-part! driver "Large Mount Plate") (s/await-part driver id)
         (is (= [2 2] (mapv :triangles (get-in (s/stats driver) [:interfaces :items]))))
         (s/screenshot-el! driver "#viewport" (io/file "/tmp/shipyard-saved-mount-faces.png")))
+      (finally (s/quit! driver) (fixture/stop! started)))))
+
+(deftest rotated-face-defaults-are-perpendicular-to-its-long-edge
+  (s/assert-bundle!)
+  (let [angle (/ Math/PI 6.0)
+        rotate (fn [[x y z]] [(- (* x (Math/cos angle)) (* y (Math/sin angle)))
+                              (+ (* x (Math/sin angle)) (* y (Math/cos angle))) z])
+        tris (mapv #(mapv rotate %) [[[-4 -2 0] [4 -2 0] [-4 2 0]]
+                                     [[4 -2 0] [4 2 0] [-4 2 0]]])
+        edge (rotate [1 0 0])
+        build (fn [root]
+                (let [file (io/file (str root) id "unsupported.stl")]
+                  (fs/create-dirs (.getParentFile file))
+                  (with-open [out (io/output-stream file)]
+                    (.write out ^bytes (fixtures/->binary-stl tris))))
+                root)
+        started (fixture/start! true build
+                                (fn [cat] (catalog/save-part-orientation! cat id
+                                                                          (orientation/from-euler-degrees 0 0 37))))
+        sys (:system started) cat (:shipyard.catalog/db sys) driver (s/make-driver)
+        normal? (fn [[a b]] (< (abs (math/dot edge (math/normalize (math/subtract b a)))) 1e-6))]
+    (try
+      (s/go! driver (s/base-url sys))
+      (s/open-part! driver "Large Mount Plate") (s/await-part driver id)
+      (s/click! driver "[data-detail-tab=mounts]")
+      (let [target (first (:region-faces (s/stats driver)))
+            bounds (s/bounds driver "#viewport")]
+        (s/click-point! driver (+ (:x bounds) (:x target)) (+ (:y bounds) (:y target))))
+      (s/wait-visible! driver ".mount-wizard__form")
+      (s/select-option! driver "select[name=kind]" "socket")
+      (s/select-option! driver "select[name=alignment-axis]" "Horizontal (+X)")
+      (s/fill-and-blur! driver "input[name=capacity]" "3")
+      (is (s/wait-until #(= 2 (count (get-in (s/stats driver) [:preview :split-lines])))))
+      (let [preview (:preview (s/stats driver))]
+        (is (= "boundary-edge-normal" (:roll-source preview)))
+        (is (every? normal? (:alignment-lines preview)))
+        (is (every? normal? (:split-lines preview)))
+        (is (> (abs (math/dot edge (math/normalize (math/subtract (last (:split-centers preview))
+                                                                  (first (:split-centers preview)))))) 0.999999)))
+      (s/click! driver ".mount-wizard__actions button[value=create]")
+      (is (s/wait-until #(nil? (:preview (s/stats driver)))))
+      (let [mount (first (:part/mounts (:part (catalog/part-context! cat id))))
+            stable (select-keys mount [:mount/roll :mount/split :mount/alignment-axis])]
+        (is (= :horizontal (get-in mount [:mount/split :direction])))
+        (is (< (abs (math/dot edge (:mount/roll mount))) 1e-6))
+        (is (every? normal? (get-in (s/stats driver) [:interfaces :alignment-lines])))
+        (is (every? normal? (get-in (s/stats driver) [:interfaces :items 0 :split-lines])))
+        (s/click! driver (str "form:has(input[name=mount-id][value='" (name (:mount/id mount)) "']) button:text-is('Edit')"))
+        (s/wait-visible! driver ".mount-wizard__form")
+        (s/click! driver ".mount-wizard__actions button[value=update]")
+        (is (s/wait-until #(nil? (:preview (s/stats driver)))))
+        (is (= stable (select-keys (first (:part/mounts (:part (catalog/part-context! cat id)))) (keys stable)))))
       (finally (s/quit! driver) (fixture/stop! started)))))

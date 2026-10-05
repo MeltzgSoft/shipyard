@@ -4,6 +4,7 @@
   Input is the tier-0 `.symesh` decoded by `shipyard.wire/decode`: positions,
   indices, and counts in the exact triangle order the browser clicked."
   (:require [shipyard.math :as math]
+            [shipyard.mount.cut :as cut]
             [shipyard.triangle :as triangle]
             [shipyard.mesh.float :as mesh-float]))
 
@@ -21,8 +22,6 @@
 
 (def ^:private degenerate-area2-epsilon 1e-12)
 (def ^:private component-epsilon 1e-9)
-
-(defn- sq [x] (* x x))
 
 (defn- canonicalize-sign [[x y z :as v]]
   (let [component (some #(when (> (Math/abs (double %)) component-epsilon) %) [x y z])]
@@ -227,40 +226,26 @@
       (throw (ex-info "could not derive a roll axis"
                       {:code :degenerate-facet}))))
 
-(defn- plane-basis [axis]
-  (let [u (fallback-roll axis)
-        v (math/normalize (math/cross axis u))]
-    [u v]))
-
-(defn- projected-points [axis points]
-  (let [[u v] (plane-basis axis)]
-    (mapv (fn [p] {:point p :x (math/dot p u) :y (math/dot p v)}) points)))
-
-(defn- cross2 [o a b]
-  (- (* (- (:x a) (:x o)) (- (:y b) (:y o)))
-     (* (- (:y a) (:y o)) (- (:x b) (:x o)))))
-
-(defn- convex-hull [points]
-  (let [sorted-points (vec (sort-by (juxt :x :y) points))
-        step (fn [h p]
-               (loop [h h]
-                 (if (and (>= (count h) 2)
-                          (not (pos? (cross2 (nth h (- (count h) 2)) (peek h) p))))
-                   (recur (pop h))
-                   (conj h p))))
-        lower (reduce step [] sorted-points)
-        upper (reduce step [] (rseq sorted-points))]
-    (cond
-      (<= (count sorted-points) 1) sorted-points
-      :else (vec (concat (pop lower) (pop upper))))))
-
-(defn- hull-edges [hull]
-  (mapv (fn [a b]
-          (let [delta (math/subtract (:point b) (:point a))
-                len (math/length delta)]
-            {:a a :b b :length len :direction (math/normalize delta)}))
-        hull
-        (concat (rest hull) [(first hull)])))
+(defn- boundary-edges [triangles]
+  (mapcat
+   (fn [ring]
+     ;; Ignore triangulation vertices on a straight boundary: they do not
+     ;; shorten the face edge or influence which edge supplies the default.
+     (let [corners (vec (keep-indexed
+                         (fn [i point]
+                           (let [before (nth ring (mod (dec i) (count ring)))
+                                 after (nth ring (mod (inc i) (count ring)))
+                                 incoming (math/normalize (math/subtract point before))
+                                 outgoing (math/normalize (math/subtract after point))]
+                             (when (or (nil? incoming) (nil? outgoing)
+                                       (< (math/dot incoming outgoing) (- 1.0 1e-8)))
+                               point)))
+                         ring))]
+       (map (fn [a b]
+              (let [delta (math/subtract b a)]
+                {:length (math/length delta) :direction (math/normalize delta)}))
+            corners (concat (rest corners) [(first corners)]))))
+   (cut/outline triangles)))
 
 (defn- distinct-directions? [directions cos-angle]
   (let [dirs (vec directions)]
@@ -270,68 +255,32 @@
                  j (range (inc i) (count dirs))]
              [(dirs i) (dirs j)])))))
 
-(defn- polygon-covariance-ambiguous? [hull]
-  (let [pairs (map vector hull (concat (rest hull) [(first hull)]))
-        moments (reduce
-                 (fn [{:keys [area2 cx cy xx yy xy]} [a b]]
-                   (let [x0 (:x a), y0 (:y a), x1 (:x b), y1 (:y b)
-                         cr (- (* x0 y1) (* x1 y0))]
-                     {:area2 (+ area2 cr)
-                      :cx (+ cx (* (+ x0 x1) cr))
-                      :cy (+ cy (* (+ y0 y1) cr))
-                      :xx (+ xx (* (+ (sq x0) (* x0 x1) (sq x1)) cr))
-                      :yy (+ yy (* (+ (sq y0) (* y0 y1) (sq y1)) cr))
-                      :xy (+ xy (* (+ (* 2.0 x0 y0) (* x0 y1) (* x1 y0) (* 2.0 x1 y1)) cr))}))
-                 {:area2 0.0 :cx 0.0 :cy 0.0 :xx 0.0 :yy 0.0 :xy 0.0}
-                 pairs)
-        area (/ (:area2 moments) 2.0)]
-    (if (<= (Math/abs area) degenerate-area2-epsilon)
-      true
-      (let [centroid-x (/ (:cx moments) (* 6.0 area))
-            centroid-y (/ (:cy moments) (* 6.0 area))
-            cxx (- (/ (:xx moments) (* 12.0 area)) (sq centroid-x))
-            cyy (- (/ (:yy moments) (* 12.0 area)) (sq centroid-y))
-            cxy (- (/ (:xy moments) (* 24.0 area)) (* centroid-x centroid-y))
-            delta (Math/sqrt (+ (sq (- cxx cyy)) (* 4.0 (sq cxy))))
-            l1 (/ (+ cxx cyy delta) 2.0)
-            l2 (/ (- (+ cxx cyy) delta) 2.0)
-            m (max (Math/abs l1) (Math/abs l2))]
-        (or (<= m component-epsilon)
-            (<= (Math/abs (- l1 l2)) (* 0.01 m)))))))
-
 (defn- world-axis-roll [axis]
   {:roll (fallback-roll axis)
    :roll-ambiguous? true
    :roll-source :world-axis})
 
-(defn- roll-from-hull [axis points facet-angle-deg]
-  (try
-    (let [hull (convex-hull (projected-points axis points))
-          edges (remove #(or (nil? (:direction %)) (<= (:length %) component-epsilon))
-                        (hull-edges hull))
-          max-length (reduce max 0.0 (map :length edges))
-          longest (filter #(>= (:length %) (* 0.99 max-length)) edges)
-          cos-angle (Math/cos (Math/toRadians (double facet-angle-deg)))
-          ambiguous? (or (empty? longest)
-                         (distinct-directions? (map :direction longest) cos-angle)
-                         (polygon-covariance-ambiguous? hull))]
-      (if ambiguous?
-        (world-axis-roll axis)
-        (if-let [roll (some->> (:direction (first longest))
-                               (math/project-onto-plane axis)
-                               (math/normalize)
-                               (canonicalize-sign))]
-          {:roll roll
-           :roll-ambiguous? false
-           :roll-source :hull-edge}
-          (world-axis-roll axis))))
-    (catch NullPointerException _
+(defn- roll-from-boundary [axis triangles facet-angle-deg]
+  (let [edges (remove #(or (nil? (:direction %)) (<= (:length %) component-epsilon))
+                      (boundary-edges triangles))
+        max-length (reduce max 0.0 (map :length edges))
+        longest (filter #(>= (:length %) (* 0.99 max-length)) edges)
+        cos-angle (Math/cos (Math/toRadians (double facet-angle-deg)))
+        ambiguous? (or (empty? longest)
+                       (distinct-directions? (map :direction longest) cos-angle))]
+    ;; Equal edges still supply a boundary direction, never a world-axis
+    ;; replacement. Boundary loops have a deterministic starting vertex.
+    (if-let [roll (some->> (:direction (first (sort-by :length > longest)))
+                           (math/cross axis)
+                           (math/normalize)
+                           (canonicalize-sign))]
+      {:roll roll :roll-ambiguous? (boolean ambiguous?) :roll-source :boundary-edge-normal}
       (world-axis-roll axis))))
 
 (defn- frame [mesh indices opts]
   (let [points (vec (unique-points mesh indices))
         axis (facet-axis mesh indices)
-        {:keys [roll roll-ambiguous? roll-source]} (roll-from-hull axis points (:facet-angle-deg opts))]
+        {:keys [roll roll-ambiguous? roll-source]} (roll-from-boundary axis (mapv #(triangle-points mesh %) indices) (:facet-angle-deg opts))]
     {:frame {:mount/pos (bbox-midpoint points)
              :mount/axis axis
              :mount/roll roll}

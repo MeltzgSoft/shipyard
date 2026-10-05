@@ -211,7 +211,11 @@ Matrix payloads use 16 column-major numbers (TECHNICAL.md §13).
 
 Socket capacity divides the selected face into equal-width **vertical** sections or
 equal-height **horizontal** sections in its authored frame. The user chooses the
-direction and sees boundaries and section centers on the model. Each section supplies
+direction and sees boundaries and section centers on the model. For new faces, the
+initial horizontal alignment direction and capacity divider lines are perpendicular
+to the longest face boundary edge, independent of global axes or the part pose.
+Tied edges use a deterministic boundary choice; Twist and the two direction choices
+remain adjustable. Reopening preserves the saved frame and split direction. Each section supplies
 one independently assignable socket; capacity alone cannot supply their positions.
 
 ### 5.4 The face-picking wizard

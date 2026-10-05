@@ -646,7 +646,7 @@
 (defn- split-preview [frame]
   (when-let [form (.querySelector js/document ".mount-wizard__form")]
     (let [capacity (math/parse-finite-double (input-value form "input[name=capacity]"))
-          direction (keyword (or (input-value form "select[name=split-direction]") "vertical"))
+          direction (keyword (or (input-value form "select[name=split-direction]") "horizontal"))
           source-frame (some-> (input-value form "input[name=frame]") (edn/read-string))]
       (when (and capacity (> capacity 1))
         (split/sections (assoc frame :mount/capacity capacity
@@ -675,7 +675,7 @@
         (when (:cut cutting)
           (assoc frame :mount/cut (:cut cutting) :mount/outline (:mount/outline source)
                  :mount/capacity (if (= "socket" (input-value form "[name=kind]")) capacity 1)
-                 :mount/split (split/metadata-for source frame (keyword (or (input-value form "[name=split-direction]") "vertical")))))))))
+                 :mount/split (split/metadata-for source frame (keyword (or (input-value form "[name=split-direction]") "horizontal")))))))))
 
 (defn- preview-object [^js obj {:keys [facet-indices frame]} mirror]
   (let [selected (some-> (.querySelector js/document ".mount-wizard__form select[name=alignment-axis]") (.-value) (keyword))

@@ -1784,16 +1784,22 @@ triangle order:
 2. `:mount/axis` is the normalized sum of the facet triangles' unnormalized cross
    products. It therefore weights by area and follows the mesh winding. A zero or
    non-finite result is an error.
-3. Use the part's persisted source-to-canonical quaternion to transform canonical up
-   (`+Y`) into source space, project it into the face plane, and derive `:mount/roll` so
-   `axis × roll` follows that projected up direction. If the face normal is parallel to
-   canonical up, use canonical forward (`+Z`), then canonical right (`+X`) as fallbacks.
+3. Recover actual wound boundary loops, cancelling internal triangle edges, and
+   collapse collinear boundary vertices. Choose the longest boundary edge and set
+   `:mount/roll` to the normalized in-plane perpendicular `axis × edge`. Canonicalize
+   its sign by the first nonzero source component. This follows the face geometry,
+   including concave boundaries, independently of the part's orientation. Equal
+   non-parallel longest edges report `:roll-ambiguous? true` but still choose an actual
+   edge deterministically. Only an unavailable usable boundary falls back to a world
+   axis projected into the plane.
 
-The lower-level facet calculation still produces a deterministic geometric roll, which
-is useful to validate that a frame exists. The authoring boundary replaces it with the
-canonical roll above and reports `:roll-source :part-orientation`. The mount form calls
-the optional rotation around the fixed normal **Twist**; saving encodes that adjustment
-in the durable `:mount/roll` vector rather than retaining an editor-only angle.
+The authoring boundary retains this geometric frame and reports
+`:roll-source :boundary-edge-normal`. New capacity splits default to `:horizontal`,
+whose divider lines follow roll, so both the initial horizontal alignment arrow and
+capacity dividers are perpendicular to the chosen edge. Section centers run along
+that edge. Explicit horizontal/vertical choices and Twist remain adjustable; existing
+saved frames and split directions are retained when reopening. Saving Twist encodes
+the adjustment in durable `:mount/roll` rather than an editor-only angle.
 
 Optional `:mount/alignment-axis :horizontal|:horizontal-negative|:vertical|:vertical-negative`
 selects a directed tangent in the authored plane: ±`roll` for horizontal and
@@ -1882,7 +1888,7 @@ roll'' = normalize(roll' - axis'' dot(roll', axis'') axis'')
 ```
 
 If that final roll length is not usable, fall back to the same world-axis projection rule
-used for an ambiguous picked facet, and keep the preview marked as manually adjustable.
+used when a picked facet has no usable boundary, and keep the preview marked as manually adjustable.
 Reconstructing +Y as `axis'' × roll''` preserves a right-handed stored frame; applying a
 reflection matrix to all three basis vectors would instead create a left-handed frame. A
 position within the facet plane epsilon of the symmetry plane is a centreline mount and
@@ -1913,7 +1919,7 @@ handler passes this event map to the existing `htmx/fragment` helper:
            :mount/axis [0.0 0.0 1.0]
            :mount/roll [1.0 0.0 0.0]}
    :roll-ambiguous? false
-   :roll-source :part-orientation}}}
+   :roll-source :boundary-edge-normal}}}
 ```
 
 `htmx/fragment` names the event `shipyard:facet-preview`; on the wire it follows §7.1
@@ -2118,11 +2124,11 @@ contains:
 - a vertical rectangle sharing the first rectangle's Y=2 edge, exercising a hard edge
   and the distinct vertex ids created by crease splitting;
 - a second 2 × 1 rectangle on Z=0 beginning at X=6, coplanar but disconnected; and
-- a disconnected 2 × 2 square on Z=3, whose equal non-parallel hull edges require the
-  roll fallback.
+- a disconnected 2 × 2 square on Z=3, whose equal non-parallel boundary edges require a
+  deterministic edge choice and an ambiguity flag.
 
 The first pick returns exactly the two triangles of the 4 × 2 rectangle, not the vertical
-or disconnected rectangles, with position `[2 1 0]`, axis `[0 0 1]`, roll `[1 0 0]`, and
+or disconnected rectangles, with position `[2 1 0]`, axis `[0 0 1]`, roll `[0 1 0]`, and
 `:roll-ambiguous? false`. Picking the square returns its two triangles and
 `:roll-ambiguous? true`. Tests also construct reversed, non-manifold, invalid-index and
 degenerate cases in memory; they do not need more committed binary fixtures.

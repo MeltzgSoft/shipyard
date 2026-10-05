@@ -687,13 +687,13 @@
       "socket controls appear immediately after changing Kind")
   (s/js *driver* "() => { const input = document.querySelector('.mount-wizard__form input[name=capacity]'); input.value = '2'; input.dispatchEvent(new Event('input', {bubbles: true})); }")
   (is (s/wait-until #(= 2 (count (get-in (s/stats *driver*) [:preview :split-centers]))))
-      "vertical split previews both positions")
-  (let [vertical (get-in (s/stats *driver*) [:preview :split-centers])]
-    (s/select-option! *driver* ".mount-wizard__form select[name=split-direction]" "Horizontal — equal heights")
-    (is (s/wait-until #(not= vertical (get-in (s/stats *driver*) [:preview :split-centers])))
-        "horizontal split changes positions on the selected face")
+      "default split previews both positions")
+  (let [horizontal (get-in (s/stats *driver*) [:preview :split-centers])]
+    (s/select-option! *driver* ".mount-wizard__form select[name=split-direction]" "Vertical — equal widths")
+    (is (s/wait-until #(not= horizontal (get-in (s/stats *driver*) [:preview :split-centers])))
+        "vertical split changes positions on the selected face")
     (is (= 1 (count (get-in (s/stats *driver*) [:preview :split-lines]))))
-    (s/select-option! *driver* ".mount-wizard__form select[name=split-direction]" "Vertical — equal widths"))
+    (s/select-option! *driver* ".mount-wizard__form select[name=split-direction]" "Horizontal — equal heights"))
   (s/click! *driver* ".mount-wizard__actions button[value=create]")
   (is (s/wait-until #(str/includes? (s/text *driver* "#detail") "weapon-1"))
       (str "the saved mount should appear in the detail panel; got "

@@ -1,6 +1,7 @@
 (ns shipyard.mesh.facet-test
   (:require [clojure.test :refer [deftest is testing]]
             [shipyard.math :as math]
+            [shipyard.mount.cut :as cut]
             [shipyard.mesh.facet :as facet]))
 
 (defn- mesh
@@ -73,13 +74,13 @@
       (is (= [0 1] facet-indices))
       (is (vec-close? [2.0 1.0 0.0] (:mount/pos frame)))
       (is (vec-close? [0.0 0.0 1.0] (:mount/axis frame)))
-      (is (vec-close? [1.0 0.0 0.0] (:mount/roll frame)))
+      (is (vec-close? [0.0 1.0 0.0] (:mount/roll frame)))
       (is (finite-vec? (:mount/pos frame)))
       (is (close? 1.0 (math/length (:mount/axis frame))))
       (is (close? 1.0 (math/length (:mount/roll frame))))
       (is (close? 0.0 (math/dot (:mount/axis frame) (:mount/roll frame))))
       (is (false? roll-ambiguous?))
-      (is (= :hull-edge roll-source))))
+      (is (= :boundary-edge-normal roll-source))))
 
   (testing "a hard edge is adjacent but not part of the facet"
     (is (= [2 3] (:facet-indices (facet/select contract-mesh 2)))))
@@ -91,14 +92,14 @@
     (is (= (:frame (facet/select contract-mesh 0))
            (:frame (facet/select contract-mesh 1)))))
 
-  (testing "squares use the deterministic roll fallback and say so"
+  (testing "squares choose an actual boundary edge deterministically and report the tie"
     (let [{:keys [facet-indices frame roll-ambiguous? roll-source]} (facet/select contract-mesh 6)]
       (is (= [6 7] facet-indices))
       (is (vec-close? [1.0 1.0 3.0] (:mount/pos frame)))
       (is (vec-close? [0.0 0.0 1.0] (:mount/axis frame)))
-      (is (vec-close? [1.0 0.0 0.0] (:mount/roll frame)))
+      (is (vec-close? [0.0 1.0 0.0] (:mount/roll frame)))
       (is (true? roll-ambiguous?))
-      (is (= :world-axis roll-source)))))
+      (is (= :boundary-edge-normal roll-source)))))
 
 (deftest match-frame-test
   (testing "recovers the connected face nearest a legacy mount frame"
@@ -117,11 +118,9 @@
                                   :mount/axis [0.0 0.0 1.0]})))))
 
 (deftest roll-fallback-test
-  (testing "a numerically bad hull projection still yields a selectable frame"
-    (let [projected-points (ns-resolve 'shipyard.mesh.facet 'projected-points)
-          {:keys [frame roll-ambiguous? roll-source]}
-          (with-redefs-fn {projected-points (fn [_axis _points]
-                                              (throw (NullPointerException. "bad projection")))}
+  (testing "an unavailable boundary still yields a selectable fallback frame"
+    (let [{:keys [frame roll-ambiguous? roll-source]}
+          (with-redefs-fn {#'cut/outline (constantly nil)}
             #(facet/select contract-mesh 0))]
       (is (vec-close? [2.0 1.0 0.0] (:mount/pos frame)))
       (is (vec-close? [0.0 0.0 1.0] (:mount/axis frame)))
@@ -190,3 +189,30 @@
         decoy [[-14 19 0] [-13 19 0] [-14 21 0]]
         m (mesh [large-a decoy large-b])]
     (is (= [0 2] (facet/match-frame m {:mount/pos [-7.5 20 0] :mount/axis [0 0 1]})))))
+
+(deftest edge-normal-follows-rotated-and-subdivided-boundaries
+  (let [angle (/ Math/PI 6.0)
+        rotate (fn [[x y z]] [(- (* x (Math/cos angle)) (* y (Math/sin angle)))
+                              (+ (* x (Math/sin angle)) (* y (Math/cos angle))) z])
+        ;; Collinear vertices divide the long edge into four shorter segments.
+        tris (vec (mapcat (fn [x] [[[x 0 0] [(inc x) 0 0] [x 2 0]]
+                                   [[(inc x) 0 0] [(inc x) 2 0] [x 2 0]]]) (range 4)))
+        rotated (mesh (mapv #(mapv rotate %) tris))
+        {:keys [frame roll-source roll-ambiguous?]} (facet/select rotated 0)
+        edge (rotate [1 0 0])]
+    (is (= :boundary-edge-normal roll-source))
+    (is (false? roll-ambiguous?))
+    (is (< (abs (math/dot edge (:mount/roll frame))) 1e-6))
+    (is (> (abs (math/dot (rotate [0 1 0]) (:mount/roll frame))) 0.999999))
+    (is (= frame (:frame (facet/select rotated 7))))))
+
+(deftest concave-boundary-does-not-use-a-hull-diagonal
+  (let [m (mesh [[[0 0 0] [1 0 0] [0 1 0]]
+                 [[1 0 0] [1 1 0] [0 1 0]]
+                 [[1 0 0] [4 0 0] [1 1 0]]
+                 [[4 0 0] [4 1 0] [1 1 0]]
+                 [[0 1 0] [1 1 0] [0 4 0]]
+                 [[1 1 0] [1 4 0] [0 4 0]]])
+        frame (:frame (facet/select m 0))]
+    (is (or (vec-close? [0 1 0] (:mount/roll frame))
+            (vec-close? [1 0 0] (:mount/roll frame))))))

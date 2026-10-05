@@ -421,9 +421,11 @@
     (is (= [0 1] (:facet-indices preview)))
     (is (= [2.0 1.0 0.0] (get-in preview [:frame :mount/pos])))
     (is (= [0.0 0.0 1.0] (get-in preview [:frame :mount/axis])))
-    (is (= [1.0 0.0 0.0] (get-in preview [:frame :mount/roll])))
+    (is (= [0.0 1.0 0.0] (get-in preview [:frame :mount/roll])))
     (is (false? (:roll-ambiguous? preview)))
-    (is (= :part-orientation (:roll-source preview)))
+    (is (= :boundary-edge-normal (:roll-source preview)))
+    (is (= :horizontal (get-in preview [:frame :mount/split :direction])))
+    (is (re-find #"<option selected=\"selected\" value=\"horizontal\">Horizontal" (:body r)))
     ;; The flat fixture is deliberately role-hinted as a hull. Geometry takes
     ;; precedence only for the initial, still-editable kind form default.
     (is (re-find #"<option selected=\"selected\" value=\"plug\">plug</option>" (:body r)))
@@ -455,10 +457,10 @@
                       :mount/kind :socket
                       :mount/accepts [:weapon]
                       :mount/capacity 2
-                      :mount/split {:direction :vertical :bounds [[-2.0 -1.0] [2.0 1.0]]}
+                      :mount/split {:direction :horizontal :bounds [[-1.0 -2.0] [1.0 2.0]]}
                       :mount/pos [2.0 1.0 0.0]
                       :mount/axis [0.0 0.0 1.0]
-                      :mount/roll [1.0 0.0 0.0]
+                      :mount/roll [0.0 1.0 0.0]
                       :mount/facet {:mesh-key mesh-key :indices [0 1]}
                       :mount/outline [[[0.0 0.0 0.0] [4.0 0.0 0.0] [4.0 2.0 0.0] [0.0 2.0 0.0]]]
                       :mount/origin :picked}]}
@@ -672,7 +674,7 @@
         (is (= 1 (count mounts)))
         (is (= :prow-socket (:mount/id mount)))
         (is (= #{:prow} (:mount/accepts mount)))
-        (is (< (Math/abs (- 1.0 (double (second (:mount/roll mount)))))
+        (is (< (Math/abs (- -1.0 (double (first (:mount/roll mount)))))
                1.0e-6))))))
 
 (deftest part-role-is-edited-outside-the-mount-wizard
@@ -716,10 +718,12 @@
            (:orientation (get (triggers saved) "shipyard:part-orientation"))))
     (is (true? (:saved? (get (triggers saved) "shipyard:part-orientation"))))
     (is (re-find #"name=\"part-yaw-deg\"[^>]+value=\"90.0\"" (:body saved)))
-    (testing "newly selected mount frames follow canonical part-up"
+    (testing "newly selected mount frames follow the face boundary independently of part pose"
       (let [preview (get (triggers (facet-post h hull-id mesh-key 0))
                          "shipyard:facet-preview")]
-        (is (= :part-orientation (:roll-source preview)))
+        (is (= :boundary-edge-normal (:roll-source preview)))
+        (is (= [0.0 1.0 0.0] (get-in preview [:frame :mount/roll])))
+        (is (= :horizontal (get-in preview [:frame :mount/split :direction])))
         (is (false? (:roll-ambiguous? preview)))))
     (testing "reset persists identity and updates the live viewer"
       (let [reset-response (part-orientation-post h {:part-id hull-id :action "reset"})]
