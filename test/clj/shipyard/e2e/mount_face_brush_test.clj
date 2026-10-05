@@ -97,6 +97,11 @@
         (let [preview (:preview (s/stats driver))]
           (doseq [[[a b] roll] (map vector (:alignment-lines preview) [(:roll preview) (:mirror-roll preview)])]
             (is (> 0 (reduce + (map * (map - b a) roll))))))
+        (s/select-option! driver ".mount-wizard__form select[name=alignment-axis]" "Vertical (−Y)")
+        (is (s/wait-until #(= "vertical-negative" (get-in (s/stats driver) [:preview :alignment-axis]))))
+        (let [preview (:preview (s/stats driver))]
+          (doseq [[[a b] up sign] (map vector (:alignment-lines preview) [(:up preview) (:mirror-up preview)] [-1 1])]
+            (is (pos? (* sign (reduce + (map * (map - b a) up)))))))
         (s/check! driver "[data-mount-face-edit]")
         (s/drag! driver [x y] [(+ x 1) y]))
       (is (s/wait-until #(= 1 (get-in (s/stats driver) [:preview :triangles]))))
@@ -107,7 +112,7 @@
           (is (= [trimmed trimmed] (mapv :facet-indices items)))
           (is (= [[-12 0] [3 0]] (mapv #(subvec (first (:face-bounds %)) 0 2) items))))
         (let [before (:part/mounts (:part (catalog/part-context! cat id))) base (first before)]
-          (is (= [:horizontal-negative :horizontal-negative] (mapv :mount/alignment-axis before)))
+          (is (= [:vertical-negative :vertical] (mapv :mount/alignment-axis before)))
           (s/click! driver (str "form:has(input[name=mount-id][value='" (name (:mount/id base)) "']) button:has-text('Edit')"))
           (s/wait-visible! driver ".mount-wizard__form")
           (is (s/wait-until #(= trimmed (get-in (s/stats driver) [:preview :facet-indices]))))

@@ -1,6 +1,8 @@
 (ns shipyard.mount.wizard-test
   (:require [clojure.test :refer [deftest is testing]]
-            [shipyard.mount.wizard :as wizard]))
+            [shipyard.mount.wizard :as wizard]
+            [shipyard.mount.alignment :as alignment]
+            [shipyard.part.orientation :as orientation]))
 
 (def ^:private frame
   {:mount/pos [2.0 1.0 0.0]
@@ -354,7 +356,8 @@
             mount (:mount saved)]
         (is (nil? (:error saved)))
         (is (= axis (:mount/alignment-axis mount)))
-        (is (= axis (get-in saved [:mirrored-mount :mount/alignment-axis])))
+        (is (= (alignment/mirrored-axis axis)
+               (get-in saved [:mirrored-mount :mount/alignment-axis])))
         (is (= axis (:alignment-axis (wizard/preview-values request))))
         (is (= axis (:alignment-axis (wizard/mount-values mount)))))))
   (testing "omitted fields preserve an existing axis while explicit None clears it"
@@ -367,3 +370,10 @@
       (is (:error (wizard/save-request (params {"alignment-axis" value}) [])))))
   (testing "malformed durable alignment excludes a mount from assembly"
     (is (false? (wizard/valid-frame? (assoc socket :mount/alignment-axis :bad))))))
+
+(deftest mirrored-alignment-reflects-the-arrow
+  (doseq [axis alignment/axes]
+    (let [mount (assoc socket :mount/alignment-axis axis)
+          mirrored (wizard/mirror-mount mount :x 0.0 :mirror)]
+      (is (= (orientation/reflect-direction orientation/identity-quaternion :x (alignment/direction mount))
+             (alignment/direction mirrored))))))

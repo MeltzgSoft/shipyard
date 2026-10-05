@@ -336,12 +336,13 @@
 
 ;; --- mount authoring --------------------------------------------------------
 
-(defn- reflect-frame [{:mount/keys [pos axis roll]}
+(defn- reflect-frame [{:mount/keys [pos axis roll alignment-axis]}
                       {:keys [plane-keyword offset] :as mirror}]
   (let [part-orientation (:orientation mirror)]
-    {:mount/pos (orientation/reflect-position part-orientation plane-keyword offset pos)
-     :mount/axis (orientation/reflect-direction part-orientation plane-keyword axis)
-     :mount/roll (orientation/reflect-direction part-orientation plane-keyword roll)}))
+    (cond-> {:mount/pos (orientation/reflect-position part-orientation plane-keyword offset pos)
+             :mount/axis (orientation/reflect-direction part-orientation plane-keyword axis)
+             :mount/roll (orientation/reflect-direction part-orientation plane-keyword roll)}
+      alignment-axis (assoc :mount/alignment-axis (alignment/mirrored-axis alignment-axis)))))
 
 (defn- reflect-point! [^js p {:keys [plane-keyword offset] :as mirror}]
   (let [[x y z] (orientation/reflect-position
@@ -697,7 +698,7 @@
                 (.add roll-line)
                 (.add up-line))]
     (when-let [line (alignment-object frame length)] (.add group line))
-    (when-let [line (when mirrored-frame (alignment-object (assoc mirrored-frame :mount/alignment-axis (:mount/alignment-axis frame)) length))]
+    (when-let [line (when mirrored-frame (alignment-object mirrored-frame length))]
       (.add group line))
     (when-let [mount (cut-preview-mount frame)]
       (when-let [cutting (cut-render/object! mount)] (.add group cutting))

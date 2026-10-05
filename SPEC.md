@@ -194,7 +194,9 @@ is the mount's `roll` direction, **Horizontal (−X)** its opposite, **Vertical 
 is `axis × roll`, and **Vertical (−Y)** its opposite. If both mating mounts set a
 direction, assembly turns the child about the parent outward normal until the arrows
 point the same way. Opposite arrows require a 180° turn; parallel but reversed axes
-do not satisfy the constraint. The signed turn lies in [-π, π]. This explicit
+do not satisfy the constraint. The signed turn lies in [-π, π]. Mirroring reflects
+the arrow itself; the mirrored vertical axis uses the opposite local sign to retain
+that reflected direction. This explicit
 constraint may override the child's configured top; face mating, the gap and mount
 positions remain unchanged. Twist adjusts the authored arrow. If either axis is unset,
 that join uses the existing normal/forward rule. An ancestor's alignment correction

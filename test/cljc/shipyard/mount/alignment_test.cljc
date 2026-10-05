@@ -36,3 +36,9 @@
     (is (= [:vertical :vertical] (mapv :mount/alignment-axis sections)))
     (is (= [[0.0 1.0 0.0] [0.0 1.0 0.0]] (mapv alignment/direction sections)))
     (is (= [[0.0 2.0 3.0] [2.0 2.0 3.0]] (mapv :mount/pos sections)))))
+
+(deftest mirrored-axis-test
+  (is (= [nil :horizontal :horizontal-negative :vertical-negative :vertical]
+         (mapv alignment/mirrored-axis [nil :horizontal :horizontal-negative :vertical :vertical-negative])))
+  (doseq [axis alignment/axes]
+    (is (= axis (alignment/mirrored-axis (alignment/mirrored-axis axis))))))

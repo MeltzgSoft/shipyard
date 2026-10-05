@@ -328,7 +328,8 @@ When the preview looks right, fill in the mount form:
   about the mating-face normal while staying on the mount. Opposite arrows require a
   half turn. For a battery that needs a quarter turn, choose a horizontal direction on
   one mount and a vertical direction on the other. Reverse the sign to turn the battery
-  toward the other side; inspect both arrow previews before saving.
+  toward the other side; inspect both arrow previews before saving. Mirroring reflects the arrow itself;
+  the mirrored mount's local vertical sign changes to preserve that direction.
   Saved mounts reopen with their direction selected. Choose None and **Save changes** to
   clear it. If either mating mount is None, assembly uses its usual placement rule.
 - **Mirror** creates a linked second socket by reflecting the picked frame across a symmetry

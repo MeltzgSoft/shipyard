@@ -26,3 +26,11 @@
   (when-let [tangent (direction mount)]
     [(math/subtract pos (math/scale half-length tangent))
      (math/add pos (math/scale half-length tangent))]))
+
+(defn mirrored-axis
+  "Reflect the directed arrow while keeping the mirrored frame right-handed."
+  [axis]
+  (case axis
+    :vertical :vertical-negative
+    :vertical-negative :vertical
+    axis))

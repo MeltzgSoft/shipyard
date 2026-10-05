@@ -1800,7 +1800,8 @@ selects a directed tangent in the authored plane: ±`roll` for horizontal and
 ±`axis × roll` for vertical. Absence means no alignment constraint. The wizard exposes
 None and the four signed directions; Twist updates the arrow with the frame. Live and
 saved white arrows use the same shared `shipyard.mount.alignment` geometry and follow
-mirrored frames. The optional keyword is stored on the existing Datalevin mount
+mirrored frames. Reflection preserves the local horizontal sign and reverses the
+local vertical sign because the reconstructed right-handed Y is inverted. The optional keyword is stored on the existing Datalevin mount
 component, validated before writes, and omitted when cleared. Edits/re-picks, face
 trimming, capacity sections and linked mirrors carry it without changing source-face
 identity or mount positions.

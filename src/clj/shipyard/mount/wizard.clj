@@ -175,12 +175,14 @@
   ([frame plane offset]
    (mirror-frame frame plane offset orientation/identity-quaternion))
   ([frame plane offset part-orientation]
-   (let [mirrored {:mount/pos (orientation/reflect-position
-                               part-orientation plane offset (:mount/pos frame))
-                   :mount/axis (orientation/reflect-direction
-                                part-orientation plane (:mount/axis frame))
-                   :mount/roll (orientation/reflect-direction
-                                part-orientation plane (:mount/roll frame))}]
+   (let [mirrored (cond-> {:mount/pos (orientation/reflect-position
+                                       part-orientation plane offset (:mount/pos frame))
+                           :mount/axis (orientation/reflect-direction
+                                        part-orientation plane (:mount/axis frame))
+                           :mount/roll (orientation/reflect-direction
+                                        part-orientation plane (:mount/roll frame))}
+                    (:mount/alignment-axis frame)
+                    (assoc :mount/alignment-axis (alignment/mirrored-axis (:mount/alignment-axis frame))))]
      (when (valid-frame? mirrored)
        mirrored))))
 
@@ -197,7 +199,7 @@
    (mirror-mount mount plane offset mirror-id orientation/identity-quaternion))
   ([mount plane offset mirror-id part-orientation]
    (when-let [frame (mirror-frame
-                     (select-keys mount [:mount/pos :mount/axis :mount/roll])
+                     mount
                      plane offset part-orientation)]
      (cond-> (merge (dissoc mount :mount/facet)
                     frame
