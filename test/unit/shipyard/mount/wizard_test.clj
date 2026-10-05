@@ -345,3 +345,24 @@
       (is (= [] (:mounts (wizard/delete-request {"mount-id" "starboard-1"} [base mirrored]))))))
   (testing "validates the id"
     (is (:error (wizard/delete-request {"mount-id" ""} [socket])))))
+
+(deftest alignment-axis-authoring-test
+  (testing "create, preview, mirror and edit carry the authored axis"
+    (let [request (params {"alignment-axis" "horizontal" "mirror" "true" "mirror-plane" "x" "mirror-offset" "0"})
+          saved (wizard/save-request request [])
+          mount (:mount saved)]
+      (is (nil? (:error saved)))
+      (is (= :horizontal (:mount/alignment-axis mount)))
+      (is (= :horizontal (get-in saved [:mirrored-mount :mount/alignment-axis])))
+      (is (= :horizontal (:alignment-axis (wizard/preview-values request))))
+      (is (= :horizontal (:alignment-axis (wizard/mount-values mount))))))
+  (testing "omitted fields preserve an existing axis while explicit None clears it"
+    (let [existing (assoc socket :mount/alignment-axis :vertical)
+          request (params {"action" "update" "original-mount-id" "port-1"})]
+      (is (= :vertical (get-in (wizard/save-request request [existing]) [:mount :mount/alignment-axis])))
+      (is (not (contains? (:mount (wizard/save-request (assoc request "alignment-axis" "none") [existing])) :mount/alignment-axis)))))
+  (testing "invalid values cannot silently save or clear alignment"
+    (doseq [value ["" "diagonal" "HORIZONTAL"]]
+      (is (:error (wizard/save-request (params {"alignment-axis" value}) [])))))
+  (testing "malformed durable alignment excludes a mount from assembly"
+    (is (false? (wizard/valid-frame? (assoc socket :mount/alignment-axis :bad))))))

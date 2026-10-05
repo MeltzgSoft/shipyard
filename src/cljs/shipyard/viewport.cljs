@@ -26,6 +26,7 @@
             [shipyard.math :as math]
             [shipyard.triangle :as triangle]
             [shipyard.mount.split :as split]
+            [shipyard.mount.alignment :as alignment]
             [shipyard.mount.face-brush :as mount-face-brush]
             [shipyard.mount.cut :as cut]
             [shipyard.mount.cut-render :as cut-render]
@@ -563,6 +564,14 @@
   (when (= mesh-key (get-in mount [:mount/facet :mesh-key]))
     (seq (get-in mount [:mount/facet :indices]))))
 
+(defn- alignment-object [mount length]
+  (when-let [points (alignment/line mount length)]
+    (doto (three/Line.
+           (doto (three/BufferGeometry.) (.setFromPoints (into-array (map v3 points))))
+           (three/LineBasicMaterial. #js {:color 0xffffff :depthTest false :depthWrite false}))
+      (aset "name" "mount-alignment")
+      (aset "renderOrder" 1100))))
+
 (defn- interface-highlight-object [^js obj mesh-key mount mirror-source mirror]
   (let [interface-type (interface-colors/type-of mount)
         color (color-int interface-type)
@@ -579,11 +588,13 @@
                  [(vec (.toArray (.. highlight -geometry -boundingBox -min)))
                   (vec (.toArray (.. highlight -geometry -boundingBox -max)))])
         cut-mount (if (= mesh-key (get-in mount [:mount/cut :mesh-key])) mount (dissoc mount :mount/cut))
-        cutting (cut-render/object! cut-mount)]
+        cutting (cut-render/object! cut-mount)
+        alignment-line (alignment-object mount (preview-length obj))]
     (when highlight (.add group highlight))
     (when-let [split-object (:object split-guide)]
       (.add group split-object))
     (when cutting (.add group cutting))
+    (when alignment-line (.add group alignment-line))
     {:type interface-type
      :mount-id (:mount/id mount)
      :facet-indices (vec facet-indices)
@@ -593,7 +604,7 @@
      :split-lines (or (:split-lines split-guide) [])
      :split-centers (or (:split-centers split-guide) [])
      :cut-lines (cut-render/lines cut-mount)
-     :object (when (or facet-indices split-guide cutting) group)}))
+     :object (when (or facet-indices split-guide cutting alignment-line) group)}))
 
 (defn- interface-highlights [^js obj mesh-key mounts part-orientation]
   (let [by-id (into {} (map (juxt :mount/id identity)) mounts)
@@ -666,7 +677,9 @@
                  :mount/split (split/metadata-for source frame (keyword (or (input-value form "[name=split-direction]") "vertical")))))))))
 
 (defn- preview-object [^js obj {:keys [facet-indices frame]} mirror]
-  (let [frame (assoc frame :mount/roll (roll-for-preview frame))
+  (let [selected (some-> (.querySelector js/document ".mount-wizard__form select[name=alignment-axis]") (.-value) (keyword))
+        frame (cond-> (assoc frame :mount/roll (roll-for-preview frame))
+                (contains? alignment/axes selected) (assoc :mount/alignment-axis selected))
         axis (:mount/axis frame)
         roll (:mount/roll frame)
         up (frame-up frame)
@@ -683,6 +696,9 @@
                 (.add axis-line)
                 (.add roll-line)
                 (.add up-line))]
+    (when-let [line (alignment-object frame length)] (.add group line))
+    (when-let [line (when mirrored-frame (alignment-object (assoc mirrored-frame :mount/alignment-axis (:mount/alignment-axis frame)) length))]
+      (.add group line))
     (when-let [mount (cut-preview-mount frame)]
       (when-let [cutting (cut-render/object! mount)] (.add group cutting))
       (when mirrored-frame
@@ -837,6 +853,7 @@
        "accepts" (input-value form "select[name=accepts]")
        "capacity" (input-value form "input[name=capacity]")
        "split-direction" (input-value form "select[name=split-direction]")
+       "alignment-axis" (input-value form "select[name=alignment-axis]")
        "twist-deg" (input-value form "input[name=twist-deg]")})))
 
 (defn- post-facet! [{:keys [authoring repeat]} triangle-index]
@@ -1416,6 +1433,17 @@
                                                         (range (.-count position)))}))))))
     @items))
 
+(defn- alignment-stats [^js object]
+  (let [lines (atom [])]
+    (when object
+      (.traverse object
+                 (fn [^js child]
+                   (when (= "mount-alignment" (.-name child))
+                     (let [points (.getAttribute (.-geometry child) "position")]
+                       (swap! lines conj (mapv (fn [i] [(.getX points i) (.getY points i) (.getZ points i)])
+                                               (range (.-count points)))))))))
+    @lines))
+
 (defn- preview-stats [{:keys [preview]}]
   (when-let [{:keys [^js object revision part-id mesh-key facet-indices frame
                      mirror mirror-frame roll-ambiguous? roll-source split-lines split-centers]} @preview]
@@ -1426,6 +1454,8 @@
               :triangles (count facet-indices)
               :cuts (cut-stats object)
               :position (:mount/pos frame)
+              :alignment-axis (some-> (:mount/alignment-axis frame) (name))
+              :alignment-lines (alignment-stats object)
               :split-lines split-lines
               :split-centers split-centers
               :axis (:mount/axis frame)
@@ -1456,6 +1486,7 @@
                         :cut-lines cut-lines})]
       (clj->js {:part-id part-id
                 :cuts (cut-stats object)
+                :alignment-lines (alignment-stats object)
                 :mesh-key mesh-key
                 :object-id (when object (.-uuid object))
                 :visible (boolean (some-> object .-visible))

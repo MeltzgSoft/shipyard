@@ -2,6 +2,7 @@
   "Pure source-space assembly matrices. Column-major, column vectors, millimeters."
   (:require [shipyard.math :as math]
             [shipyard.domain.schemas :as schemas]
+            [shipyard.mount.alignment :as alignment]
             [shipyard.part.orientation :as orientation]))
 
 (def identity-matrix [1.0 0.0 0.0 0.0
@@ -24,6 +25,9 @@
 (defn frame-matrix
   "Return a mount-to-source matrix, or throw an actionable authored-data error."
   [{:mount/keys [pos axis roll id] :as frame}]
+  (when-not (alignment/valid? frame)
+    (throw (ex-info "Reauthor the mount alignment: choose horizontal, vertical, or none."
+                    {:code :invalid-mount-alignment :mount-id id})))
   (when-not (valid-frame? frame)
     (throw (ex-info "Reauthor the mount: position must be finite and axis/roll perpendicular unit vectors."
                     {:code :invalid-frame :mount-id id :frame frame})))
@@ -147,14 +151,39 @@
       :else
       (- (heading (- px) (- pz)) (heading cx cz)))))
 
-(defn attachment-matrix
-  "Place a child mount on a parent mount while preserving its configured pose.
+(defn- axis-rotation [axis radians]
+  (let [c (#?(:clj Math/cos :cljs js/Math.cos) radians)
+        s (#?(:clj Math/sin :cljs js/Math.sin) radians)]
+    (vec (concat
+          (mapcat (fn [v]
+                    (concat (math/add (math/scale c v)
+                                      (math/add (math/scale (* (- 1.0 c) (math/dot axis v)) axis)
+                                                (math/scale s (math/cross axis v)))) [0.0]))
+                  [[1.0 0.0 0.0] [0.0 1.0 0.0] [0.0 0.0 1.0]])
+          [0.0 0.0 0.0 1.0]))))
 
-  The child's saved source-to-canonical orientation is retained. Assembly adds
-  only the global-Y rotation needed to make the two outward mount normals
-  oppose. Vertical mount faces leave yaw unconstrained, so their child instead
-  inherits the assembled parent's canonical forward heading. The child is then
-  translated to the parent mount."
+(defn- align-lines [pose parent parent-mount child-mount parent-axis]
+  (let [parent-line (alignment/direction parent-mount)
+        child-line (alignment/direction child-mount)]
+    (if (and parent-line child-line)
+      (let [a (math/normalize (math/project-onto-plane parent-axis (transform-direction pose child-line)))
+            b (math/normalize (math/project-onto-plane parent-axis (transform-direction parent parent-line)))
+            angle (#?(:clj Math/atan2 :cljs js/Math.atan2)
+                   (math/dot parent-axis (math/cross a b)) (math/dot a b))
+            pi #?(:clj Math/PI :cljs js/Math.PI)
+            ;; A line has no arrow: antiparallel tangents already agree.
+            angle (cond (> angle (/ pi 2.0)) (- angle pi)
+                        (< angle (- (/ pi 2.0))) (+ angle pi)
+                        :else angle)]
+        (multiply (axis-rotation parent-axis angle) pose))
+      pose)))
+
+(defn attachment-matrix
+  "Mate source-space mounts, inheriting the parent's assembled correction.
+
+  Normal/forward alignment retains the child's saved pose in the parent's
+  canonical frame. When both mounts select a line, the smaller in-plane turn
+  makes those lines parallel. Translation then retains the mating point/gap."
   ([parent parent-mount child-mount]
    (attachment-matrix parent parent-mount child-mount orientation/identity-quaternion
                       orientation/identity-quaternion 0.0))
@@ -173,16 +202,25 @@
          parent-pos (transform-point parent (:mount/pos parent-mount))
          parent-axis (math/normalize
                       (transform-direction parent (:mount/axis parent-mount)))
+         parent-pose (orientation-matrix parent-orientation)
+         ;; Inherit the parent's assembly correction, including opted-in twist.
+         ;; Remove its saved source pose and translation before placing a child.
+         inherited (multiply (assoc parent 12 0.0 13 0.0 14 0.0)
+                             (orientation-matrix (orientation/inverse
+                                                  (or parent-orientation orientation/identity-quaternion))))
+         local-parent-axis (transform-direction parent-pose (:mount/axis parent-mount))
          child-axis (math/normalize
                      (transform-direction child-pose-base (:mount/axis child-mount)))
          parent-forward (math/normalize
-                         (transform-direction parent (canonical-forward-source parent-orientation)))
+                         (transform-direction parent-pose (canonical-forward-source parent-orientation)))
          child-forward (math/normalize
                         (transform-direction child-pose-base
                                              (canonical-forward-source child-orientation)))
-         child-pose (multiply (yaw-matrix (face-aligning-yaw parent-axis child-axis
-                                                             parent-forward child-forward))
-                              child-pose-base)
+         child-pose (multiply inherited
+                              (multiply (yaw-matrix (face-aligning-yaw local-parent-axis child-axis
+                                                                       parent-forward child-forward))
+                                        child-pose-base))
+         child-pose (align-lines child-pose parent parent-mount child-mount parent-axis)
          target-pos (math/add parent-pos (math/scale gap parent-axis))
          child-offset (transform-point child-pose (:mount/pos child-mount))
          [x y z] (math/subtract target-pos child-offset)]

@@ -406,6 +406,11 @@
      [:label.mount-wizard__field "Twist"
       [:input {:type "number" :name "twist-deg" :value (or (:twist-deg values) "0")
                :step "1"}]]
+     [:label.mount-wizard__field.mount-wizard__alignment "Alignment axis"
+      [:select {:name "alignment-axis"}
+       (for [[axis label] [[:none "None"] [:horizontal "Horizontal (+X)"] [:vertical "Vertical (+Y)"]]]
+         [:option {:value (name axis) :selected (= axis (or (:alignment-axis values) :none))} label])]
+      [:small "Set an axis on both mating mounts to align their lines. Twist adjusts the line; the child rotates in assembly."]]
      (when (or (not edit?) mirror?)
        [:fieldset.mount-wizard__mirror (socket-only-attrs kind)
         [:legend "Mirror"]

@@ -3,6 +3,7 @@
   (:require [clojure.edn :as edn]
             [clojure.string :as str]
             [shipyard.geom :as geom]
+            [shipyard.mount.alignment :as alignment]
             [shipyard.domain.schemas :as schemas]
             [shipyard.math :as math]
             [shipyard.mount.split :as split]
@@ -108,8 +109,8 @@
                           (fallback-roll axis))]
         (assoc frame :mount/axis axis :mount/roll roll)))))
 
-(defn valid-frame? [{:mount/keys [pos axis roll]}]
-  (geom/valid-frame? {:mount/pos pos :mount/axis axis :mount/roll roll}))
+(defn valid-frame? [mount]
+  (and (geom/valid-frame? mount) (alignment/valid? mount)))
 
 (defn rotate-roll
   "Rotate `roll` around unit `axis` by `degrees`, then remove numerical drift
@@ -236,6 +237,7 @@
        capacity (assoc :capacity capacity)
        (get params "split-direction") (assoc :split-direction (keyword (get params "split-direction")))
        twist-deg (assoc :twist-deg twist-deg)
+       (contains? params "alignment-axis") (assoc :alignment-axis (keyword (get params "alignment-axis")))
        (get params "cut-kind") (assoc :cut-kind (keyword (get params "cut-kind"))
                                       :cut-depth (get params "cut-depth")
                                       :cut-diameter (get params "cut-diameter")
@@ -256,6 +258,7 @@
     (seq (:mount/accepts mount)) (assoc :accepts (set (:mount/accepts mount)))
     (:mount/capacity mount) (assoc :capacity (:mount/capacity mount))
     (:mount/split mount) (assoc :split-direction (get-in mount [:mount/split :direction]))
+    (:mount/alignment-axis mount) (assoc :alignment-axis (:mount/alignment-axis mount))
     (:mount/mirror-id mount) (assoc :mirror? true
                                     :mirror-id (name (:mount/mirror-id mount))
                                     :mirror-plane (:mount/mirror-plane mount)
@@ -328,6 +331,9 @@
          update? (= :update action)
          base-id (when update? original-mount-id)
          existing-base (when base-id (mount-by-id existing-mounts base-id))
+         alignment-axis (parse-keyword (get params "alignment-axis"
+                                            (some-> (:mount/alignment-axis existing-base) (name)))
+                                       [:none :horizontal :vertical])
          existing-mirror (linked-mount existing-mounts existing-base)
          replaced-ids (cond-> (if base-id #{base-id} #{})
                         existing-mirror (conj (:mount/id existing-mirror)))
@@ -352,6 +358,9 @@
        {:error "The selected face no longer has a valid frame. Pick it again."}
 
        (:error cutting) cutting
+
+       (and (contains? params "alignment-axis") (nil? alignment-axis))
+       {:error "Choose None, Horizontal, or Vertical for mount alignment."}
 
        (and update? (nil? original-mount-id))
        {:error "Choose a mount to edit."}
@@ -408,6 +417,7 @@
                             :mount/axis (:mount/axis frame)
                             :mount/roll (:mount/roll frame)
                             :mount/origin (or (:mount/origin existing-base) :picked)}
+                     (contains? alignment/axes alignment-axis) (assoc :mount/alignment-axis alignment-axis)
                      (:mount/facet existing-base) (assoc :mount/facet (:mount/facet existing-base))
                      (or (:mount/outline source-frame) (:mount/outline existing-base))
                      (assoc :mount/outline (or (:mount/outline source-frame) (:mount/outline existing-base)))

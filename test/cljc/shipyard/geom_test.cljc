@@ -135,3 +135,54 @@
   (testing "invalid gaps and frames"
     (is (= :invalid-gap (error-code #(geom/attachment-matrix geom/identity-matrix frame frame ##Inf))))
     (is (= :invalid-frame (error-code #(geom/attachment-matrix geom/identity-matrix {} frame))))))
+
+(defn direction-at [matrix direction]
+  (math/subtract (geom/transform-point matrix direction) (geom/transform-point matrix [0.0 0.0 0.0])))
+
+(deftest mount-plane-alignment-test
+  (let [socket (assoc frame :mount/pos [4.0 5.0 6.0] :mount/alignment-axis :horizontal)
+        plug (assoc frame :mount/axis [0.0 0.0 -1.0] :mount/pos [2.0 3.0 4.0]
+                    :mount/alignment-axis :vertical)
+        legacy (geom/attachment-matrix geom/identity-matrix (dissoc socket :mount/alignment-axis) plug)
+        aligned (geom/attachment-matrix geom/identity-matrix socket plug)]
+    (testing "Saturn-style battery: a quarter turn aligns lines while retaining face mating"
+      (is (close? (:mount/pos socket) (geom/transform-point aligned (:mount/pos plug))))
+      (is (close? [0.0 0.0 -1.0] (direction-at aligned (:mount/axis plug))))
+      (is (< (abs (math/dot (direction-at legacy [0.0 -1.0 0.0]) [1.0 0.0 0.0])) 1e-9))
+      (is (< (abs (- 1.0 (abs (math/dot (direction-at aligned [0.0 -1.0 0.0]) [1.0 0.0 0.0])))) 1e-9)))
+    (testing "both mounts must opt in"
+      (is (close? legacy (geom/attachment-matrix geom/identity-matrix socket (dissoc plug :mount/alignment-axis)))))
+    (testing "a descendant without alignment inherits its parent's corrected pose"
+      (let [child-socket (assoc frame :mount/pos [0.0 0.0 2.0])
+            nested (geom/attachment-matrix aligned child-socket (assoc frame :mount/axis [0.0 0.0 -1.0]))]
+        (is (close? (direction-at aligned [0.0 1.0 0.0]) (direction-at nested [0.0 1.0 0.0])))
+        (is (close? (geom/transform-point aligned (:mount/pos child-socket)) (geom/transform-point nested [0.0 0.0 0.0]))))))
+  (testing "an antiparallel undirected line does not flip a battery through 180 degrees"
+    (let [socket (assoc frame :mount/alignment-axis :horizontal)
+          plug (assoc frame :mount/axis [0.0 0.0 -1.0] :mount/roll [-1.0 0.0 0.0] :mount/alignment-axis :horizontal)]
+      (is (close? geom/identity-matrix (geom/attachment-matrix geom/identity-matrix socket plug)))))
+  (testing "malformed optional axes are rejected even when only one mount supplies an axis"
+    (is (= :invalid-mount-alignment
+           (error-code #(geom/attachment-matrix geom/identity-matrix (assoc frame :mount/alignment-axis :bad) frame))))))
+
+(deftest vertical-battery-alignment-test
+  (testing "a Saturn-style top seat can turn its battery across the parent's forward direction"
+    (let [socket (assoc frame :mount/axis [0.0 1.0 0.0] :mount/alignment-axis :horizontal)
+          plug (assoc frame :mount/axis [0.0 -1.0 0.0] :mount/alignment-axis :vertical)
+          legacy (geom/attachment-matrix geom/identity-matrix socket (dissoc plug :mount/alignment-axis))
+          aligned (geom/attachment-matrix geom/identity-matrix socket plug)]
+      (is (close? [0.0 0.0 1.0] (direction-at legacy [0.0 0.0 1.0])))
+      (is (close? [1.0 0.0 0.0] (direction-at aligned [0.0 0.0 1.0])))
+      (is (close? [0.0 -1.0 0.0] (direction-at aligned (:mount/axis plug))))
+      (is (close? [0.0 0.0 0.0] (geom/transform-point aligned (:mount/pos plug)))))))
+
+(deftest alignment-chooses-the-smallest-turn-and-retains-gap
+  (let [socket (assoc frame :mount/alignment-axis :horizontal :mount/pos [4.0 5.0 6.0])
+        plug (assoc frame :mount/alignment-axis :horizontal :mount/axis [0.0 0.0 -1.0]
+                    :mount/roll [(- (/ #?(:clj (Math/sqrt 3.0) :cljs (js/Math.sqrt 3.0)) 2.0)) 0.5 0.0])
+        placed (geom/attachment-matrix geom/identity-matrix socket plug 2.0)]
+    (testing "an authored line at 150 degrees needs a 30 degree turn, not a 150 degree turn"
+      (is (close? [(/ #?(:clj (Math/sqrt 3.0) :cljs (js/Math.sqrt 3.0)) 2.0) 0.5 0.0]
+                  (direction-at placed [1.0 0.0 0.0]))))
+    (testing "the explicit line turn retains a nonzero normal gap"
+      (is (close? [4.0 5.0 8.0] (geom/transform-point placed (:mount/pos plug)))))))

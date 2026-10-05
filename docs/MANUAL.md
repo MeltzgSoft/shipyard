@@ -321,15 +321,26 @@ When the preview looks right, fill in the mount form:
   Human Navy Cruiser weapon sockets use capacity `2`.
 - **Twist** rotates the `+X` and `+Y` directions around the fixed outward `+Z` normal
   before saving. Most mounts should remain at zero once the part orientation is correct.
+- **Alignment axis** chooses **None**, **Horizontal (+X)** or **Vertical (+Y)** in the
+  mount plane. A white line previews the choice; **Twist** rotates that line. Set an
+  axis on both the socket and its mating plug to make their lines parallel in Assembly.
+  The child rotates about the mating-face normal while staying on the mount. The line
+  has no arrow, so Shipyard uses the smaller turn and treats opposite directions as
+  already aligned. For a battery that needs a quarter turn, choose Horizontal on one
+  mount and Vertical on the other; inspect the line previews before saving.
+  Saved mounts reopen with their axis selected. Choose None and **Save changes** to
+  clear it. If either mating mount is None, assembly uses its usual placement rule.
 - **Mirror** creates a linked second socket by reflecting the picked frame across a symmetry
   plane. Human Navy Cruiser hulls use the X plane at offset `0`; change the plane or
   offset only when the part's centreline is different. The pair is configured, edited,
   and deleted together. When mirror is selected,
   Shipyard highlights the reflected face in blue before you save.
 
-Assembly turns a child only around the global yaw (+Y) axis, preserving the adjusted
+Without a paired alignment axis, Assembly turns a child around the global yaw (+Y) axis,
+preserving the adjusted
 model top on either side of a symmetric hull. For a vertical mount, where the face does
-not determine yaw, the child faces forward with the part it is mounted to.
+not determine yaw, the child faces forward with the part it is mounted to. A paired
+alignment axis adds its explicit turn, and attached descendants follow the corrected pose.
 - **Repeat classification** keeps the kind and accepted role ready for the next picked
   face. The next mount is still shown in the form and must be saved deliberately.
 

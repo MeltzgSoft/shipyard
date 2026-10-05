@@ -32,6 +32,8 @@
         (is (= 2 (count picked)))
         (s/check! driver "[data-mount-face-edit]")
         (is (s/wait-until #(= 8 (get-in (s/stats driver) [:preview :geometries]))))
+        (s/select-option! driver "select[name=alignment-axis]" "Vertical (+Y)")
+        (is (s/wait-until #(= "vertical" (get-in (s/stats driver) [:preview :alignment-axis]))))
         (let [[x y] (face-point driver)] (s/drag! driver [x y] [(+ x 1) y]))
         (is (s/wait-until #(= 1 (get-in (s/stats driver) [:preview :triangles]))))
         (is (empty? (:part/mounts (:part (catalog/part-context! cat id)))))
@@ -52,6 +54,7 @@
           (is (= picked (get-in (s/stats driver) [:preview :facet-indices]))))
         (let [[x y] (face-point driver)] (s/drag! driver [x y] [(+ x 1) y]))
         (is (s/wait-until #(= 1 (get-in (s/stats driver) [:preview :triangles]))))
+        (is (= "vertical" (get-in (s/stats driver) [:preview :alignment-axis])))
         (is (= frame (select-keys (:preview (s/stats driver)) (keys frame))))
         (s/check! driver "[name=create-pitted]")
         (s/select-option! driver "select[name=cut-kind]" "Recess")
@@ -63,6 +66,7 @@
           (is (s/wait-until #(nil? (:preview (s/stats driver)))))
           (let [mount (first (:part/mounts (:part (catalog/part-context! cat id))))]
             (is (= trimmed (get-in mount [:mount/facet :indices])))
+            (is (= :vertical (:mount/alignment-axis mount)))
             (is (= 3 (count (first (:mount/outline mount)))))
             (is (= :recess (get-in mount [:mount/cut :kind])))
             (is (.isFile (io/file (.getParentFile file) "unsupported-pitted.stl")))
@@ -86,7 +90,10 @@
             box (s/bounds driver "#viewport") x (+ (:x box) (:x face)) y (+ (:y box) (:y face))]
         (s/click-point! driver x y) (s/wait-visible! driver ".mount-wizard__form")
         (s/select-option! driver ".mount-wizard__form select[name=kind]" "socket")
+        (s/select-option! driver ".mount-wizard__form select[name=alignment-axis]" "Vertical (+Y)")
         (s/check! driver ".mount-wizard__form input[name=mirror]")
+        (s/select-option! driver ".mount-wizard__form select[name=alignment-axis]" "Horizontal (+X)")
+        (is (s/wait-until #(= 2 (count (get-in (s/stats driver) [:preview :alignment-lines])))))
         (s/check! driver "[data-mount-face-edit]")
         (s/drag! driver [x y] [(+ x 1) y]))
       (is (s/wait-until #(= 1 (get-in (s/stats driver) [:preview :triangles]))))
@@ -97,6 +104,7 @@
           (is (= [trimmed trimmed] (mapv :facet-indices items)))
           (is (= [[-12 0] [3 0]] (mapv #(subvec (first (:face-bounds %)) 0 2) items))))
         (let [before (:part/mounts (:part (catalog/part-context! cat id))) base (first before)]
+          (is (= [:horizontal :horizontal] (mapv :mount/alignment-axis before)))
           (s/click! driver (str "form:has(input[name=mount-id][value='" (name (:mount/id base)) "']) button:has-text('Edit')"))
           (s/wait-visible! driver ".mount-wizard__form")
           (is (s/wait-until #(= trimmed (get-in (s/stats driver) [:preview :facet-indices]))))

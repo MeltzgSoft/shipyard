@@ -1795,6 +1795,15 @@ canonical roll above and reports `:roll-source :part-orientation`. The mount for
 the optional rotation around the fixed normal **Twist**; saving encodes that adjustment
 in the durable `:mount/roll` vector rather than retaining an editor-only angle.
 
+Optional `:mount/alignment-axis :horizontal|:vertical` selects an undirected tangent
+line in the authored plane: `roll` for horizontal and `axis × roll` for vertical.
+Absence means no alignment constraint. The wizard exposes None/Horizontal/Vertical;
+Twist updates the line with the frame. A live and saved white line uses the same shared
+`shipyard.mount.alignment` geometry; preview lines follow mirrored frames. The optional
+keyword is stored on the existing Datalevin mount component, validated before writes,
+and omitted when cleared. Edits/re-picks, face trimming, capacity sections and linked
+mirrors carry it without changing source-face identity or mount positions.
+
 The viewport renders a second Three.js scene through an orthographic camera into a
 scissored upper-right corner of the canvas. Its asymmetric wireframe box follows the part
 quaternion; red `+X`, green `+Y`, and blue `+Z` arrows stay aligned to the canonical frame.
@@ -1950,7 +1959,8 @@ data:
  :mount/origin :picked}
 ```
 
-`:mount/id`, kind, accepts, position, axis, roll and origin are durable. The normalized
+`:mount/id`, kind, accepts, position, axis, roll, optional alignment axis and origin
+are durable. The normalized
 `:part/orientation` quaternion is durable on the part entity; missing or malformed
 values resolve to identity. A manual
 `:part/role` override is durable on the part entity and takes precedence over
@@ -2218,8 +2228,19 @@ parent and child mount normals. The resulting translation maps the child mount p
 onto the parent mount position plus the gap along the parent axis. For vertical faces,
 where the normals do not determine yaw, `θ` aligns the child's canonical forward heading
 with the assembled parent's. Incompatible normals are rejected rather than forcing a
-non-Y rotation. The root's matrix is its source-to-canonical rotation. Nested matrices
-are already composed server-side; the viewport applies no additional part quaternion.
+non-Y rotation. The root's matrix is its source-to-canonical rotation.
+
+With both mounts' alignment axes set, apply an additional rotation about the assembled
+parent normal so the tangents are parallel, choosing a signed angle in [-π/2, π/2].
+The line has no polarity, so an antiparallel tangent requires zero turn. Rotate the
+child pose before computing the translation; the gap and mating point remain fixed.
+The parent's inherited assembly correction is its rotation with its saved part pose
+removed (`C = Rparent · inverse(Qparent)`). Compute the ordinary face/forward yaw in
+that canonical parent frame, compose `C · Ry(θ) · Qchild`, then apply the optional
+line turn. This preserves legacy placement when no axes are authored and carries an
+opted-in ancestor rotation through descendants whose own joins have no axis.
+Malformed optional axes produce `:invalid-mount-alignment`; existing incompatible-normal
+validation still applies. Nested matrices are already composed server-side; the viewport applies no additional part quaternion.
 
 Each assembly response carries an EDN envelope in an inert hidden input's
 `data-assembly-event` attribute, alongside the panel HTML. Hiccup escapes the

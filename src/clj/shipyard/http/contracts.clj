@@ -71,6 +71,7 @@
    [:part-id string?]
    [:mount-id string?]
    [:kind string?]
+   [:alignment-axis {:optional true} string?]
    [:facet-indices {:optional true} [:fn facet-input/valid-input?]]])
 
 (def mount-id-form

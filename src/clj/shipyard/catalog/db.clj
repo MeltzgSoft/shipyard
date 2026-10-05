@@ -8,7 +8,8 @@
             [shipyard.regions.model :as regions]
             [shipyard.regions.registry :as registry]
             [shipyard.library.index :as index]
-            [shipyard.part.orientation :as orientation]))
+            [shipyard.part.orientation :as orientation]
+            [shipyard.mount.alignment :as alignment]))
 
 (defn from-parts
   "Immutable domain catalog, also useful for pure fixtures."
@@ -86,6 +87,8 @@
                       result)))))
 
 (defn save-authoring! [catalog part-id {:keys [mounts part-role expected-revision] :as value}]
+  (when-not (every? alignment/valid? mounts)
+    (throw (ex-info "Invalid mount alignment axis" {:code :invalid-mount-alignment})))
   (mutate! catalog part-id
            (fn [conn _ ref entity]
              (when (and (contains? value :expected-revision) (not= expected-revision (:part/revision entity)))

@@ -189,6 +189,17 @@ the parent outward axis, default 0 - the virtual model mates flush, but a small 
 value can represent the physical standoff introduced by magnets if that turns out to
 matter visually.
 
+Mounts may additionally set an optional **Alignment axis**: **Horizontal** is the
+mount's in-plane +X (`roll`) line and **Vertical** is its +Y (`axis × roll`) line.
+These are undirected lines, not arrows. If both mating mounts set an axis, assembly
+adds the smaller turn about the parent outward normal to make those lines parallel.
+Antiparallel lines already agree. This explicit constraint may override the child's
+configured top; face mating, the gap and mount positions remain unchanged. Twist
+adjusts the authored line. If either axis is unset, that join uses the existing
+normal/forward rule. An ancestor's alignment correction is inherited by its descendants,
+including joins without their own alignment constraint. Incompatible face normals
+still require correcting the part orientation; alignment does not bypass that validation.
+
 Frames are persisted in source mesh coordinates. The root matrix is its
 source-to-canonical orientation; every child matrix already includes its saved pose and
 the alignment turn, so the viewport must not apply another part-orientation transform.
@@ -271,7 +282,8 @@ reproducible recipe that can be re-applied when a designer ships an updated STL.
 Mount authoring includes draft face trimming: show triangle borders and erase visible
 triangles with an adjustable screen-space brush. Provide Undo/Reset and orbit access.
 Save commits exact nonempty source-bound membership and updates recess boundaries;
-trimming preserves the mount frame and capacity placements and never modifies the
+trimming preserves the mount frame, optional alignment axis and capacity placements,
+and never modifies the
 source STL. Cancel discards trimming. Reject stale, invalid or unsupported selections
 without committing partial authoring changes.
 
