@@ -468,9 +468,9 @@
         (str "preview position was " (pr-str (:position first-preview))))
     (is (vec-close? (:axis first-preview) [0.0 0.0 1.0])
         (str "preview axis was " (pr-str (:axis first-preview))))
-    (is (vec-close? (:roll first-preview) [1.0 0.0 0.0])
+    (is (vec-close? (:roll first-preview) [0.0 1.0 0.0])
         (str "preview roll was " (pr-str (:roll first-preview))))
-    (is (vec-close? (:up first-preview) [0.0 1.0 0.0])
+    (is (vec-close? (:up first-preview) [-1.0 0.0 0.0])
         (str "preview up was " (pr-str (:up first-preview))))
     (is (= 7 (:geometries first-preview))
         "highlight and all three frame arrows should be observable")
@@ -738,9 +738,9 @@
       input.value = '90';
       input.dispatchEvent(new Event('input', {bubbles: true}));
     }")
-    (is (s/wait-until #(vec-close? (:roll (:preview (s/stats *driver*))) [0.0 1.0 0.0]))
+    (is (s/wait-until #(vec-close? (:roll (:preview (s/stats *driver*))) [-1.0 0.0 0.0]))
         "changing Twist should rotate the cyan +X arrow immediately")
-    (is (s/wait-until #(vec-close? (:up (:preview (s/stats *driver*))) [-1.0 0.0 0.0]))
+    (is (s/wait-until #(vec-close? (:up (:preview (s/stats *driver*))) [0.0 -1.0 0.0]))
         "changing Twist should rotate the pink +Y arrow with it"))
   (s/select-option! *driver* ".mount-wizard__form select[name=kind]" "socket")
   (is (s/wait-until
@@ -858,7 +858,7 @@
         (str "mirrored preview position was " (pr-str (:mirror-position mirrored))))
     (is (vec-close? (:mirror-axis mirrored) [0.0 0.0 1.0])
         (str "mirrored preview axis was " (pr-str (:mirror-axis mirrored))))
-    (is (vec-close? (:mirror-roll mirrored) [-1.0 0.0 0.0])
+    (is (vec-close? (:mirror-roll mirrored) [0.0 1.0 0.0])
         (str "mirrored preview roll was " (pr-str (:mirror-roll mirrored)))))
   (s/click! *driver* "input[name=repeat]")
   (s/click! *driver* ".mount-wizard__actions button[value=create]")
