@@ -148,14 +148,17 @@ worth carrying over rather than rediscovering:
 This is the significant consequence: **magnet pits are no longer needed for alignment.**
 An unpitted part can be mounted the moment its face is picked. Pitting reduces to a
 purely physical concern - where to drill for magnets - and its location is *derived from*
-the mount frame rather than the other way round, since the pit centre is exactly the
-facet's bounding-box midpoint that the frame already records.
+the retained face outline rather than the other way round. Its centre is the
+retained facets' bounding-box midpoint in the mount plane; trimming may move the
+pit without moving the assembly alignment frame.
 
 That removes the dependency on the 4 currently-pitted files, unblocks the other ~1,588
 parts immediately, and means alignment work no longer has to wait on boolean geometry.
 Mount authoring optionally generates physical cuts independently of assembly alignment.
 Plugs default to recesses; sockets default to pits. A pit is a cylinder defined by
-depth and diameter, centered on the mount or on each capacity section. A recess
+depth and diameter, centered in the retained face bounds or in each equal capacity
+section of those bounds. Legacy cuts without an outline use the mount frame and
+saved section bounds. A recess
 follows the selected face's actual edge, inset by its border, and extends inward
 by its depth. All dimensions are millimetres. Mirrored mounts mirror the complete
 cut definition and face outline. Wireframes remain visible through the source
@@ -294,8 +297,8 @@ reproducible recipe that can be re-applied when a designer ships an updated STL.
 
 Mount authoring includes draft face trimming: show triangle borders and erase visible
 triangles with an adjustable screen-space brush. Provide Undo/Reset and orbit access.
-Save commits exact nonempty source-bound membership and updates recess boundaries;
-trimming preserves the mount frame, optional alignment axis and capacity placements,
+Save commits exact nonempty source-bound membership and updates pit centers and recess boundaries;
+trimming preserves the mount frame, optional alignment axis and assembly capacity placements,
 and never modifies the
 source STL. Cancel discards trimming. Reject stale, invalid or unsupported selections
 without committing partial authoring changes.

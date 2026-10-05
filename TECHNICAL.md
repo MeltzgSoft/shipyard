@@ -1741,8 +1741,8 @@ connected authoritative facet. It checks current mesh key, source stamps, cache
 presence, bounds and facet membership before storing anything. Invalid selections
 return feedback into the form status without replacing the erase draft. Trimmed
 boundaries are reconstructed from tier-0 triangles and unsupported loops are rejected.
-Mount position/axes/roll and capacity bounds stay fixed; only membership and the cut
-outline change. Linked mirrors reflect the original subset. Definitions and cut
+Mount position/axes/roll and assembly capacity bounds stay fixed; membership and the cut
+outline change, and pit centers derive from the retained outline bounds. Linked mirrors reflect the original subset. Definitions and cut
 exports retain the existing atomic publication contract.
 
 ### 12.2 Geometric edges and facet growth
@@ -1858,7 +1858,8 @@ Physical cut settings are optional `:mount/cut` data, with `:kind :pit|:recess`,
 The server derives them from authoritative tier-0 triangles before generating;
 it does not trust a posted outline for subtraction. Reflection reverses loop winding
 and reflects every source point while preserving the stored right-handed frame.
-Pit positions come from the shared capacity-section contract.
+Pit positions use the shared capacity-section calculation on temporary frames and
+bounds derived from the retained outline, independently of assembly alignment.
 
 `pitting.geometry` accepts closed positive-volume surfaces whose directed edges
 have balanced opposing uses, including shared edges where closed sheets meet.
@@ -1874,7 +1875,11 @@ coordinates are preserved; generation does not fill holes, repair intersections
 or require a manifold boundary.
 
 `pitting.geometry` uses JTS even-odd polygons, a negative mitered buffer and polygon
-triangulation for recesses; pits use 64 circular segments. Both extrude from 0.02 mm
+triangulation for recesses; pits use 64 circular segments. Shared `mount.cut/pit-rings`
+projects the retained outline into the mount plane, recenters a temporary cut frame
+at its bounding-box midpoint and splits those retained bounds for multiple pits.
+Authored attachment frames and assembly section bounds stay unchanged. Cuts without
+an outline retain the legacy frame/section fallback. Both extrude from 0.02 mm
 outside the face to the requested inward depth. JCSG's polygon-bound optimization
 limits BSP subtraction to source polygons overlapping each cutter. The browser's
 Clipper mitered inset uses 0.00001 mm coordinates and displays opening, floor and

@@ -43,6 +43,21 @@
                           (geometry/inset (assoc frame :mount/outline [[[-1 -1 1] [1 -1 1] [1 1 1] [-1 1 1]]]
                                                  :mount/cut {:border 2.0}))))))
 
+(deftest trimmed-pit-centers-in-generated-stl
+  (let [source (stl/parse-bytes (f/->binary-stl (f/cube 4.0)))
+        mount (assoc frame :mount/pos [0.0 0.0 2.0]
+                     :mount/outline [[[-2 -2 2] [0 -2 2] [0 2 2] [-2 2 2]]]
+                     :mount/cut {:kind :pit :depth 0.5 :diameter 0.5})
+        result (geometry/subtract source [mount])
+        parsed (stl/parse-bytes (geometry/binary-stl result))
+        floor (filter #(near? 1.5 (last %)) (apply concat (geometry/mesh-triangles parsed)))
+        center (mapv (fn [axis] (/ (+ (apply min (map #(nth % axis) floor))
+                                      (apply max (map #(nth % axis) floor))) 2.0)) [0 1])]
+    (is (near? (- 64.0 (* Math/PI 0.25 0.25 0.5)) (volume result)))
+    (is (seq floor))
+    (is (near? -1.0 (first center)))
+    (is (near? 0.0 (second center)))))
+
 (deftest profiles-test
   (testing "outline from triangle selection can drive recess geometry"
     (let [outline (cut/outline [[[-1 -1 1] [1 -1 1] [-1 1 1]] [[1 -1 1] [1 1 1] [-1 1 1]]])

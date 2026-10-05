@@ -56,8 +56,19 @@
   (math/add pos (math/add (math/scale z axis)
                           (math/add (math/scale x roll) (math/scale y (math/cross axis roll))))))
 
-(defn pit-rings [mount]
-  (let [radius (/ (get-in mount [:mount/cut :diameter]) 2.0)
+(defn pit-rings
+  "Center cuts in retained face bounds without changing the authored attachment frame.
+  Mounts without an outline retain their legacy frame and capacity-section bounds."
+  [mount]
+  (let [bounds (split/face-bounds mount (mapcat identity (:mount/outline mount)))
+        mount (if (split/valid-bounds? bounds)
+                (let [[lower upper] bounds
+                      center (mapv #(/ (+ %1 %2) 2.0) lower upper)]
+                  (-> mount
+                      (assoc :mount/pos (point mount center 0.0))
+                      (assoc-in [:mount/split :bounds] (mapv #(mapv - % center) bounds))))
+                mount)
+        radius (/ (get-in mount [:mount/cut :diameter]) 2.0)
         ring (mapv (fn [i] (let [a (* 2.0 #?(:clj Math/PI :cljs js/Math.PI) (/ i circle-segments))]
                              [(* radius (#?(:clj Math/cos :cljs js/Math.cos) a))
                               (* radius (#?(:clj Math/sin :cljs js/Math.sin) a))]))

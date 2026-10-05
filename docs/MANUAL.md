@@ -376,8 +376,9 @@ and **Reset faces** restores the selection from when the form opened. Re-pick a 
 to start over from its full planar surface.
 
 Trimming changes only the draft until **Save mount** or **Save changes**. Keep at least
-one triangle. The mount frame and capacity positions remain fixed; recess outlines
-follow the retained triangles. Mirrored highlights and recess outlines reflect the
+one triangle. The mount frame and assembly capacity positions remain fixed; pits
+recenter in the retained face bounds, and recess outlines follow the retained triangles.
+Mirrored highlights and cuts reflect the
 trimmed original selection. Cancel discards the edits and source STL bytes stay intact.
 A stale source or an invalid boundary must be corrected before saving.
 
@@ -387,7 +388,9 @@ Plugs initially offer **Recess**; sockets offer **Pit**, and either choice can b
 The form shows **Diameter** for pits and **Border** for recesses. Switching the
 cut type keeps the measurements available when you switch back.
 All cut measurements are in millimetres. A pit uses **Depth** and **Diameter** and
-is centered on the mount. For capacity above one, each section gets its own pit.
+is centered in the bounds of the remaining face after trimming. For capacity above
+one, each equal section of those retained bounds gets its own pit. Undo and Reset
+update the preview to match the restored face selection.
 A recess uses **Depth** and **Border**: it follows the selected face's boundary,
 leaving that border between the face edge and the recess. Border may be zero;
 depth and diameter must be positive. Mirrored pairs mirror their cuts too.

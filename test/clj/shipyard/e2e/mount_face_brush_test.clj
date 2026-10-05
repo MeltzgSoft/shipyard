@@ -6,7 +6,10 @@
             [shipyard.e2e.support :as s]
             [shipyard.e2e.mount-face-test :as mount-faces]
             [shipyard.fixtures :as fixtures]
-            [shipyard.paint.faces :as faces])
+            [shipyard.paint.faces :as faces]
+            [shipyard.pitting-internal-fixture :as joined]
+            [shipyard.pitting.geometry :as geometry]
+            [shipyard.mesh.stl :as stl])
   (:import [java.nio.file Files] [java.util Arrays]))
 
 (defn- face-point
@@ -16,6 +19,78 @@
          face (first (filter #(= key (:key %)) (:region-faces (s/stats driver))))
          box (s/bounds driver "#viewport")]
      [(+ (:x box) (:x face)) (+ (:y box) (:y face))])))
+
+(defn- joined-face-point [driver triangle]
+  (let [key (faces/face-key (nth (fixtures/face-touching-cubes 2.0) triangle))
+        face (first (filter #(= key (:key %)) (:region-faces (s/stats driver))))
+        box (s/bounds driver "#viewport")]
+    [(+ (:x box) (:x face)) (+ (:y box) (:y face))]))
+
+(defn- xy-center [points]
+  (when (seq points)
+    (mapv (fn [axis] (/ (+ (apply min (map #(nth % axis) points))
+                           (apply max (map #(nth % axis) points))) 2.0)) [0 1])))
+
+(defn- near-center? [expected points]
+  (when-let [actual (xy-center points)]
+    (every? #(< (abs %) 0.00001) (map - expected actual))))
+
+(deftest trimmed-pit-follows-retained-bounds-through-undo-save-and-reload
+  (s/assert-bundle!)
+  (let [started (fixture/start! true joined/build! (fn [_]))
+        sys (:system started) driver (s/make-driver) cat (:shipyard.catalog/db sys)
+        source (io/file (str (:root started)) joined/id "unsupported.stl")
+        original (Files/readAllBytes (.toPath source))
+        preview-points #(get-in (s/stats driver) [:preview :cuts 0 :points])
+        saved-points #(get-in (s/stats driver) [:interfaces :cuts 0 :points])
+        trim-right! (fn []
+                      (doseq [[triangle remaining] [[12 3] [13 2]]]
+                        (let [[x y] (joined-face-point driver triangle)]
+                          (s/drag! driver [x y] [(+ x 1) y]))
+                        (is (s/wait-until #(= remaining (get-in (s/stats driver) [:preview :triangles]))))))]
+    (try
+      (s/go! driver (s/base-url sys)) (s/open-prepared-part! driver sys "Joined hull" joined/id)
+      (s/click! driver "[data-detail-tab=mounts]")
+      (apply s/click-point! driver (joined-face-point driver 0))
+      (s/wait-visible! driver ".mount-wizard__form")
+      (s/select-option! driver ".mount-wizard__form select[name=kind]" "socket")
+      (s/check! driver "[name=create-pitted]")
+      (s/fill-and-blur! driver "[name=cut-depth]" "0.25")
+      (s/fill-and-blur! driver "[name=cut-diameter]" "0.4")
+      (is (s/wait-until #(near-center? [1.0 0.0] (preview-points))))
+      (let [frame (select-keys (:preview (s/stats driver)) [:position :axis :roll])]
+        (is (= 4 (get-in (s/stats driver) [:preview :triangles])))
+        (s/check! driver "[data-mount-face-edit]")
+        (trim-right!)
+        (is (s/wait-until #(near-center? [0.0 0.0] (preview-points))))
+        (is (= frame (select-keys (:preview (s/stats driver)) (keys frame))))
+        (s/click! driver "[data-mount-faces-undo]")
+        (is (s/wait-until #(near-center? [1.0 0.0] (preview-points))))
+        (s/click! driver "[data-mount-faces-reset]")
+        (is (s/wait-until #(= 4 (get-in (s/stats driver) [:preview :triangles]))))
+        (is (near-center? [1.0 0.0] (preview-points)))
+        (trim-right!)
+        (is (s/wait-until #(near-center? [0.0 0.0] (preview-points))))
+        (s/click! driver ".mount-wizard__actions button[value=create]")
+        (is (s/wait-until #(nil? (:preview (s/stats driver)))))
+        (is (s/wait-until #(near-center? [0.0 0.0] (saved-points))))
+        (let [mount (first (:part/mounts (:part (catalog/part-context! cat joined/id))))
+              target (io/file (.getParentFile source) "unsupported-pitted.stl")
+              floor (filter #(< (abs (- 0.75 (last %))) 0.00001)
+                            (apply concat (geometry/mesh-triangles (stl/parse-file! target))))]
+          (is (= 2 (count (get-in mount [:mount/facet :indices]))))
+          (is (= (:position frame) (:mount/pos mount)))
+          (is (near-center? [0.0 0.0] floor))
+          (is (Arrays/equals ^bytes original ^bytes (Files/readAllBytes (.toPath source))))
+          (.reload (:page driver))
+          (is (s/wait-until #(near-center? [0.0 0.0] (saved-points))))
+          (s/click! driver "[data-detail-tab=mounts]")
+          (s/click! driver (str "form:has(input[name=mount-id][value='" (name (:mount/id mount)) "']) button:has-text('Edit')"))
+          (s/wait-visible! driver ".mount-wizard__form")
+          (is (s/wait-until #(near-center? [0.0 0.0] (preview-points))))
+          (is (= 2 (get-in (s/stats driver) [:preview :triangles])))
+          (is (= frame (select-keys (:preview (s/stats driver)) (keys frame))))))
+      (finally (s/quit! driver) (fixture/stop! started)))))
 
 (deftest erase-undo-reset-save-and-reopen-a-recess-selection
   (s/assert-bundle!)
