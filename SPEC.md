@@ -164,6 +164,9 @@ Disabling mount colors hides saved cut wireframes. Cut controls appear last befo
 the mount save actions; pits show diameter and recesses show border. Dimension edits update the
 preview; saving cut or mount changes regenerates a sibling `-pitted.stl` variant
 from the original source and all enabled cuts. Original sources stay intact.
+Cut generation accepts closed joined solids with exact opposing internal face pairs,
+cancelling those pairs only for subtraction. It preserves source bytes and authored
+face identity, and rejects open or otherwise invalid surfaces.
 
 Where both pitted and unpitted variants of a hull exist, the boolean difference between
 them still isolates the cut volumes and can *seed* socket positions automatically. That

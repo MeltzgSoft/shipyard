@@ -88,24 +88,43 @@
      (vec (concat (map #(polygon (mapv top %)) triangles)
                   (map #(polygon (mapv bottom (reverse %))) triangles) walls)))))
 
-(defn closed-source? [triangles]
+(defn- valid-triangle? [[a b c]]
+  (and (every? math/finite-number? (apply concat [a b c]))
+       (> (math/length (math/cross (math/subtract b a) (math/subtract c a))) 1.0e-12)))
+
+(defn cancel-internal-faces
+  "Cancel exact opposite-wound pairs for solid subtraction, retaining source order.
+  Same-facing, ambiguous and degenerate duplicates stay for validation to reject."
+  [triangles]
+  (let [internal (into #{}
+                       (mapcat (fn [group]
+                                 (when (= 2 (count group))
+                                   (let [[[a b c :as face] other] group]
+                                     (when (and (valid-triangle? face)
+                                                (contains? #{[a b c] [b c a] [c a b]} (vec (reverse other))))
+                                       group)))))
+                       (vals (group-by #(vec (sort %)) triangles)))]
+    (into [] (remove internal) triangles)))
+
+(defn- closed-surface? [triangles]
   (let [edges (frequencies (mapcat (fn [[a b c]] [[a b] [b c] [c a]]) triangles))]
     (and (seq triangles)
          (pos? (reduce + (map (fn [[a b c]] (math/dot a (math/cross b c))) triangles)))
-         (every? (fn [[a b c]]
-                   (and (every? math/finite-number? (apply concat [a b c]))
-                        (> (math/length (math/cross (math/subtract b a) (math/subtract c a))) 1.0e-12))) triangles)
+         (every? valid-triangle? triangles)
          ;; A closed oriented surface can have several sheets meeting along an
          ;; edge. They remain closed when every directed use has an opposing
          ;; use; requiring exactly two faces rejects edge-touching solids.
          (= (count triangles) (count (set (map #(vec (sort %)) triangles))))
          (every? (fn [[[a b] count]] (= count (get edges [b a]))) edges))))
 
+(defn closed-source? [triangles]
+  (closed-surface? (cancel-internal-faces triangles)))
+
 (defn subtract
   "Subtract every enabled mount cut from the original closed source mesh."
   [mesh mounts]
-  (let [triangles (mesh-triangles mesh)
-        _ (when-not (closed-source? triangles)
+  (let [triangles (cancel-internal-faces (mesh-triangles mesh))
+        _ (when-not (closed-surface? triangles)
             (throw (ex-info "Pitting requires a closed source mesh with consistent outward faces. Repair the STL before generating cuts." {})))
         source (.optimization (CSG/fromPolygons ^java.util.List (mapv polygon triangles)) CSG$OptType/POLYGON_BOUND)
         result (reduce (fn [^CSG solid mount]

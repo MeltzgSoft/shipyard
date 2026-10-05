@@ -1862,8 +1862,14 @@ Pit positions come from the shared capacity-section contract.
 
 `pitting.geometry` accepts closed positive-volume surfaces whose directed edges
 have balanced opposing uses, including shared edges where closed sheets meet.
-Duplicate faces (regardless of winding), open edges, unbalanced winding and
-degenerate/nonfinite faces remain invalid. Inward cavity winding and source
+Before subtraction it cancels exactly coincident, opposite-wound triangle pairs
+on internal boundaries of joined solids, retaining every other triangle in source
+order. This preprocessing applies only to the solid used for cuts; source STL bytes,
+render geometry, facet indices and authored frames remain unchanged. It requires
+exact coordinates and an unambiguous pair of nondegenerate faces; no tolerance-based
+welding or general mesh repair occurs. The remaining surface must still be nonempty,
+closed, consistently oriented and positive-volume. Same-facing or ambiguous duplicates,
+open edges, unbalanced winding and degenerate/nonfinite faces remain invalid. Inward cavity winding and source
 coordinates are preserved; generation does not fill holes, repair intersections
 or require a manifold boundary.
 

@@ -406,7 +406,10 @@ cuts; removing the last cut restores the original geometry in the pitted file.
 Failed generation retains the prior file and saved mount definitions. Reduce a
 border that consumes the face; if the source has changed, reopen the part and
 pick its mount faces again before generating.
-Generation requires a closed source mesh with consistently oriented faces;
+Generation accepts closed joined solids with exact opposing internal face pairs,
+including the Tiamat Cruiser and Grand Cruiser hulls. These internal pairs are cancelled
+only while generating cuts; the original STL and authored face selection stay intact.
+Generation still requires a closed source mesh with consistently oriented faces;
 repair an open or malformed STL in your mesh tool before generating cuts.
 
 Part-level metadata is edited outside the mount picker. Use **Part metadata** in the

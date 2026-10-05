@@ -71,6 +71,16 @@
   (let [triangles (cube size) shift (double size)]
     (into triangles (map (fn [triangle] (mapv (fn [[x y z]] [(+ x shift) (+ y shift) z]) triangle)) triangles))))
 
+(defn face-touching-cubes
+  "Two outward cubes with exact opposing triangles on their shared internal face."
+  [size]
+  (let [triangles (cube size)
+        second-cube (mapv (fn [triangle] (mapv (fn [[x y z]] [(+ x size) y z]) triangle)) triangles)
+        second-cube (assoc second-cube
+                           4 (vec (reverse (nth triangles 6)))
+                           5 (vec (reverse (nth triangles 7))))]
+    (into triangles second-cube)))
+
 (defn ->binary-stl
   "Encode triangles as a binary STL. `header` lets a test plant the classic trap
   of a binary file whose header text begins with \"solid\"."

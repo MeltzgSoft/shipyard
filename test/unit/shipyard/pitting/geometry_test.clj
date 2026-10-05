@@ -80,6 +80,39 @@
       (is (geometry/closed-source? triangles))
       (is (near? 56.0 (volume triangles))))))
 
+(deftest cancel-internal-faces-test
+  (let [triangles (f/face-touching-cubes 2.0)
+        surface (geometry/cancel-internal-faces triangles)]
+    (is (= 24 (count triangles)))
+    (is (= 20 (count surface)))
+    (is (near? 16.0 (volume surface)))
+    (is (= surface (filterv (set surface) triangles)) "remaining source triangles keep their order")
+    (is (geometry/closed-source? triangles))
+    (is (geometry/closed-source? surface))
+    (let [[a b c] (nth triangles 16)]
+      (is (= surface (geometry/cancel-internal-faces (assoc triangles 16 [b c a]))))
+      (is (not (geometry/closed-source? (assoc triangles 16 (vec (reverse [a b c])))))))
+    (is (not (geometry/closed-source? (rest triangles))))
+    (is (not (geometry/closed-source? (conj triangles (nth triangles 6)))))
+    (is (not (geometry/closed-source? (into triangles triangles))))
+    (let [degenerate [[0 0 0] [1 0 0] [1 0 0]]
+          invalid (into triangles [degenerate (vec (reverse degenerate))])]
+      (is (not (geometry/closed-source? invalid))))
+    (is (not (geometry/closed-source? (into (f/cube 2.0) (map (comp vec reverse) (f/cube 2.0))))))))
+
+(deftest subtract-face-touching-surfaces-test
+  (let [mesh (stl/parse-bytes (f/->binary-stl (f/face-touching-cubes 2.0)))
+        pit (assoc frame :mount/cut {:kind :pit :depth 0.5 :diameter 0.5})
+        recess (assoc frame :mount/outline [[[-1 -1 1] [1 -1 1] [1 1 1] [-1 1 1]]]
+                      :mount/cut {:kind :recess :depth 0.5 :border 0.25})]
+    (doseq [[mount removed] [[pit (* Math/PI 0.25 0.25 0.5)] [recess (* 1.5 1.5 0.5)]]]
+      (let [result (geometry/subtract mesh [mount])
+            round-trip (stl/parse-bytes (geometry/binary-stl result))]
+        (is (near? (- 16.0 removed) (volume result)))
+        (is (every? math/finite-number? (apply concat (apply concat result))))
+        (is (some #(near? 0.5 (last %)) (apply concat result)))
+        (is (= (count result) (:triangle-count round-trip)))))))
+
 (deftest subtract-edge-touching-surfaces-test
   (let [triangles (f/edge-touching-cubes 2.0)
         mesh (stl/parse-bytes (f/->binary-stl triangles))
