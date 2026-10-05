@@ -705,7 +705,7 @@ Undo is unavailable until the current drag has finished.
 All server-rendered hiccup driven by htmx, except the viewport.
 
 - **Part Browser** — a full-width table of library parts, with row thumbnails and
-  filters by bundle/faction, class, role, name and saved-orientation status. Select
+  filters by bundle/faction, class, role, name, saved-orientation status and variant availability. Select
   rows to edit metadata or open the orientation grid (§9.4). Double-click a row (or
   press Enter on it) to open the individual editor. Back to table restores filters,
   selected rows and scroll position; the individual editor has no listing sidebar.
@@ -823,9 +823,15 @@ parts are subsequently viewed or assembled. Source STL files and existing mount
 records remain unchanged. Table, grid and individual editor are views within one workspace.
 
 **Select.** A table fills the workspace and supports filters by bundle, class, role,
-name and saved-orientation status (any, unset or saved). Each row shows a thumbnail,
-part name, bundle/faction, role, class, mount summary, whether saved regions exist,
-saved yaw/pitch/roll and orientation status. Mount summary counts plugs and socket
+name, saved-orientation status (any, unset or saved) and variant availability. Each row shows a thumbnail,
+part name, bundle/faction, role, class, Unsupported/Supported/Pitted or recessed availability,
+mount summary, whether saved regions exist,
+saved yaw/pitch/roll and orientation status. Each availability filter chooses Any,
+Available or Missing; the three requirements combine with the other filters. Active
+availability filters include supported-only rows and apply to incremental batches,
+select-all, individual navigation and workspace restoration. Pits and recesses share
+one cut-variant category (`:unsupported-pitted`). Availability uses scanned variant facts;
+external file changes require rescan. Mount summary counts plugs and socket
 capacity grouped by accepted roles. Regions is Yes when any non-Primary face assignments
 are saved, and No when assignments are empty. An explicitly saved identity
 pose counts as Saved; a part without saved orientation is Unset. Parts that cannot be

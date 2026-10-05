@@ -38,8 +38,11 @@
                    :class (blank->nil (get params "class"))
                    :role (some-> (get params "role") blank->nil keyword)
                    :q (blank->nil (get params "q"))})
-       (filter #(edits/listed? % (or (:import-session deps) (not (str/blank? (get params "variant"))))))
+       (filter #(edits/listed? % (or (:import-session deps)
+                                     (not (str/blank? (get params "variant")))
+                                     (some (fn [[field]] (seq (get params field))) edits/variant-filters))))
        (filter #(imports/matches-variant? (when-not (= "all" (get params "variant")) (get params "variant")) %))
+       (filter #(edits/matches-availability? params %))
        (filter #(bulk/matches-orientation? (blank->nil (get params "orientation")) %))))
 
 (defn orient! [deps _]
@@ -51,7 +54,7 @@
     (workspace/update-workspace! workspace :browse dissoc :part-order))
   (let [{:keys [bulk-selection filters]} (when workspace (workspace/workspace! workspace :browse))]
     (views/results (filtered-parts! deps (merge filters params))
-                   (set (bulk/selected-ids bulk-selection)) (get filters "table-scroll") (get filters "page") (= "1" (get params "chunk")))))
+                   (set (bulk/selected-ids bulk-selection)) (get filters "table-scroll") (get filters "page") (= "1" (get params "chunk")) (boolean (:import-session deps)))))
 
 (defn parts! [deps {:keys [params]}]
   (if (and (= "1" (get params "chunk"))

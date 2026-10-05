@@ -12,6 +12,9 @@
   (is (false? (:more? (pagination/batch-window [] "3" false)))))
 
 (deftest same-filters
+  (doseq [field ["has-unsupported" "has-supported" "has-pitted"]]
+    (is (not (pagination/same-filters? {field "available"} {field "missing"})))
+    (is (pagination/same-filters? {field ""} {})))
   (is (not (pagination/same-filters? {"variant" "supported"} {"variant" "unsupported"})))
   (is (pagination/same-filters? {"q" "Hull" "page" "2"} {"q" "Hull" "bundle" ""}))
   (is (not (pagination/same-filters? {"q" "Hull"} {"q" "Prow"}))))

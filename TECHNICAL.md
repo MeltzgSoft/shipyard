@@ -2020,6 +2020,15 @@ describes the Part Browser grid workflow and its workspace contract.
 **Authority and selection.** The server owns catalog queries, preview eligibility, mesh
 preparation and durable writes. Table filters reuse catalog bundle/class/role/name
 queries and add `orientation=all|unset|saved`; absent orientation filter means all.
+Published rows expose three Yes/No variant columns from `:part/variants`. The independent
+`has-unsupported`, `has-supported` and `has-pitted` filters accept an empty value,
+`available` or `missing`; `has-pitted` covers both generated pit and recess outputs.
+`part-browser.transforms/matches-availability?` intersects the requirements with the
+existing Variant filter and catalog filters. Active availability filters include
+supported-only rows. The shared pagination filter keys also drive workspace retention,
+chunk admission and select-all transport; individual navigation reuses the complete
+filtered cohort. No variant geometry or new durable state is loaded for these columns.
+
 Saved means a valid saved quaternion exists, including identity. Missing/invalid
 metadata is treated as unset and previews at identity at this boundary (§12.6).
 

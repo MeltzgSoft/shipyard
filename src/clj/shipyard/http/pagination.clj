@@ -1,11 +1,13 @@
 (ns shipyard.http.pagination
   "Incremental list batches and their HTMX navigation."
   (:require [clojure.data.json :as json]
+            [clojure.string :as str]
             [shipyard.thumbnail.views :as thumbnails]))
 
 (def page-size 50)
 
-(def filter-keys ["bundle" "class" "role" "orientation" "variant" "q"])
+(def filter-keys ["bundle" "class" "role" "orientation" "variant" "q"
+                  "has-unsupported" "has-supported" "has-pitted"])
 
 (defn same-filters? [a b]
   (= (map #(get a % "") filter-keys) (map #(get b % "") filter-keys)))
@@ -26,7 +28,7 @@
     [:div.list-more
      {:hx-get url :hx-trigger (str "intersect once root:" root ", click")
       :hx-target "this" :hx-swap "outerHTML" :hx-include include
-      :hx-params "bundle,class,role,orientation,variant,q,page,chunk"
+      :hx-params (str/join "," (into filter-keys ["page" "chunk"]))
       :hx-sync (str include ":abort")
       :hx-vals (json/write-str {"page" (str (inc page)) "chunk" "1"})}
      [:button {:type "button"} "Load more"]

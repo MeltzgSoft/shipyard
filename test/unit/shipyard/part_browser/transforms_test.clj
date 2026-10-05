@@ -65,3 +65,16 @@
     (is (:error (edit {"orientation-action" "keep" "part-yaw-deg" "NaN"})))
     (let [result (edit (zipmap t/angle-fields (repeat "0")))]
       (is (= orientation/identity-quaternion (:value (last (:changes result))))))))
+
+(deftest matches-availability-test
+  (let [part {:part/variants [:unsupported :unsupported-pitted]}]
+    (is (t/matches-availability? {} part))
+    (is (t/matches-availability? {"has-unsupported" "" "has-pitted" ""} part))
+    (is (t/matches-availability? {"has-unsupported" "available" "has-supported" "missing" "has-pitted" "available"} part))
+    (is (not (t/matches-availability? {"has-supported" "available"} part)))
+    (is (not (t/matches-availability? {"has-pitted" "missing"} part)))
+    (is (not (t/matches-availability? {"has-unsupported" "invalid"} part)))
+    (is (t/matches-availability? {"has-unsupported" "missing" "has-supported" "missing" "has-pitted" "missing"} {}))
+    (doseq [[field variant] t/variant-filters]
+      (is (t/matches-availability? {field "available"} {:part/variants #{variant}}))
+      (is (not (t/matches-availability? {field "missing"} {:part/variants #{variant}}))))))

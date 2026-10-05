@@ -42,6 +42,9 @@
    [:role {:optional true} string?]
    [:orientation {:optional true} string?]
    [:variant {:optional true} [:enum "" "all" "unsupported" "supported" "unsupported-pitted"]]
+   [:has-unsupported {:optional true} [:enum "" "available" "missing"]]
+   [:has-supported {:optional true} [:enum "" "available" "missing"]]
+   [:has-pitted {:optional true} [:enum "" "available" "missing"]]
    [:q {:optional true} string?]])
 
 (def bulk-render-form

@@ -77,7 +77,7 @@
       (is (s/wait-until #(= 2 (s/count-els driver ".bulk-orient__row"))))
       (s/click! driver "#part-select-matching")
       (s/wait-visible! driver "[data-bulk-count]:text-is('121 selected')")
-      (s/select-option! driver "#bulk-orient-filters select[name=variant]" "Unsupported (pitted)")
+      (s/select-option! driver "#bulk-orient-filters select[name=variant]" "Unsupported (pitted / recessed)")
       (is (s/wait-until #(= 1 (s/count-els driver ".bulk-orient__row"))))
       (is (= "No preview" (s/text driver ".part-drawer__summary > .part-thumbnail")))
       (s/select-option! driver "#bulk-orient-filters select[name=variant]" "Supported")

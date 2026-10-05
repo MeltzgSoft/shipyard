@@ -4,6 +4,23 @@
             [shipyard.vocabulary.transforms :as vocabulary]
             [shipyard.part.orientation :as orientation]))
 
+(def variant-filters
+  [["has-unsupported" :unsupported "Unsupported"]
+   ["has-supported" :supported "Supported"]
+   ["has-pitted" :unsupported-pitted "Pitted / recessed"]])
+
+(defn matches-availability?
+  "Combine available/missing variant requirements against scanned file types."
+  [params part]
+  (let [variants (set (:part/variants part))]
+    (every? (fn [[field variant]]
+              (case (get params field)
+                (nil "") true
+                "available" (contains? variants variant)
+                "missing" (not (contains? variants variant))
+                false))
+            variant-filters)))
+
 (defn listed? [part importing?]
   (or importing?
       (contains? (set (:part/variants part)) :unsupported)
