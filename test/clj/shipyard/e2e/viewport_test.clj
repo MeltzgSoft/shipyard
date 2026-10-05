@@ -170,7 +170,9 @@
     (let [library (s/bounds *driver* "#library")
           edits (s/bounds *driver* ".part-bulk-edit")]
       (is (>= (:y edits) (:y library)) "Bulk edits remain reachable below the short table")
-      (is (<= (+ (:y edits) (:height edits)) (+ (:y library) (:height library)))
+      ;; CSS boxes retain fractional pixels, while the browser rounds scroll
+      ;; offsets. Allow that rounding without allowing any control to be hidden.
+      (is (<= (+ (:y edits) (:height edits)) (+ (:y library) (:height library) 1))
           "Scrolling the short panel exposes the whole bulk edit form"))
     (finally
       (s/resize! *driver* 1280 900))))
