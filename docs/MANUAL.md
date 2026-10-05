@@ -349,8 +349,11 @@ preserving the adjusted
 model top on either side of a symmetric hull. For a vertical mount, where the face does
 not determine yaw, the child faces forward with the part it is mounted to. A paired
 alignment axis adds its explicit turn, and attached descendants follow the corrected pose.
-- **Repeat classification** keeps the kind and accepted role ready for the next picked
-  face. The next mount is still shown in the form and must be saved deliberately.
+
+Saving keeps **Mounts** selected, so you can pick the next face immediately. Each new
+face starts with its geometry hint and the default acceptance profile; capacity,
+Twist and Mirror start at their defaults. Review the form and save each mount deliberately.
+Select the **Part** tab to leave face-picking mode.
 
 The **Interface colors** legend also shows the mount frame directions: **Normal (+Z)**,
 **Twist reference (+X)** and **Up (+Y)**. These remain visible while authoring the first

@@ -161,16 +161,6 @@
         used (set (map :mount/id mounts))]
     (first (remove used (map #(keyword (str prefix %)) (iterate inc 1))))))
 
-(defn suggest-repeat-id [mounts id]
-  (let [base (name id)
-        [_ prefix digits] (re-matches #"^(.*?)(\d+)$" base)
-        candidates (if digits
-                     (map #(keyword (str prefix %))
-                          (iterate inc (inc (parse-long digits))))
-                     (map #(keyword (str base "-" %)) (iterate inc 2)))
-        used (set (map :mount/id mounts))]
-    (first (remove used candidates))))
-
 (defn mirror-frame
   ([frame plane offset]
    (mirror-frame frame plane offset orientation/identity-quaternion))
@@ -218,11 +208,6 @@
                (fn [loops] (mapv (fn [ring]
                                    (mapv #(orientation/reflect-position part-orientation plane offset %)
                                          (reverse ring))) loops)))))))
-
-(defn repeat-values [mount mounts]
-  (cond-> {:mount-id (some->> (:mount/id mount) (suggest-repeat-id mounts) (name))
-           :kind (some-> (:mount/kind mount) (name))
-           :accepts (:mount/accepts mount)}))
 
 (defn preview-values
   ([params] (preview-values params nil))
@@ -344,7 +329,6 @@
                         existing-mirror (conj (:mount/id existing-mirror)))
          other-mounts (remove #(contains? replaced-ids (:mount/id %)) existing-mounts)
          mirror? (checked? (get params "mirror"))
-         repeat? (checked? (get params "repeat"))
          mirror-plane (parse-keyword (get params "mirror-plane") symmetry-plane-options)
          mirror-offset (or (math/parse-finite-double (get params "mirror-offset")) 0.0)
          mirror-id (or (parse-mount-id (get params "mirror-id"))
@@ -439,17 +423,15 @@
              (let [mounts (-> other-mounts
                               (replace-mount mount)
                               (replace-mount mirrored))]
-               (cond-> {:mount mount
-                        :mirrored-mount mirrored
-                        :mounts mounts}
-                 repeat? (assoc :repeat-values (repeat-values mount mounts))))
+               {:mount mount
+                :mirrored-mount mirrored
+                :mounts mounts})
              {:error "The mirrored socket frame is invalid. Pick the face again."})
            (let [mounts (if base-id
                           (replace-mount-by-id existing-mounts base-id mount)
                           (replace-mount existing-mounts mount))]
-             (cond-> {:mount mount
-                      :mounts mounts}
-               repeat? (assoc :repeat-values (repeat-values mount mounts))))))))))
+             {:mount mount
+              :mounts mounts})))))))
 
 (defn delete-request [params existing-mounts]
   (if-let [mount-id (parse-mount-id (get params "mount-id"))]

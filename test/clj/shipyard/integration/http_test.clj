@@ -450,7 +450,7 @@
         saved (mount-post h save-params)]
     (is (= 200 (:status saved)))
     (is (contains? (triggers saved) "shipyard:clear-preview"))
-    (is (= :exit (:state (get (triggers saved) "shipyard:authoring"))))
+    (is (re-find #"<button(?=[^>]*aria-selected=\"true\")(?=[^>]*data-detail-tab=\"mounts\")[^>]*>" (:body saved)))
     (is (= {:part-id hull-id
             :mesh-key mesh-key
             :mounts [{:mount/id :port-1
@@ -564,7 +564,7 @@
       (is (= {:mesh-key mesh-key :indices [0 1]}
              (:mount/facet (first (:mounts (persisted/authored! (:catalog sys) hull-id)))))))))
 
-(deftest mount-wizard-mirrors-and-repeats
+(deftest mount-wizard-mirrors-and-starts-a-fresh-mount
   (let [root (library-tree)
         sys (system root)
         h (handler sys)
@@ -581,7 +581,6 @@
                              :mirror-plane "x"
                              :mirror-offset "0"
                              :mirror-id "starboard-1"
-                             :repeat "true"
                              :action "create"})
         events (triggers saved)
         mounts (:mounts (persisted/authored! (:catalog sys) hull-id))
@@ -589,11 +588,7 @@
     (is (= 200 (:status saved)))
     (is (str/includes? (:body saved) "port-1"))
     (is (str/includes? (:body saved) "starboard-1"))
-    (is (= :enter (:state (get events "shipyard:authoring"))))
-    (is (= {:mount-id "port-2"
-            :kind "socket"
-            :accepts #{:turret}}
-           (get events "shipyard:mount-repeat")))
+    (is (contains? events "shipyard:clear-preview"))
     (is (= :picked (get-in by-id [:port-1 :mount/origin])))
     (is (= :mirrored (get-in by-id [:starboard-1 :mount/origin])))
     (is (= :starboard-1 (get-in by-id [:port-1 :mount/mirror-id])))
@@ -602,14 +597,12 @@
     (is (= 2 (get-in by-id [:starboard-1 :mount/capacity])))
     (is (= [-2.0 1.0 0.0] (get-in by-id [:starboard-1 :mount/pos])))
     (is (nil? (get-in by-id [:starboard-1 :facet-indices])))
-    (testing "the next preview is prefilled from the repeated classification"
-      (let [repeated (:body (facet-post h hull-id mesh-key 0
-                                        {"mount-id" "port-2"
-                                         "kind" "socket"
-                                         "accepts" "turret"}))]
-        (is (str/includes? repeated "value=\"port-2\""))
-        (is (re-find #"name=\"capacity\"[^>]+value=\"1\"" repeated))
-        (is (re-find #"selected=\"selected\"[^>]+value=\"turret\"" repeated))))))
+    (testing "the next picked face starts with ordinary defaults and waits for Save"
+      (let [fresh (:body (facet-post h hull-id mesh-key 0))]
+        (is (str/includes? fresh "value=\"plug-1\""))
+        (is (re-find #"name=\"capacity\"[^>]+value=\"1\"" fresh))
+        (is (re-find #"selected=\"selected\"[^>]+value=\"weapon\"" fresh))
+        (is (= 2 (count (:mounts (persisted/authored! (:catalog sys) hull-id)))))))))
 
 (deftest mount-wizard-edits-existing-mounts
   (let [root (library-tree)

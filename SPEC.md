@@ -244,8 +244,10 @@ catalog's `:part/accepts-turrets?` is a coarse hint (180 parts, 10.8%) meant onl
 this step a shortlist to work through.
 
 Turret pits are also the case where picking many similar faces in a row is normal: a
-cruiser dorsal spine can carry several. The wizard should make repeating a classification
-cheap rather than demanding the full flow per pit.
+cruiser dorsal spine can carry several. Saving keeps face picking active while the
+Mounts tab is selected. Each newly picked face starts with its geometry hint and
+default acceptance profile, gets an available id, and requires explicit confirmation
+before persistence.
 
 **Symmetry mirroring halves the work.** These ships are bilaterally symmetric - the Human
 Navy Cruiser hull spans X ∈ [-19.06, 19.06] about a centreline at zero. Picking `port-1`

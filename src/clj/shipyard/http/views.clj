@@ -263,7 +263,7 @@
 
 (defn detail-ready
   ([part mesh-key] (detail-ready part mesh-key nil))
-  ([part mesh-key {:keys [error orientation-error preview repeat-values region-layers roles cut-defaults mount-active? preserve-regions? metadata-message]}]
+  ([part mesh-key {:keys [error orientation-error preview region-layers roles cut-defaults mount-active? preserve-regions? metadata-message]}]
    (let [mount-active? (if (some? mount-active?) mount-active? (boolean (or preview error)))]
      [:div.detail.detail--ready
       (part-back part)
@@ -297,11 +297,10 @@
        (interface-legend part)
        (mount-list part)
        [:div#mount-authoring.mount-wizard
-        (cond-> {:data-part-id (:part/id part)
-                 :data-mesh-key mesh-key
-                 :data-interface-mounts (pr-str (catalog-part/durable-mounts
-                                                 (:part/mounts part)))}
-          repeat-values (assoc :data-repeat-values (pr-str repeat-values)))
+        {:data-part-id (:part/id part)
+         :data-mesh-key mesh-key
+         :data-interface-mounts (pr-str (catalog-part/durable-mounts
+                                         (:part/mounts part)))}
         [:div#facet-preview
          (cond
            preview (facet-preview (assoc preview :roles roles :cut-defaults cut-defaults))
@@ -447,10 +446,6 @@
          [:input {:type "text" :name "mirror-id" :value mirror-id
                   :data-mirror-source mount-id
                   :autocomplete "off" :spellcheck "false"}]]])
-     (when-not edit?
-       [:label.mount-wizard__check
-        [:input {:type "checkbox" :name "repeat" :value "true"}]
-        "Repeat classification"])
      [:fieldset.mount-wizard__cut
       [:legend "Pitted STL"]
       [:label.mount-wizard__check

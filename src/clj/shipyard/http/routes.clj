@@ -408,15 +408,7 @@
                  {:preview (wizard/error-preview part params error)}))
               (try
                 (pitting/save! deps part-id (:mounts result) (:part/revision part))
-                (if-let [repeat-values (:repeat-values result)]
-                  (mount-response! deps part-id {:clear-preview nil
-                                                 :authoring {:state :enter
-                                                             :part-id part-id
-                                                             :mesh-key (index/mesh-key! library part-id)}
-                                                 :mount-repeat repeat-values}
-                                   {:repeat-values repeat-values})
-                  (mount-response! deps part-id {:clear-preview nil
-                                                 :authoring {:state :exit}}))
+                (mount-response! deps part-id {:clear-preview nil})
                 (catch Exception e
                   (let [error (str "Could not save mounts or regenerate the pitted STL: " (.getMessage e))]
                     (mount-error-response! deps part-id error {}

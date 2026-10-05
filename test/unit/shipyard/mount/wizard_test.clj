@@ -241,12 +241,6 @@
     (is (= :starboard-2-mirror (wizard/suggest-mirror-id :starboard-2)))
     (is (= :prow-mirror (wizard/suggest-mirror-id :prow)))))
 
-(deftest suggest-repeat-id-test
-  (testing "increments numeric suffixes without colliding"
-    (is (= :port-3 (wizard/suggest-repeat-id [{:mount/id :port-2}] :port-1))))
-  (testing "adds a numeric suffix when there is none"
-    (is (= :socket-2 (wizard/suggest-repeat-id [] :socket)))))
-
 (deftest mirror-frame-test
   (testing "mirrors all supported coordinate planes"
     (is (= {:mount/pos [-2.0 1.0 0.0]
@@ -268,34 +262,27 @@
 
 (deftest mirrored-save-request-test
   (testing "creates picked and mirrored sockets"
-    (let [{:keys [mount mirrored-mount mounts repeat-values]}
+    (let [{:keys [mount mirrored-mount mounts]}
           (wizard/save-request (params {"mount-id" "port-1"
                                         "mirror" "true"
                                         "mirror-plane" "x"
                                         "mirror-offset" "0"
-                                        "mirror-id" "starboard-1"
-                                        "repeat" "true"})
+                                        "mirror-id" "starboard-1"})
                                [])]
       (is (= :picked (:mount/origin mount)))
       (is (= :mirrored (:mount/origin mirrored-mount)))
       (is (= :starboard-1 (:mount/mirror-id mount)))
       (is (= :port-1 (:mount/mirror-id mirrored-mount)))
       (is (= [:port-1 :starboard-1] (mapv :mount/id mounts)))
-      (is (= [1 1] (mapv :mount/capacity mounts)))
-      (is (= {:mount-id "port-2"
-              :kind "socket"
-              :accepts #{:weapon}}
-             repeat-values))))
-  (testing "mirrors and repeats capacity"
-    (let [{:keys [mounts repeat-values]}
+      (is (= [1 1] (mapv :mount/capacity mounts)))))
+  (testing "mirrors capacity"
+    (let [{:keys [mounts]}
           (wizard/save-request (params {"capacity" "2"
                                         "mirror" "true"
                                         "mirror-plane" "x"
-                                        "mirror-id" "starboard-1"
-                                        "repeat" "true"})
+                                        "mirror-id" "starboard-1"})
                                [])]
-      (is (= [2 2] (mapv :mount/capacity mounts)))
-      (is (nil? (:capacity repeat-values)))))
+      (is (= [2 2] (mapv :mount/capacity mounts)))))
   (testing "rejects centerline mounts and id conflicts"
     (is (:error (wizard/save-request (params {"mount-id" "port-1"
                                               "mirror" "true"

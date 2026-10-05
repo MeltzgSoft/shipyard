@@ -793,7 +793,7 @@
                                (get-in (s/stats *driver*) [:interfaces :items])))
       "deleting removes the configured interface highlight"))
 
-(deftest mount-wizard-mirrors-and-repeats-a-socket-classification
+(deftest mount-wizard-saves-successive-mounts-with-fresh-defaults
   (open-app!)
   (select-part! "Mount Test Plate")
   (s/await-part *driver* s/mount-plate-id)
@@ -850,7 +850,7 @@
          }"))
       "changing acceptance updates generated mount and mirror prefixes")
   (s/js *driver* "() => { document.querySelector('.mount-wizard__form input[name=capacity]').value = '2'; }")
-  (s/select-option! *driver* "select[name=accepts]" "weapon")
+  (s/select-option! *driver* "select[name=accepts]" "turret")
   (s/click! *driver* ".mount-wizard__form input[name=mirror]")
   (let [mirrored (s/wait-until
                   #(let [preview (:preview (s/stats *driver*))]
@@ -862,10 +862,11 @@
         (str "mirrored preview axis was " (pr-str (:mirror-axis mirrored))))
     (is (vec-close? (:mirror-roll mirrored) [0.0 1.0 0.0])
         (str "mirrored preview roll was " (pr-str (:mirror-roll mirrored)))))
-  (s/click! *driver* "input[name=repeat]")
+  (is (zero? (s/count-els *driver* "input[name=repeat]"))
+      "mount authoring has no Repeat classification toggle")
   (s/click! *driver* ".mount-wizard__actions button[value=create]")
-  (is (s/wait-until #(and (str/includes? (s/text *driver* "#detail") "weapon-1")
-                          (str/includes? (s/text *driver* "#detail") "weapon-1-mirror")))
+  (is (s/wait-until #(and (str/includes? (s/text *driver* "#detail") "turret-1")
+                          (str/includes? (s/text *driver* "#detail") "turret-1-mirror")))
       (str "saving with mirror should persist both sockets; detail was "
            (pr-str (s/text *driver* "#detail"))))
   (let [colors (s/bounds *driver* ".interface-legend__list:not(.interface-legend__orientation)")
@@ -877,31 +878,47 @@
   (is (s/wait-until
        #(let [items (get-in (s/stats *driver*) [:interfaces :items])
               mirrored (filter (fn [item]
-                                 (contains? #{"weapon-1" "weapon-1-mirror"} (:mount-id item)))
+                                 (contains? #{"turret-1" "turret-1-mirror"} (:mount-id item)))
                                items)]
-          (and (= #{"weapon-1" "weapon-1-mirror"} (set (map :mount-id mirrored)))
+          (and (= #{"turret-1" "turret-1-mirror"} (set (map :mount-id mirrored)))
                (every? pos? (map :triangles mirrored)))))
       "both saved faces are colored immediately, including the mirrored face")
   (is (s/wait-until #(= s/mount-plate-id (get-in (s/stats *driver*) [:authoring :part-id])))
-      "repeat keeps face-picking active for the next socket")
+      "saving leaves face-picking active for the next mount")
   (let [{:keys [x y]} (viewport-center)]
     (s/click-point! *driver* x y))
   (is (some? (await-preview)))
   (is (s/wait-until
        #(= "plug-1" (s/js *driver* "() => document.querySelector('.mount-wizard__form input[name=mount-id]').value"))))
   (is (= "plug" (s/js *driver* "() => document.querySelector('.mount-wizard__form select[name=kind]').value"))
-      "a newly picked face uses its geometry hint instead of the repeated socket kind")
+      "a newly picked face uses its geometry hint")
   (is (= "1" (s/js *driver* "() => document.querySelector('.mount-wizard__form input[name=capacity]').value")))
+  (is (zero? (s/count-els *driver* "input[name=mirror]:checked"))
+      "a new face starts without mirroring")
+  (is (= 2 (count (get-in (catalog/part-context! (:shipyard.catalog/db *system*) s/mount-plate-id) [:part :part/mounts]))))
   (s/select-option! *driver* ".mount-wizard__form select[name=kind]" "socket")
   (is (s/wait-until
        #(= "weapon" (s/js *driver* "() => document.querySelector('.mount-wizard__form select[name=accepts]').value"))))
-  (is (= "weapon-2" (s/js *driver* "() => document.querySelector('.mount-wizard__form input[name=mount-id]').value")))
+  (is (= "weapon-1" (s/js *driver* "() => document.querySelector('.mount-wizard__form input[name=mount-id]').value")))
   (s/select-option! *driver* "select[name=accepts]" "bridge")
   (is (= "bridge-1" (s/js *driver* "() => document.querySelector('.mount-wizard__form input[name=mount-id]').value"))
       "changing acceptance uses the first available ID for its own prefix")
   (s/click! *driver* ".mount-wizard__actions button[value=create]")
   (is (s/wait-until #(str/includes? (s/text *driver* "#detail") "bridge-1"))
-      "the repeated classification still waits for an explicit save"))
+      "the next mount still waits for an explicit save")
+  (is (= 3 (count (get-in (catalog/part-context! (:shipyard.catalog/db *system*) s/mount-plate-id) [:part :part/mounts]))))
+  (is (s/wait-until #(nil? (:preview (s/stats *driver*)))))
+  (let [{:keys [x y]} (viewport-center)]
+    (s/click-point! *driver* x y))
+  (is (some? (await-preview)) "saving a single mount also permits the next face pick")
+  (s/select-option! *driver* ".mount-wizard__form select[name=kind]" "socket")
+  (is (= "weapon" (s/js *driver* "() => document.querySelector('select[name=accepts]').value")))
+  (is (= "weapon-1" (s/js *driver* "() => document.querySelector('.mount-wizard__form input[name=mount-id]').value")))
+  (s/select-option! *driver* "select[name=accepts]" "bridge")
+  (is (= "bridge-2" (s/js *driver* "() => document.querySelector('.mount-wizard__form input[name=mount-id]').value"))
+      "generated ids skip existing mounts")
+  (is (= 3 (count (get-in (catalog/part-context! (:shipyard.catalog/db *system*) s/mount-plate-id) [:part :part/mounts])))
+      "picking the third face leaves it unsaved"))
 
 (deftest mirrored-mount-pair-can-be-edited-and-reopened
   (open-app!)

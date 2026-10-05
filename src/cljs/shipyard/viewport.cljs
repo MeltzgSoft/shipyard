@@ -314,7 +314,7 @@
 
 (declare sync-inspector-tool!)
 
-(defn clear! [{:keys [^js canvas parts authoring current repeat bulk] :as sys}]
+(defn clear! [{:keys [^js canvas parts authoring current bulk] :as sys}]
   (glow/dispose! sys)
   (when-let [cache (:paint-topology sys)] (.clear cache))
   (when-let [assembly (:assembly sys)] (swap! assembly assembly-scene/leave))
@@ -325,7 +325,6 @@
   (clear-orientation-guide! sys)
   (reset! authoring nil)
   (reset! current nil)
-  (reset! repeat nil)
   (.remove (.-classList canvas) "stage__canvas--authoring")
   (doseq [[_ ^js obj] @parts]
     (.removeFromParent obj)
@@ -462,11 +461,10 @@
     (reset! authoring {:part-id part-id :mesh-key mesh-key})
     (.add (.-classList canvas) "stage__canvas--authoring")))
 
-(defn- exit-authoring! [{:keys [^js canvas authoring repeat facet-request] :as sys}]
+(defn- exit-authoring! [{:keys [^js canvas authoring facet-request] :as sys}]
   (when facet-request (swap! facet-request inc))
   (clear-authoring-preview! sys)
   (reset! authoring nil)
-  (reset! repeat nil)
   (.remove (.-classList canvas) "stage__canvas--authoring"))
 
 (defn- sync-inspector-tool! [{:keys [workspace active ^js canvas current authoring] :as sys}]
@@ -826,11 +824,6 @@
       (append-form-value! body k v))
     body))
 
-(defn- dom-repeat-values []
-  (some-> (.getElementById js/document "mount-authoring")
-          (.getAttribute "data-repeat-values")
-          (edn/read-string)))
-
 (defn- dom-interface-values []
   (when-let [authoring (.getElementById js/document "mount-authoring")]
     (when-let [mounts (.getAttribute authoring "data-interface-mounts")]
@@ -860,7 +853,7 @@
 
 (declare sync-viewport-events!)
 
-(defn- post-facet! [{:keys [authoring repeat active activation facet-request]} triangle-index]
+(defn- post-facet! [{:keys [authoring active activation facet-request]} triangle-index]
   (let [target (.getElementById js/document "facet-preview")
         {:keys [part-id mesh-key] :as selection} @authoring
         generation @activation]
@@ -869,9 +862,7 @@
         (-> (js/fetch "/facet"
                       #js {:method "POST"
                            :headers #js {"Content-Type" "application/x-www-form-urlencoded"}
-                           :body (form-body (merge (dissoc @repeat "kind" :kind "mount-id" :mount-id)
-                                                   (dissoc (dom-repeat-values) "kind" :kind "mount-id" :mount-id)
-                                                   (dissoc (dom-edit-values) "kind" :kind)
+                           :body (form-body (merge (dom-edit-values)
                                                    {"part-id" part-id
                                                     "mesh-key" mesh-key
                                                     "triangle-index" (str triangle-index)}))})
@@ -1064,20 +1055,6 @@
   (when-let [values (dom-interface-values)]
     (draw-interfaces! sys values)))
 
-(defn- suggest-repeat-id [id]
-  (if-let [[_ prefix digits] (re-matches #"^(.*?)(\d+)$" id)]
-    (str prefix (inc (js/parseInt digits 10)))
-    (str id "-2")))
-
-(defn- remember-repeat-from-submit! [{:keys [repeat]} ^js e]
-  (let [form (.-target e)]
-    (when (some-> form .-classList (.contains "mount-wizard__form"))
-      (if (checked? form "input[name=repeat]")
-        (reset! repeat {:mount-id (suggest-repeat-id (input-value form "input[name=mount-id]"))
-                        :kind (input-value form "select[name=kind]")
-                        :accepts (input-value form "select[name=accepts]")})
-        (reset! repeat nil)))))
-
 (defn- activate-detail-tab! [tab]
   (when-let [root (.querySelector js/document ".detail")]
     (doseq [^js button (array-seq (.querySelectorAll root "[data-detail-tab]"))]
@@ -1114,7 +1091,7 @@
 (defn- load-mesh!
   "Fetch, decode, upload, and optionally reframe. Errors are reported and
   swallowed: a part that fails to load must not take the session with it."
-  [{:keys [^js scene ^js canvas authoring current repeat] :as sys}
+  [{:keys [^js scene ^js canvas authoring current] :as sys}
    {:keys [url part-id mesh-key frame mounts] :as payload}]
   (clear! sys)
   (let [generation @(:browse-generation sys)
@@ -1146,7 +1123,6 @@
                                       :orientation part-orientation
                                       :saved-orientation part-orientation
                                       :bounds [bbox-min bbox-max]})
-                     (reset! repeat nil)
                      (.remove (.-classList canvas) "stage__canvas--authoring")
                      (show-only! sys part-id obj)
                      (install-orientation-guide! sys orientation/identity-quaternion)
@@ -1601,7 +1577,6 @@
          :bulk (clj->js (bulk-stats sys))
          :orientation (clj->js (some-> objs first object-orientation))
          :orientation-guide (orientation-guide-stats sys)
-         :repeat    (clj->js @(:repeat sys))
          :interfaces (interface-stats sys)
          :preview   (preview-stats sys)}))
 
@@ -1765,7 +1740,6 @@
     (listen-event! body sys "shipyard:assembly" #(apply-assembly! sys (payload %)))
     (listen-event! body sys "shipyard:facet-preview" #(draw-preview! sys (payload %)))
     (listen-event! body sys "shipyard:facet-error" (fn [_] (clear-authoring-preview! sys)))
-    (listen-event! body sys "shipyard:mount-repeat" #(reset! (:repeat sys) (payload %)))
     (listen-event! body sys "shipyard:interfaces" #(draw-interfaces! sys (payload %)))
     (listen-event! body sys "shipyard:part-orientation" #(orient-part! sys (payload %)))
     (listen-event! body sys "htmx:afterSwap" (fn [_]
@@ -1807,7 +1781,6 @@
     ;; hidden field from a later submit listener leaves the current request with
     ;; its original `{}` value.
     (listen-event! body sys "submit" (fn [event]
-                                       (remember-repeat-from-submit! sys event)
                                        (when-let [^js form (.-target event)]
                                          (when (.hasAttribute form "data-bulk-save")
                                            (prepare-bulk-save! sys form))))
@@ -1858,7 +1831,6 @@
                   :interfaces (atom nil) :orientation-guide (atom nil) :region-mirror-guide (atom nil)
                   :mount-markers (atom {}) :mount-colors-enabled (atom true)
                   :bulk (atom {}) :bulk-refresh? (atom false) :bulk-saves (atom {:sequence 0 :pending {}}) :bulk-step (atom 90.0)
-                  :repeat (atom nil)
                   :preview-revision (atom 0)
                   :raycaster (three/Raycaster.) :pointer (three/Vector2.)}]
     (set! (.-background scene) (three/Color. 0x14171c))

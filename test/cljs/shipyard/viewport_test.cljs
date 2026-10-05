@@ -20,8 +20,7 @@
    :mount-colors-enabled (atom true)
    :orientation-guide (atom nil)
    :authoring (atom {:state :enter})
-   :current (atom {:part-id "hull"})
-   :repeat (atom {:mount-id "mount-2"})})
+   :current (atom {:part-id "hull"})})
 
 (defn- disposed-counts []
   (atom {:geometry 0 :material 0}))
@@ -96,7 +95,6 @@
       (is (empty? (part-ids sys)))
       (is (nil? @(:authoring sys)))
       (is (nil? @(:current sys)))
-      (is (nil? @(:repeat sys)))
       (is (= {:geometry 1 :material 1} @(:disposed hull)))
       (is (= {:geometry 1 :material 1} @(:disposed prow)))))
 

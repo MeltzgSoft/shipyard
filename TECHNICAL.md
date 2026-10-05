@@ -1971,8 +1971,10 @@ responses tell them to pick another face. Internal exception text and filesystem
 never enter the response.
 
 Two additional viewport events complete the lifecycle. `shipyard:authoring` carries
-`{:state :enter|:exit :part-id ... :mesh-key ...}`; entering enables raycast selection and
-exiting restores ordinary orbit behaviour. `shipyard:clear-preview` has no payload and is
+`{:state :enter :part-id ... :mesh-key ...}` for preview/edit entry. Raycast selection
+follows the active Mounts inspector tab in Part Browser; saving keeps that tab selected,
+and switching to Part or leaving the workspace exits face picking.
+`shipyard:clear-preview` has no payload and is
 sent on part change, wizard cancellation, or a successful save. A new preview replaces
 and disposes the previous highlight and gizmo before adding its replacements.
 
@@ -2002,7 +2004,7 @@ authoritative and keeps the original hint only as evidence, never as a compatibi
 fact.
 
 The selected triangle, ambiguity flag, roll source, symmetry plane, unsaved Twist
-adjustment, repeated classification, form validation state and preview geometry are
+adjustment, form validation state and preview geometry are
 transient. A confirmed mount additionally keeps its selected facet's mesh-key-scoped
 triangle indices as derived render data, in the same database transaction (§1.2). Positions, normals and index buffers never otherwise enter Datalevin.
 
