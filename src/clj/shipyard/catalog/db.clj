@@ -104,6 +104,9 @@
   (save-authoring! catalog part-id {:mounts mounts})
   mounts)
 
+(defn observe-source! [{:keys [store state]} part-id source]
+  (store/write! store #(store/observe-source! % (:library @state) part-id source)))
+
 (defn save-part-role! [catalog part-id role]
   (mutate! catalog part-id
            (fn [conn _ ref _]

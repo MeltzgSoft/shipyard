@@ -150,6 +150,21 @@
 
 (defn parts! [{:keys [state]}] (:parts @state))
 
+(defn with-variant [state part-id variant]
+  (if (some #(= part-id (:part/id %)) (:parts state))
+    (update state :parts
+            (fn [parts]
+              (mapv (fn [part]
+                      (if (= part-id (:part/id part))
+                        (update part :part/variants #(conj (set %) variant))
+                        part)) parts)))
+    state))
+
+(defn record-variant!
+  "Publish an observed output in the current inventory, retaining source caches."
+  [{:keys [state]} part-id variant]
+  (locking state (swap! state with-variant part-id variant)))
+
 (defn source-files!
   "The renderable source files discovered by the most recent library scan.
 

@@ -462,8 +462,9 @@ round trips. An empty combination shows No parts match these filters.
 unsupported source. **All variants** includes those rows too; each row still represents
 one part with its grouped files. An active availability filter also includes supported-only
 rows, so **Unsupported → Missing** can find them. The existing Variant type filter can
-further restrict the results. Availability reports the scanned library inventory;
-rescan after changing files outside Shipyard.
+further restrict the results. Saving pits or recesses updates the part's availability
+immediately; returning to the table or refreshing shows the generated file. Availability
+reports the observed library inventory; rescan after changing files outside Shipyard.
 
 The regular Part Browser also offers **Group selected rows** and each drawer's **files**
 controls. Choose **Variant → All variants** to include supported-only rows, select matching

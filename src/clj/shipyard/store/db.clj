@@ -114,6 +114,21 @@
   [:part/name :part/bundle :part/class :part/role-hint :part/role-source :part/source
    :part/renderable :part/mesh-key :part/tris :part/weapons? :part/turrets? :part/accepts-turrets?])
 
+(defn observe-source!
+  "Record one published file without rescanning or replacing authoring state."
+  [conn library path {:keys [variant relative size mtime]}]
+  (let [ref [:part/key [library path]]
+        part (d/pull @conn [:part/uid :part/present?] ref)
+        key [(:part/uid part) variant]]
+    (when-not (:part/present? part)
+      (throw (ex-info "Part is unavailable" {:part-id path})))
+    (when (d/pull @conn [:db/id] [:source/key key])
+      (d/transact! conn [[:db.fn/retractAttribute [:source/key key] :source/content]]))
+    (d/transact! conn [{:db/id ref :part/variants [variant]
+                        :part/sources [{:source/key key :source/part ref :source/present? true
+                                        :source/variant variant :source/path relative
+                                        :source/size size :source/mtime mtime}]}])))
+
 (defn scan!
   "Refresh observed files without replacing authored database state."
   [store parts root]

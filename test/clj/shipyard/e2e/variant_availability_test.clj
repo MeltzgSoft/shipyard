@@ -1,6 +1,7 @@
 (ns shipyard.e2e.variant-availability-test
   (:require [clojure.test :refer [deftest is]]
             [shipyard.assembly-fixture :as fixture]
+            [shipyard.catalog.db :as catalog]
             [shipyard.e2e.orient-table-test :as table]
             [shipyard.e2e.support :as s]
             [shipyard.variant-availability-fixture :as parts])
@@ -64,4 +65,39 @@
       (is (= ["No" "Yes" "No"] (availability driver parts/supported)))
       (filter! driver "has-pitted" "Available" [])
       (s/wait-visible! driver ".bulk-orient__empty:text-is('No parts match these filters.')")
+      (finally (s/quit! driver) (fixture/stop! started)))))
+
+(deftest saving-cuts-updates-table-availability-after-back-and-refresh
+  (s/assert-bundle!)
+  (let [started (fixture/start! true parts/build! (fn [_])) sys (:system started)
+        cat (:shipyard.catalog/db sys) driver (s/make-driver)]
+    (try
+      (s/go! driver (s/base-url sys))
+      (s/wait-visible! driver (table/row parts/plain))
+      (is (= ["Yes" "No" "No"] (availability driver parts/plain)))
+      (filter! driver "has-unsupported" "Available" [parts/all parts/cut parts/plain])
+      (filter! driver "has-pitted" "Missing" [parts/plain])
+      (s/open-prepared-part! driver sys "Plain" parts/plain)
+      (s/click! driver "[data-detail-tab=mounts]")
+      (let [{:keys [x y width height]} (s/bounds driver "#viewport")]
+        (s/click-point! driver (+ x (/ width 2)) (+ y (/ height 2))))
+      (s/wait-visible! driver ".mount-wizard__form")
+      (s/select-option! driver "select[name=kind]" "socket")
+      (s/click! driver "[name=create-pitted]")
+      (s/fill-and-blur! driver "[name=cut-depth]" "0.1")
+      (s/fill-and-blur! driver "[name=cut-diameter]" "0.2")
+      (s/click! driver "button[value=create]")
+      (is (s/wait-until #(= 1 (count (get-in (catalog/part-context! cat parts/plain) [:part :part/mounts])))))
+      (is (s/wait-until #(= 1 (count (get-in (s/stats driver) [:interfaces :cuts])))))
+      (s/click! driver "[data-part-back]")
+      (s/wait-visible! driver ".bulk-orient__empty:text-is('No parts match these filters.')")
+      (is (empty? (row-ids driver)))
+      (filter! driver "has-pitted" "Available" [parts/all parts/cut parts/plain])
+      (is (= ["Yes" "No" "Yes"] (availability driver parts/plain)))
+      (s/go! driver (s/base-url sys))
+      (s/wait-visible! driver (table/row parts/plain))
+      (is (= ["Yes" "No" "Yes"] (availability driver parts/plain)))
+      (is (= "available" (s/js driver "() => document.querySelector('[name=has-pitted]').value")))
+      (s/open-prepared-part! driver sys "Plain" parts/plain)
+      (is (s/wait-until #(= 1 (count (get-in (s/stats driver) [:interfaces :cuts])))))
       (finally (s/quit! driver) (fixture/stop! started)))))

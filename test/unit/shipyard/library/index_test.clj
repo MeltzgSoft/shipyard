@@ -39,3 +39,14 @@
                      [:entries "hull" :escort-analysis]))))
     (testing "completed work cannot leak into a removed part"
       (is (= state (index/with-escort-analysis state "missing" analysis))))))
+
+(deftest with-variant-test
+  (let [state {:parts [{:part/id "hull" :part/variants #{:unsupported}}
+                       {:part/id "other" :part/variants #{:supported}}]
+               :entries {"hull" {:mesh-key "original" :tris 12}}}
+        updated (index/with-variant state "hull" :unsupported-pitted)]
+    (is (= #{:unsupported :unsupported-pitted} (get-in updated [:parts 0 :part/variants])))
+    (is (= (second (:parts state)) (second (:parts updated))))
+    (is (= (:entries state) (:entries updated)))
+    (is (= updated (index/with-variant updated "hull" :unsupported-pitted)))
+    (is (= state (index/with-variant state "missing" :unsupported-pitted)))))

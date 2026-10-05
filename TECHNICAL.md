@@ -1879,13 +1879,18 @@ source-space frames and section centers.
 `pitting.db/save!` serializes generation with the library-relocation lock, checks
 source freshness and all cut mesh keys, requires a closed source with consistent
 winding and positive signed volume, generates from the original STL, and stages the complete binary
-result beside its source. It saves definitions then atomically replaces the sibling
-`-pitted.stl`; publication failure restores prior mount definitions. Removing the
+result beside its source. A shared-store transaction saves definitions, atomically
+replaces the sibling `-pitted.stl`, and records its variant/source metadata (relative
+path, size and mtime) on the existing part. The source entity retains its identity
+across regeneration. After commit, the library's in-memory inventory gains the variant
+without invalidating the original source's mesh cache or rescanning other parts.
+Publication or transaction failure rolls back the database and restores the prior
+output bytes and timestamp, or removes a newly published file. Removing the
 last cut writes the original bytes to that sibling. An expected part revision guards
 the commit against concurrent authoring changes; save/publication/rollback hold the
 shared store lock. Datalevin and filesystem writes
-are separate transactions: a process interruption between them can leave the old
-output beside newer definitions; saving again regenerates it. Neither generation nor
+are separate transactions: a process interruption between them can leave a new
+output beside older definitions; saving again regenerates it. Neither generation nor
 publication overwrites the original source.
 
 M2 supports the three axis-aligned planes in the part's canonical coordinates. A plane is the

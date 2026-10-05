@@ -830,8 +830,10 @@ saved yaw/pitch/roll and orientation status. Each availability filter chooses An
 Available or Missing; the three requirements combine with the other filters. Active
 availability filters include supported-only rows and apply to incremental batches,
 select-all, individual navigation and workspace restoration. Pits and recesses share
-one cut-variant category (`:unsupported-pitted`). Availability uses scanned variant facts;
-external file changes require rescan. Mount summary counts plugs and socket
+one cut-variant category (`:unsupported-pitted`). Availability uses observed variant facts.
+Saving generated cuts updates the affected part's inventory immediately; returning to
+the table or refreshing shows the output without a rescan. External file changes require
+rescan. Mount summary counts plugs and socket
 capacity grouped by accepted roles. Regions is Yes when any non-Primary face assignments
 are saved, and No when assignments are empty. An explicitly saved identity
 pose counts as Saved; a part without saved orientation is Unset. Parts that cannot be
