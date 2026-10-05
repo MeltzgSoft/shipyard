@@ -33,3 +33,11 @@
            [parts [(first files) (assoc (second files) :owner "a")] :variant {:file "2" :variant :unsupported}]
            [parts files :variant {:file "missing" :variant :supported}]]]
     (is (thrown? clojure.lang.ExceptionInfo (plan/plan ps fs action params)))))
+
+(deftest splitting-separates-files-with-the-same-original-owner
+  (let [grouped [(first files)
+                 (assoc (second files) :owner "a" :origin "b")
+                 (assoc (nth files 2) :owner "a" :origin "b")]
+        result (plan/plan parts grouped :split {:group "a"})]
+    (is (= ["b" "a - unsupported-pitted"] (mapv :owner (:moves result))))
+    (is (= 3 (count (:selected result))))))

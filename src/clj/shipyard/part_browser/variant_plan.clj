@@ -30,15 +30,16 @@
             (let [keep-file (or (first (filter #(= :unsupported (:variant %)) group-files)) (first group-files))
                   departing (remove #(= (:key keep-file) (:key %)) group-files)
                   destinations
-                  (into {} (map (fn [entry]
-                                  (let [original (:origin entry)
-                                        restored? (and original (not= group original) (empty? (get by-owner original)))
-                                        stem (str group " - " (name (:variant entry)))
-                                        target (if restored? original
-                                                   (first (remove #(or (contains? parts %) (seq (get by-owner %)))
-                                                                  (cons stem (map #(str stem " " %) (range 2 10000))))))]
-                                    (ensure! target "No free folder is available for this split.")
-                                    [(:key entry) target])) departing))]
+                  (reduce (fn [destinations entry]
+                            (let [original (:origin entry)
+                                  reserved (set (vals destinations))
+                                  restored? (and original (not= group original) (empty? (get by-owner original)) (not (reserved original)))
+                                  stem (str group " - " (name (:variant entry)))
+                                  target (if restored? original
+                                             (first (remove #(or (contains? parts %) (seq (get by-owner %)) (reserved %))
+                                                            (cons stem (map #(str stem " " %) (range 2 10000))))))]
+                              (ensure! target "No free folder is available for this split.")
+                              (assoc destinations (:key entry) target))) {} departing)]
               (mapv #(if-let [target (destinations (:key %))] (assoc % :owner target) %) files)))
           :variant
           (do
