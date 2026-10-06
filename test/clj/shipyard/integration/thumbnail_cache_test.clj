@@ -109,6 +109,9 @@
         (fs/delete file)
         (is (= url (image-url! handler path)) "Clearing derived files regenerates safely")
         (is (fs/regular-file? file))
+        ;; A published image is readable before its worker finishes reference
+        ;; cleanup. Check temporary files only after that completion boundary.
+        (await! #(= {:running 0 :queued 0} (workers/progress! (:scope previews))))
         (is (empty? (fs/glob (:dir previews) "*.tmp")))
         (with-open [out (io/output-stream (fs/file (:root started) id "unsupported.stl"))]
           (.write out ^bytes (fixtures/->binary-stl (fixtures/cube 2.0))))
