@@ -86,3 +86,22 @@
         (s/wait-visible! driver ".part-thumbnail img")
         (is (s/wait-until #(zero? (s/count-els driver ".part-thumbnail button:text-is('Retry preview')")))))
       (finally (s/quit! driver) (fixture/stop! started)))))
+
+(deftest oversized-import-shows-backpressure-without-partial-review
+  (let [started (fixture/start! true fixture/library! fixture/author!
+                                {:shipyard.jobs/pool {:threads 1 :queue-size 1}})
+        sys (:system started) driver (s/make-driver) before (catalog/listing! (:shipyard.catalog/db sys))]
+    (try
+      (s/go! driver (s/base-url sys))
+      (s/wait-visible! driver ".import-start")
+      (s/choose-path! driver ".import-start" (archives/archive! (:temp started)))
+      (s/wait-visible! driver "#import-status[role=alert]")
+      (is (.contains ^String (s/text driver "#import-status") "Import preview queue is full"))
+      (is (zero? (s/count-els driver ".import-review")))
+      (is (nil? (importer/session! {:workspace (:shipyard.workspace/db sys)})))
+      (is (empty? @(get-in sys [:shipyard.thumbnail/cache :children])))
+      (is (= before (catalog/listing! (:shipyard.catalog/db sys))))
+      (s/open-part! driver "hull")
+      (s/await-part driver (:hull fixture/ids))
+      (is (= "loaded" (:status (s/stats driver))))
+      (finally (s/quit! driver) (fixture/stop! started)))))

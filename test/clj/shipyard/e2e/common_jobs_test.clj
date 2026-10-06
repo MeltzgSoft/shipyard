@@ -4,7 +4,7 @@
             [shipyard.e2e.support :as s]
             [shipyard.import-fixture :as archives]))
 
-(deftest a-single-worker-recovers-from-backpressure-and-import-cancellation
+(deftest a-single-worker-completes-and-cancels-import-previews
   (let [started (fixture/start! true fixture/library! fixture/author!
                                 {:shipyard.jobs/pool {:threads 1 :queue-size 8}})
         driver (s/make-driver) sys (:system started)
