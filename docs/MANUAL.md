@@ -209,6 +209,8 @@ the editable assembly draft. Workspace navigation, filters and selection remain
 available if the 3D view cannot load.
 
 Part Browser opens as a table with part thumbnails showing saved region colors.
+A failed preview stops polling; choose **Retry preview** to try again. A full preview
+queue also offers that action after pending jobs finish.
 Mount summary lists plugs and socket capacity by accepted role. Regions shows Yes
 when a part has saved non-Primary face assignments; clearing them returns it to No.
 Returning from the part editor refreshes its thumbnail and these columns. Scroll down
@@ -245,16 +247,20 @@ with mesh preparation and mount recovery. By default, two background jobs run at
 across the whole app, including import review. The cache removes older images as it fills; missing images
 are recreated automatically. After replacing STL files externally, rescan the library.
 
-To change background concurrency, add `:shipyard.jobs/pool {:threads 2 :queue-size 128}`
+To change background concurrency, add `:shipyard.jobs/pool {:threads 2 :queue-size 4096}`
 to your application `config.edn` and restart the app. Omitted or nil limits use these
 defaults; they do not mean unlimited or follow CPU count. Both values must be positive
-integers. A full queue leaves previews preparing until a later poll can admit the work.
+integers. Up to 32 pending slots are reserved from bulk imports for interactive work
+(the reserve is at most one quarter of queue capacity). A full preview queue shows
+**Retry preview**; no rejected job is reported as accepted.
 Canceling an import stops only its jobs; browsing and thumbnails continue using the pool.
 
 The **Thumbnail generation** indicator shows actual running and queued thumbnail
 jobs across Part Browser, import review and Ship Browser. Cached image downloads,
 unrequested rows and unavailable previews do not count as generation work. Thumbnails
-are requested as rows enter view; opening a list does not generate the whole library.
+are requested as rows enter view during ordinary browsing; opening a library list does
+not generate the whole library. Import review accepts all eligible rows at startup, so
+its unloaded rows count as pending or running work.
 Hover over **No preview** for the reason a row is skipped. Import review also previews
 supported geometry; editing still requires unsupported geometry. Part and ship thumbnail cache lookups use small persistent references, so refreshing
 a cached preview does not reread its region face assignments or custom paint.

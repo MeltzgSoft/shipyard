@@ -742,7 +742,8 @@ except where source-bound region or detail colors require the original tier. Lig
 is simplified; the editor remains the reference for metallic and roughness finishes.
 Missing sources show an unavailable placeholder. Browser lists show actual running
 and queued thumbnail jobs across the shared generator, independent of loaded row counts,
-cache downloads and unrequested rows. Generation remains lazy. Skipped rows expose the
+cache downloads and unrequested rows. Generation remains lazy outside import review;
+review accepts every eligible row preview at startup (§9.5). Skipped rows expose the
 reason they cannot be previewed.
 All part, import, class and named-ship PNGs use a shared bounded background rendering
 pool and a disposable disk cache that survives application restarts. Identical visual

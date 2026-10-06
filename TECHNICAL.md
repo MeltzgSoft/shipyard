@@ -2540,8 +2540,9 @@ pull ID/name summaries, and palette previews pull only layer bindings. Face deta
 Browser lists request batches of at most 50 rows through HTMX intersection sentinels.
 New batches append without replacing earlier rows; restoring a workspace renders its
 loaded prefix. CSS content visibility skips layout/painting for offscreen batches,
-while thumbnail requests remain lazy and mesh preprocessing uses the
-common background pool. Part selection is server-owned and independent of loaded
+while image requests remain lazy. Ordinary browsing admits previews on demand; import
+review admits every eligible row preview at startup. Mesh preparation and rendering
+use the common background pool. Part selection is server-owned and independent of loaded
 rows; select-all queries the full filtered catalog. Filter changes restart the list.
 Append requests must match the current workspace filters, and the list transport
 rejects responses whose originating element was detached. Named hulls load on expansion
@@ -2550,9 +2551,11 @@ leaving and returning to the table. Table and hull responses never
 embed named-ship paint maps. The small independent `browser-lists.js` asset projects loaded-page markers and the
 server-rendered selection checkbox's indeterminate property; it owns no workspace or
 selection state and does not require the viewport bundle. `GET /thumbnail-progress`
-polls the shared thumbnail worker scope for actual executing and admitted queued task
-counts. It excludes browser requests, cached downloads, failures and unloaded rows;
-mesh preprocessing and mount recovery are separate work, not PNG-generation counts.
+polls the normal and active import preview scopes for actual executing and admitted
+queued task counts, including accepted import rows not yet loaded in the browser. It
+excludes browser requests, cached downloads and terminal work. A preview job includes
+its inline mesh preparation; standalone mesh preparation and mount recovery scopes
+remain separate from these counts.
 
 The shared store keeps explicitly added classifications as vocabulary entities keyed by
 `[field value]`, with a keyword field and string value. Choice projections combine these
