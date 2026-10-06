@@ -2440,6 +2440,17 @@ interface refresh event. Transport schemas share the metadata field contract. Th
 role-only form, endpoint and request parser are removed. Workspace guards continue to
 block the individual editor during imports and reject stale activations.
 
+`part.orientation-views/angle-fields` owns the absolute Yaw/Pitch/Roll input rendering,
+rounding and fractional-degree input step used by individual parts and library/import
+drawers. Each caller retains its field names, save endpoint, preview behavior and Reset
+contract. Relative grid controls continue to use the shared Euler math.
+`vocabulary.views` renders fixed-field and dynamic bulk pickers through one combobox
+implementation, retaining the server-provided vocabulary and transient dropdown behavior.
+`thumbnail.views/lazy-attrs` owns intersection-request attributes; callers supply the
+scroll root, endpoint and disabling policy. `loadout.views/named-delete-form` owns named-ship
+UUID/confirmation inputs and deletion copy across tables and Manage ship; caller context
+and workspace transport guards remain explicit. These rendering helpers own no mutable state.
+
 Row saves can include an explicit pose edit in the same transaction as labels.
 Server-rendered degree fields reuse shared Euler math and angle validation; ordinary
 form input marks an edited pose without creating a browser model store. Unchanged

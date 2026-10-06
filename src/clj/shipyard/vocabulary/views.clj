@@ -1,26 +1,25 @@
 (ns shipyard.vocabulary.views)
 
-(defn picker []
-  [:div.classification-picker
-   [:label {:for "part-edit-value"} "Value"]
-   [:div.classification-picker__control
-    [:input#part-edit-value {:name "value" :list "part-bundle-values" :autocomplete "off"
-                             :data-classification-input true :role "combobox" :aria-autocomplete "list"
-                             :aria-expanded "false" :aria-controls "part-edit-options"}]
-    [:button {:type "button" :data-classification-toggle true :aria-label "Show classification values"
-              :aria-controls "part-edit-options" :aria-expanded "false"} "▾"]]
-   [:div#part-edit-options.classification-picker__options {:role "listbox" :aria-label "Classification values" :hidden true}]])
-
-(defn field-picker [id field label value]
+(defn- picker-control [{:keys [id field label value list-id options-id options-label toggle-label]}]
   [:div.classification-picker
    [:label {:for id} label]
    [:div.classification-picker__control
-    [:input {:id id :name field :value value :list (str "part-" field "-values") :autocomplete "off"
-             :data-classification-input true :data-classification-field field :role "combobox"
-             :aria-autocomplete "list" :aria-expanded "false" :aria-controls (str id "-options")}]
-    [:button {:type "button" :data-classification-toggle true :aria-label (str "Show " label " values")
-              :aria-controls (str id "-options") :aria-expanded "false"} "▾"]]
-   [:div.classification-picker__options {:id (str id "-options") :role "listbox" :aria-label label :hidden true}]])
+    [:input (cond-> {:id id :name field :value value :list list-id :autocomplete "off"
+                     :data-classification-input true :role "combobox" :aria-autocomplete "list"
+                     :aria-expanded "false" :aria-controls options-id}
+              (not= field "value") (assoc :data-classification-field field))]
+    [:button {:type "button" :data-classification-toggle true :aria-label toggle-label
+              :aria-controls options-id :aria-expanded "false"} "▾"]]
+   [:div.classification-picker__options {:id options-id :role "listbox" :aria-label options-label :hidden true}]])
+
+(defn picker []
+  (picker-control {:id "part-edit-value" :field "value" :label "Value" :list-id "part-bundle-values"
+                   :options-id "part-edit-options" :options-label "Classification values"
+                   :toggle-label "Show classification values"}))
+
+(defn field-picker [id field label value]
+  (picker-control {:id id :field field :label label :value value :list-id (str "part-" field "-values")
+                   :options-id (str id "-options") :options-label label :toggle-label (str "Show " label " values")}))
 
 (defn choices [values]
   [:div#classification-values

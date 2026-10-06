@@ -1,5 +1,10 @@
 (ns shipyard.thumbnail.views)
 
+(defn lazy-attrs [url root disable?]
+  (cond-> {:hx-get url :hx-trigger (str "intersect once root:" root)
+           :hx-sync "this:drop" :hx-target "this" :hx-swap "innerHTML"}
+    disable? (assoc :hx-disabled-elt "this")))
+
 (defn progress
   ([] (progress nil))
   ([counts]

@@ -2,7 +2,8 @@
   "Class table, expandable named hulls and server-rendered navigation forms."
   (:require [clojure.string :as str]
             [shipyard.workspace.views :as workspace-views]
-            [shipyard.http.pagination :as pagination]))
+            [shipyard.http.pagination :as pagination]
+            [shipyard.thumbnail.views :as thumbnails]))
 
 (defn- action [id action label]
   [:form.ship-card__action
@@ -17,10 +18,17 @@
        "f.elements.id.value='" id "';f.elements.kind.value='" kind "';htmx.trigger(f,'submit');}"))
 
 (defn- thumbnail [kind id]
-  [:span.ship-thumbnail {:hx-get (str "/ship-thumbnails/" kind "/" id)
-                         :hx-trigger "intersect once root:#ship-results"
-                         :hx-sync "this:drop" :hx-disabled-elt "this" :hx-target "this" :hx-swap "innerHTML"}
+  [:span.ship-thumbnail (thumbnails/lazy-attrs (str "/ship-thumbnails/" kind "/" id) "#ship-results" true)
    "…"])
+
+(defn named-delete-form [ship return-view form-attrs button-attrs label]
+  [:form (merge {:method "post" :action "/ships/paint/delete" :hx-post "/ships/paint/delete" :hx-target "#detail"
+                 :hx-confirm (str "Delete named ship “" (:ship/name ship) "” and its custom paint? Its class and scheme will be kept.")}
+                form-attrs)
+   [:input {:type "hidden" :name "id" :value (str (:ship/id ship))}]
+   [:input {:type "hidden" :name "confirmed" :value "true"}]
+   (when return-view [:input {:type "hidden" :name "return" :value return-view}])
+   [:button (merge {:type "submit"} button-attrs) label]])
 
 (defn named-actions [ship return-view]
   [:div.named-ship-actions
@@ -30,14 +38,9 @@
     [:input {:type "hidden" :name "kind" :value "ship"}]
     [:input {:type "hidden" :name "id" :value (str (:ship/id ship))}]
     [:button {:type "submit" :data-workspace-transition "true" :aria-label (str "Edit ship " (:ship/name ship))} "Edit"]]
-   [:form (merge workspace-views/transition-attrs
-                 {:method "post" :action "/ships/paint/delete" :hx-post "/ships/paint/delete" :hx-target "#detail"
-                  :hx-include "#ship-filters, #ship-table-position, [data-ship-page]"
-                  :hx-confirm (str "Delete named ship “" (:ship/name ship) "” and its custom paint? Its class and scheme will be kept.")})
-    [:input {:type "hidden" :name "id" :value (str (:ship/id ship))}]
-    [:input {:type "hidden" :name "confirmed" :value "true"}]
-    [:input {:type "hidden" :name "return" :value return-view}]
-    [:button {:type "submit" :data-workspace-transition "true" :aria-label (str "Delete ship " (:ship/name ship))} "Delete"]]])
+   (named-delete-form ship return-view
+                      (assoc workspace-views/transition-attrs :hx-include "#ship-filters, #ship-table-position, [data-ship-page]")
+                      {:data-workspace-transition "true" :aria-label (str "Delete ship " (:ship/name ship))} "Delete")])
 
 (defn customize-table [ships classes schemes selected page]
   (let [classes (into {} (map (juxt :loadout/id :loadout/name)) classes)

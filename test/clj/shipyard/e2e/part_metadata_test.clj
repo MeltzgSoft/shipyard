@@ -49,3 +49,31 @@
         (is (= "Shared Navy" (s/js driver "() => document.querySelector('.part-metadata__form input[name=bundle]').value")))
         (is (= "Carrier" (s/js driver "() => document.querySelector('.part-metadata__form input[name=class]').value"))))
       (finally (s/quit! driver) (fixture/stop! started)))))
+
+(deftest individual-and-drawer-fields-accept-the-same-fractional-degrees
+  (s/assert-bundle!)
+  (let [started (fixture/start! true) sys (:system started) driver (s/make-driver)
+        cat (:shipyard.catalog/db sys) id (:prow fixture/ids)
+        expected (orientation/from-euler-degrees 12.5 -3.25 5.5)
+        close? (fn [pose] (and (= 4 (count pose)) (every? #(< (abs (double %)) 1e-7) (map - expected pose))))]
+    (try
+      (s/go! driver (s/base-url sys))
+      (s/open-part! driver "prow")
+      (s/await-part driver id)
+      (doseq [[field value] [["part-yaw-deg" "12.5"] ["part-pitch-deg" "-3.25"] ["part-roll-deg" "5.5"]]]
+        (.fill ^Page (:page driver) (str ".part-orientation__form input[name=" field "]") value))
+      (is (s/js driver "() => document.querySelector('.part-orientation__form').checkValidity()"))
+      (is (s/wait-until #(close? (:orientation (s/stats driver)))))
+      (s/click! driver ".part-orientation__actions button[value=save]")
+      (is (s/wait-until #(close? (:part/orientation (catalog/summary! cat id)))))
+      (s/click! driver "[data-part-back]")
+      (s/wait-visible! driver (str "[data-part-row='" id "']"))
+      (s/click! driver (str "[data-part-row='" id "'] > summary"))
+      (s/wait-visible! driver (str "[data-part-row='" id "'] .part-row-edit"))
+      (is (= ["12.5" "-3.25" "5.5"]
+             (s/js driver (str "() => [...document.querySelectorAll(" (pr-str (str "[data-part-row='" id "'] [data-row-angle]")) ")].map(i=>i.value)"))))
+      (is (s/js driver "() => document.querySelector('.part-row-edit').checkValidity()"))
+      (s/click! driver ".part-row-edit button:text-is('Save part')")
+      (s/wait-visible! driver ".part-row-edit [role=status]:text-is('Saved.')")
+      (is (close? (:part/orientation (catalog/summary! cat id))))
+      (finally (s/quit! driver) (fixture/stop! started)))))

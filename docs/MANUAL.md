@@ -436,7 +436,8 @@ follows the model's view as you orbit the camera while staying fixed in its corn
 Changes preview immediately; **Save orientation** stores the pose in the database,
 while **Reset** returns it to the source STL orientation. Configure this before picking
 mounts so each new mount derives its up direction consistently.
-An empty angle field means `0` degrees; invalid or non-finite values are rejected.
+Individual and drawer angle fields accept fractional degrees, such as `12.5`.
+An empty individual angle field means `0` degrees; invalid or non-finite values are rejected.
 Invalid orientation data in a bulk save is rejected before any part is written;
 previous saved poses remain unchanged.
 

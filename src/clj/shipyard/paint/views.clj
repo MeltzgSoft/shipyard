@@ -46,11 +46,9 @@
         [:input {:type "hidden" :name "id" :value (str (:ship-id draft))}]
         [:input {:type "hidden" :name "confirmed" :value "true"}]
         [:button {:type "submit"} "Reset custom paint"]]
-       [:form#paint-delete (merge selection-attrs {:method "post" :action "/ships/paint/delete" :hx-post "/ships/paint/delete"
-                                                   :hx-confirm (str "Delete named ship “" (:name draft) "” and its custom paint? Its class and scheme will be kept.")})
-        [:input {:type "hidden" :name "id" :value (str (:ship-id draft))}]
-        [:input {:type "hidden" :name "confirmed" :value "true"}]
-        [:button {:type "submit"} "Delete ship"]]]))
+       (ship-views/named-delete-form {:ship/id (:ship-id draft) :ship/name (:name draft)} nil
+                                     (assoc selection-attrs :id "paint-delete") {} "Delete ship")]))
+
    [:p.muted "Use the Schemes tab to edit fleet palettes."]])
 
 (defn color-control

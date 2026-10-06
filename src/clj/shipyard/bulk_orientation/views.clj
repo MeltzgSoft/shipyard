@@ -9,6 +9,8 @@
             [shipyard.vocabulary.views :as vocabulary]
             [shipyard.part-browser.views :as metadata]
             [shipyard.part.orientation :as orientation]
+            [shipyard.part.orientation-views :as orientation-views]
+            [shipyard.thumbnail.views :as thumbnails]
             [shipyard.part-browser.transforms :as parts]
             [shipyard.workspace.views :as workspace-views]
             [shipyard.workspace.transforms :as workspace-transforms]))
@@ -30,9 +32,7 @@
      (for [{:keys [key chain variant]} files]
        [:label.import-files__file
         [:span.part-thumbnail.import-file-thumbnail
-         {:hx-get (str prefix "/thumbnails/" key)
-          :hx-trigger "intersect once root:#bulk-orient-results" :hx-sync "this:drop"
-          :hx-disabled-elt "this" :hx-target "this" :hx-swap "innerHTML"} "…"]
+         (thumbnails/lazy-attrs (str prefix "/thumbnails/" key) "#bulk-orient-results" true) "…"]
         [:span {:title (str/join " → " chain)} (str/join " → " chain)]
         [:select {:aria-label (str "Variant for " (last chain)) :data-import-file key :data-library-file (when-not (:import/source part) key)
                   :hx-post (str prefix "/variant") :hx-trigger "change"
@@ -57,10 +57,9 @@
      [:legend "Orientation"]
      [:input {:type "hidden" :name "orientation-action" :value "keep"}]
      [:div.part-row-edit__angles
-      (for [[label field value] (map vector ["Yaw (Y) °" "Pitch (X) °" "Roll (Z) °"] parts/angle-fields angles)]
-        [:label label
-         [:input {:type "number" :name field :value (http-views/display-angle value) :step "any" :data-row-angle true
-                  :hx-on:input "this.form.elements['orientation-action'].value='save'"}]])]
+      (orientation-views/angle-fields parts/angle-fields angles
+                                      {:input-attrs {:data-row-angle true
+                                                     :hx-on:input "this.form.elements['orientation-action'].value='save'"}})]
      [:button {:type "button" :data-row-orientation-reset true
                :hx-on:click "this.form.querySelectorAll('[data-row-angle]').forEach(i=>i.value='0');this.form.elements['orientation-action'].value='save'"}
       "Reset orientation"]
@@ -72,8 +71,7 @@
     [:div.part-drawer__body
      [:span.part-thumbnail.part-thumbnail--large
       (if (parts/thumbnail? part (:import/source part))
-        {:hx-get (str "/thumbnails/" (urls/encode-id id) "?size=large")
-         :hx-trigger "intersect once root:#bulk-orient-results" :hx-sync "this:drop" :hx-target "this" :hx-swap "innerHTML"}
+        (thumbnails/lazy-attrs (str "/thumbnails/" (urls/encode-id id) "?size=large") "#bulk-orient-results" false)
         {})
       (if (parts/thumbnail? part (:import/source part)) "…" "No preview")]
      [:form.part-row-edit {:method "post" :action "/parts/metadata/row" :hx-post "/parts/metadata/row"
@@ -103,8 +101,7 @@
                 :data-bulk-select "true" :name "selected" :checked (contains? selected (:part/id part))}]
        [:span.part-thumbnail
         (if thumbnail?
-          {:hx-get (str "/thumbnails/" (urls/encode-id (:part/id part)))
-           :hx-trigger "intersect once root:#bulk-orient-results" :hx-sync "this:drop" :hx-disabled-elt "this" :hx-target "this" :hx-swap "innerHTML"}
+          (thumbnails/lazy-attrs (str "/thumbnails/" (urls/encode-id (:part/id part))) "#bulk-orient-results" true)
           {:title reason})
         (if thumbnail? "…" "No preview")]
        [:span.bulk-orient__part (:part/name part)]

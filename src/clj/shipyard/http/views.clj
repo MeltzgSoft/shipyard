@@ -17,6 +17,7 @@
             [shipyard.mount.wizard :as wizard]
             [shipyard.mount.cut :as cut]
             [shipyard.part.orientation :as orientation]
+            [shipyard.part.orientation-views :as orientation-views]
             [shipyard.part-browser.views :as metadata]
             [shipyard.workspace.views :as workspace-views]))
 
@@ -218,17 +219,6 @@
       :class "From folder"
       "Inferred")]])
 
-(defn display-angle [value]
-  (let [rounded (Math/round (* 100.0 (double value)))]
-    (/ rounded 100.0)))
-
-(defn- orientation-field [label name value]
-  [:label.part-orientation__field label
-   [:input {:type "number"
-            :name name
-            :value (display-angle value)
-            :step "1"}]])
-
 (defn- part-orientation [{:part/keys [id] :as part} error]
   (let [[yaw pitch roll] (orientation/to-euler-degrees (:part/orientation part))
         [x y z w] (orientation/orientation-of (:part/orientation part))]
@@ -246,9 +236,8 @@
       [:input {:type "hidden"
                :name "part-orientation-quaternion"
                :value (str x "," y "," z "," w)}]
-      (orientation-field "Yaw (Y)" "part-yaw-deg" yaw)
-      (orientation-field "Pitch (X)" "part-pitch-deg" pitch)
-      (orientation-field "Roll (Z)" "part-roll-deg" roll)
+      (orientation-views/angle-fields ["part-yaw-deg" "part-pitch-deg" "part-roll-deg"]
+                                      [yaw pitch roll] {:label-class "part-orientation__field"})
       [:div.part-orientation__actions
        [:button {:type "submit" :name "action" :value "save"} "Save orientation"]
        [:button {:type "submit" :name "action" :value "reset"} "Reset"]]]
