@@ -74,7 +74,7 @@
                         triangles (if groups (surfaces/expand groups triangles) (set triangles))
                         keys (into (:keys current) (map #(render/face-key (.-geometry object) %)) triangles)
                         changed (when (seq triangles)
-                                  (model/change before (:mesh-key before) (:revision before) "assign" layer nil (vec keys)))]
+                                  (model/change before (:mesh-key before) (:revision before) "assign" layer (vec keys)))]
                     (swap! stroke assoc :keys keys :triangles (into (:triangles current) triangles) :previous [x y])
                     (when-let [regions (:regions changed)] (paint! object regions))
                     (status! (str (count keys) " faces · release to save"))))))]

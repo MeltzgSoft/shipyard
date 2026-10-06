@@ -12,10 +12,6 @@
 (defn resolve-material [profile]
   (or (get-in (effective-profile profile) [:scheme/layers "Primary"]) neutral))
 
-(defn select-scheme [schemes override fleet-default]
-  (let [id (or override fleet-default)]
-    {:id id :scheme (get schemes id) :missing? (boolean (and id (not (contains? schemes id))))}))
-
 (defn srgb->linear [value]
   (if (<= value 0.04045)
     (/ value 12.92)

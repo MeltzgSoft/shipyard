@@ -16,7 +16,6 @@
             Playwright]
            [com.microsoft.playwright.options BoundingBox SelectOption]
            [java.io File]
-           [java.util.concurrent ExecutorService TimeUnit]
            [java.util.function Consumer]
            [org.eclipse.jetty.server Server ServerConnector]))
 
@@ -164,8 +163,6 @@
 
 (defn stop-system! [system]
   (ig/halt! system)
-  (when-let [^ExecutorService pool (get-in system [:shipyard.jobs/pool :pool])]
-    (.awaitTermination pool 30 TimeUnit/SECONDS))
   (doseq [root (::temporary-roots (meta system))] (fs/delete-tree root)))
 
 (defn- block-bundle

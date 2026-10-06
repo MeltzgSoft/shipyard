@@ -53,8 +53,7 @@
  :shipyard.ship/db {:store #ig/ref :shipyard.store/db :catalog #ig/ref :shipyard.catalog/db}
  :shipyard.paint/db {:paint/flush-interval-ms 120 :preview #ig/ref :shipyard.loadout.operations/preview}
  :shipyard.loadout.operations/preview {}
- :shipyard.workspace/db {:assembly #ig/ref :shipyard.assembly/db
-                         :preview #ig/ref :shipyard.loadout.operations/preview}
+ :shipyard.workspace/db {}
 
  :shipyard.http/routes
  {:thumbnails #ig/ref :shipyard.thumbnail/cache

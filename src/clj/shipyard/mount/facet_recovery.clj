@@ -1,7 +1,6 @@
 (ns shipyard.mount.facet-recovery
   "Recover mesh-scoped facet selections saved by pre-M3 mount authoring."
   (:require [babashka.fs :as fs]
-            [clojure.java.io :as io]
             [shipyard.catalog.db :as db]
             [shipyard.catalog.part :as catalog-part]
             [shipyard.http.jobs :as jobs]
@@ -9,7 +8,7 @@
             [shipyard.mesh.cache :as cache]
             [shipyard.mesh.facet :as facet]
             [shipyard.wire :as wire])
-  (:import [java.io ByteArrayOutputStream FileInputStream]))
+  (:import [java.nio.file Files]))
 
 (defn retained-facet? [mesh-key mount]
   (and (= mesh-key (get-in mount [:mount/facet :mesh-key]))
@@ -43,16 +42,10 @@
             mount))
         mounts))
 
-(defn- read-bytes! [f]
-  (with-open [in (FileInputStream. (fs/file f))
-              out (ByteArrayOutputStream.)]
-    (io/copy in out)
-    (.toByteArray out)))
-
 (defn backfill!
   "Perform one recovery in the already-bounded job pool."
   [{:keys [catalog library cache]} part-id mesh-key mounts]
-  (let [mesh (wire/decode (read-bytes! (cache/tier-file cache mesh-key 0)))
+  (let [mesh (wire/decode (Files/readAllBytes (fs/path (cache/tier-file cache mesh-key 0))))
         matched (matches mesh mounts)]
     (when (and (seq matched) (= mesh-key (index/mesh-key! library part-id)))
       (let [current (catalog-part/durable-mounts

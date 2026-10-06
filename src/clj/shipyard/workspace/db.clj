@@ -10,11 +10,9 @@
 (def ^:dynamic *context* nil)
 (def ^:dynamic *scene-sequence* nil)
 
-(defmethod ig/init-key :shipyard.workspace/db [_ {:keys [assembly preview]}]
+(defmethod ig/init-key :shipyard.workspace/db [_ _]
   {:state (atom {:active :browse :activation 0
                  :workspaces (-> (zipmap modes (repeat {:filters {} :colors true}))
-                                 (assoc-in [:ships :assembly] assembly)
-                                 (assoc-in [:ships :model] preview)
                                  (assoc-in [:ships :colors] false)
                                  (assoc-in [:settings :colors] false))})})
 

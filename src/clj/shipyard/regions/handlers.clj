@@ -34,7 +34,7 @@
                  (and (= action "assign") (nil? @keys))
                  {:error "Invalid region faces. Nothing saved."}
                  :else (model/change (or before (model/empty-regions mesh-key)) mesh-key (parse-long revision)
-                                     (if (= action "fill") "assign" action) layer name
+                                     (if (= action "fill") "assign" action) layer
                                      (if (= action "fill") (vec (strokes/known-faces! deps mesh-key)) @keys)
                                      shared-layers))
         result (if (or (:error result) (#{"add" "rename" "delete"} action)) result

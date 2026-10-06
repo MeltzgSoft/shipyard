@@ -10,19 +10,10 @@
   {:version 2 :mesh-key mesh-key :revision 0 :layers builtins :layer-definitions {} :faces {}})
 (def valid? (m/validator schemas/regions))
 
-(defn without-layer [regions layer]
-  (if (and (not (some #{layer} builtins)) (some #{layer} (:layers regions)))
-    (-> regions
-        (update :layers #(filterv (complement #{layer}) %))
-        (update :faces #(into {} (remove (fn [[_ name]] (= name layer))) %))
-        (cond-> (:layer-definitions regions) (update :layer-definitions dissoc layer))
-        (update :revision inc))
-    regions))
-
 (defn change
-  ([regions mesh-key revision action layer _new-name keys]
-   (change regions mesh-key revision action layer _new-name keys []))
-  ([regions mesh-key revision action layer _new-name keys available-layers]
+  ([regions mesh-key revision action layer keys]
+   (change regions mesh-key revision action layer keys []))
+  ([regions mesh-key revision action layer keys available-layers]
    (let [current (or regions (empty-regions mesh-key)) layers (:layers current)]
      (cond
        (not= revision (:revision current)) {:error "Regions changed. Reopen this part before retrying."}

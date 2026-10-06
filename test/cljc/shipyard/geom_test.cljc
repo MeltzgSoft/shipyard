@@ -50,14 +50,6 @@
   (testing "reject invalid input"
     (is (= :invalid-point (error-code #(geom/transform-point geom/identity-matrix [0 ##Inf 0]))))))
 
-(deftest inverse-frame-test
-  (testing "inverse of rotated translated frame in both directions"
-    (let [f (assoc frame :mount/pos [8 -3 2] :mount/axis [1 0 0] :mount/roll [0 0 -1])
-          m (geom/frame-matrix f) inv (geom/inverse-frame f)]
-      (is (close? geom/identity-matrix (geom/multiply m inv)))
-      (is (close? geom/identity-matrix (geom/multiply inv m))))
-    (is (= :invalid-frame (error-code #(geom/inverse-frame nil))))))
-
 (deftest orientation-matrix-test
   (testing "missing means identity and root yaw rotates source coordinates"
     (is (= geom/identity-matrix (geom/orientation-matrix nil)))

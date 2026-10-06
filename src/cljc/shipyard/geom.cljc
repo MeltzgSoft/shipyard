@@ -64,16 +64,6 @@
                                     point))))
         (range 3)))
 
-(defn inverse-frame
-  "Inverse of an authored rigid frame; no general matrix inversion is needed."
-  [{:mount/keys [pos axis roll] :as frame}]
-  (frame-matrix frame)
-  (let [up (math/cross axis roll)
-        rows [roll up axis]]
-    (vec (concat (mapcat (fn [column] (concat (map #(nth % column) rows) [0.0]))
-                         (range 3))
-                 (map #(- (math/dot % pos)) rows) [1.0]))))
-
 (defn orientation-matrix
   "The root source-to-canonical pose. Missing orientation is identity; malformed is an error."
   [quaternion]

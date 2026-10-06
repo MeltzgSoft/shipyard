@@ -6,7 +6,6 @@
   handler tree is a pure function of its dependencies and can be exercised
   without a socket."
   (:require [babashka.fs :as fs]
-            [clojure.java.io :as io]
             [clojure.string :as str]
             [integrant.core :as ig]
             [reitit.coercion.malli :as malli-coercion]
@@ -51,7 +50,7 @@
             [shipyard.pitting.db :as pitting]
             [shipyard.part.orientation :as orientation]
             [shipyard.wire :as wire])
-  (:import [java.io ByteArrayOutputStream FileInputStream]))
+  (:import [java.nio.file Files]))
 
 (defn- healthz [_]
   {:status  200
@@ -197,12 +196,6 @@
 (defn- invalid-selection [part-id]
   (facet-error :invalid-selection "Select a face from the loaded part." part-id 400))
 
-(defn- read-bytes! [f]
-  (with-open [in (FileInputStream. (fs/file f))
-              out (ByteArrayOutputStream.)]
-    (io/copy in out)
-    (.toByteArray out)))
-
 (defn- fresh-entry?! [entry source]
   (try
     (index/fresh-source?! entry source)
@@ -247,7 +240,7 @@
 
               :else
               (try
-                (let [mesh (wire/decode (read-bytes! tier0))
+                (let [mesh (wire/decode (Files/readAllBytes (fs/path tier0)))
                       {:keys [facet-indices frame points kind-hint roll-ambiguous? roll-source]}
                       (facet/select mesh triangle-index
                                     (select-keys cache [:facet-angle-deg :facet-plane-epsilon-mm]))
@@ -327,7 +320,7 @@
              (fs/regular-file? (cache/tier-file cache mesh-key 0))
              (facet-input/valid-input? (get params "facet-indices")))
     (let [indices (facet-input/parse-indices (get params "facet-indices"))
-          mesh (wire/decode (read-bytes! (cache/tier-file cache mesh-key 0)))]
+          mesh (wire/decode (Files/readAllBytes (fs/path (cache/tier-file cache mesh-key 0))))]
       (when (facet-input/in-facet? mesh indices (select-keys cache [:facet-angle-deg :facet-plane-epsilon-mm]))
         indices))))
 
@@ -358,7 +351,7 @@
                                       (get-in previous [:mount/facet :indices])))
           outline (if indices
                     (cut/outline (pitting-geometry/mesh-triangles
-                                  (wire/decode (read-bytes! (cache/tier-file cache mesh-key 0))) indices))
+                                  (wire/decode (Files/readAllBytes (fs/path (cache/tier-file cache mesh-key 0)))) indices))
                     (or (:mount/outline previous) (get-in result [:mount :mount/outline])))
           mounts (mapv (fn [mount]
                          (if (= id (:mount/id mount))

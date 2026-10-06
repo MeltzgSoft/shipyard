@@ -2,15 +2,6 @@
   (:require [clojure.test :refer [deftest is testing]]
             [shipyard.scheme.material :as m]))
 
-(deftest select-scheme-test
-  (testing "dangling overrides do not silently select a fleet default"
-    (let [schemes {:ship {:scheme/name "Ship"} :fleet {:scheme/name "Fleet"}}]
-      (is (= (:ship schemes) (:scheme (m/select-scheme schemes :ship :fleet))))
-      (is (= (:fleet schemes) (:scheme (m/select-scheme schemes nil :fleet))))
-      (is (:missing? (m/select-scheme schemes :gone :fleet)))
-      (is (nil? (:scheme (m/select-scheme schemes :gone :fleet))))
-      (is (false? (:missing? (m/select-scheme schemes nil nil)))))))
-
 (deftest srgb->linear-test
   (testing "sRGB transfer curve endpoints and middle"
     (is (= 0.0 (m/srgb->linear 0)))
