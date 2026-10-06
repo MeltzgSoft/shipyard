@@ -755,7 +755,9 @@ Cached part and ship previews resolve without materializing or hashing dense reg
 on each page refresh; resolving changed inputs happens on background workers.
 Thumbnail rendering, library/import mesh preparation and mount recovery share one
 bounded application background pool, separate from HTTP request workers. Missing worker
-and queue limits default to 2 and 128 respectively. Canceling an import drains its work
+and queue limits default to 2 and 4,096 respectively, reserving up to 32 pending slots
+from bulk admission for interactive work. Dispatch favors interactive work three to one
+while preserving progress for bulk work. Canceling or publishing an import drains its work
 before discarding staging data and leaves the common pool available to other jobs.
 
 ### 9.2 Independent workspace state
@@ -925,7 +927,13 @@ library-folder path entry remains available without one. All discovered STLs rem
 Unambiguous supported/unsupported versions with matching inferred labels share a row.
 Review thumbnails prefer an unambiguous unsupported source and fall back to an
 unambiguous supported source when no unsupported file exists. Supported thumbnails
-include print scaffolding; they do not enable orientation editing. A variant filter
+include print scaffolding; they do not enable orientation editing. Import review accepts
+all eligible row previews as one bounded batch, including unloaded rows. Accepted mesh
+and PNG preparation completes independently of HTTP polling, workspace navigation or
+browser connection. A batch exceeding available capacity receives an explicit error.
+Review shows pending, running, completed, failed and cancelled preview counts; failed
+previews allow explicit retry. Pending work is temporary and does not survive restart.
+A variant filter
 offers all variants, unsupported, supported and unsupported-pitted. Grouped rows match
 each variant they contain. The filter applies across batches and select-all-matching,
 and survives workspace switches. Supported-only rows remain available throughout

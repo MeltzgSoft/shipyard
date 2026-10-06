@@ -4,11 +4,11 @@
             [datalevin.core :as d]
             [integrant.core :as ig]
             [shipyard.http.jobs]
-            [shipyard.jobs]
+            [shipyard.jobs :as workers]
             [shipyard.library.index]
             [shipyard.settings.db :as settings]
             [shipyard.store.db :as store])
-  (:import [java.util.concurrent CountDownLatch ExecutorService Future TimeUnit]))
+  (:import [java.util.concurrent CountDownLatch ExecutorService]))
 
 (def ^:private halt-completion-timeout-ms
   ;; A hang guard for the whole shutdown, including database close/flush after
@@ -40,12 +40,14 @@
                   (deliver entered true)
                   (await-release! release interrupted)
                   (settings/save-library-root! database "/worker/finished"))
-        ^Future worker (.submit pool ^Runnable
-                                #(if (= phase :before-write)
-                                   (finish! database)
-                                   (store/write! database
-                                                 (fn [conn]
-                                                   (finish! (assoc database :conn conn))))))
+        worker (promise)
+        _ (workers/submit! (get-in system [:shipyard.http/jobs :scope])
+                           #(try
+                              (if (= phase :before-write)
+                                (finish! database)
+                                (store/write! database (fn [conn] (finish! (assoc database :conn conn)))))
+                              (deliver worker :done)
+                              (catch Throwable error (deliver worker error) (throw error))))
         stopping (atom nil)]
     (try
       (is (= true (deref entered 5000 ::timeout)))
@@ -61,12 +63,12 @@
       (let [halted (deref @stopping halt-completion-timeout-ms ::timeout)]
         (is (nil? halted)
             (str "shutdown did not complete: phase=" phase
-                 ", worker-done=" (.isDone worker)
+                 ", worker-done=" (realized? worker)
                  ", executor-terminated=" (.isTerminated pool)
                  ", store-closed=" (d/closed? (:conn database))))
         (when-not (= ::timeout halted)
-          (is (.isDone worker) "the worker must already be complete when shutdown returns")
-          (.get worker 0 TimeUnit/SECONDS)
+          (is (realized? worker) "the worker must already be complete when shutdown returns")
+          (is (= :done @worker) "The worker must finish its real transaction successfully")
           (is (.isTerminated pool))
           (is (d/closed? (:conn database)))
           (let [reopened (store/open! directory)]

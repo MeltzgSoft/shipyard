@@ -4,6 +4,8 @@
             [shipyard.http.htmx :as htmx]
             [shipyard.file-picker.db :as picker]
             [shipyard.importer.db :as db]
+            [shipyard.jobs :as jobs]
+            [shipyard.thumbnail.views :as previews]
             [shipyard.system :as system]
             [shipyard.workspace.db :as workspace]
             [shipyard.workspace.handlers :as workspaces]))
@@ -73,3 +75,8 @@
                 (:body (htmx/fragment [:p#import-status {:hx-swap-oob "outerHTML" :role "status"}]))))
       (throw (ex-info "No import is active." {})))
     (catch Exception e (error-response e))))
+
+(defn progress! [deps _]
+  (if-let [session (db/session! deps)]
+    (htmx/fragment (previews/import-progress (jobs/counts! (or (get-in session [:thumbnails :scope]) (get-in session [:jobs :scope])))))
+    {:status 204 :headers {} :body ""}))

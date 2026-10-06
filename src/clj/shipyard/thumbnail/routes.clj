@@ -2,8 +2,7 @@
   (:require [shipyard.thumbnail.cache :as cache]
             [shipyard.thumbnail.views :as views]
             [shipyard.http.htmx :as htmx]
-            [shipyard.http.contracts :as contracts]
-            [shipyard.jobs :as jobs]))
+            [shipyard.http.contracts :as contracts]))
 
 (defn- image! [{:keys [thumbnails]} {:keys [path-params]}]
   (if-let [file (cache/file! thumbnails (:key path-params))]
@@ -12,7 +11,7 @@
 
 (defn routes [deps]
   [["/thumbnail-progress"
-    {:get {:handler (fn [_] (htmx/fragment (views/progress (jobs/progress! (:scope (:thumbnails deps))))))
+    {:get {:handler (fn [_] (htmx/fragment (views/progress (cache/progress! (:thumbnails deps)))))
            :responses contracts/html-responses}}]
    ["/thumbnail-images/:key"
     {:get {:handler (partial image! deps)

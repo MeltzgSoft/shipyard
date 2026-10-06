@@ -6,7 +6,7 @@
 
 (deftest a-single-worker-recovers-from-backpressure-and-import-cancellation
   (let [started (fixture/start! true fixture/library! fixture/author!
-                                {:shipyard.jobs/pool {:threads 1 :queue-size 1}})
+                                {:shipyard.jobs/pool {:threads 1 :queue-size 8}})
         driver (s/make-driver) sys (:system started)
         zip (archives/archive! (:temp started))]
     (try

@@ -4,7 +4,8 @@
             [shipyard.part-browser.handlers :as thumbnails]))
 
 (defn routes [deps]
-  [["/imports/thumbnails/:file" {:get {:handler (partial thumbnails/file-thumbnail! deps)
+  [["/imports/progress" {:get {:handler (partial handlers/progress! deps) :responses contracts/html-responses}}]
+   ["/imports/thumbnails/:file" {:get {:handler (partial thumbnails/file-thumbnail! deps)
                                        :parameters {:path [:map [:file string?]]}
                                        :responses contracts/html-responses}}]
    ["/imports/choose" {:post {:handler (partial handlers/choose! deps)

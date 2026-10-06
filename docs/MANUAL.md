@@ -130,6 +130,16 @@ are ignored. Zero-byte nested ZIP files are skipped and listed in the review;
 invalid nonempty ZIPs stop extraction with their archive path in the error.
 The original archives are always kept.
 
+Review starts all eligible row previews, including rows you have not scrolled to.
+**Import previews** shows pending, running, completed, failed and cancelled counts.
+Accepted previews keep processing when you switch workspaces or disconnect the browser.
+If a preview fails or the queue is full, use **Retry preview** after pending work finishes.
+A ZIP whose previews exceed the available queue capacity stops with an error; finish
+other work or increase `:shipyard.jobs/pool`'s `:queue-size` before trying again.
+Canceling or publishing the review stops and drains its jobs before staging files move
+or are removed. Pending work, like the temporary review, does not survive an application
+restart.
+
 Bundle/faction, class, role and supported status are inferred from archive, folder and
 file names. These are hints: review unknown or ambiguous values. An inner **Original
 Files** folder takes precedence over an outer archive labelled **Supported**. Files

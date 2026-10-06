@@ -1,5 +1,6 @@
 (ns shipyard.e2e.orient-context-test
-  (:require [clojure.string :as str]
+  (:require [shipyard.jobs :as workers]
+            [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [shipyard.assembly-fixture :as fixture]
             [shipyard.bulk-orientation.save-state :as saves]
@@ -8,7 +9,7 @@
             [shipyard.part.orientation :as orientation])
   (:import [com.microsoft.playwright APIResponse Page Route Route$FulfillOptions]
            [java.util.function Consumer]
-           [java.util.concurrent CountDownLatch ExecutorService TimeUnit]))
+           [java.util.concurrent CountDownLatch TimeUnit]))
 
 (defn- assert-step! [driver step]
   (let [buttons (s/js driver "() => Array.from(document.querySelectorAll('[data-bulk-step]'), b => ({step:Number(b.dataset.bulkStep),pressed:b.getAttribute('aria-pressed'),background:getComputedStyle(b).backgroundColor}))")
@@ -29,10 +30,10 @@
   (let [started (fixture/start! true) driver (s/make-driver)
         ^Page page (:page driver) held (atom nil)
         release (CountDownLatch. 1) occupied (CountDownLatch. 2)
-        ^ExecutorService pool (get-in started [:system :shipyard.jobs/pool :pool])]
+        scope (workers/scope! (get-in started [:system :shipyard.jobs/pool]))]
     (try
       (dotimes [_ 2]
-        (.submit pool ^Runnable (fn [] (.countDown occupied) (.await release))))
+        (workers/submit! scope (fn [] (.countDown occupied) (.await release))))
       (is (.await occupied 10 TimeUnit/SECONDS))
       (.route page "**/orient/render"
               (reify Consumer
@@ -69,11 +70,11 @@
       (let [started (fixture/start! true) driver (s/make-driver)
             id (:prow fixture/ids)
             release (CountDownLatch. 1) occupied (CountDownLatch. 2)
-            ^ExecutorService pool (get-in started [:system :shipyard.jobs/pool :pool])]
+            scope (workers/scope! (get-in started [:system :shipyard.jobs/pool]))]
         (try
           ;; Hold real preprocessing so the browser necessarily sees a preparation poll.
           (dotimes [_ 2]
-            (.submit pool ^Runnable (fn [] (.countDown occupied) (.await release))))
+            (workers/submit! scope (fn [] (.countDown occupied) (.await release))))
           (is (.await occupied 10 TimeUnit/SECONDS))
           (s/go! driver (s/base-url (:system started)))
           (s/wait-visible! driver "[data-bulk-select]")

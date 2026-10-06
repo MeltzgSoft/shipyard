@@ -49,10 +49,11 @@
 (defn- execute! [{:keys [jobs]} key task!]
   (try
     (task!)
-    (swap! jobs dissoc key)
+    (locking jobs (swap! jobs dissoc key))
     (catch Throwable error
       (log/warn error "thumbnail rendering failed:" key)
-      (swap! jobs assoc key {:state :failed :at (System/currentTimeMillis)}))))
+      (locking jobs (swap! jobs assoc key {:state :failed :message (or (ex-message error) "Rendering failed")}))
+      (throw error))))
 
 (defn- ensure-image! [{:keys [renders] :as cache} key render!]
   (when-not (file! cache key)
@@ -68,19 +69,18 @@
 
 (defn- enqueue! [{:keys [scope jobs] :as cache} key task!]
   (locking jobs
-    (let [now (System/currentTimeMillis)]
-      (swap! jobs #(into {} (remove (fn [[_ {:keys [state at]}]]
-                                      (and (= state :failed) (> (- now at) 30000))) %)))
-      (or (get @jobs key)
-          (do
-            (swap! jobs assoc key {:state :preparing})
-            (when-not (workers/submit! scope #(execute! cache key task!))
-              (swap! jobs dissoc key))
-            {:state :preparing})))))
+    (or (get @jobs key)
+        (do
+          (swap! jobs assoc key {:state :preparing})
+          (let [result (workers/submit-batch! scope [{:key key :run! execute! :args [cache key task!]}])]
+            (if (:accepted? result)
+              {:state :preparing}
+              (do (swap! jobs dissoc key)
+                  {:state :overloaded :message "Background queue is full. Retry after pending work finishes."})))))))
 
 (defn request!
   "Return a cached key, or enqueue one render per content key without blocking HTTP.
-  A full queue returns preparing; the normal thumbnail poll retries admission."
+  Overload is observable; failed renders are retained without automatic retries."
   [cache inputs render!]
   (let [key (t/cache-key inputs)]
     (if (file! cache key)
@@ -89,7 +89,7 @@
 
 (defn- reference-file [dir key] (fs/file dir (str key ".ref")))
 
-(defn- referenced-key! [{:keys [dir files-lock] :as cache} lookup]
+(defn referenced-key! [{:keys [dir files-lock] :as cache} lookup]
   (locking files-lock
     (let [file (reference-file dir lookup)]
       (try
@@ -112,6 +112,11 @@
         (evict! cache #{(str target) (str (png-file dir key))}))
       (finally (Files/deleteIfExists (fs/path temp))))))
 
+(defn retry-derived! [{:keys [jobs]} stamp]
+  (let [key (str "lookup-" (t/cache-key stamp))]
+    (locking jobs
+      (when (= :failed (:state (get @jobs key))) (swap! jobs dissoc key)))))
+
 (defn request-derived!
   "Resolve a cheap, versioned source stamp to a content-addressed PNG. References
   survive restart; dense input reads, hashing and rendering only run on a miss.
@@ -127,11 +132,55 @@
                      (ensure-image! cache key render!)
                      (publish-reference! cache lookup key)))))))
 
+(defn request-batch!
+  "Atomically admit all cache misses; a batch holds only stamps and deferred preparation."
+  [{:keys [scope jobs] :as cache} requests]
+  (locking jobs
+    (let [missing (filterv (fn [{:keys [stamp]}]
+                             (let [lookup (t/cache-key stamp) key (str "lookup-" lookup)]
+                               (and (not (referenced-key! cache lookup)) (not (get @jobs key))))) requests)
+          descriptors (mapv (fn [{:keys [stamp prepare!]}]
+                              (let [lookup (t/cache-key stamp) key (str "lookup-" lookup)]
+                                {:key key :run! execute!
+                                 :args [cache key (fn []
+                                                    (when-not (referenced-key! cache lookup)
+                                                      (let [{:keys [inputs render!]} (prepare!)
+                                                            content (t/cache-key inputs)]
+                                                        (ensure-image! cache content render!)
+                                                        (publish-reference! cache lookup content))))]})) missing)
+          result (workers/submit-batch! scope descriptors)]
+      (when (:accepted? result)
+        ;; Workers can start now, but completion shares this jobs lock.
+        ;; Install claims before releasing it.
+        (swap! jobs into (map (fn [descriptor] [(:key descriptor) {:state :preparing}]) descriptors)))
+      result)))
+
+(defn fork!
+  "A cancellable preview owner sharing content files, rendering dedup and resource limits."
+  [cache priority]
+  (let [scope (workers/scope! (:workers cache) {:priority priority})]
+    (swap! (:children cache) conj scope)
+    (assoc cache :scope scope :jobs (atom {}) :parent cache)))
+
+(defn progress! [cache]
+  (reduce (partial merge-with +) {:running 0 :queued 0}
+          (map workers/progress! (conj @(:children cache) (:scope cache)))))
+
+(defn close! [{:keys [scope parent]}]
+  (workers/close! scope)
+  (when parent (swap! (:children parent) disj scope)))
+
+(defn reopen! [{:keys [scope jobs parent]}]
+  (workers/reopen! scope)
+  (reset! jobs {})
+  (when parent (swap! (:children parent) conj scope)))
+
 (defmethod ig/init-key :shipyard.thumbnail/cache [_ {:keys [cache cap-bytes workers]}]
   (let [dir (fs/file (fs/parent (:dir cache)) "thumbnails")]
     (fs/create-dirs dir)
     {:dir dir :cap-bytes cap-bytes :files-lock (Object.) :jobs (atom {}) :renders (atom {})
-     :workers workers :scope (workers/scope! workers)}))
+     :workers workers :children (atom #{}) :scope (workers/scope! workers)}))
 
-(defmethod ig/halt-key! :shipyard.thumbnail/cache [_ {:keys [scope]}]
-  (workers/close! scope))
+(defmethod ig/halt-key! :shipyard.thumbnail/cache [_ cache]
+  (doseq [scope @(:children cache)] (workers/close! scope))
+  (close! cache))

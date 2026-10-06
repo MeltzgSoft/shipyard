@@ -9,14 +9,17 @@
             [shipyard.importer.archive :as archive]
             [shipyard.importer.transforms :as t]
             [shipyard.library.index :as index]
-            [shipyard.store.db :as store]))
+            [shipyard.store.db :as store]
+            [shipyard.jobs :as workers]
+            [shipyard.thumbnail.cache :as thumbnails]
+            [shipyard.thumbnail.part :as previews]))
 
 (defn session! [{:keys [workspace]}]
   (get-in @(:state workspace) [:workspaces :browse :import]))
 
 (defn effective! [deps]
   (if-let [session (when (:workspace deps) (session! deps))]
-    (merge deps (select-keys session [:catalog :library :jobs]) {:import-session session :shared-catalog (:catalog deps)})
+    (merge deps (select-keys session [:catalog :library :jobs :thumbnails]) {:import-session session :shared-catalog (:catalog deps)})
     deps))
 
 (defn listing! [{:keys [catalog import-session]}]
@@ -52,12 +55,13 @@
     ;; become catalog rows or participate in grouping/publication.
     {:root root :parts parts :entries (index/refresh (concat parts file-parts) stored stats) :source-files sources}))
 
-(defn close! [{:keys [jobs store directory]}]
+(defn close! [{:keys [jobs thumbnails store directory]}]
+  (when thumbnails (thumbnails/close! thumbnails))
   (when jobs (ig/halt-key! :shipyard.http/jobs jobs))
   (when store (store/close! store))
   (when directory (fs/delete-tree directory)))
 
-(defn prepare! [{:keys [cache library jobs]} path]
+(defn prepare! [{:keys [cache library jobs thumbnails]} path]
   (when-not (index/available?! library)
     (throw (ex-info "Choose an existing library folder before importing." {})))
   (let [directory (fs/create-temp-dir {:prefix "shipyard-import-"})
@@ -77,10 +81,18 @@
             _ (swap! opened assoc :store store)
             lib {:store store :state (atom (library-state! parts root entries {}))}
             cat (catalog/open! store (:parts @(:state lib)) root)
-            workers (ig/init-key :shipyard.http/jobs {:library lib :cache cache :workers (:workers jobs)})]
-        (merge @opened {:library lib :catalog cat :jobs workers :entries (atom entries)
-                        :skipped-empty-archives skipped-empty-archives
-                        :archive (str path) :target-root (index/root! library)}))
+            mesh-jobs (ig/init-key :shipyard.http/jobs {:library lib :cache cache :workers (:workers jobs) :priority :bulk})
+            _ (swap! opened assoc :jobs mesh-jobs)
+            previews (when thumbnails (thumbnails/fork! thumbnails :bulk))
+            _ (when previews (swap! opened assoc :thumbnails previews))
+            session (merge @opened {:library lib :catalog cat :entries (atom entries)
+                                    :skipped-empty-archives skipped-empty-archives
+                                    :archive (str path) :target-root (index/root! library)})]
+        (when previews
+          (let [result (previews/batch! (assoc session :cache cache :import-session true) (mapv :part/id parts))]
+            (when-not (:accepted? result)
+              (throw (ex-info "Import preview queue is full. Finish pending work or increase the configured queue-size before retrying." result)))))
+        session)
       (catch Exception e (close! @opened) (throw e)))))
 
 (defn- apply-review!
@@ -188,6 +200,8 @@
   (let [root (index/root! library)
         plan (mapv #(assoc % :target (target! root (:path %))) (plan! session))
         moved (atom [])]
+    (when-let [previews (:thumbnails session)] (thumbnails/close! previews))
+    (workers/close! (get-in session [:jobs :scope]))
     (try
       (doseq [{:keys [file target] :as entry} plan]
         (fs/create-dirs (fs/parent target))
@@ -198,4 +212,10 @@
       (catch Exception e
         (doseq [{:keys [file target]} (reverse @moved)]
           (fs/move target file))
+        (workers/reopen! (get-in session [:jobs :scope]))
+        (jobs/clear! (:jobs session))
+        (when-let [previews (:thumbnails session)]
+          (thumbnails/reopen! previews)
+          (previews/batch! (assoc session :cache (:cache deps) :import-session true)
+                           (mapv :part/id (index/parts! (:library session)))))
         (throw e)))))

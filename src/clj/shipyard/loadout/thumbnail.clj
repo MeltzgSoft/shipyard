@@ -75,7 +75,7 @@
                                                  (assoc instance :mesh (meshes [(:mesh-key instance) (:exact? instance)]))) instances))]
                  (thumbnail/png! mesh nil))}))
 
-(defn thumbnail! [{:keys [cache thumbnails] :as deps} {:keys [path-params]}]
+(defn thumbnail! [{:keys [cache thumbnails] :as deps} {:keys [path-params params]}]
   (try
     (let [{:keys [kind id]} path-params
           id (parse-uuid id)
@@ -96,8 +96,10 @@
 
             :else
             (let [mesh-keys (update-vals prepared :mesh-key)
+                  lookup {:assembly stamp :meshes mesh-keys :tiers (:lod-tiers cache)}
+                  _ (when (= "1" (get params "retry")) (previews/retry-derived! thumbnails lookup))
                   result (previews/request-derived!
-                          thumbnails {:assembly stamp :meshes mesh-keys :tiers (:lod-tiers cache)}
+                          thumbnails lookup
                           #(prepare-preview! deps kind id stamp mesh-keys))]
               (htmx/fragment (preview-views/preview result (str "/ship-thumbnails/" kind "/" id)
                                                     "closest .ship-thumbnail" label)))))))

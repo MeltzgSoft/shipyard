@@ -30,7 +30,7 @@
  :shipyard.store/db {}
  ;; One executor for library/import preprocessing, recovery and all thumbnails.
  ;; Depend on the store so all workers stop before its native handle closes.
- :shipyard.jobs/pool {:store #ig/ref :shipyard.store/db :threads 2 :queue-size 128}
+ :shipyard.jobs/pool {:store #ig/ref :shipyard.store/db :threads 2 :queue-size 4096}
  :shipyard.file-picker/db {}
  :shipyard.thumbnail/cache {:cache #ig/ref :shipyard.mesh/cache :cap-bytes 134217728
                             :workers #ig/ref :shipyard.jobs/pool}

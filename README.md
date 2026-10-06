@@ -172,11 +172,24 @@ and workload-specific measurements, not CI thresholds.
 ```bash
 clojure -J-Xmx2g -M:natives-linux:jobs-benchmark thumbnail-queue '{:faces 50000 :counts [32 128]}'
 clojure -J-Xmx2g -M:natives-linux:jobs-benchmark queue '{:faces 50000 :counts [1 4 16 32]}'
+clojure -J-Xmx1g -M:natives-linux:jobs-benchmark schedule '{:file "/path/to/mesh.2.symesh" :jobs 300 :threads 2 :queue-size 4096}'
 clojure -J-Xmx2g -M:natives-linux:jobs-benchmark active '{:file "/path/to/mesh.0.symesh" :painted? true :threads [1 2 4] :jobs 4 :runs 2}'
 ```
 
 `thumbnail-queue` drives the actual class-thumbnail handler with synthetic region data;
 `queue` models closures retaining face maps (`:faces 0` models lightweight work).
+`schedule` reads an existing mesh tier, warms rendering five times, then reports
+300 independently oriented PNG jobs, admission/rejection, queue wait percentiles,
+read/decode time, render time, worker CPU time and an interactive probe's completion
+latency. Compare identical geometry, heap limits and warm-up on an otherwise idle
+machine; timings are observations, not CI gates.
+
+The common pool defaults to two workers and 4,096 pending jobs. Configure
+`:shipyard.jobs/pool` in `resources/config.edn`; `:interactive-reserve` defaults to the
+smaller of 32 or one quarter of pending capacity. Bulk imports leave those slots for
+interactive work. An import batch exceeding available capacity fails atomically;
+increasing workers also increases active geometry/rendering memory.
+
 `active` reads an existing mesh cache file without modifying it and renders independent
 copies with synthetic face assignments. Its heap peaks include uncollected garbage;
 use repeated runs and worker errors alongside the timing rather than treating peaks

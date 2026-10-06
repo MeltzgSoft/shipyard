@@ -8,6 +8,7 @@
             [shipyard.http.pagination :as pagination]
             [shipyard.vocabulary.views :as vocabulary]
             [shipyard.part-browser.views :as metadata]
+            [shipyard.thumbnail.views :as previews]
             [shipyard.part.orientation :as orientation]
             [shipyard.part.orientation-views :as orientation-views]
             [shipyard.thumbnail.views :as thumbnails]
@@ -248,6 +249,7 @@
     (if import-session
       [:div.import-review
        [:p "Archive: " (:archive import-session)]
+       (previews/import-progress nil)
        (when-let [skipped (seq (:skipped-empty-archives import-session))]
          [:details.import-warnings
           [:summary (str "Skipped " (count skipped) " empty nested ZIP " (if (= 1 (count skipped)) "file" "files"))]

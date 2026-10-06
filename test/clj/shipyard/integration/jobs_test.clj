@@ -13,7 +13,7 @@
   (:import [java.util.concurrent CountDownLatch ThreadPoolExecutor TimeUnit]))
 
 (deftest all-job-types-share-capacity-and-retry-after-saturation
-  (let [started (fixture/start!) sys (:system started) shared (:shipyard.jobs/pool sys)
+  (let [started (fixture/start! false fixture/library! fixture/author! {:shipyard.jobs/pool {:threads 2 :queue-size 8 :interactive-reserve 2}}) sys (:system started) shared (:shipyard.jobs/pool sys)
         ^ThreadPoolExecutor pool (:pool shared) blockers (workers/scope! shared)
         entered (CountDownLatch. 2) release (CountDownLatch. 1)
         library (:shipyard.library/index sys) jobs (:shipyard.http/jobs sys)
@@ -29,7 +29,7 @@
       (is (= :running (:state (mesh-jobs/submit! jobs id (index/fresh-source-file! library id)))))
       (is (nil? (mesh-jobs/status jobs id)) "Rejected work leaves no permanent running claim")
       (is (= :running (:state (mesh-jobs/submit-facet-backfill! jobs :test #(deliver recovered true)))))
-      (is (= :preparing (:state (thumbnails/request! cache :test (constantly (byte-array 0))))))
+      (is (= :overloaded (:state (thumbnails/request! cache :test (constantly (byte-array 0))))))
       (is (empty? @(:jobs cache)))
       (.countDown release)
       (workers/close! blockers)

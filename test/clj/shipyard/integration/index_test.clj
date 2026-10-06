@@ -10,7 +10,7 @@
             [shipyard.mesh.cache :as cache]
             [shipyard.store.db :as store]
             [shipyard.store.scan-index :as scan-index])
-  (:import [java.util.concurrent Callable CountDownLatch TimeUnit]))
+  (:import [java.util.concurrent CountDownLatch TimeUnit]))
 
 (defn- temp-dir ^java.io.File [prefix]
   (doto (io/file (System/getProperty "java.io.tmpdir") (str prefix "-" (random-uuid)))
@@ -133,16 +133,16 @@
                                                           :cap-bytes 64000000 :crease-deg 35
                                                           :lod-tiers [1.0 0.25 0.05]})
             shared (ig/init-key :shipyard.jobs/pool {:threads 1})
-            pool (:pool shared)
+            barrier (workers/scope! shared)
             pending {:state (atom {}) :facet-state (atom {}) :library library :cache mesh-cache :scope (workers/scope! shared)}
             release-old (CountDownLatch. 1) old-finished (CountDownLatch. 1)
             release-new (CountDownLatch. 1)]
         (try
-          (.submit pool ^Runnable #(.await release-old))
+          (workers/submit! barrier #(.await release-old))
           (jobs/submit! pending id source-a)
           ;; This barrier runs after the old job completes but before the new
           ;; one begins, exposing any incorrect ready status from the old root.
-          (.submit pool ^Runnable #(do (.countDown old-finished) (.await release-new)))
+          (workers/submit! barrier #(do (.countDown old-finished) (.await release-new)))
           (jobs/clear! pending)
           (index/set-root! library (str b))
           (jobs/submit! pending id source-b)
@@ -151,8 +151,9 @@
           (is (= :running (:state (jobs/status pending id))))
           (is (nil? (index/mesh-key! library id)))
           (.countDown release-new)
-          (.shutdown pool)
-          (is (.awaitTermination pool 30 TimeUnit/SECONDS))
+          (let [done (promise)]
+            (workers/submit! barrier #(deliver done true))
+            (is (= true (deref done 30000 ::timeout))))
           (is (= {:state :ready :mesh-key (cache/sha256! source-b)} (jobs/status pending id)))
           (is (= (cache/sha256! source-b) (index/mesh-key! library id)))
           (is (nil? (get-in (scan-index/entries! database a) [id :mesh-key])))
@@ -170,20 +171,16 @@
             library (ig/init-key :shipyard.library/index {:store database :root (str a)})
             library-lock (:state library)
             shared (ig/init-key :shipyard.jobs/pool {:threads 1})
-            pool (:pool shared)
             pending {:state (atom {}) :facet-state (atom {}) :library library :scope (workers/scope! shared)}
             release (CountDownLatch. 1)]
         (try
           ;; The caller already selected A's source but has not entered submit!.
-          (let [caller (.submit pool ^Callable #(do (.await release)
-                                                    (jobs/submit! pending id source-a)))]
+          (let [caller (future (.await release) (jobs/submit! pending id source-a))]
             (locking library-lock
               (index/set-root! library (str b))
               (jobs/clear! pending))
             (.countDown release)
-            (is (nil? (.get caller 30 TimeUnit/SECONDS)))
-            (.shutdown pool)
-            (is (.awaitTermination pool 30 TimeUnit/SECONDS))
+            (is (nil? (deref caller 30000 ::timeout)))
             (is (nil? (jobs/status pending id)))
             (is (nil? (index/mesh-key! library id)))
             (is (nil? (get-in (scan-index/entries! database b) [id :mesh-key]))))
@@ -203,17 +200,18 @@
                                                           :cap-bytes 64000000 :crease-deg 35
                                                           :lod-tiers [1.0 0.25 0.05]})
             shared (ig/init-key :shipyard.jobs/pool {:threads 1})
-            pool (:pool shared)
+            barrier (workers/scope! shared)
             pending {:state (atom {}) :facet-state (atom {}) :library library :cache mesh-cache :scope (workers/scope! shared)}
             release (CountDownLatch. 1)]
         (try
-          (.submit pool ^Runnable #(.await release))
+          (workers/submit! barrier #(.await release))
           (is (= :running (:state (jobs/submit! pending id source))))
           (with-open [out (io/output-stream source)]
             (.write out ^bytes (fixtures/->binary-stl (fixtures/uv-sphere 1.0 6 12))))
           (.countDown release)
-          (.shutdown pool)
-          (is (.awaitTermination pool 30 TimeUnit/SECONDS))
+          (let [done (promise)]
+            (workers/submit! barrier #(deliver done true))
+            (is (= true (deref done 30000 ::timeout))))
           (is (nil? (jobs/status pending id)))
           (is (nil? (index/mesh-key! library id)))
           (is (nil? (get-in (scan-index/entries! database root) [id :mesh-key])))

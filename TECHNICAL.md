@@ -140,7 +140,7 @@ no namespace exists to hold constants.
   :cap-bytes  #profile {:default 4294967296 :test 67108864}}
 
  :shipyard.jobs/pool
- {:store #ig/ref :shipyard.store/db :threads 2 :queue-size 128}
+ {:store #ig/ref :shipyard.store/db :threads 2 :queue-size 4096}
 
  :shipyard.http/jobs
  {:library #ig/ref :shipyard.library/index :cache #ig/ref :shipyard.mesh/cache
@@ -967,15 +967,30 @@ completion, so a finished job cannot supply an old library's mesh to the active 
 `:shipyard.jobs/pool` owns the application's only background executor, separate from
 Jetty's HTTP workers. Library/import mesh preprocessing, mount facet recovery and all
 thumbnail rendering share its capacity. `:threads` defaults to 2 and `:queue-size` to
-128 when missing or nil; both require positive integers. Neither becomes unbounded or
-derives its value from processor count. Full queues reject admission without blocking
-or running work on HTTP threads. Callers remove their pending claim and retry through
-normal UI polling. Worker tasks must not submit dependent work and wait on this pool;
-thumbnail rendering is admitted only after mesh preparation has completed.
+4,096 when missing or nil; both require positive integers. Pending descriptors live in
+an explicitly bounded scheduler; only the fixed worker loops enter the executor queue.
+`:interactive-reserve` defaults to the smaller of 32 or one quarter of queue-size,
+reserving admission capacity from bulk work. Dispatch is FIFO within each priority,
+with three interactive jobs followed by one bulk job while both queues have work.
+Running jobs are not preempted. Full queues reject admission without blocking or running
+work on HTTP threads; rejected thumbnail requests expose Retry preview. Ordinary mesh
+loading drops rejected claims and retries on its existing poll route.
 
-Each subsystem owns a scope that tracks queued and actually running tasks. Closing an
+Import review atomically admits all eligible row previews as lightweight source and
+appearance descriptors, including unloaded rows. A worker prepares the mesh and PNG
+in the same job; it never waits on a dependent job submitted to this pool. Original-file
+preview requests use the same combined pipeline. Acceptance survives navigation and
+browser disconnection. Pending jobs are in memory and do not recover across restart;
+complete mesh/PNG disk cache entries remain reusable. A batch larger than available
+bulk capacity fails explicitly before partial admission and closes its staging resources.
+`/imports/progress` reports accepted, pending, running, completed, failed, cancelled and
+rejected counts from the import's preview owner; HTTP polling observes these counts
+and does not admit the batch.
+
+Each subsystem owns a scope that tracks queued and actually running tasks. Each import owns separate mesh and PNG scopes. Closing or publishing an
 import removes only its queued tasks, interrupts its running work and waits for task
-bodies to finish before closing its staging store. The shared executor stays available
+bodies to finish before moving its staged files or closing its staging store. Failed publication restores
+staged files, reopens the drained scopes and admits missing previews again. The shared executor stays available
 to other scopes. Tracking continues even if a task ignores interruption. Full shutdown
 closes scopes and terminates the executor before the shared store closes; its explicit
 Integrant dependency enforces that order. If work cannot drain within 30 seconds,
@@ -2478,10 +2493,12 @@ include every reachable instance's source key, tier, placement matrix and resolv
 appearance. Names and other nonvisual metadata do not invalidate images.
 
 `:shipyard.thumbnail/cache` owns a scope on the common background executor and
-per-content duplicate suppression, shared by library and import previews. PNG rendering
+per-content duplicate suppression. Import preview scopes have independent claims and
+cancellation but share the disk cache, render deduplication and worker budget. PNG rendering
 and mesh decoding run off HTTP threads and share capacity with mesh preprocessing and
-mount recovery. When the common queue is full, the normal 600 ms placeholder poll retries
-admission. Failed renders show unavailable; a later request may retry after 30 seconds.
+mount recovery. Queue saturation shows an explicit Retry preview action. Failed renders
+remain visible and terminal for their input stamp; only an explicit retry or changed
+input starts a new attempt. There is no periodic automatic render retry.
 PNG files live beside the mesh cache in `shipyard/thumbnails`, survive restarts and use
 atomic publication plus LRU eviction (default 128 MiB, retaining at least the newest
 entry). Small `.ref` files map part and assembly thumbnail source stamps to existing content keys.

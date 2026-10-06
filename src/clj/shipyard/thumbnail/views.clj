@@ -1,4 +1,5 @@
-(ns shipyard.thumbnail.views)
+(ns shipyard.thumbnail.views
+  (:require [clojure.string :as str]))
 
 (defn lazy-attrs [url root disable?]
   (cond-> {:hx-get url :hx-trigger (str "intersect once root:" root)
@@ -20,4 +21,18 @@
   (case state
     :ready [:img {:src (str "/thumbnail-images/" key) :width 128 :height 88 :alt (str "Preview of " label)}]
     :preparing [:span {:hx-get url :hx-trigger "load delay:600ms" :hx-target target} "…"]
+    :overloaded [:span "Preview queue full. " [:button {:type "button" :hx-get url :hx-target target} "Retry preview"]]
+    :failed [:span "Preview unavailable. " [:button {:type "button" :hx-get (str url (if (str/includes? url "?") "&" "?") "retry=1") :hx-target target} "Retry preview"]]
     [:span "Preview unavailable"]))
+
+(defn import-progress [counts]
+  [:p.import-progress {:role "status" :data-import-progress true :aria-live "polite"
+                       :hx-get "/imports/progress" :hx-trigger (if counts "every 600ms" "load")
+                       :hx-target "this" :hx-swap "outerHTML" :hx-sync "this:drop"
+                       :data-accepted (:accepted counts) :data-pending (:pending counts)
+                       :data-running (:running counts) :data-completed (:completed counts)
+                       :data-failed (:failed counts) :data-cancelled (:cancelled counts) :data-rejected (:rejected counts)}
+   (if counts
+     (str "Import previews: " (:pending counts) " pending · " (:running counts) " running · "
+          (:completed counts) " completed · " (:failed counts) " failed · " (:cancelled counts) " cancelled · " (:rejected counts) " rejected")
+     "Checking import previews…")])

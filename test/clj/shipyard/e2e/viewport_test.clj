@@ -5,7 +5,8 @@
   diffing a 3D scene moves with the driver, the antialiasing and the timing.
   One test still asks the crudest pixel question - is the canvas blank - because
   the stats hook would happily report a mesh that never reached the screen."
-  (:require [clojure.java.io :as io]
+  (:require [shipyard.jobs :as workers]
+            [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing use-fixtures]]
             [shipyard.catalog.db :as catalog]
@@ -14,7 +15,7 @@
             [shipyard.fixtures :as f]
             [shipyard.e2e.support :as s])
   (:import [javax.imageio ImageIO]
-           [java.util.concurrent CountDownLatch ExecutorService TimeUnit]))
+           [java.util.concurrent CountDownLatch TimeUnit]))
 
 (def ^:dynamic *driver* nil)
 (def ^:dynamic *system* nil)
@@ -179,12 +180,12 @@
 
 (deftest bulk-orientation-renders-rotates-and-saves-a-selection
   (let [entered (CountDownLatch. 2) release (CountDownLatch. 1)
-        ^ExecutorService pool (get-in *system* [:shipyard.jobs/pool :pool])]
+        scope (workers/scope! (:shipyard.jobs/pool *system*))]
     (try
       ;; Hold the real workers so the browser must survive multiple preparing
       ;; grid replacements before any mesh can finish. No handlers are replaced.
       (dotimes [_ 2]
-        (.submit pool ^Runnable (fn [] (.countDown entered) (.await release 30 TimeUnit/SECONDS))))
+        (workers/submit! scope (fn [] (.countDown entered) (.await release 30 TimeUnit/SECONDS))))
       (is (.await entered 10 TimeUnit/SECONDS))
       (open-app!)
       (s/click! *driver* ".masthead__mode[data-workspace-mode='browse']")

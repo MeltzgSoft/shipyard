@@ -118,8 +118,8 @@
 
 ;; --- component --------------------------------------------------------------
 
-(defmethod ig/init-key :shipyard.http/jobs [_ {:keys [library cache workers]}]
-  {:workers workers :scope (workers/scope! workers)
+(defmethod ig/init-key :shipyard.http/jobs [_ {:keys [library cache workers priority]}]
+  {:workers workers :scope (workers/scope! workers (cond-> {} priority (assoc :priority priority)))
    :state (atom {}) :facet-state (atom {}) :library library :cache cache})
 
 (defmethod ig/halt-key! :shipyard.http/jobs [_ {:keys [scope]}]

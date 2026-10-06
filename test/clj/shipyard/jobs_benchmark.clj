@@ -11,6 +11,7 @@
             [shipyard.loadout.db :as classes]
             [shipyard.loadout.thumbnail :as ships]
             [shipyard.part-browser.thumbnail :as thumbnail]
+            [shipyard.part.orientation :as orientation]
             [shipyard.wire :as wire])
   (:import [java.lang.management ManagementFactory]
            [java.nio.file Files Paths]
@@ -115,11 +116,59 @@
                     :baseline-bytes baseline :retained-bytes retained :delta-bytes (- retained baseline)})))
       (finally (jobs/close! (:scope (:thumbnails deps))) (.countDown release) (fixture/stop! started)))))
 
+(defn- percentile [values fraction]
+  (let [values (vec (sort values))]
+    (when (seq values) (nth values (min (dec (count values)) (int (* fraction (count values))))))))
+
+(defn- scheduling-run! [{:keys [file threads queue-size jobs] :or {threads 2 queue-size 4096 jobs 300}}]
+  (dotimes [_ 5] (render! file false))
+  (let [pool (ig/init-key :shipyard.jobs/pool {:threads threads :queue-size queue-size})
+        bulk (jobs/scope! pool {:priority :bulk}) interactive (jobs/scope! pool)
+        gate (CountDownLatch. 1) done (CountDownLatch. jobs)
+        measurements (atom []) accepted (atom 0) rejected (atom 0) probe (promise)
+        bean (ManagementFactory/getThreadMXBean) path (Paths/get file (make-array String 0))
+        start (System/nanoTime)
+        task (fn [submitted pose done!]
+               (fn []
+                 (.await gate)
+                 (try
+                   (let [began (System/nanoTime) cpu (.getCurrentThreadCpuTime bean)
+                         mesh (wire/decode (Files/readAllBytes path)) read-end (System/nanoTime)
+                         png (thumbnail/png! mesh pose) finished (System/nanoTime)]
+                     (swap! measurements conj {:wait-ms (/ (- began submitted) 1e6)
+                                               :read-ms (/ (- read-end began) 1e6)
+                                               :render-ms (/ (- finished read-end) 1e6)
+                                               :cpu-ms (/ (- (.getCurrentThreadCpuTime bean) cpu) 1e6)
+                                               :png-bytes (alength ^bytes png)}))
+                   (finally (done!)))))]
+    (try
+      (dotimes [i jobs]
+        (if (jobs/submit! bulk (task (System/nanoTime) (orientation/from-euler-degrees i 15 0) #(.countDown done)))
+          (swap! accepted inc)
+          (do (swap! rejected inc) (.countDown done))))
+      (let [submitted (System/nanoTime)
+            admitted? (jobs/submit! interactive (task submitted nil #(deliver probe (/ (- (System/nanoTime) submitted) 1e6))))]
+        (.countDown gate)
+        (assert (.await done 5 TimeUnit/MINUTES) "Batch timed out")
+        (let [elapsed (/ (- (System/nanoTime) start) 1e6)
+              latency (when admitted? (deref probe 30000 :timeout))]
+          (report! {:phase :schedule :source file :threads threads :queue-size queue-size :warmup-renders 5
+                    :requested jobs :accepted @accepted :rejected @rejected :elapsed-ms elapsed
+                    :interactive-admitted? admitted? :interactive-ms latency
+                    :throughput-per-second (/ (* 1000 @accepted) elapsed)
+                    :wait-p50-ms (percentile (map :wait-ms @measurements) 0.5)
+                    :wait-p95-ms (percentile (map :wait-ms @measurements) 0.95)
+                    :mean-read-ms (/ (reduce + (map :read-ms @measurements)) (count @measurements))
+                    :mean-render-ms (/ (reduce + (map :render-ms @measurements)) (count @measurements))
+                    :total-thread-cpu-ms (reduce + (map :cpu-ms @measurements))})))
+      (finally (.countDown gate) (ig/halt-key! :shipyard.jobs/pool pool)))))
+
 (defn -main [& [phase options]]
   (let [{:keys [file painted? threads jobs faces counts runs] :or {threads 2 jobs 4 faces 50000 runs 1}} (edn/read-string (or options "{}"))]
     (report! {:phase :environment :jdk (System/getProperty "java.version")
               :processors (.availableProcessors (Runtime/getRuntime)) :max-heap-bytes (.maxMemory (Runtime/getRuntime))})
     (case phase
+      "schedule" (scheduling-run! (edn/read-string (or options "{}")))
       "queue" (doseq [n (or counts [0 32 128 512 2048])]
                 (queue-run! (if (pos? faces) :regions :light) faces n))
       "thumbnail-queue" (doseq [n (or counts [32 128])] (thumbnail-queue-run! n faces))
