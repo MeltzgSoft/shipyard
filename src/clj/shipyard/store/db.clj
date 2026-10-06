@@ -269,19 +269,29 @@
                                 :ship/paint (t/paint-tx parts id (:ship/paint record))}
                          (:ship/scheme record) (assoc :ship/scheme [:scheme/id (:ship/scheme record)]))])))
 
+(defn- record-exists?
+  "Read only one identity and tombstone; never materialize its owned payload."
+  [db kind id]
+  (when (uuid? id)
+    (let [[key deleted] (record-spec kind)
+          entity (d/pull db [key deleted] [key id])]
+      (boolean (and (get entity key) (not (get entity deleted)))))))
+
 (defn put-record! [store library kind record mode]
   (try
     (write! store
             (fn [conn]
-              (let [operation (case kind :schemes scheme/put-record :loadouts loadout/put-record :ships ship/put-record)
-                    result (operation (records-value @conn kind) record mode)]
+              (let [[key] (record-spec kind)
+                    exists? (record-exists? @conn kind (get record key))
+                    operation (case kind :schemes scheme/put-record :loadouts loadout/put-record :ships ship/put-record)
+                    result (operation exists? record mode)]
                 (if (:error result) result
                     (do
                       (when (and (nil? library)
                                  (or (#{:loadouts :ships} kind) (seq (:scheme/layers record))))
                         (throw (ex-info "Select a library before saving part or layer references" {})))
                       ((case kind :schemes put-scheme! :loadouts put-loadout! :ships put-ship!) conn library record)
-                      (dissoc result :store))))))
+                      result)))))
     (catch Exception e {:error :store-write-failed :message (str "Could not save metadata. " (ex-message e))})))
 
 (defn delete-record! [store kind id]
@@ -289,8 +299,8 @@
     (write! store
             (fn [conn]
               (let [result ((case kind :schemes scheme/delete-record :loadouts loadout/delete-record :ships ship/delete-record)
-                            (records-value @conn kind) id)
-                    [key deleted] (case kind :schemes [:scheme/id :scheme/deleted?] :loadouts [:loadout/id :loadout/deleted?] :ships [:ship/id :ship/deleted?])]
+                            (record-exists? @conn kind id) id)
+                    [key deleted] (record-spec kind)]
                 (if (:error result) result
-                    (do (d/transact! conn [{key id deleted true}]) (dissoc result :store))))))
+                    (do (d/transact! conn [{key id deleted true}]) result)))))
     (catch Exception e {:error :store-write-failed :message (str "Could not delete metadata. " (ex-message e))})))

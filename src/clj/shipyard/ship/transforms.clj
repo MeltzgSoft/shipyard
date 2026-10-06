@@ -5,15 +5,15 @@
 
 (def valid? (m/validator schemas/ship))
 
-(defn put-record [store record mode]
+(defn put-record [exists? record mode]
   (cond
     (not (valid? record)) {:error :invalid-ship}
     (not (#{:create :update} mode)) {:error :invalid-operation}
-    (and (= mode :create) (contains? (:ships store) (:ship/id record))) {:error :id-exists}
-    (and (= mode :update) (not (contains? (:ships store) (:ship/id record)))) {:error :missing-ship}
-    :else {:store (assoc-in store [:ships (:ship/id record)] record) :ship record}))
+    (and (= mode :create) exists?) {:error :id-exists}
+    (and (= mode :update) (not exists?)) {:error :missing-ship}
+    :else {:ship record}))
 
-(defn delete-record [store id]
-  (if (contains? (:ships store) id)
-    {:store (update store :ships dissoc id) :deleted id}
+(defn delete-record [exists? id]
+  (if exists?
+    {:deleted id}
     {:error :missing-ship}))

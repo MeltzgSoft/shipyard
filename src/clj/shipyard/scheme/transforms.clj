@@ -6,15 +6,15 @@
 (def material? (m/validator schemas/material))
 (def scheme? (m/validator schemas/scheme))
 
-(defn put-record [store record mode]
+(defn put-record [exists? record mode]
   (cond
     (not (scheme? record)) {:error :invalid-scheme}
     (not (#{:create :update} mode)) {:error :invalid-operation}
-    (and (= mode :create) (contains? (:schemes store) (:scheme/id record))) {:error :id-exists}
-    (and (= mode :update) (not (contains? (:schemes store) (:scheme/id record)))) {:error :missing-scheme}
-    :else {:store (assoc-in store [:schemes (:scheme/id record)] record) :scheme record}))
+    (and (= mode :create) exists?) {:error :id-exists}
+    (and (= mode :update) (not exists?)) {:error :missing-scheme}
+    :else {:scheme record}))
 
-(defn delete-record [store id]
-  (if (contains? (:schemes store) id)
-    {:store (update store :schemes dissoc id)}
+(defn delete-record [exists? _id]
+  (if exists?
+    {}
     {:error :missing-scheme}))

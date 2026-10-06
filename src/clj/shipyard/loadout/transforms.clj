@@ -9,17 +9,17 @@
 (def loadout? (m/validator schemas/loadout))
 
 (defn put-record
-  "Create and replace are explicit; names never select the record to update."
-  [store record mode]
+  "Validate a targeted create/update against active identity existence. Names do not select records."
+  [exists? record mode]
   (cond
     (not (loadout? record)) {:error :invalid-loadout}
     (not (#{:create :update} mode)) {:error :invalid-operation}
-    (and (= :create mode) (contains? (:loadouts store) (:loadout/id record))) {:error :id-exists}
-    (and (= :update mode) (not (contains? (:loadouts store) (:loadout/id record)))) {:error :missing-loadout}
-    :else {:store (assoc-in store [:loadouts (:loadout/id record)] record) :loadout record}))
+    (and (= :create mode) exists?) {:error :id-exists}
+    (and (= :update mode) (not exists?)) {:error :missing-loadout}
+    :else {:loadout record}))
 
-(defn delete-record [store id]
+(defn delete-record [exists? id]
   (cond
     (not (uuid? id)) {:error :invalid-loadout-id}
-    (not (contains? (:loadouts store) id)) {:error :missing-loadout}
-    :else {:store (update store :loadouts dissoc id) :deleted id}))
+    (not exists?) {:error :missing-loadout}
+    :else {:deleted id}))
