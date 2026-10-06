@@ -163,7 +163,9 @@ escort probe and scan measurements, and `catalog.edn` for the Cruiser proof.
 They start/stop through `shipyard.system`; explicit tool roots do not change the
 application's saved selection. HTTP, browser and benchmark fixtures have their
 own graphs in `test/clj/shipyard/systems/`, with temporary runtime paths and
-port 0 where a server is needed.
+port 0 where a server is needed. The shared assembly/Ship Browser fixture uses
+`assembly.edn` and adds `server.edn` only for browser tests; its setup cleans up
+if library construction, initialization or fixture authoring fails.
 
 The benchmark is the on-demand, machine-labelled measurement behind TECHNICAL.md §11;
 it is deliberately not a CI gate. It creates isolated databases for fresh scan indexes

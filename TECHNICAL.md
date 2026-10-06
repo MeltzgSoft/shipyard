@@ -190,7 +190,11 @@ overrides. `resources/systems/` contains store-only, worker-only, library and ca
 graphs; `test/clj/shipyard/systems/` contains socket-free HTTP, browser and benchmark
 graphs. The degraded browser graph overlays a handler component, so Jetty remains
 owned by the system. `start!` halts partially initialized systems on failure; fixture
-teardown halts before deleting its temporary paths.
+teardown halts before deleting its temporary paths. The shared assembly/Ship Browser
+fixture uses its own `assembly.edn` graph and an optional `server.edn` overlay,
+without the native chooser or application configuration layering. Its graph retains
+the domain components required by these shared workflow tests. Setup also halts
+on authoring failure after startup before removing working files.
 
 Saved-root lookup is CLI setup (`shipyard.cli/configured-root!`): it starts a
 store-only graph when a database already exists, injects that store into

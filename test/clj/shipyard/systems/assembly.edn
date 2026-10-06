@@ -1,0 +1,36 @@
+;; Shared assembly/Ship Browser fixture: only the backend dependencies its tests use.
+;; No application config layering, native chooser or listening server.
+{:shipyard.store/db {}
+ :shipyard.library/index {:root nil :store #ig/ref :shipyard.store/db}
+ :shipyard.mesh/cache {:crease-deg 35 :lod-tiers [1.0 0.25 0.05]
+                       :facet-angle-deg 1.0 :facet-plane-epsilon-mm 0.01
+                       :cap-bytes 67108864}
+ :shipyard.jobs/pool {:store #ig/ref :shipyard.store/db :threads 2 :queue-size 4096}
+ :shipyard.thumbnail/cache {:cache #ig/ref :shipyard.mesh/cache
+                            :workers #ig/ref :shipyard.jobs/pool :cap-bytes 134217728}
+ :shipyard.catalog/db {:library #ig/ref :shipyard.library/index
+                       :store #ig/ref :shipyard.store/db}
+ :shipyard.http/jobs {:workers #ig/ref :shipyard.jobs/pool
+                      :library #ig/ref :shipyard.library/index
+                      :cache #ig/ref :shipyard.mesh/cache}
+ :shipyard.assembly/db {}
+ :shipyard.loadout/db {:store #ig/ref :shipyard.store/db :catalog #ig/ref :shipyard.catalog/db}
+ :shipyard.scheme/db {:store #ig/ref :shipyard.store/db :catalog #ig/ref :shipyard.catalog/db}
+ :shipyard.ship/db {:store #ig/ref :shipyard.store/db :catalog #ig/ref :shipyard.catalog/db}
+ :shipyard.loadout.operations/preview {}
+ :shipyard.paint/db {:paint/flush-interval-ms 120
+                     :preview #ig/ref :shipyard.loadout.operations/preview}
+ :shipyard.workspace/db {:assembly #ig/ref :shipyard.assembly/db
+                         :preview #ig/ref :shipyard.loadout.operations/preview}
+ :shipyard.http/routes {:thumbnails #ig/ref :shipyard.thumbnail/cache
+                        :library #ig/ref :shipyard.library/index
+                        :catalog #ig/ref :shipyard.catalog/db
+                        :cache #ig/ref :shipyard.mesh/cache
+                        :jobs #ig/ref :shipyard.http/jobs
+                        :assembly #ig/ref :shipyard.assembly/db
+                        :loadouts #ig/ref :shipyard.loadout/db
+                        :schemes #ig/ref :shipyard.scheme/db
+                        :named-ships #ig/ref :shipyard.ship/db
+                        :paint #ig/ref :shipyard.paint/db
+                        :preview #ig/ref :shipyard.loadout.operations/preview
+                        :workspace #ig/ref :shipyard.workspace/db}}

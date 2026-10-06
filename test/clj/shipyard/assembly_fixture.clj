@@ -2,7 +2,6 @@
   "Synthetic authored Cruiser hierarchy shared by HTTP and browser proofs."
   (:require [babashka.fs :as fs]
             [clojure.java.io :as io]
-            [integrant.core :as ig]
             [shipyard.catalog.db :as catalog]
             [shipyard.fixtures :as fixtures]
             [shipyard.system :as system]))
@@ -55,6 +54,10 @@
           :when (catalog/part (catalog/snapshot! cat) id)]
     (catalog/save-authoring! cat id value)))
 
+(defn stop! [{:keys [temp system]}]
+  (system/stop! system)
+  (fs/delete-tree temp))
+
 (defn start!
   ([] (start! false))
   ([server?] (start! server? library!))
@@ -62,19 +65,28 @@
   ([server? build-library! author-catalog!] (start! server? build-library! author-catalog! {}))
   ([server? build-library! author-catalog! overrides]
    (let [temp (fs/create-temp-dir {:prefix "shipyard-assembly-"})
-         root (build-library! (fs/path temp "library"))
-         cfg (-> (system/load-config! {:profile :test :config-dir (str (fs/path temp "config")) :env {}})
-                 (assoc-in [:shipyard.library/index :root] (str root))
-                 (assoc-in [:shipyard.mesh/cache :cache-home] (str (fs/path temp "cache")))
-                 (assoc-in [:shipyard.store/db :data-home] (str (fs/path temp "data")))
-                 (assoc-in [:shipyard.http/routes :config-dir] (str (fs/path temp "config")))
-                 (assoc-in [:shipyard.http/server :port] 0)
-                 (system/deep-merge overrides))
-         cfg (cond-> cfg (not server?) (dissoc :shipyard.http/server))
-         started (system/start! cfg)]
-     (author-catalog! (:shipyard.catalog/db started))
-     {:temp temp :root root :system started :handler (:shipyard.http/routes started)})))
-
-(defn stop! [{:keys [temp system]}]
-  (ig/halt! system)
-  (fs/delete-tree temp))
+         started (volatile! nil)]
+     (try
+       (let [root (build-library! (fs/path temp "library"))
+             config-dir (str (fs/path temp "config"))
+             cfg (system/read-config! "shipyard/systems/assembly.edn"
+                                      {:shipyard.library/index {:root (str root) :config-dir config-dir}
+                                       :shipyard.mesh/cache {:cache-home (str (fs/path temp "cache"))}
+                                       :shipyard.store/db {:data-home (str (fs/path temp "data"))}
+                                       :shipyard.http/routes {:config-dir config-dir}})
+             cfg (cond-> cfg
+                   server? (system/deep-merge (system/read-config! "shipyard/systems/server.edn")))
+             cfg (system/deep-merge cfg overrides)
+             cfg (cond-> cfg (not server?) (dissoc :shipyard.http/server))
+             sys (system/start! cfg)]
+         (vreset! started sys)
+         (author-catalog! (:shipyard.catalog/db sys))
+         {:temp temp :root root :system sys :handler (:shipyard.http/routes sys)})
+       (catch Throwable error
+         (try
+           ;; A partial init is normally halted by system/start!. If that
+           ;; cleanup failed, retry it before deleting any working files.
+           (stop! {:temp temp :system (or @started (:system (ex-data error)))})
+           (catch Throwable cleanup-error
+             (.addSuppressed error cleanup-error)))
+         (throw error))))))
