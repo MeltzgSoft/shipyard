@@ -99,7 +99,7 @@
   (let [started (fixture/start!) sys (:system started)
         deps {:library (:shipyard.library/index sys) :cache (:shipyard.mesh/cache sys)
               :jobs (:shipyard.http/jobs sys) :thumbnails (:shipyard.thumbnail/cache sys)}
-        session (importer/prepare! deps (archives/archive! (:temp started)))
+        session (importer/prepare! (:shipyard.importer/db sys) (archives/archive! (:temp started)))
         previews (:thumbnails session) entered (CountDownLatch. 1) release (CountDownLatch. 1)
         interrupted (promise) read-open (promise) closing (atom nil)]
     (try
@@ -137,7 +137,7 @@
     (try
       (jobs/submit! blocker #(do (.countDown entered) (.await release)))
       (is (.await entered 5 TimeUnit/SECONDS))
-      (reset! session (importer/prepare! deps (archives/archive! (:temp started))))
+      (reset! session (importer/prepare! (:shipyard.importer/db sys) (archives/archive! (:temp started))))
       (let [session @session id (first (keys (:parts (catalog/listing! (:catalog session)))))
             preview-deps (assoc session :cache (:cache deps) :import-session true)
             scope (get-in session [:thumbnails :scope])]
@@ -162,13 +162,13 @@
     (try
       (jobs/submit! blocker #(do (.countDown entered) (.await release)))
       (is (.await entered 5 TimeUnit/SECONDS))
-      (reset! session (importer/prepare! deps (archives/archive! (:temp started))))
+      (reset! session (importer/prepare! (:shipyard.importer/db sys) (archives/archive! (:temp started))))
       (let [session @session plan (importer/plan! session) missing (:file (second plan))
             mtime (fs/file-time->millis (fs/last-modified-time missing))
             bytes (java.nio.file.Files/readAllBytes (fs/path missing))
             scope (get-in session [:thumbnails :scope])]
         (fs/delete missing)
-        (is (thrown? Exception (importer/commit! deps session)))
+        (is (thrown? Exception (importer/commit! (:shipyard.importer/db sys) session)))
         (is (fs/regular-file? (:file (first plan))) "Already moved files are restored")
         (is (false? (:closed? @(:state scope))))
         (is (= 2 (:cancelled (jobs/counts! scope))))

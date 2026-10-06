@@ -131,6 +131,7 @@
         (s/choose-path! driver ".import-start" invalid)
         (is (s/wait-until #(.contains (s/text driver "#import-status") "Cannot read ZIP Broken Fleet.zip → Download.zip → broken.zip")))
         (is (nil? (session!)))
+        (is (empty? (:sessions @(get-in started [:system :shipyard.importer/db :state]))))
         (is (= before (catalog/listing! cat))))
       (s/choose-path! driver ".import-start" zip)
       (s/wait-visible! driver ".import-review")
@@ -194,6 +195,7 @@
         (s/click! driver "form[hx-post='/imports/commit'] button")
         (s/wait-visible! driver ".import-start")
         (is (nil? (session!)))
+        (is (empty? (:sessions @(get-in started [:system :shipyard.importer/db :state]))))
         (is (fs/regular-file? zip))
         (doseq [path ["Reviewed Fleet/Cruiser/Hull/unsupported.stl"
                       "Reviewed Fleet/Cruiser/Hull/supported.stl"

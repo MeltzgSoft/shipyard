@@ -635,9 +635,12 @@ the same start and workspace transition handlers as `POST /imports/start`. Cance
 returns 204; chooser and extraction failures report in the import status without
 replacing the table. The route uses Part Browser's workspace admission guard.
 
-Part Browser owns the import session under its workspace state. The session contains a
-disposable Datalevin catalog and library index in a temporary tree, with its own mesh
-preparation workers using the existing shared content-addressed mesh cache. Browser
+The application-lifetime `:shipyard.importer/db` Integrant component owns import sessions.
+Its configuration references the destination library/catalog, shared workers and caches.
+Part Browser keeps its active review reference and previous UI state in its workspace;
+resource ownership remains with the importer even before a review reaches the workspace.
+Each session contains a disposable Datalevin catalog and library index in a temporary
+tree, with mesh and PNG cancellation scopes borrowing the shared workers and caches. Browser
 listing, thumbnails, metadata edits and orientation saves resolve this staging context;
 Ship Browser continues to resolve the durable catalog. Workspace activation admission
 also covers import routes. Mount, region and direct single-part authoring routes are
@@ -693,6 +696,11 @@ Datalevin transaction are separate boundaries: abrupt process termination can le
 partial file import, which is discoverable by scanning on restart. There is no durable
 resume journal for an unfinished review. Cancel and normal shutdown stop staging workers,
 close its temporary store and remove the temporary tree; source ZIPs are never deleted.
+The importer registers resources as they open and serializes preparation, review changes,
+publication and cleanup against halt. Halt rejects new sessions and drains every registered
+session before Integrant stops its shared dependencies. Cleanup failures keep ownership
+registered for retry. Sessions use ordinary resource functions, not direct lifecycle
+multimethod calls or separate Integrant systems.
 
 ## 6. Mesh pipeline
 

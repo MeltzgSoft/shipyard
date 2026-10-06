@@ -17,10 +17,10 @@
 (defn- transition! [deps]
   (workspaces/transition! deps {:path-params {:mode "browse"} :params {} :headers {"hx-request" "true"}}))
 
-(defn start! [{:keys [workspace] :as deps} {:keys [params]}]
+(defn start! [{:keys [workspace importer] :as deps} {:keys [params]}]
   (try
     (when (db/session! deps) (throw (ex-info "Finish or cancel the current import first." {})))
-    (let [session (db/prepare! deps (system/expand-home (System/getProperty "user.home") (get params "archive")))
+    (let [session (db/prepare! importer (system/expand-home (System/getProperty "user.home") (get params "archive")))
           before (workspace/workspace! workspace :browse)]
       (workspace/update-workspace! workspace :browse
                                    (constantly {:view :table :filters {} :colors (:colors before)
@@ -46,10 +46,10 @@
             (throw (ex-info "No import is active." {})))
     (catch Exception e (error-response e))))
 
-(defn commit! [deps _]
+(defn commit! [{:keys [importer] :as deps} _]
   (try
     (if-let [session (db/session! deps)]
-      (let [{:keys [files parts]} (db/commit! deps session)
+      (let [{:keys [files parts]} (db/commit! importer session)
             response (finish! deps session)]
         (update response :body str (:body (htmx/fragment [:p#import-status {:hx-swap-oob "outerHTML" :role "status"}
                                                           (str "Imported " files " files in " parts " parts. Original archive kept.")]))))

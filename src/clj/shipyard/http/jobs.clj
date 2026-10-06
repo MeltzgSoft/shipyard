@@ -118,9 +118,17 @@
 
 ;; --- component --------------------------------------------------------------
 
-(defmethod ig/init-key :shipyard.http/jobs [_ {:keys [library cache workers priority]}]
+(defn open!
+  "Create mesh job state in a cancellation scope owned by the caller."
+  [{:keys [library cache workers priority]}]
   {:workers workers :scope (workers/scope! workers (cond-> {} priority (assoc :priority priority)))
    :state (atom {}) :facet-state (atom {}) :library library :cache cache})
 
-(defmethod ig/halt-key! :shipyard.http/jobs [_ {:keys [scope]}]
+(defn close! [{:keys [scope]}]
   (workers/close! scope))
+
+(defmethod ig/init-key :shipyard.http/jobs [_ options]
+  (open! options))
+
+(defmethod ig/halt-key! :shipyard.http/jobs [_ jobs]
+  (close! jobs))

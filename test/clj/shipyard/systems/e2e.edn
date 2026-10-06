@@ -12,14 +12,21 @@
  :shipyard.http/jobs     {:workers #ig/ref :shipyard.jobs/pool
                           :library #ig/ref :shipyard.library/index
                           :cache   #ig/ref :shipyard.mesh/cache}
+ ;; The importer owns temporary databases, staging files and cancellation scopes.
+ :shipyard.importer/db {:library #ig/ref :shipyard.library/index
+                        :catalog #ig/ref :shipyard.catalog/db
+                        :cache #ig/ref :shipyard.mesh/cache
+                        :workers #ig/ref :shipyard.jobs/pool
+                        :thumbnails #ig/ref :shipyard.thumbnail/cache}
+
  :shipyard.assembly/db {}
  :shipyard.loadout/db {:store #ig/ref :shipyard.store/db :catalog #ig/ref :shipyard.catalog/db}
  :shipyard.scheme/db {:store #ig/ref :shipyard.store/db :catalog #ig/ref :shipyard.catalog/db}
  :shipyard.paint/db {}
  :shipyard.loadout.operations/preview {}
- :shipyard.workspace/db {:assembly #ig/ref :shipyard.assembly/db
-                         :preview #ig/ref :shipyard.loadout.operations/preview}
- :shipyard.http/routes   {:thumbnails #ig/ref :shipyard.thumbnail/cache
+ :shipyard.workspace/db {:importer #ig/ref :shipyard.importer/db}
+ :shipyard.http/routes   {:importer #ig/ref :shipyard.importer/db
+                          :thumbnails #ig/ref :shipyard.thumbnail/cache
                           :file-picker #ig/ref :shipyard.file-picker/db
                           :workspace #ig/ref :shipyard.workspace/db
                           :assembly #ig/ref :shipyard.assembly/db

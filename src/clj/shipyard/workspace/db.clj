@@ -3,7 +3,6 @@
   (:require [clojure.string :as str]
             [integrant.core :as ig]
             [shipyard.http.pagination :as pagination]
-            [shipyard.importer.db :as importer]
             [shipyard.workspace.transforms :as transforms]))
 
 (def modes #{:browse :ships :settings})
@@ -92,5 +91,6 @@
       (swap! (:state assembly) assoc-in [:draft :name] (get params "name")))))
 
 (defmethod ig/halt-key! :shipyard.workspace/db [_ db]
-  (when-let [session (get-in @(:state db) [:workspaces :browse :import])]
-    (importer/close! session)))
+  ;; The importer component owns session resources. Release only the UI's
+  ;; reference here; its declared dependency will halt after this workspace.
+  (swap! (:state db) update-in [:workspaces :browse] dissoc :import))

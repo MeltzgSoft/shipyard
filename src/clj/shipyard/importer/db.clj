@@ -1,5 +1,5 @@
 (ns shipyard.importer.db
-  "Disposable import review and publication into the selected library."
+  "Application-owned import sessions, review and publication into the library."
   (:require [babashka.fs :as fs]
             [clojure.string :as str]
             [datalevin.core :as d]
@@ -55,17 +55,60 @@
     ;; become catalog rows or participate in grouping/publication.
     {:root root :parts parts :entries (index/refresh (concat parts file-parts) stored stats) :source-files sources}))
 
-(defn close! [{:keys [jobs thumbnails store directory]}]
+(defn- close-resources! [{:keys [jobs thumbnails store directory]}]
   (when thumbnails (thumbnails/close! thumbnails))
-  (when jobs (ig/halt-key! :shipyard.http/jobs jobs))
+  (when jobs (jobs/close! jobs))
   (when store (store/close! store))
   (when directory (fs/delete-tree directory)))
 
-(defn prepare! [{:keys [cache library jobs thumbnails]} path]
+(defn close!
+  "Drain a session's readers before closing its database and removing staging.
+  Failed cleanup remains registered for shutdown or an explicit retry."
+  [{:keys [owner id]}]
+  (let [state (:state owner)]
+    (locking state
+      (when-let [session (get-in @state [:sessions id])]
+        (swap! state assoc-in [:sessions id :closing?] true)
+        (close-resources! session)
+        (swap! state update :sessions dissoc id)))))
+
+(defmethod ig/init-key :shipyard.importer/db [_ dependencies]
+  (assoc dependencies :state (atom {:closed? false :sessions {}})))
+
+(defmethod ig/halt-key! :shipyard.importer/db [_ {:keys [state] :as owner}]
+  (locking state
+    (swap! state assoc :closed? true)
+    (let [errors (doall (keep (fn [session]
+                                (try (close! (assoc session :owner owner)) nil (catch Throwable error error)))
+                              (vals (:sessions @state))))]
+      ;; Attempt every session, but keep dependencies alive if any reader
+      ;; failed to drain. A later halt can retry the remaining resources.
+      (when-let [error (first errors)]
+        (doseq [suppressed (rest errors)] (.addSuppressed ^Throwable error suppressed))
+        (throw error)))))
+
+(defn- active-session! [{:keys [owner id]}]
+  (let [{:keys [closed? sessions]} @(:state owner)
+        session (get sessions id)]
+    (when (or closed? (nil? session) (:closing? session))
+      (throw (ex-info "This import session is closed." {})))
+    (assoc session :owner owner)))
+
+(defn- use-session! [{:keys [owner] :as session} operation!]
+  (let [state (:state owner)]
+    (locking state
+      (operation! (active-session! session)))))
+
+(defn- prepare-session! [{:keys [cache library workers thumbnails state] :as owner} path]
+  (when (:closed? @state)
+    (throw (ex-info "The importer is shut down." {})))
   (when-not (index/available?! library)
     (throw (ex-info "Choose an existing library folder before importing." {})))
-  (let [directory (fs/create-temp-dir {:prefix "shipyard-import-"})
-        opened (atom {:directory directory})]
+  (let [id (random-uuid)
+        directory (fs/create-temp-dir {:prefix "shipyard-import-"})
+        session {:id id :directory directory}
+        register! (fn [key value] (swap! state assoc-in [:sessions id key] value))]
+    (swap! state assoc-in [:sessions id] session)
     (try
       (let [{raw :entries :keys [skipped-empty-archives]} (archive/extract! path directory)
             _ (when (empty? raw) (throw (ex-info "This archive contains no STL files." {})))
@@ -78,22 +121,33 @@
             entries (t/inferred-entries entries)
             parts (t/review-parts entries {} {})
             store (store/open! (fs/path directory "database"))
-            _ (swap! opened assoc :store store)
+            _ (register! :store store)
             lib {:store store :state (atom (library-state! parts root entries {}))}
             cat (catalog/open! store (:parts @(:state lib)) root)
-            mesh-jobs (ig/init-key :shipyard.http/jobs {:library lib :cache cache :workers (:workers jobs) :priority :bulk})
-            _ (swap! opened assoc :jobs mesh-jobs)
+            mesh-jobs (jobs/open! {:library lib :cache cache :workers workers :priority :bulk})
+            _ (register! :jobs mesh-jobs)
             previews (when thumbnails (thumbnails/fork! thumbnails :bulk))
-            _ (when previews (swap! opened assoc :thumbnails previews))
-            session (merge @opened {:library lib :catalog cat :entries (atom entries)
-                                    :skipped-empty-archives skipped-empty-archives
-                                    :archive (str path) :target-root (index/root! library)})]
+            _ (when previews (register! :thumbnails previews))
+            session (merge (get-in @state [:sessions id]) {:library lib :catalog cat :entries (atom entries)
+                                                           :skipped-empty-archives skipped-empty-archives
+                                                           :archive (str path) :target-root (index/root! library)})]
+        (swap! state assoc-in [:sessions id] session)
         (when previews
           (let [result (previews/batch! (assoc session :cache cache :import-session true) (mapv :part/id parts))]
             (when-not (:accepted? result)
               (throw (ex-info "Import preview queue is full. Finish pending work or increase the configured queue-size before retrying." result)))))
-        session)
-      (catch Exception e (close! @opened) (throw e)))))
+        (assoc session :owner owner))
+      (catch Throwable error
+        (try (close! (assoc session :owner owner))
+             (catch Throwable cleanup-error (.addSuppressed error cleanup-error)))
+        (throw error)))))
+
+(defn prepare!
+  "Prepare and register a session with the application's importer component.
+  Preparation and shutdown share a boundary: no late session can escape halt."
+  [{:keys [state] :as owner} path]
+  (locking state
+    (prepare-session! owner path)))
 
 (defn- apply-review!
   [{:keys [catalog entries jobs] {:keys [state] :as library} :library} {:keys [labels selected] updated :entries}]
@@ -131,17 +185,20 @@
 (defn- reviewed-parts! [catalog]
   (into {} (map (juxt :part/id identity)) (catalog/browse (catalog/listing! catalog) {})))
 
-(defn group! [{:keys [catalog entries] :as session} ids group-name]
-  (apply-review! session (t/group-selection @entries (reviewed-parts! catalog) ids group-name)))
+(defn group! [session ids group-name]
+  (use-session! session (fn [{:keys [catalog entries] :as session}]
+                          (apply-review! session (t/group-selection @entries (reviewed-parts! catalog) ids group-name)))))
 
-(defn split! [{:keys [catalog entries] :as session} id]
-  (apply-review! session (t/split-group @entries (reviewed-parts! catalog) id)))
+(defn split! [session id]
+  (use-session! session (fn [{:keys [catalog entries] :as session}]
+                          (apply-review! session (t/split-group @entries (reviewed-parts! catalog) id)))))
 
-(defn assign-variant! [{:keys [catalog entries] :as session} file-id variant]
-  (apply-review! session {:entries (t/assign-variant @entries file-id variant)
-                          :labels (reviewed-parts! catalog)}))
+(defn assign-variant! [session file-id variant]
+  (use-session! session (fn [{:keys [catalog entries] :as session}]
+                          (apply-review! session {:entries (t/assign-variant @entries file-id variant)
+                                                  :labels (reviewed-parts! catalog)}))))
 
-(defn variants! [{:keys [catalog entries] :as session} ids variant]
+(defn- assign-variants! [{:keys [catalog entries] :as session} ids variant]
   (when-not (t/variants variant)
     (throw (ex-info "Choose supported, unsupported or unsupported-pitted." {})))
   (let [parts (reviewed-parts! catalog)
@@ -153,8 +210,11 @@
     (apply-review! session {:entries (reduce #(assoc-in %1 [(:key (first %2)) :variant] variant) @entries files)
                             :labels parts})))
 
+(defn variants! [session ids variant]
+  (use-session! session #(assign-variants! % ids variant)))
+
 (defn plan! [session]
-  (t/plan (vals (reviewed-parts! (:catalog session))) @(:entries session)))
+  (use-session! session #(t/plan (vals (reviewed-parts! (:catalog %))) @(:entries %))))
 
 (defn- target! [root path]
   (let [target (fs/path root path)]
@@ -194,7 +254,7 @@
         (reset! state candidate)
         (reset! (:state catalog) staged)))))
 
-(defn commit! [{:keys [library] :as deps} session]
+(defn- commit-session! [{:keys [library] :as deps} session]
   (when-not (and (index/available?! library) (= (:target-root session) (index/root! library)))
     (throw (ex-info "The library folder changed or is unavailable. Restore it or cancel and restart this import." {})))
   (let [root (index/root! library)
@@ -202,20 +262,29 @@
         moved (atom [])]
     (when-let [previews (:thumbnails session)] (thumbnails/close! previews))
     (workers/close! (get-in session [:jobs :scope]))
-    (try
-      (doseq [{:keys [file target] :as entry} plan]
-        (fs/create-dirs (fs/parent target))
-        (fs/move file target)
-        (swap! moved conj entry))
-      (publish! deps root plan)
-      {:files (count plan) :parts (count (set (map :id plan)))}
-      (catch Exception e
-        (doseq [{:keys [file target]} (reverse @moved)]
-          (fs/move target file))
-        (workers/reopen! (get-in session [:jobs :scope]))
-        (jobs/clear! (:jobs session))
-        (when-let [previews (:thumbnails session)]
-          (thumbnails/reopen! previews)
-          (previews/batch! (assoc session :cache (:cache deps) :import-session true)
-                           (mapv :part/id (index/parts! (:library session)))))
-        (throw e)))))
+    (let [result (try
+                   (doseq [{:keys [file target] :as entry} plan]
+                     (fs/create-dirs (fs/parent target))
+                     (fs/move file target)
+                     (swap! moved conj entry))
+                   (publish! deps root plan)
+                   {:files (count plan) :parts (count (set (map :id plan)))}
+                   (catch Exception e
+                     (doseq [{:keys [file target]} (reverse @moved)]
+                       (fs/move target file))
+                     (workers/reopen! (get-in session [:jobs :scope]))
+                     (jobs/clear! (:jobs session))
+                     (when-let [previews (:thumbnails session)]
+                       (thumbnails/reopen! previews)
+                       (previews/batch! (assoc session :cache (:cache deps) :import-session true)
+                                        (mapv :part/id (index/parts! (:library session)))))
+                     (throw e)))]
+      ;; Publication has succeeded. Cleanup failure must not roll back published
+      ;; files; retain the closing session so shutdown can retry cleanup.
+      (close! session)
+      result)))
+
+(defn commit! [owner session]
+  (when-not (identical? owner (:owner session))
+    (throw (ex-info "This session belongs to another importer." {})))
+  (use-session! session #(commit-session! owner %)))

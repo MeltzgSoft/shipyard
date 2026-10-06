@@ -2,6 +2,7 @@
   (:require [babashka.fs :as fs]
             [clojure.java.io :as io]
             [clojure.test :refer [deftest is]]
+            [datalevin.core :as d]
             [shipyard.assembly-fixture :as fixture]
             [shipyard.catalog.db :as catalog]
             [shipyard.e2e.support :as s]
@@ -38,6 +39,7 @@
             deps (assoc session :cache (:shipyard.mesh/cache sys) :import-session true)
             ids (mapv :part/id (index/parts! (:library session)))]
         (is (= 320 (count ids)))
+        (is (contains? (:sessions @(get-in sys [:shipyard.importer/db :state])) (:id session)))
         (is (= 320 (:accepted (jobs/counts! scope))))
         (is (= 320 (:queued (jobs/progress! scope))))
         (is (< (s/count-els @driver ".part-drawer") 320) "The browser still loads rows in batches")
@@ -63,6 +65,9 @@
         (s/click! @driver "form[hx-post='/imports/cancel'] button")
         (s/wait-visible! @driver ".import-start")
         (is (nil? (session!)))
+        (is (empty? (:sessions @(get-in sys [:shipyard.importer/db :state]))))
+        (is (d/closed? (get-in session [:store :conn])))
+        (is (not (fs/exists? (:directory session))))
         (is (= before (catalog/listing! (:shipyard.catalog/db sys)))))
       (finally (.countDown release) (when @driver (s/quit! @driver)) (fixture/stop! started)))))
 
@@ -99,6 +104,7 @@
       (is (.contains ^String (s/text driver "#import-status") "Import preview queue is full"))
       (is (zero? (s/count-els driver ".import-review")))
       (is (nil? (importer/session! {:workspace (:shipyard.workspace/db sys)})))
+      (is (empty? (:sessions @(get-in sys [:shipyard.importer/db :state]))))
       (is (empty? @(get-in sys [:shipyard.thumbnail/cache :children])))
       (is (= before (catalog/listing! (:shipyard.catalog/db sys))))
       (s/open-part! driver "hull")

@@ -43,12 +43,13 @@
 (deftest closing-import-drains-only-its-jobs-before-closing-its-store
   (let [started (fixture/start!) sys (:system started) shared (:shipyard.jobs/pool sys)
         root-jobs (:shipyard.http/jobs sys) thumbnails (:shipyard.thumbnail/cache sys)
-        session (importer/prepare! {:library (:shipyard.library/index sys) :cache (:shipyard.mesh/cache sys) :jobs root-jobs}
+        session (importer/prepare! (:shipyard.importer/db sys)
                                    (archives/archive! (:temp started)))
         release-root (CountDownLatch. 1) release-import (CountDownLatch. 1)
         entered (CountDownLatch. 2) interrupted (promise) queued-ran (atom false)
         closing (atom nil)]
     (try
+      (previews/await! #(= {:running 0 :queued 0} (workers/progress! (get-in session [:thumbnails :scope]))))
       (doseq [scope [(:scope root-jobs) (:scope thumbnails) (get-in session [:jobs :scope])]]
         (is (identical? (:pool shared) (:pool scope))))
       (workers/submit! (:scope root-jobs) #(do (.countDown entered) (.await release-root)))
