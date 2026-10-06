@@ -195,6 +195,8 @@ fixture uses its own `assembly.edn` graph and an optional `server.edn` overlay,
 without the native chooser or application configuration layering. Its graph retains
 the domain components required by these shared workflow tests. Setup also halts
 on authoring failure after startup before removing working files.
+Workflows that exercise desktop Browse add `file-picker.edn`, which declares the
+chooser owner and its routes dependency. Swing still loads only on a chooser request.
 
 Saved-root lookup is CLI setup (`shipyard.cli/configured-root!`): it starts a
 store-only graph when a database already exists, injects that store into

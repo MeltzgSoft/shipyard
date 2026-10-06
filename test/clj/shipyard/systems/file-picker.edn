@@ -1,0 +1,4 @@
+;; Optional chooser owner for fixture workflows exercising desktop Browse.
+;; Swing remains lazy: initializing the component only creates its dialog lock.
+{:shipyard.file-picker/db {}
+ :shipyard.http/routes {:file-picker #ig/ref :shipyard.file-picker/db}}

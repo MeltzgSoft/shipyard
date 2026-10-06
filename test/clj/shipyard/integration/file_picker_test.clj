@@ -8,11 +8,14 @@
             [shipyard.assembly-fixture :as fixture]
             [shipyard.file-picker.db :as picker]
             [shipyard.file-picker.swing :as swing]
-            [shipyard.library.index :as index])
+            [shipyard.library.index :as index]
+            [shipyard.system :as system])
   (:import [java.util.concurrent.locks ReentrantLock]))
 
 (deftest desktop-selector-http-workflow
-  (let [started (fixture/start!) handler (:handler started)
+  (let [started (fixture/start! false fixture/library! fixture/author!
+                                (system/read-config! "shipyard/systems/file-picker.edn"))
+        handler (:handler started)
         library (get-in started [:system :shipyard.library/index])
         before (index/root! library)
         request #(handler (mock/request :post (str "/files/choose/" %)))]
@@ -31,6 +34,11 @@
         (with-redefs [picker/choose! (fn [_ _] (throw (ex-info "Desktop unavailable" {})))]
           (is (str/includes? (:body (request "settings-root")) "Desktop unavailable")))
         (is (= before (index/root! library))))
+      (testing "the configured chooser reports real adapter failures through HTTP"
+        (with-redefs [swing/available? (constantly false)]
+          (is (str/includes? (:body (request "settings-root")) "No graphical desktop is available")))
+        (with-redefs [swing/choose! (fn [_] (throw (java.awt.AWTError. "Display connection failed")))]
+          (is (str/includes? (:body (request "settings-root")) "Check that Java has desktop support"))))
       (testing "unknown fields and GET requests never open a dialog"
         (with-redefs [picker/choose! (fn [& _] (throw (AssertionError. "Must not open a dialog")))]
           (is (= 400 (:status (request "arbitrary-input"))))

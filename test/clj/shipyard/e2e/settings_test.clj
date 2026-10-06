@@ -13,7 +13,8 @@
 
 (deftest database-settings-failure-allows-retry-and-restores-selection-after-restart
   (s/assert-bundle!)
-  (let [started (fixture/start! true)
+  (let [started (fixture/start! true fixture/library! fixture/author!
+                                (system/read-config! "shipyard/systems/file-picker.edn"))
         running (atom (:system started))
         driver (s/make-driver)
         config-dir (fs/path (:temp started) "config")
