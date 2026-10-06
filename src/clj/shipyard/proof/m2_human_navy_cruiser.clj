@@ -7,10 +7,9 @@
   Datalevin database and proves a fresh connection can reload the authoring."
   (:require [babashka.fs :as fs]
             [clojure.pprint :as pp]
-            [integrant.core :as ig]
             [shipyard.assembly.model :as assembly]
             [shipyard.catalog.db :as db]
-            [shipyard.store.db :as store]
+            [shipyard.system :as system]
             [shipyard.geom :as geom]
             [shipyard.library.index :as index]
             [shipyard.library.scan :as scan]
@@ -121,14 +120,6 @@
                       {:missing missing
                        :expected-layout parts}))))
   scanned)
-
-(defn- library! [root database]
-  (let [library {:store database :state (atom {})}]
-    (index/set-root! library root)
-    library))
-
-(defn- catalog! [library store]
-  (ig/init-key :shipyard.catalog/db {:library library :store store}))
 
 (defn- save-authoring-with-times! [catalog]
   (into {}
@@ -257,12 +248,15 @@
   (let [root (str root)
         scanned (verify-parts! (vec (scan/scan! (fs/file root))))
         scanned-by-id (into {} (map (juxt :part/id identity)) scanned)
-        database (store/open! (fs/path cache-home "proof-database"))
-        timings (try (save-authoring-with-times! (catalog! (library! root database) database))
-                     (finally (store/close! database)))
-        database (store/open! (fs/path cache-home "proof-database"))]
+        config (system/read-config! "systems/catalog.edn"
+                                    {:shipyard.store/db {:directory (str (fs/path cache-home "proof-database"))}
+                                     :shipyard.library/index {:root root}})
+        started (system/start! config)
+        timings (try (save-authoring-with-times! (:shipyard.catalog/db started))
+                     (finally (system/stop! started)))
+        reopened (system/start! config)]
     (try
-      (let [reloaded (catalog! (library! root database) database)
+      (let [reloaded (:shipyard.catalog/db reopened)
             m3-assembly (m3-assembly-audit root scanned-by-id reloaded)]
         {:root root
          :ran-at (str (java.time.Instant/now))
@@ -280,7 +274,7 @@
                               "Metadata was written through shipyard.catalog.db/save-authoring! and reloaded through a fresh database connection."
                               "The :m3-assembly audit checks legacy authoring before attempting a live Cruiser assembly."]
                              notes))})
-      (finally (store/close! database)))))
+      (finally (system/stop! reopened)))))
 
 (defn- parse-args [args]
   (reduce (fn [m [k v]]

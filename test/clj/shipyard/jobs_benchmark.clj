@@ -2,7 +2,7 @@
   "On-demand retained-queue and active-thumbnail memory measurements. No app DB
   or cache is opened for writing. Run in a separate JVM with an explicit -Xmx."
   (:require [clojure.edn :as edn]
-            [integrant.core :as ig]
+            [shipyard.system :as system]
             [shipyard.assembly-fixture :as fixture]
             [shipyard.catalog.db :as catalog]
             [shipyard.http.jobs :as mesh-jobs]
@@ -41,7 +41,9 @@
     #(count payload)))
 
 (defn- queue-run! [kind faces n]
-  (let [pool (ig/init-key :shipyard.jobs/pool {:threads 1 :queue-size (max 1 n)})
+  (let [started (system/start! (system/read-config! "systems/workers.edn"
+                                                    {:shipyard.jobs/pool {:threads 1 :queue-size (max 1 n)}}))
+        pool (:shipyard.jobs/pool started)
         scope (jobs/scope! pool) entered (CountDownLatch. 1) release (CountDownLatch. 1)]
     (try
       (jobs/submit! scope #(do (.countDown entered) (try (.await release) (catch InterruptedException _))))
@@ -52,7 +54,7 @@
           (report! {:phase :queue :kind kind :faces-per-job faces :queued n
                     :baseline-bytes baseline :retained-bytes retained
                     :delta-bytes (- retained baseline)})))
-      (finally (.countDown release) (ig/halt-key! :shipyard.jobs/pool pool)))))
+      (finally (.countDown release) (system/stop! started)))))
 
 (defn- render! [file painted?]
   (let [mesh (wire/decode (Files/readAllBytes (Paths/get file (make-array String 0))))
@@ -61,7 +63,9 @@
     (alength ^bytes (thumbnail/png! (thumbnail/region-mesh mesh regions) nil))))
 
 (defn- active-run! [file painted? threads n]
-  (let [pool (ig/init-key :shipyard.jobs/pool {:threads threads :queue-size n})
+  (let [started (system/start! (system/read-config! "systems/workers.edn"
+                                                    {:shipyard.jobs/pool {:threads threads :queue-size n}}))
+        pool (:shipyard.jobs/pool started)
         scope (jobs/scope! pool) done (CountDownLatch. n)
         errors (atom []) result-bytes (atom 0)
         baseline (collected-heap!) peak (atom baseline) running (atom true)
@@ -80,7 +84,7 @@
                 :elapsed-ms (/ (- (System/nanoTime) start) 1e6) :gc-ms (- (gc-time!) gc-before)
                 :baseline-bytes baseline :peak-bytes @peak :delta-bytes (- @peak baseline)
                 :png-bytes @result-bytes :errors @errors})
-      (finally (reset! running false) (.join sampler) (ig/halt-key! :shipyard.jobs/pool pool)))))
+      (finally (reset! running false) (.join sampler) (system/stop! started)))))
 
 (defn- thumbnail-queue-run! [n faces]
   (let [started (fixture/start! false fixture/library! fixture/author!
@@ -122,7 +126,9 @@
 
 (defn- scheduling-run! [{:keys [file threads queue-size jobs] :or {threads 2 queue-size 4096 jobs 300}}]
   (dotimes [_ 5] (render! file false))
-  (let [pool (ig/init-key :shipyard.jobs/pool {:threads threads :queue-size queue-size})
+  (let [started (system/start! (system/read-config! "systems/workers.edn"
+                                                    {:shipyard.jobs/pool {:threads threads :queue-size queue-size}}))
+        pool (:shipyard.jobs/pool started)
         bulk (jobs/scope! pool {:priority :bulk}) interactive (jobs/scope! pool)
         gate (CountDownLatch. 1) done (CountDownLatch. jobs)
         measurements (atom []) accepted (atom 0) rejected (atom 0) probe (promise)
@@ -161,7 +167,7 @@
                     :mean-read-ms (/ (reduce + (map :read-ms @measurements)) (count @measurements))
                     :mean-render-ms (/ (reduce + (map :render-ms @measurements)) (count @measurements))
                     :total-thread-cpu-ms (reduce + (map :cpu-ms @measurements))})))
-      (finally (.countDown gate) (ig/halt-key! :shipyard.jobs/pool pool)))))
+      (finally (.countDown gate) (system/stop! started)))))
 
 (defn -main [& [phase options]]
   (let [{:keys [file painted? threads jobs faces counts runs] :or {threads 2 jobs 4 faces 50000 runs 1}} (edn/read-string (or options "{}"))]

@@ -1,0 +1,12 @@
+;; Socket-free HTTP and settings fixtures. Runtime paths are isolated by the fixture.
+{:shipyard.store/db {}
+ :shipyard.library/index {:root nil :store #ig/ref :shipyard.store/db}
+ :shipyard.mesh/cache {:crease-deg 35 :lod-tiers [1.0 0.25 0.05]
+                       :facet-angle-deg 1.0 :facet-plane-epsilon-mm 0.01
+                       :cap-bytes 64000000}
+ :shipyard.jobs/pool {:store #ig/ref :shipyard.store/db}
+ :shipyard.catalog/db {:library #ig/ref :shipyard.library/index
+                       :store #ig/ref :shipyard.store/db}
+ :shipyard.http/jobs {:workers #ig/ref :shipyard.jobs/pool
+                      :library #ig/ref :shipyard.library/index
+                      :cache #ig/ref :shipyard.mesh/cache}}

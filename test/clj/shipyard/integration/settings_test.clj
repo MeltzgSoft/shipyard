@@ -13,7 +13,7 @@
             [integrant.core :as ig]
             [shipyard.fixtures :as f]
             [shipyard.http.routes :as routes]
-            [shipyard.jobs]
+            [shipyard.http-fixture :as http-fixture]
             [shipyard.http.settings :as settings]
             [shipyard.library.index :as index]
             [shipyard.settings.db :as settings-db]
@@ -42,26 +42,13 @@
     (binding [*opened-systems* (atom [])]
       (try (f)
            (finally
-             (doseq [{:keys [jobs workers catalog]} @*opened-systems*]
-               (ig/halt-key! :shipyard.http/jobs jobs)
-               (ig/halt-key! :shipyard.jobs/pool workers)
-               (metadata/close! (:store catalog))))))))
+             (doseq [started @*opened-systems*]
+               (http-fixture/stop! started)))))))
 
-(defn- system
-  "A running application that has never been told where its library is - the
-  state a fresh install starts in."
-  []
-  (let [database (metadata/open! (temp-dir "shipyard-db"))
-        library (ig/init-key :shipyard.library/index {:root nil :store database})
-        cache   {:dir (temp-dir "shipyard-cache") :crease-deg 35
-                 :lod-tiers [1.0 0.25 0.05] :cap-bytes 64000000 :inflight (atom {}) :files-lock (Object.)}
-        catalog (ig/init-key :shipyard.catalog/db {:library library :store database})
-        workers (ig/init-key :shipyard.jobs/pool {})
-        jobs    (ig/init-key :shipyard.http/jobs {:library library :cache cache :workers workers})
-        system {:workers workers :library library :catalog catalog :cache cache :jobs jobs
-                :config-dir (temp-dir "shipyard-cfg")}]
-    (swap! *opened-systems* conj system)
-    system))
+(defn- system []
+  (let [started (http-fixture/start! nil)]
+    (swap! *opened-systems* conj started)
+    started))
 
 (defn- GET [h path] (h {:request-method :get :uri path}))
 

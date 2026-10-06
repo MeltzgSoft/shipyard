@@ -157,6 +157,14 @@ audits every authored mount against its source surface, and writes an EDN report
 blocked report deliberately identifies mounts that need reauthoring rather than guessing
 their mating geometry.
 
+CLI tools use small Integrant graphs in `resources/systems/`: `workers.edn` for the
+canary/job measurements, `store.edn` for saved-root lookup, `library.edn` for the
+escort probe and scan measurements, and `catalog.edn` for the Cruiser proof.
+They start/stop through `shipyard.system`; explicit tool roots do not change the
+application's saved selection. HTTP, browser and benchmark fixtures have their
+own graphs in `test/clj/shipyard/systems/`, with temporary runtime paths and
+port 0 where a server is needed.
+
 The benchmark is the on-demand, machine-labelled measurement behind TECHNICAL.md §11;
 it is deliberately not a CI gate. It creates isolated databases for fresh scan indexes
 and mesh caches under the system temp directory, drives a hardware Chromium window

@@ -1,0 +1,3 @@
+;; Overlay on e2e.edn: the server owns the blocked viewport handler.
+{:shipyard.e2e.support/blocked-handler {:handler #ig/ref :shipyard.http/routes}
+ :shipyard.http/server {:handler #ig/ref :shipyard.e2e.support/blocked-handler}}

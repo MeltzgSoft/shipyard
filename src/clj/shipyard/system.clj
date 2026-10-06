@@ -74,6 +74,15 @@
          (update-in [:shipyard.library/index :root]
                     #(expand-home (System/getProperty "user.home") %))))))
 
+(defn read-config!
+  "Read a small classpath system graph and overlay explicit runtime options.
+  Unlike load-config!, this does not load application or environment overrides."
+  ([resource] (read-config! resource {}))
+  ([resource overrides]
+   (let [source (or (io/resource resource)
+                    (throw (ex-info "System config resource not found" {:resource resource})))]
+     (deep-merge (aero/read-config source) overrides))))
+
 (defn start!
   ([] (start! (load-config!)))
   ([cfg]

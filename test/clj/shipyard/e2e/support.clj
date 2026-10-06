@@ -8,7 +8,7 @@
   (:require [babashka.fs :as fs]
             [clojure.java.io :as io]
             [integrant.core :as ig]
-            [ring.adapter.jetty :as jetty]
+            [shipyard.system :as system]
             [shipyard.fixtures :as f]
             [shipyard.file-picker.db :as picker])
   (:import [com.microsoft.playwright Browser Browser$NewPageOptions BrowserType$LaunchOptions
@@ -118,52 +118,25 @@
               {:bundle (str bundle) :source (str source)})))))
 
 (defn- config [root cache-home]
-  {:shipyard.library/index {:root (str root) :store (ig/ref :shipyard.store/db)}
-   :shipyard.mesh/cache    {:crease-deg 35 :lod-tiers [1.0 0.25 0.05]
-                            :facet-angle-deg 1.0
-                            :facet-plane-epsilon-mm 0.01
-                            :cap-bytes 64000000 :cache-home (str cache-home)}
-   :shipyard.store/db {:data-home (str cache-home)}
-   :shipyard.jobs/pool {:store (ig/ref :shipyard.store/db)}
-   :shipyard.thumbnail/cache {:cache (ig/ref :shipyard.mesh/cache) :workers (ig/ref :shipyard.jobs/pool) :cap-bytes 134217728}
-   :shipyard.file-picker/db {}
-   :shipyard.catalog/db    {:library (ig/ref :shipyard.library/index) :store (ig/ref :shipyard.store/db)}
-   :shipyard.http/jobs     {:workers (ig/ref :shipyard.jobs/pool)
-                            :library (ig/ref :shipyard.library/index)
-                            :cache   (ig/ref :shipyard.mesh/cache)}
-   :shipyard.assembly/db {}
-   :shipyard.loadout/db {:store (ig/ref :shipyard.store/db) :catalog (ig/ref :shipyard.catalog/db)}
-   :shipyard.scheme/db {:store (ig/ref :shipyard.store/db) :catalog (ig/ref :shipyard.catalog/db)}
-   :shipyard.paint/db {}
-   :shipyard.loadout.operations/preview {}
-   :shipyard.workspace/db {:assembly (ig/ref :shipyard.assembly/db)
-                           :preview (ig/ref :shipyard.loadout.operations/preview)}
-   :shipyard.http/routes   {:thumbnails (ig/ref :shipyard.thumbnail/cache)
-                            :file-picker (ig/ref :shipyard.file-picker/db)
-                            :workspace (ig/ref :shipyard.workspace/db)
-                            :assembly (ig/ref :shipyard.assembly/db)
-                            :loadouts (ig/ref :shipyard.loadout/db)
-                            :schemes (ig/ref :shipyard.scheme/db)
-                            :paint (ig/ref :shipyard.paint/db)
-                            :preview (ig/ref :shipyard.loadout.operations/preview)
-                            :library (ig/ref :shipyard.library/index)
-                            :catalog (ig/ref :shipyard.catalog/db)
-                            :cache   (ig/ref :shipyard.mesh/cache)
-                            :jobs    (ig/ref :shipyard.http/jobs)}
-   ;; Port 0: an ephemeral port, so parallel runs and a developer's own server
-   ;; on 8080 cannot collide.
-   :shipyard.http/server   {:port 0 :host "127.0.0.1"
-                            :handler (ig/ref :shipyard.http/routes)}})
+  (system/read-config! "shipyard/systems/e2e.edn"
+                       {:shipyard.library/index {:root (str root)}
+                        :shipyard.mesh/cache {:cache-home (str cache-home)}
+                        :shipyard.store/db {:data-home (str cache-home)}}))
 
-(defn start-system! []
+(defn- start-fixture! [overrides]
   (let [root (library-tree) cache-home (temp-dir "shipyard-e2e-cache")
-        cfg (config root cache-home)]
-    (ig/load-namespaces cfg)
-    (vary-meta (ig/init cfg) assoc ::temporary-roots [root cache-home])))
+        cfg (system/deep-merge (config root cache-home) overrides)]
+    (try
+      (vary-meta (system/start! cfg) assoc ::temporary-roots [root cache-home])
+      (catch Exception error
+        (doseq [path [root cache-home]] (fs/delete-tree path))
+        (throw error)))))
 
-(defn stop-system! [system]
-  (ig/halt! system)
-  (doseq [root (::temporary-roots (meta system))] (fs/delete-tree root)))
+(defn start-system! [] (start-fixture! {}))
+
+(defn stop-system! [started]
+  (system/stop! started)
+  (doseq [root (::temporary-roots (meta started))] (fs/delete-tree root)))
 
 (defn- block-bundle
   "404 the viewport bundle, and nothing else."
@@ -173,21 +146,15 @@
       {:status 404 :headers {"content-type" "text/plain"} :body "blocked"}
       (handler req))))
 
+(defmethod ig/init-key ::blocked-handler [_ {:keys [handler]}]
+  (block-bundle handler))
+
 (defn start-degraded!
-  "The app with its viewport bundle blocked (§8, §10.3).
-
-  Blocked at the server rather than through CDP in the browser: a 404 for
-  `/js/viewport.js` is exactly what a failed frontend build or a blocking proxy
-  looks like from the page's side, and it needs nothing but a ring wrapper.
-
-  Returns `[system server]`; the caller stops both."
+  "An Integrant-owned server with the viewport bundle blocked (§8, §10.3).
+  Returns `[system server]`; stop-system! halts the complete graph."
   []
-  (let [cfg (config (library-tree) (temp-dir "shipyard-e2e-cache"))
-        _   (ig/load-namespaces cfg)
-        sys (ig/init cfg [:shipyard.http/routes])
-        srv (jetty/run-jetty (block-bundle (:shipyard.http/routes sys))
-                             {:port 0 :host "127.0.0.1" :join? false})]
-    [sys srv]))
+  (let [started (start-fixture! (system/read-config! "shipyard/systems/degraded.edn"))]
+    [started (:shipyard.http/server started)]))
 
 (defn server-port ^long [^Server server]
   (.getLocalPort ^ServerConnector (first (.getConnectors server))))

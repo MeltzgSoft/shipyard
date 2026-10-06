@@ -1,0 +1,37 @@
+;; Browser fixture graph. Runtime root/cache paths are injected; port 0 avoids collisions.
+{:shipyard.library/index {:root nil :store #ig/ref :shipyard.store/db}
+ :shipyard.mesh/cache    {:crease-deg 35 :lod-tiers [1.0 0.25 0.05]
+                          :facet-angle-deg 1.0
+                          :facet-plane-epsilon-mm 0.01
+                          :cap-bytes 64000000 }
+ :shipyard.store/db {}
+ :shipyard.jobs/pool {:store #ig/ref :shipyard.store/db}
+ :shipyard.thumbnail/cache {:cache #ig/ref :shipyard.mesh/cache :workers #ig/ref :shipyard.jobs/pool :cap-bytes 134217728}
+ :shipyard.file-picker/db {}
+ :shipyard.catalog/db    {:library #ig/ref :shipyard.library/index :store #ig/ref :shipyard.store/db}
+ :shipyard.http/jobs     {:workers #ig/ref :shipyard.jobs/pool
+                          :library #ig/ref :shipyard.library/index
+                          :cache   #ig/ref :shipyard.mesh/cache}
+ :shipyard.assembly/db {}
+ :shipyard.loadout/db {:store #ig/ref :shipyard.store/db :catalog #ig/ref :shipyard.catalog/db}
+ :shipyard.scheme/db {:store #ig/ref :shipyard.store/db :catalog #ig/ref :shipyard.catalog/db}
+ :shipyard.paint/db {}
+ :shipyard.loadout.operations/preview {}
+ :shipyard.workspace/db {:assembly #ig/ref :shipyard.assembly/db
+                         :preview #ig/ref :shipyard.loadout.operations/preview}
+ :shipyard.http/routes   {:thumbnails #ig/ref :shipyard.thumbnail/cache
+                          :file-picker #ig/ref :shipyard.file-picker/db
+                          :workspace #ig/ref :shipyard.workspace/db
+                          :assembly #ig/ref :shipyard.assembly/db
+                          :loadouts #ig/ref :shipyard.loadout/db
+                          :schemes #ig/ref :shipyard.scheme/db
+                          :paint #ig/ref :shipyard.paint/db
+                          :preview #ig/ref :shipyard.loadout.operations/preview
+                          :library #ig/ref :shipyard.library/index
+                          :catalog #ig/ref :shipyard.catalog/db
+                          :cache   #ig/ref :shipyard.mesh/cache
+                          :jobs    #ig/ref :shipyard.http/jobs}
+ ;; Port 0: an ephemeral port, so parallel runs and a developer's own server
+ ;; on 8080 cannot collide.
+ :shipyard.http/server   {:port 0 :host "127.0.0.1"
+                          :handler #ig/ref :shipyard.http/routes}}

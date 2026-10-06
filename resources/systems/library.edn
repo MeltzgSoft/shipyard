@@ -1,0 +1,4 @@
+;; Explicit tool roots do not initialize or change application settings.
+{:shipyard.store/db {}
+ :shipyard.library/index {:root nil :resolve-settings? false
+                          :store #ig/ref :shipyard.store/db}}

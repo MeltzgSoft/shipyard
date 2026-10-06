@@ -6,7 +6,6 @@
             [clojure.string :as str]
             [clojure.tools.logging :as log]
             [datalevin.core :as d]
-            [integrant.core :as ig]
             [shipyard.store.db :as store]
             [shipyard.settings.transforms :as transforms]
             [shipyard.system :as system]))
@@ -54,17 +53,11 @@
         (when-let [root (or (legacy-root! config-dir) (not-empty configured-root))]
           (save-library-root! database (system/expand-home (System/getProperty "user.home") root))))))
 
-(defn configured-root!
-  "Read the selected root for command-line tools without changing the setting.
-  An explicit tool --root should bypass this lookup."
-  [config]
-  (let [{:keys [directory data-home] :as options} (:shipyard.store/db config)
-        directory (or directory (fs/path (or data-home (system/data-home!)) "shipyard" "database"))
-        root (when (fs/exists? directory)
-               (let [database (ig/init-key :shipyard.store/db options)]
-                 (try (library-root! database)
-                      (finally (store/close! database)))))]
-    (or root
-        (some-> (or (legacy-root! (get-in config [:shipyard.library/index :config-dir]))
-                    (get-in config [:shipyard.library/index :root]))
-                (#(system/expand-home (System/getProperty "user.home") %))))))
+(defn tool-root!
+  "Read a CLI root from an injected store, falling back to legacy/bootstrap
+  configuration. A nil store skips saved settings; this never saves a selection."
+  [database config]
+  (or (when database (library-root! database))
+      (some-> (or (legacy-root! (get-in config [:shipyard.library/index :config-dir]))
+                  (get-in config [:shipyard.library/index :root]))
+              (#(system/expand-home (System/getProperty "user.home") %)))))

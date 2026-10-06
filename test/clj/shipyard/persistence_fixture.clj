@@ -2,15 +2,18 @@
   "Read actual durable snapshots through an independently opened Datalevin copy."
   (:require [babashka.fs :as fs]
             [datalevin.core :as d]
-            [shipyard.store.db :as store]))
+            [shipyard.store.db :as store]
+            [shipyard.system :as system]))
 
 (defn persisted! [database f]
   (let [database (or (:store database) database)
         dir (fs/create-temp-dir {:prefix "shipyard-reopen-"})]
     (try
       (store/read! database #(d/copy % (str dir)))
-      (let [reopened (store/open! dir)]
-        (try (store/read! reopened f) (finally (store/close! reopened))))
+      (let [started (system/start! (system/read-config! "systems/store.edn"
+                                                        {:shipyard.store/db {:directory (str dir)}}))]
+        (try (store/read! (:shipyard.store/db started) f)
+             (finally (system/stop! started))))
       (finally (fs/delete-tree dir)))))
 
 (defn records! [facade kind]

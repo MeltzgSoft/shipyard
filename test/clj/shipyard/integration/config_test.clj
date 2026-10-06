@@ -6,6 +6,7 @@
   (:require [babashka.fs :as fs]
             [clojure.java.io :as io]
             [clojure.test :refer [deftest is testing]]
+            [shipyard.cli :as cli]
             [shipyard.settings.db :as settings]
             [shipyard.store.db :as store]
             [shipyard.system :as system]))
@@ -123,13 +124,13 @@
         database-dir (io/file dir "database")
         cfg {:shipyard.store/db {:directory (str database-dir)}
              :shipyard.library/index {:root "/configured/models" :config-dir (str dir)}}]
-    (is (= "/configured/models" (settings/configured-root! cfg)))
+    (is (= "/configured/models" (cli/configured-root! cfg)))
     (is (not (fs/exists? database-dir)) "a read-only lookup must not create a database")
     (legacy-setting! dir "{:root \"/legacy/models\"}")
-    (is (= "/legacy/models" (settings/configured-root! cfg)))
+    (is (= "/legacy/models" (cli/configured-root! cfg)))
     (is (not (fs/exists? database-dir)))
     (with-store dir #(settings/save-library-root! % "/saved/models"))
-    (is (= "/saved/models" (settings/configured-root! cfg)))))
+    (is (= "/saved/models" (cli/configured-root! cfg)))))
 
 (deftest command-line-root-lookup-does-not-close-a-running-application-store
   (let [dir (with-user-config {})
@@ -138,9 +139,9 @@
     (with-store dir
       (fn [database]
         (settings/save-library-root! database "/saved/models")
-        (is (= "/saved/models" (settings/configured-root! cfg)))
+        (is (= "/saved/models" (cli/configured-root! cfg)))
         (is (= "/saved/models" (settings/library-root! database))
             "closing the lookup connection must leave the application's connection readable")
         (settings/save-library-root! database "/changed/models")
         (is (= "/changed/models" (settings/library-root! database)))
-        (is (= "/changed/models" (settings/configured-root! cfg)))))))
+        (is (= "/changed/models" (cli/configured-root! cfg)))))))

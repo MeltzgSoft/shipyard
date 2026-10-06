@@ -12,7 +12,6 @@
   (:require [babashka.fs :as fs]
             [clojure.pprint :as pp]
             [clojure.string :as str]
-            [integrant.core :as ig]
             [shipyard.canary :as canary]
             [shipyard.library.index :as index]
             [shipyard.library.scan :as scan]
@@ -20,8 +19,7 @@
             [shipyard.mesh.stl :as stl]
             [shipyard.report :as report]
             [shipyard.system :as system]
-            [shipyard.store.db :as store]
-            [shipyard.settings.db :as settings])
+            [shipyard.cli :as cli])
   (:import [com.microsoft.playwright Browser Browser$NewPageOptions
             BrowserType$LaunchOptions Page Playwright]
            [java.io File]
@@ -159,12 +157,11 @@
 ;; --- scan/index -------------------------------------------------------------
 
 (defn- scan-parts! [root directory]
-  (let [database (store/open! directory)
-        library {:store database :state (atom {})}]
-    (try
-      (index/set-root! library (str root))
-      (index/parts! library)
-      (finally (store/close! database)))))
+  (let [started (system/start! (system/read-config! "systems/library.edn"
+                                                    {:shipyard.store/db {:directory (str directory)}
+                                                     :shipyard.library/index {:root (str root)}}))]
+    (try (index/parts! (:shipyard.library/index started))
+         (finally (system/stop! started)))))
 
 (defn- measure-starts! [work root runs]
   (loop [i 0, cold [], warm [], parts nil]
@@ -212,25 +209,10 @@
 ;; --- real HTTP serving -----------------------------------------------------
 
 (defn- system-config [root cache-home]
-  {:shipyard.library/index {:root (str root) :store (ig/ref :shipyard.store/db)}
-   :shipyard.mesh/cache    {:crease-deg 35 :lod-tiers [1.0 0.25 0.05]
-                            :facet-angle-deg 1.0
-                            :facet-plane-epsilon-mm 0.01
-                            :cap-bytes 4294967296 :cache-home (str cache-home)}
-   :shipyard.store/db {:data-home (str cache-home)}
-   :shipyard.jobs/pool {:store (ig/ref :shipyard.store/db)}
-   :shipyard.thumbnail/cache {:cache (ig/ref :shipyard.mesh/cache) :workers (ig/ref :shipyard.jobs/pool) :cap-bytes 134217728}
-   :shipyard.catalog/db    {:library (ig/ref :shipyard.library/index) :store (ig/ref :shipyard.store/db)}
-   :shipyard.http/jobs     {:workers (ig/ref :shipyard.jobs/pool)
-                            :library (ig/ref :shipyard.library/index)
-                            :cache   (ig/ref :shipyard.mesh/cache)}
-   :shipyard.http/routes   {:thumbnails (ig/ref :shipyard.thumbnail/cache)
-                            :library (ig/ref :shipyard.library/index)
-                            :catalog (ig/ref :shipyard.catalog/db)
-                            :cache   (ig/ref :shipyard.mesh/cache)
-                            :jobs    (ig/ref :shipyard.http/jobs)}
-   :shipyard.http/server   {:port 0 :host "127.0.0.1"
-                            :handler (ig/ref :shipyard.http/routes)}})
+  (system/read-config! "shipyard/systems/benchmark.edn"
+                       {:shipyard.library/index {:root (str root)}
+                        :shipyard.mesh/cache {:cache-home (str cache-home)}
+                        :shipyard.store/db {:data-home (str cache-home)}}))
 
 (defn- start-system! [root cache-home]
   (system/start! (system-config root cache-home)))
@@ -466,7 +448,7 @@
 
 (defn -main [& args]
   (let [{:keys [out root] :as opts} (parse-args args)
-        root (or root (settings/configured-root! (system/load-config!)))
+        root (or root (cli/configured-root! (system/load-config!)))
         report (run-benchmark! (assoc opts :root root))]
     (report/write-report! out report)
     (pp/pprint report)

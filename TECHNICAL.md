@@ -183,6 +183,24 @@ wins on subsequent starts. `load-config!` passes the config directory to the ind
 normal application startup can find the legacy setting; isolated components without a
 config directory never read the user's legacy file.
 
+Tool and fixture setup uses small classpath EDN graphs, read by
+`shipyard.system/read-config!` with explicit runtime overrides and started/stopped
+through the normal Integrant lifecycle. These graphs do not load user or environment
+overrides. `resources/systems/` contains store-only, worker-only, library and catalog
+graphs; `test/clj/shipyard/systems/` contains socket-free HTTP, browser and benchmark
+graphs. The degraded browser graph overlays a handler component, so Jetty remains
+owned by the system. `start!` halts partially initialized systems on failure; fixture
+teardown halts before deleting its temporary paths.
+
+Saved-root lookup is CLI setup (`shipyard.cli/configured-root!`): it starts a
+store-only graph when a database already exists, injects that store into
+`shipyard.settings.db/tool-root!`, then halts the graph. It does not create a database
+on first use or change a saved root. Application startup still uses `initial-root!`
+with the application-owned store. Library graphs for explicit tool roots set
+`:resolve-settings? false`, which skips application selection initialization and
+scans the supplied root without saving it; normal application/fixture graphs retain
+the default settings resolution.
+
 Shipyard neither writes `library.edn` nor rewrites the user's `config.edn`. Updating a
 selection cannot evaluate and discard that file's aero tags or comments. Change the
 selected folder through the settings form (§7.3), not by editing a legacy setting.

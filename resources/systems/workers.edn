@@ -1,0 +1,2 @@
+;; Standalone canary and job measurements need only the shared worker component.
+{:shipyard.jobs/pool {}}

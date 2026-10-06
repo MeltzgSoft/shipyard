@@ -6,14 +6,12 @@
   index once they have been paid for."
   (:require [babashka.fs :as fs]
             [clojure.string :as str]
-            [integrant.core :as ig]
             [shipyard.library.index :as index]
             [shipyard.math :as math]
             [shipyard.mesh.stl :as stl]
             [shipyard.mesh.volume :as volume]
             [shipyard.report :as report]
-            [shipyard.settings.db :as settings]
-            [shipyard.store.db :as store]
+            [shipyard.cli :as cli]
             [shipyard.system :as system]))
 
 (def ^:const bin-size-mm 0.5)
@@ -250,16 +248,16 @@
 (defn -main [& args]
   (let [{:keys [out root]} (parse-args args)
         cfg (system/load-config!)
-        root (or root (settings/configured-root! cfg))
+        root (or root (cli/configured-root! cfg))
         _ (when-not root
             (println "No library root. Pass --root, or set one in Shipyard first.")
             (System/exit 2))
-        database (ig/init-key :shipyard.store/db (:shipyard.store/db cfg))]
+        started (system/start! (system/read-config! "systems/library.edn"
+                                                    {:shipyard.store/db (:shipyard.store/db cfg)
+                                                     :shipyard.library/index {:root root}}))]
     (try
-      (let [library {:store database :state (atom {})}]
-        (index/set-root! library root)
-        (let [report (analyze-library! library)]
-          (println "escort classifications:" (count report))
-          (println "report written to" (str (report/write-report! out report)))))
-      (finally (store/close! database)))
+      (let [report (analyze-library! (:shipyard.library/index started))]
+        (println "escort classifications:" (count report))
+        (println "report written to" (str (report/write-report! out report))))
+      (finally (system/stop! started)))
     (System/exit 0)))

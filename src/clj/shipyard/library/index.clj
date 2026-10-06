@@ -237,8 +237,8 @@
   (locking state
     (reset! state (scan-state! root store))))
 
-(defmethod ig/init-key :shipyard.library/index [_ {:keys [root store config-dir]}]
+(defmethod ig/init-key :shipyard.library/index [_ {:keys [root store config-dir resolve-settings?] :or {resolve-settings? true}}]
   (when-not store
     (throw (ex-info "Library index requires the shared application store" {})))
-  (let [root (settings/initial-root! store root config-dir)]
+  (let [root (if resolve-settings? (settings/initial-root! store root config-dir) root)]
     {:store store :state (atom (scan-state! root store))}))

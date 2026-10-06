@@ -3,7 +3,6 @@
   pipeline - but no socket. The handler is a function of its dependencies, so
   everything §7 promises can be asserted by calling it (§10.2)."
   (:require [shipyard.persistence-fixture :as persisted]
-            [shipyard.store.db :as metadata]
             [shipyard.store.scan-index :as scan-index]
             [clojure.data.json :as json]
             [clojure.edn :as edn]
@@ -11,12 +10,11 @@
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing use-fixtures]]
             [babashka.fs :as fs]
-            [integrant.core :as ig]
             [ring.mock.request :as mock]
             [shipyard.fixtures :as f]
             [shipyard.http.jobs :as jobs]
             [shipyard.http.routes :as routes]
-            [shipyard.jobs]
+            [shipyard.http-fixture :as http-fixture]
             [shipyard.catalog.db :as catalog-db]
             [shipyard.mesh.cache :as cache]
             [shipyard.mesh.stl :as stl]
@@ -57,37 +55,13 @@
     (binding [*opened-systems* (atom [])]
       (try (f)
            (finally
-             (doseq [{:keys [jobs workers catalog]} @*opened-systems*]
-               (ig/halt-key! :shipyard.http/jobs jobs)
-               (ig/halt-key! :shipyard.jobs/pool workers)
-               (metadata/close! (:store catalog))))))))
+             (doseq [started @*opened-systems*]
+               (http-fixture/stop! started)))))))
 
-(defn- system
-  "The component map the router is handed, built the way integrant builds it.
-
-  The library and catalog go through their real `init-key`s, pointed at a temp
-  cache home: they own a mutable state atom now that the root is a setting
-  (issue #35), and a hand-built stand-in would be free to drift out of the
-  shape the handlers read."
-  [root]
-  (let [database (metadata/open! (temp-dir "shipyard-db"))
-        library (ig/init-key :shipyard.library/index {:root (str root) :store database})
-        ;; Built by hand rather than through init-key: that one parks the cache
-        ;; under XDG_CACHE_HOME, and a test must not evict the developer's real
-        ;; cache to prove a point.
-        cache   {:dir (temp-dir "shipyard-http-cache") :crease-deg 35
-                 :lod-tiers [1.0 0.25 0.05]
-                 :facet-angle-deg 1.0
-                 :facet-plane-epsilon-mm 0.01
-                 :cap-bytes 64000000 :inflight (atom {}) :files-lock (Object.)}
-        catalog (ig/init-key :shipyard.catalog/db {:library library :store database})
-        workers (ig/init-key :shipyard.jobs/pool {})
-        jobs    (ig/init-key :shipyard.http/jobs {:library library :cache cache :workers workers})
-        system {:workers workers :library library :catalog catalog :cache cache :jobs jobs
-     ;; Keep all application configuration isolated from the developer.
-                :config-dir (temp-dir "shipyard-cfg")}]
-    (swap! *opened-systems* conj system)
-    system))
+(defn- system [root]
+  (let [started (http-fixture/start! root)]
+    (swap! *opened-systems* conj started)
+    started))
 
 (defn- handler [sys] (routes/handler sys))
 

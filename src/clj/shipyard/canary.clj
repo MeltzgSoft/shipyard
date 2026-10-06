@@ -14,8 +14,7 @@
 
   It is a report, not a gate. Every part is examined even when the one before it
   threw, because the whole point is the list."
-  (:require [integrant.core :as ig]
-            [shipyard.jobs :as workers]
+  (:require [shipyard.jobs :as workers]
             [babashka.fs :as fs]
             [clojure.pprint :as pp]
             [shipyard.library.index :as index]
@@ -25,7 +24,7 @@
             [shipyard.mesh.volume :as volume]
             [shipyard.mesh.weld :as weld]
             [shipyard.report :as report]
-            [shipyard.settings.db :as settings]
+            [shipyard.cli :as cli]
             [shipyard.system :as system])
   (:import [java.io File]
            [java.nio ByteBuffer ByteOrder]))
@@ -125,7 +124,9 @@
   "Examine every part using the common executor implementation in this CLI process."
   [{:keys [root parts crease-deg lod-tiers thread-count]
     :or {crease-deg 35 lod-tiers [1.0 0.25 0.05]}}]
-  (let [shared (ig/init-key :shipyard.jobs/pool {:threads thread-count})
+  (let [started (system/start! (system/read-config! "systems/workers.edn"
+                                                    {:shipyard.jobs/pool {:threads thread-count}}))
+        shared (:shipyard.jobs/pool started)
         scope (workers/scope! shared)
         n (:threads shared)
         done (atom 0)
@@ -161,7 +162,7 @@
         {:root (str root) :ran-at (str (java.time.Instant/now)) :parts total :threads n
          :findings (vec (sort-by (juxt :kind :part/id) findings))
          :totals (into (sorted-map) (frequencies (map :kind findings)))})
-      (finally (ig/halt-key! :shipyard.jobs/pool shared)))))
+      (finally (system/stop! started)))))
 
 ;; --- reporting --------------------------------------------------------------
 
@@ -213,7 +214,7 @@
 (defn -main [& args]
   (let [{:keys [out limit thread-count root]} (parse-args args)
         cfg   (system/load-config!)
-        root  (or root (settings/configured-root! cfg))
+        root  (or root (cli/configured-root! cfg))
         cache (get cfg :shipyard.mesh/cache)
         _     (when-not root
                 ;; There is no default library any more (issue #35), and the

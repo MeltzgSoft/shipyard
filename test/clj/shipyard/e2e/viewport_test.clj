@@ -1039,7 +1039,6 @@
                #(str/includes? (s/text driver "#detail") "Loaded"))))
         (finally
           (s/quit! driver)
-          (.stop ^org.eclipse.jetty.server.Server server)
           (s/stop-system! system))))))
 
 (deftest nonpreviewable-parts-can-edit-labels-and-show-grid-error
