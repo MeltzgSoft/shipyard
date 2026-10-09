@@ -525,7 +525,7 @@
         ready (await-ready h hull-id)
         mounts (:mounts (get (triggers ready) "shipyard:load-mesh"))]
     (testing "the request polls while a bounded server job recovers faces"
-      (is (str/includes? (:body first-response) "Preparing this part"))
+      (is (str/includes? (:body first-response) "Preparing preview…"))
       (is (nil? (get (triggers first-response) "shipyard:load-mesh"))))
     (testing "the completed response and durable record carry direct indices"
       (is (= 1 (count (:part/mounts (catalog-db/part (catalog-db/snapshot! (:catalog sys)) hull-id)))))
