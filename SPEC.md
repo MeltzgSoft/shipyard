@@ -730,6 +730,12 @@ All server-rendered hiccup driven by htmx, except the viewport.
 - **Settings** - library folder selection, shared classification management and defaults for new pit/recess cuts. See §9.6.
 - **Ship Browser** - a table of saved classes and named ships that opens the Assemble editor. See §9.3.
 
+Form controls share the dark application palette, accent, keyboard focus and disabled
+states across all workspaces and import review. Tabs, primary actions and material
+color controls retain their purposeful visual distinctions. Mount wizard fields fit
+the inspector's available width; face, acceptance, mirror and cut sections align
+without forcing extra columns when the application window is wide.
+
 ### 9.1 Thumbnails
 
 Part-table thumbnails are lazy, shaded PNG previews with saved orientation and the

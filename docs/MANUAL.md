@@ -6,6 +6,10 @@ define the mount frames that describe how those parts connect.
 This manual covers supported behavior. Planned work lives in the
 [Forgejo milestones](https://forgejo.tail943578.ts.net/MeltzgSoft/shipyard/milestones).
 
+Buttons and form fields use the same dark theme across the app. Keyboard focus has
+a blue outline; unavailable controls are dimmed. Checkboxes, radio buttons and sliders
+use the app's blue accent.
+
 ## 1. Installing
 
 Download the desktop package for your platform from
@@ -401,6 +405,9 @@ removes whole visible triangles under the circle; adjust **Brush radius** in scr
 pixels. Alt+drag still orbits. **Undo erase** restores the previous stroke (up to 30),
 and **Reset faces** restores the selection from when the form opened. Re-pick a face
 to start over from its full planar surface.
+
+Mount fields adapt to the inspector's available width. Mount faces, acceptance,
+mirror and pitted-version sections line up at the same width when you resize the window.
 
 Trimming changes only the draft until **Save mount** or **Save changes**. Keep at least
 one triangle. The mount frame and assembly capacity positions remain fixed; pits

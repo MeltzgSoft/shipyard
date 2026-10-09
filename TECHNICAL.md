@@ -2446,6 +2446,15 @@ M3 draft and viewport protocol in §13. Product requirements are in SPEC §9.2�
 
 ### 14.1 State ownership
 
+`resources/public/app.css` owns ordinary control appearance globally through low-specificity
+element rules: typography, surfaces, borders, focus, disabled states and native accents.
+The root dark color scheme also themes native dropdowns, checkboxes, radios and ranges.
+Component selectors own layout and deliberate visual variants, such as tabs, primary
+actions, mount candidates and material color pickers. New or swapped forms inherit
+the control theme without needing a panel selector. Mount authoring grids size to
+their container and share full-width group shells rather than using viewport-width
+breakpoints to choose a column count inside the floating inspector.
+
 Model transient application state by workspace identity. Each workspace owns its
 selected part or loadout, filters, working state and mount-color setting. In particular,
 Ship Browser owns its class table and Assemble editor. The assembly draft and named-ship paint
