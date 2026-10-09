@@ -1130,8 +1130,11 @@ itself forever.
 Shared control help is rendered by `shipyard.help.views` as data and accessible
 descriptions. `shipyard.help.dom` installs delegated hover/focus handlers once, so help
 also works on HTMX replacements. Its single tooltip lives outside scrolling panels,
-clamps to the viewport and dismisses on Escape or removal of its control. Pointer
-help repositions while the control remains focused or hovered, and dismisses otherwise.
+clamps to the viewport and dismisses on Escape or removal of its control. It tracks
+pointer versus keyboard help: pointer exit from the control or tooltip schedules
+dismissal unless either remains hovered, regardless of retained focus. Only keyboard
+help remains open solely on focus. Unrelated pointer targets do not cancel dismissal;
+re-entering the control or tooltip does. Scroll updates preserve the active trigger mode.
 This transient presentation state does not own workspace selection or domain data. Group controls are
 rendered from the server's full selection and replaced alongside selection feedback.
 

@@ -737,7 +737,10 @@ the inspector's available width; face, acceptance, mirror and cut sections align
 without forcing extra columns when the application window is wide.
 
 Brief control help uses shared tooltips available on pointer hover and keyboard focus,
-dismissible with Escape. Canvas gestures have focusable help buttons. Standing workflow
+dismissible with Escape. Pointer help closes after the cursor leaves both the control
+and tooltip, even when the control retains focus; a short grace period permits crossing
+between them. Keyboard-triggered help remains available until focus leaves or it is
+dismissed. Canvas gestures have focusable help buttons. Standing workflow
 explanations belong in the manual; conditional prerequisites, warnings, counts and live
 save/progress feedback remain visible.
 

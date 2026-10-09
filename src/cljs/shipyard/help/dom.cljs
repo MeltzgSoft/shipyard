@@ -8,6 +8,7 @@
   (when (compare-and-set! installed? false true)
     (let [tooltip (.createElement js/document "div")
           source (volatile! nil)
+          origin (volatile! nil)
           previous-description (volatile! nil)
           timer (volatile! nil)
           cancel! (fn [] (js/clearTimeout @timer))
@@ -18,16 +19,18 @@
                       (.setAttribute element "aria-describedby" @previous-description)
                       (.removeAttribute element "aria-describedby")))
                   (vreset! source nil)
+                  (vreset! origin nil)
                   (set! (.-hidden tooltip) true))
-          show! (fn [element]
-                  (cancel!)
+          show! (fn [element cause]
                   (when (and element (.contains js/document element))
+                    (cancel!)
                     (when-not (= element @source)
                       (hide!)
                       (vreset! source element)
                       (vreset! previous-description (.getAttribute element "aria-describedby"))
                       (.setAttribute element "aria-describedby"
                                      (str/join " " (remove str/blank? [@previous-description "control-tooltip"]))))
+                    (vreset! origin cause)
                     (set! (.-textContent tooltip) (.getAttribute element "data-help"))
                     (set! (.-hidden tooltip) false)
                     (let [rect (.getBoundingClientRect element)
@@ -40,12 +43,17 @@
                       (set! (.. tooltip -style -left) (str left "px"))
                       (set! (.. tooltip -style -top) (str top "px")))))
           trigger (fn [event] (some-> (.-target event) (.closest "[data-help]")))
-          leave! (fn [_]
+          leave! (fn [event]
+                   ;; Pointer exit must dismiss even if clicking left the control
+                   ;; focused. Keyboard-only help still follows keyboard focus.
+                   (when (#{"pointerout" "pointerleave"} (.-type event))
+                     (vreset! origin :pointer))
                    (cancel!)
                    (vreset! timer
                             (js/setTimeout
                              (fn []
-                               (when-not (or (= @source (.-activeElement js/document))
+                               (when-not (or (and (= :keyboard @origin)
+                                                  (= @source (.-activeElement js/document)))
                                              (.matches tooltip ":hover")
                                              (and @source (.matches @source ":hover")))
                                  (hide!))) 150)))]
@@ -54,24 +62,28 @@
       (.setAttribute tooltip "role" "tooltip")
       (set! (.-hidden tooltip) true)
       (.appendChild (.-body js/document) tooltip)
-      (.addEventListener js/document "pointerover" #(show! (trigger %)))
-      (.addEventListener js/document "pointerout" leave!)
+      (.addEventListener js/document "pointerover" #(show! (trigger %) :pointer))
+      (.addEventListener js/document "pointerout"
+                         #(when (and @source (= @source (trigger %))) (leave! %)))
       (.addEventListener tooltip "pointerenter" cancel!)
       (.addEventListener tooltip "pointerleave" leave!)
-      (.addEventListener js/document "focusin" #(if-let [element (trigger %)] (show! element) (hide!)))
+      (.addEventListener js/document "focusin" #(if-let [element (trigger %)] (show! element :keyboard) (hide!)))
       (.addEventListener js/document "focusout" leave!)
       (.addEventListener js/document "keydown" #(when (= "Escape" (.-key %)) (hide!)))
       (.addEventListener js/document "pointerdown" #(when-not (= tooltip (.-target %)) (hide!)))
       (.addEventListener js/document "click"
                          #(when-let [element (some-> (.-target %) (.closest ".control-help[data-help]"))]
-                            (show! element)))
+                            (show! element :pointer)))
       ;; Focusing an offscreen control scrolls its panel after focusin. Keep
       ;; keyboard help open and reposition it rather than dismissing it.
       (.addEventListener js/document "scroll"
-                         #(if (and @source (or (= @source (.-activeElement js/document))
-                                               (.matches @source ":hover")))
-                            (show! @source) (hide!)) true)
+                         #(if (and @source (or (and (= :keyboard @origin)
+                                                    (= @source (.-activeElement js/document)))
+                                               (.matches @source ":hover")
+                                               (.matches tooltip ":hover")))
+                            (show! @source @origin) (hide!)) true)
       (.addEventListener js/window "resize" hide!)
+      (.addEventListener js/window "blur" hide!)
       ;; Unrelated thumbnail/progress swaps must not dismiss focused help.
       (doseq [event ["htmx:beforeSwap" "htmx:oobBeforeSwap"]]
         (.addEventListener js/document event
