@@ -1,5 +1,6 @@
 (ns shipyard.regions.views
-  (:require [clojure.string :as str]
+  (:require [shipyard.help.views :as help]
+            [clojure.string :as str]
             [clojure.data.json :as json]
             [shipyard.regions.model :as model]
             [shipyard.regions.registry :as registry]
@@ -28,8 +29,10 @@
                  base (get-in palette [layer :base])]]
        [:li.region-layer
         [:div.region-layer__row
-         [:button.region-layer__select {:type "button" :data-region-layer layer
-                                        :aria-label (str "Paint " label) :aria-pressed (str (= selected layer)) :disabled stale?}
+         [:button.region-layer__select (merge
+                                        (help/attrs "Select a layer to paint. These are preview colors; fleet schemes supply final colors.")
+                                        {:type "button" :data-region-layer layer
+                                         :aria-label (str "Paint " label) :aria-pressed (str (= selected layer)) :disabled stale?})
           [:span.paint-swatch {:aria-hidden "true" :style (str "background:rgb(" (str/join "," (map #(* 255 %) base)) ")")}]
           [:span.region-layer__name label]]
          (when detail?
@@ -76,8 +79,7 @@
                               face-delta (assoc :data-region-delta (pr-str face-delta))
                               (nil? face-delta) (assoc :data-region-faces (json/write-str (:faces preview))))
       [:span#region-snapshot (cond-> {:hidden true} face-delta (assoc :hx-preserve "true"))]
-      [:h3 "Paint regions"]
-      [:p.muted "Select a layer to paint. Schemes supply the final colors."]
+      [:h3 "Paint regions" (help/button "Region brush" "Left-drag paints; right-drag erases; Alt+drag orbits. Release to save regions.")]
       (when error [:p.detail__error {:role "alert"} error])
       (layer-list part-id mesh-key preview available selected stale?)
       (if stale?
@@ -97,32 +99,39 @@
           [:div.region-brush-mode {:role "group" :aria-label "Paint by"}
            [:span "Paint by"]
            (for [[value label] [["facets" "Facets"] ["faces" "Faces"]]]
-             [:button {:type "button" :data-region-mode value :aria-pressed (str (= mode value))} label])]
-          [:p.muted "Facets paints individual triangles; Faces follows connected surfaces."]
+             [:button (merge
+                       (help/attrs (if (= value "facets") "Paint individual triangles." "Paint connected surfaces within the angle tolerance."))
+                       {:type "button" :data-region-mode value :aria-pressed (str (= mode value))}) label])]
           [:div#region-angle-control {:hidden (not= mode "faces")}
            [:label [:span "Angle tolerance " [:output {:for "region-angle"} (str angle "°")]]
-            [:input#region-angle {:type "range" :name "angle" :min 0 :max 90 :step 1 :value angle
-                                  :hx-on:input "this.closest('label').querySelector('output').value=this.value+'°'"}]]
-           [:p.muted "Maximum angle between neighboring triangles. Increase to follow curves; larger creases stop painting."]]
+            [:input#region-angle (merge
+                                  (help/attrs "Maximum angle between neighboring triangles. Increase to follow curves; larger creases stop painting.")
+                                  {:type "range" :name "angle" :min 0 :max 90 :step 1 :value angle
+                                   :hx-on:input "this.closest('label').querySelector('output').value=this.value+'°'"})]]]
           [:label "Region brush radius (screen pixels)" [:input {:type "range" :name "radius" :min 2 :max 100 :value 20}]]
           [:fieldset.region-mirror
            [:legend "Symmetry"]
-           [:label [:input {:type "checkbox" :name "mirror"}] " Mirror painting"]
+           [:label [:input (merge
+                            (help/attrs "Paint and erase also affect matching mirrored faces, including hidden faces.")
+                            {:type "checkbox" :name "mirror"})] " Mirror painting"]
            [:label "Mirror plane"
-            [:select {:name "mirror-axis" :disabled true}
+            [:select (merge
+                      (help/attrs "Mirror planes follow the part’s axes.")
+                      {:name "mirror-axis" :disabled true})
              [:option {:value "x"} "YZ plane (across X)"]
              [:option {:value "y"} "XZ plane (across Y)"]
              [:option {:value "z"} "XY plane (across Z)"]]]
            [:label "Mirror plane offset"
-            [:input {:type "number" :name "mirror-offset" :step "any" :placeholder "Automatic center" :disabled true}]]
-           [:p.muted "Planes follow the part axes. Blank offset estimates the center from opposing surfaces. Paint and erase also affect matching hidden faces."]]
-          [:p.muted "Left-drag paints; right-drag erases. Alt+drag orbits."]
-          [:p#region-status {:role "status"} "Release to save regions."]]
+            [:input (merge
+                     (help/attrs "Leave blank to estimate the center from opposing surfaces.")
+                     {:type "number" :name "mirror-offset" :step "any" :placeholder "Automatic center" :disabled true})]]]
+          [:p#region-status {:role "status"}]]
          [:form#region-fill (assoc attrs :hx-include "#region-stroke input[name=layer], #region-stroke input[name=mode], #region-stroke input[name=angle]")
           (fields part-id mesh-key regions)
           [:input {:type "hidden" :name "action" :value "fill"}]
-          [:button {:type "submit"} "Apply layer to entire part"]
-          [:p.muted "Replaces every face assignment, including hidden faces, with the selected layer. Primary clears assignments."]]))
+          [:button (merge
+                    (help/attrs "Replace every face assignment, including hidden faces, with the selected layer. Primary clears assignments.")
+                    {:type "submit"}) "Apply layer to entire part"]]))
       [:form (assoc attrs :hx-confirm "Reset all region assignments on this part? All faces will use Primary.")
        (fields part-id mesh-key regions)
        [:button {:name "action" :value "reset" :type "submit"} "Reset regions"]]])))

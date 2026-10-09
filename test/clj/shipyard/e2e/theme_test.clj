@@ -31,6 +31,10 @@
                     {:loadout/id (random-uuid) :loadout/name "Theme Cruiser"
                      :loadout/hull (:hull lf/draft) :loadout/slots lf/assignments} :create)
       (s/go! driver (s/base-url sys))
+      (s/wait-visible! driver "#bulk-orient-results .bulk-orient__row")
+      (is (s/js driver "() => document.querySelector('#part-group-controls').hidden"))
+      (s/check! driver "#part-select-matching")
+      (s/wait-visible! driver "[data-variant-group]")
       (themed! driver "input[placeholder='Optional group name']")
       (themed! driver "button[data-variant-group]")
       (native-theme! driver "#part-select-matching")

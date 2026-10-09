@@ -38,6 +38,7 @@
             [shipyard.scheme.color :as scheme-color]
             [shipyard.scheme.picker :as scheme-picker]
             [shipyard.vocabulary.dom :as vocabulary-dom]
+            [shipyard.help.dom :as help]
             [shipyard.wire :as wire]))
 
 (goog-define ^boolean TEST-HOOKS false)
@@ -1914,6 +1915,7 @@
 (defn ^:export init []
   (scheme-picker/install!)
   (vocabulary-dom/install!)
+  (help/install!)
   (when-let [canvas (.getElementById js/document "viewport")]
     (let [sys (start! canvas)]
       (reset! state sys)

@@ -1,6 +1,7 @@
 (ns shipyard.workspace.views
   "Server-rendered workspace controls and stateless HTMX transport guards."
-  (:require [clojure.data.json :as json]))
+  (:require [shipyard.help.views :as help]
+            [clojure.data.json :as json]))
 
 (def navigation-include
   "#filters, #bulk-orient-filters, #part-table-position, .assembly__filters, #ship-filters, #ship-table-position, .assembly__save input[name=name], #settings, #cut-defaults")
@@ -46,10 +47,12 @@
 
 (defn colors-toggle [colors workspace]
   [:button#mount-colors-toggle.stage__mount-colors-toggle
-   (cond-> {:type "button" :data-mount-colors-toggle "true" :aria-pressed (str colors)
-            :hx-post "/workspace/display/colors" :hx-target "this" :hx-swap "outerHTML"
-            :hx-swap-oob "outerHTML"}
-     (= workspace :browse) (assoc :title (if colors "Switch to layer types" "Switch to mount faces")))
+   (merge (help/attrs (if (= workspace :browse)
+                        (if colors "Switch to layer types." "Switch to mount faces.")
+                        "Highlight mount faces. Turn off to see scheme colors and enable custom painting."))
+          {:type "button" :data-mount-colors-toggle "true" :aria-pressed (str colors)
+           :hx-post "/workspace/display/colors" :hx-target "this" :hx-swap "outerHTML"
+           :hx-swap-oob "outerHTML"})
    (if (= workspace :browse)
      (if colors "View: Mount faces" "View: Layer types")
      "Mount colors")])

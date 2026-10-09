@@ -1,6 +1,7 @@
 (ns shipyard.settings.views
   "Settings forms; decisions and storage stay outside the rendered projection."
-  (:require [shipyard.http.views :as views]))
+  (:require [shipyard.help.views :as help]
+            [shipyard.http.views :as views]))
 
 (defn- classification-section [field label rows blocked?]
   [:section.settings-workspace__section
@@ -14,12 +15,16 @@
     [:tbody
      (for [{:keys [value parts sockets builtin?]} rows]
        [:tr {:data-classification-field (name field) :data-classification-value value}
-        [:td (if builtin? value
+        [:td (if builtin? (if (= field :class)
+                            [:span value (help/button "Universal class" "Universal parts fit every hull class. Other factions still require Allow parts from other factions in Assembly.")]
+                            value)
                  [:form.settings-workspace__rename {:method "post" :action "/settings/classifications/rename" :hx-post "/settings/classifications/rename" :hx-target "#settings-workspace" :hx-swap "outerHTML"}
                   [:input {:type "hidden" :name "field" :value (name field)}]
                   [:input {:type "hidden" :name "value" :value value}]
                   [:input {:name "new-value" :value value :required true :maxlength "120" :aria-label (str "Rename " label " " value) :disabled blocked?}]
-                  [:button {:type "submit" :disabled blocked?} "Save"]])]
+                  [:button (merge
+                            (help/attrs "Rename across all libraries, updating part labels and socket acceptance lists.")
+                            {:type "submit" :disabled blocked?}) "Save"]])]
         [:td (str parts " parts" (when (pos? sockets) (str " · " sockets " sockets")))]
         [:td (if builtin? [:span.muted "Built-in"]
                  [:form {:method "post" :action "/settings/classifications/delete" :hx-post "/settings/classifications/delete" :hx-target "#settings-workspace" :hx-swap "outerHTML"}
@@ -40,7 +45,6 @@
     [:fieldset {:disabled blocked?} (views/settings-form {:id "settings" :root (get draft "root" root)})]]
    [:section.settings-workspace__section
     [:h3 "Pit and recess defaults"]
-    [:p.muted "Used for new mount cuts. Existing cuts keep their saved dimensions. Values are in millimeters."]
     [:form#cut-defaults.settings-workspace__cuts {:method "post" :action "/settings/cuts" :hx-post "/settings/cuts" :hx-target "#settings-workspace" :hx-swap "outerHTML"}
      (for [[kind label dimensions] [[:pit "Pit" [[:depth "Depth"] [:diameter "Diameter"]]]
                                     [:recess "Recess" [[:depth "Depth"] [:border "Border"]]]]]
@@ -49,8 +53,8 @@
           [:label (str title " (mm)")
            [:input {:type "number" :name (str (name kind) "-" (name dimension))
                     :value (get draft (str (name kind) "-" (name dimension)) (get-in defaults [kind dimension])) :required true :min "0" :step "any"}]])])
-     [:button {:type "submit"} "Save defaults"]]]
-   [:p.muted "Classification values are shared across libraries. Renaming updates all part labels and socket acceptance lists. Only unused values can be deleted."]
-   [:p.muted "The built-in Universal class lets parts fit every hull class. Parts from another faction still require the assembly toggle."]
+     [:button (merge
+               (help/attrs "Use these millimeter dimensions for new mount cuts. Existing cuts keep their saved dimensions.")
+               {:type "submit"}) "Save defaults"]]]
    (for [[field label] [[:bundle "Faction"] [:class "Class"] [:role "Role"]]]
      (classification-section field label (get entries field) blocked?))])

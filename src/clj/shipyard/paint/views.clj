@@ -1,5 +1,6 @@
 (ns shipyard.paint.views
-  (:require [shipyard.loadout.views :as ship-views]
+  (:require [shipyard.help.views :as help]
+            [shipyard.loadout.views :as ship-views]
             [shipyard.scheme.color :as color]
             [shipyard.scheme.presets :as presets]
             [shipyard.workspace.views :as workspace]))
@@ -29,14 +30,17 @@
      [:p (if (:class-id draft) (str (:class-name draft) " class") "Select a ship class first.")]
      [:input {:type "hidden" :name "class" :value (str (:class-id draft))}]
      [:label "Ship name" [:input {:name "name" :required true :maxlength 200}]]
-     [:label "Fleet scheme" [:select {:name "scheme"} (scheme-options schemes (:scheme draft))]]
+     [:label "Fleet scheme" [:select (merge
+                                      (help/attrs "Change this ship’s fleet scheme while preserving its custom paint.")
+                                      {:name "scheme"}) (scheme-options schemes (:scheme draft))]]
      [:button {:type "submit" :disabled (nil? (:class-id draft))} "Create ship"]]]
    (when record
      (list
       [:p (str (:name draft) " · " (:class-name draft) " class")]
       [:form#paint-scheme (merge selection-attrs {:method "post" :action "/ships/paint/select" :hx-post "/ships/paint/select" :hx-trigger "change"})
-       [:label "Fleet scheme" [:select {:name "scheme"} (scheme-options schemes (:scheme draft))]]]
-      [:p.muted "Custom paint stays on this ship when its scheme changes."]
+       [:label "Fleet scheme" [:select (merge
+                                        (help/attrs "Change this ship’s fleet scheme while preserving its custom paint.")
+                                        {:name "scheme"}) (scheme-options schemes (:scheme draft))]]]
       [:details [:summary "Manage ship"]
        [:form#paint-rename (merge selection-attrs {:method "post" :action "/ships/paint/rename" :hx-post "/ships/paint/rename"})
         [:label "Ship name" [:input {:name "name" :value (:name draft) :required true :maxlength 200}]]
@@ -47,9 +51,7 @@
         [:input {:type "hidden" :name "confirmed" :value "true"}]
         [:button {:type "submit"} "Reset custom paint"]]
        (ship-views/named-delete-form {:ship/id (:ship-id draft) :ship/name (:name draft)} nil
-                                     (assoc selection-attrs :id "paint-delete") {} "Delete ship")]))
-
-   [:p.muted "Use the Schemes tab to edit fleet palettes."]])
+                                     (assoc selection-attrs :id "paint-delete") {} "Delete ship")]))])
 
 (defn color-control
   ([hex picker] (color-control hex picker {:name "base" :id "paint-base" :label "Hex color"}))
@@ -103,13 +105,16 @@
       (color-control "#ff0000" nil {:name "brush-color" :id "paint-brush-color" :label "Detail hex color"})
       (material-control "Detail metalness" "brush-metalness" "range" (:metalness material))
       (material-control "Detail roughness" "brush-roughness" "range" (:roughness material))
-      (material-control "Detail glow" "brush-glow" "range" (get material :glow 0))
-      [:p.muted "Left-drag paints; right-drag erases to the inherited material. Turn off Mount colors to paint. Alt+drag to orbit."]]
+      (material-control "Detail glow" "brush-glow" "range" (get material :glow 0))]
      [:footer.paint-actions
-      [:button {:type "submit" :name "history" :value "undo" :aria-label "Undo detail stroke"} "Undo"]
-      [:button {:type "submit" :name "history" :value "redo" :aria-label "Redo detail stroke"} "Redo"]
+      [:button (merge
+                (help/attrs "Undo the last detail stroke. History keeps up to 20 strokes.")
+                {:type "submit" :name "history" :value "undo" :aria-label "Undo detail stroke"}) "Undo"]
+      [:button (merge
+                (help/attrs "Restore an undone detail stroke from the last 20 strokes.")
+                {:type "submit" :name "history" :value "redo" :aria-label "Redo detail stroke"}) "Redo"]
       [:button {:type "button" :data-brush-retry "true"} "Retry last stroke"]
-      [:p#brush-status {:role "status"} "Release to save. Undo keeps the last 20 strokes."]]]))
+      [:p#brush-status {:role "status"}]]]))
 
 (defn panel [records draft targets record error prepared state flush-interval material]
   (let [ready? (and (seq targets) record (:hull draft) (every? #(= :ready (:state %)) (vals prepared)))]
@@ -122,17 +127,15 @@
       (when record
         [:section.paint-stroke-summary
          [:h3 "This stroke" [:span#paint-stroke-count "0 faces"]]
-         [:div#paint-stroke-list]
-         [:p.muted "Whole visible triangles across the ship. Occluded surfaces are skipped."]])
+         [:div#paint-stroke-list]])
       (when record [:footer.paint-rail-footer
                     [:span#paint-face-count (str (reduce + 0 (map #(count (:faces %)) (vals (:scheme/details record)))) " painted faces")]])]
      [:section.paint-editor
       [:header.paint-inspector-header
-       [:div [:h2 (if record "Detail brush" "Create a named ship")]
-        [:p "Whole visible triangles, nearest surface only"]]]
-      (when-not record [:p "Name a ship of this class and choose its fleet scheme. Custom paint belongs to that named ship."])
+       [:div [:h2 (if record "Detail brush" "Create a named ship")
+              (when record (help/button "Detail brush" "Left-drag paints whole visible triangles across the ship; occluded surfaces are skipped. Right-drag erases to inherited material; Alt+drag orbits. Release to save."))]]]
       (when error [:p.detail__error {:role "alert"} error])
-      (when-not (:hull draft) [:p "Save a ship class in Assembly, then create a named ship here or from Ship Browser."])
+      (when-not (:hull draft) [:p "Save a class in Assembly to create a named ship."])
       (when (some #(= :running (:state %)) (vals prepared))
         [:p {:hx-get "/ships?poll=1" :hx-trigger "load delay:400ms" :hx-target "#detail"} "Preparing customize preview…"])
       (for [[id status] prepared :when (= :failed (:state status))]

@@ -409,8 +409,7 @@ body:has(.stage__mount-colors-toggle[aria-pressed="false"]) .assembly__candidate
   padding: 0 0.25rem;
 }
 .mount-wizard__mirror .mount-wizard__check { grid-column: 1 / -1; }
-.mount-wizard__cut .mount-wizard__check, .mount-wizard__cut .muted { grid-column: 1 / -1; }
-.mount-wizard__cut .muted { margin: 0; font-size: 0.72rem; }
+.mount-wizard__cut .mount-wizard__check { grid-column: 1 / -1; }
 .mount-wizard__check {
   display: inline-flex;
   align-items: center;
@@ -490,7 +489,6 @@ body {
 .masthead__mode:hover { color: var(--ink); background: var(--panel-2); }
 .masthead__mode--active { background: var(--line); color: var(--ink); }
 .masthead__spacer { flex: 1; }
-.masthead__stats { margin: 0; color: var(--ink-faint); font: 12px/1.3 system-ui, sans-serif; }
 
 .layout {
   grid-template-columns: 304px minmax(0, 1fr);
@@ -601,7 +599,6 @@ body {
 .detail__tab-panel .mount-wizard { margin-top: 14px; }
 
 @media (max-width: 62rem) {
-  .masthead__stats { display: none; }
   .stage__detail { width: min(380px, calc(100% - 28px)); }
 }
 @media (max-width: 44rem) {
@@ -801,7 +798,6 @@ body {
 #paint-header { display: none; }
 body:has(.paint-editor) #paint-header { display: flex; gap: 14px; align-items: center; min-width: 0; font-size: 11px; color: var(--ink-dim); }
 body:has(.paint-editor) #paint-header code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-body:has(.paint-editor) .masthead__stats { display: none; }
 #paint-header-status { border: 1px solid var(--line); border-radius: 4px; padding: 4px 8px; white-space: nowrap; }
 
 .paint-brush-cursor { display: none; position: fixed; pointer-events: none; border: 1px solid white; box-shadow: 0 0 0 1px #000; border-radius: 50%; transform: translate(-50%, -50%); z-index: 1000; }
@@ -1031,7 +1027,6 @@ body:has(#workspace-context[data-workspace="settings"]) .stage { display: none; 
 .part-row-edit__orientation:disabled { opacity: .6; }
 
 .mount-wizard__faces p { margin: 0.35rem 0; font-size: 0.78rem; }
-.mount-wizard__faces small:not([hidden]) { display: block; }
 .mount-wizard__faces [data-mount-face-controls][hidden] { display: none; }
 .mount-wizard__face-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
@@ -1039,3 +1034,19 @@ body:has(#workspace-context[data-workspace="settings"]) .stage { display: none; 
 
 .detail__navigation { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
 .detail__navigation [data-part-back] { margin-bottom: 0; }
+
+/* Shared help lives outside clipped panels and follows the global theme. */
+.control-help {
+  display: inline-grid; place-items: center; width: 1.4rem; height: 1.4rem;
+  margin-left: .4rem; padding: 0; border-radius: 50%; font-size: .75rem;
+  vertical-align: middle; cursor: help;
+}
+.control-tooltip {
+  position: fixed; z-index: 10000; max-width: min(22rem, calc(100vw - 16px));
+  padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px;
+  background: var(--panel-2); color: var(--ink); font: 13px/1.4 system-ui, sans-serif;
+  box-shadow: 0 4px 16px #0006; overflow-wrap: anywhere;
+}
+.part-group-controls form { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.part-group-controls { flex: none; }
+.part-group-controls:not([hidden]) { margin-block: 6px; }

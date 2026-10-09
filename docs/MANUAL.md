@@ -10,6 +10,9 @@ Buttons and form fields use the same dark theme across the app. Keyboard focus h
 a blue outline; unavailable controls are dimmed. Checkboxes, radio buttons and sliders
 use the app's blue accent.
 
+Hover a control or focus it with the keyboard for brief help. The **?** buttons explain
+canvas brushes. Press **Escape** to dismiss help; full workflows are described below.
+
 ## 1. Installing
 
 Download the desktop package for your platform from
@@ -174,8 +177,9 @@ thumbnails showing their print supports. Pitted-only rows have no preview.
 
 If an inferred group is wrong, choose **Split into separate rows**. Split rows receive
 distinct names, which you can edit. To combine missed matches, select their rows,
-optionally enter a **Grouped part name**, and choose **Group selected rows**. The
-result shares the chosen source row's bundle, class and role; review those labels
+then use the controls immediately above the table to optionally enter a **Grouped
+part name** and choose **Group selected rows**. These controls appear when at least two
+parts are selected, including selections retained across filters. The result shares the chosen source row's bundle, class and role; review those labels
 after grouping. Different files assigned the same variant show **Assign variants**
 and must be corrected or split before import. Separate rows targeting the same part
 folder must be renamed or explicitly grouped. After a successful group,
@@ -509,8 +513,9 @@ reports the observed library inventory; rescan after changing files outside Ship
 
 The regular Part Browser also offers **Group selected rows** and each drawer's **files**
 controls. Choose **Variant → All variants** to include supported-only rows, select matching
-versions, and group them. An optional group name changes the displayed part name. The
-row containing the unsupported file keeps its identity, orientation, mounts and paint;
+versions, and group them using the controls immediately above the table. They appear
+only when at least two parts are selected, including hidden selections. An optional
+group name changes the displayed part name. The row containing the unsupported file keeps its identity, orientation, mounts and paint;
 the other variant files move into that row's folder without changing their bytes.
 Grouping clears the whole selection, including hidden rows. Library edits save immediately.
 
@@ -549,8 +554,8 @@ saved metadata. Saving an identity pose also marks that part Saved.
 
 **Save mount** creates a new id. If that id already exists, Shipyard reports it instead
 of overwriting silently; use **Replace** only when you mean to update that mount. A part
-can have multiple sockets, but only one plug. Existing mounts appear below the loaded
-status with their picked or mirrored origin, plus capacity when it is greater than one.
+can have multiple sockets, but only one plug. Existing mounts appear in the **Mounts**
+tab with their picked or mirrored origin, plus capacity when it is greater than one.
 Mirrored entries are shown as one pair and can be edited or deleted deliberately together.
 Creating, editing, or deleting a mount keeps the Mounts tab open.
 Choose **Edit** on the pair to restore both face previews, adjust its settings, and

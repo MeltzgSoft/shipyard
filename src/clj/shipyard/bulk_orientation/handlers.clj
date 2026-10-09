@@ -64,16 +64,17 @@
 
 (defn selection! [{:keys [workspace] :as deps} {:keys [params]}]
   (workspace/remember! workspace :browse params)
-  (let [previous (set (bulk/selected-ids (:bulk-selection (workspace/workspace! workspace :browse))))
+  (let [deps (importer/effective! deps)
+        previous (set (bulk/selected-ids (:bulk-selection (workspace/workspace! workspace :browse))))
         visible (set (bulk/selected-ids (get params "visible")))
         selected (get params "selected")
         selection (pr-str (bulk/selection-after-change previous visible
                                                        (if (string? selected) [selected] selected)))]
     (workspace/update-workspace! workspace :browse assoc :bulk-selection selection)
     (htmx/fragment
-     (list (views/selection-updates selection)
+     (list (views/selection-updates selection (boolean (:import-session deps)))
            (update (views/matching-checkbox
-                    (filtered-parts! (importer/effective! deps) (:filters (workspace/workspace! workspace :browse)))
+                    (filtered-parts! deps (:filters (workspace/workspace! workspace :browse)))
                     (set (bulk/selected-ids selection)))
                    1 assoc :hx-swap-oob "outerHTML")))))
 
@@ -184,7 +185,7 @@
   (let [selection (pr-str (vec (sort ids)))
         deps (importer/effective! deps)]
     (workspace/update-workspace! workspace :browse assoc :bulk-selection selection)
-    (htmx/fragment (list (views/selection-updates selection)
+    (htmx/fragment (list (views/selection-updates selection (boolean (:import-session deps)))
                          (update (parts-view! deps {}) 1 assoc :hx-swap-oob "outerHTML")))))
 
 (defn select-all! [{:keys [workspace] :as deps} {:keys [params]}]

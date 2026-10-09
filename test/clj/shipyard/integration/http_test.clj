@@ -389,7 +389,7 @@
         r (facet-post h hull-id mesh-key 0)
         preview (get (triggers r) "shipyard:facet-preview")]
     (is (= 200 (:status r)))
-    (is (str/includes? (:body r) "Face selected."))
+    (is (str/includes? (:body r) "2 triangles selected."))
     (is (= hull-id (:part-id preview)))
     (is (= mesh-key (:mesh-key preview)))
     (is (= 0 (:triangle-index preview)))
@@ -404,7 +404,7 @@
     ;; The flat fixture is deliberately role-hinted as a hull. Geometry takes
     ;; precedence only for the initial, still-editable kind form default.
     (is (re-find #"<option selected=\"selected\" value=\"plug\">plug</option>" (:body r)))
-    (is (str/includes? (:body r) "Geometry suggests plug. You can change this."))))
+    (is (str/includes? (:body r) "Suggested: plug"))))
 
 (deftest mount-wizard-saves-replaces-and-deletes
   (let [root (library-tree)

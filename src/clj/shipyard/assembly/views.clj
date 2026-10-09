@@ -1,6 +1,7 @@
 (ns shipyard.assembly.views
   "Assembly rail and its hierarchical mount drawers."
-  (:require [clojure.data.json :as json]
+  (:require [shipyard.help.views :as help]
+            [clojure.data.json :as json]
             [clojure.string :as str]
             [shipyard.assembly.model :as model]
             [shipyard.assembly.responses :as responses]
@@ -112,10 +113,11 @@
                                            :hx-trigger "change" :hx-include ".assembly__save input[name=name]")
       (hidden "revision" revision)
       (hidden "bundle" selected-bundle) (hidden "class" selected-class)
-      [:label [:input {:type "checkbox" :name "allow-other-factions" :value "true"
-                       :checked (boolean (:allow-other-factions? draft))}]
-       " Allow parts from other factions"]
-      [:p.muted "Universal-class parts fit any hull class. Other classes must match the hull."]])
+      [:label [:input (merge
+                       (help/attrs "Allow other factions without relaxing class matching. Classes must match the hull; Universal parts fit any hull class.")
+                       {:type "checkbox" :name "allow-other-factions" :value "true"
+                        :checked (boolean (:allow-other-factions? draft))})]
+       " Allow parts from other factions"]])
    (when hull
      [:form.assembly__save (form-attrs "/assembly/save")
       (hidden "revision" revision)
@@ -144,13 +146,12 @@
       :hx-on--load "if(event.target===this){document.getElementById('detail').scrollTop=Number(this.dataset.scrollTop)}"}
      [:section#assembly.assembly {:data-draft (pr-str draft)}
       [:header.assembly__header [:h2 "Assembly"]
-       [:p (if root (str (:part/name root) " · " (count (filter :assigned slots)) " of " (count slots) " mounts filled")
-               "Choose a hull, then fill its authored mount faces.")]]
+       (when root [:p (str (:part/name root) " · " (count (filter :assigned slots)) " of " (count slots) " mounts filled")])]
       (when error [:p.detail__error {:role "alert"} (get responses/messages error (name error))])
       (when (empty? hulls) [:p "No renderable hulls are available in this library."])
       (when hull
         [:div.assembly__body
-         (when (empty? slots) [:p "This hull has no usable mount faces. Pick and save its plug or socket faces to add slots."])
+         (when (empty? slots) [:p "No usable mounts. Author plug or socket faces on this hull to add slots."])
          (for [{:keys [code slot part-id]} (:errors derived)]
            [:p.detail__error {:role "status"}
             (str (or (get responses/messages code)

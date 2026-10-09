@@ -1,6 +1,7 @@
 (ns shipyard.bulk-orientation.views
   "Server-rendered selection table, preview grid, and save result."
-  (:require [clojure.data.json :as json]
+  (:require [shipyard.help.views :as help]
+            [clojure.data.json :as json]
             [clojure.string :as str]
             [shipyard.bulk-orientation.transforms :as bulk]
             [shipyard.http.views :as http-views]
@@ -34,21 +35,26 @@
         [:span.part-thumbnail.import-file-thumbnail
          (thumbnails/lazy-attrs (str prefix "/thumbnails/" key) "#bulk-orient-results" true) "…"]
         [:span {:title (str/join " → " chain)} (str/join " → " chain)]
-        [:select {:aria-label (str "Variant for " (last chain)) :data-import-file key :data-library-file (when-not (:import/source part) key)
-                  :hx-post (str prefix "/variant") :hx-trigger "change"
-                  :hx-vals (str "js:{file:" (json/write-str key) ",variant:this.value}")
-                  :hx-params "file,variant" :hx-target "#bulk-orient-selection" :hx-swap "outerHTML"
-                  :hx-sync "#workspace-navigation:drop"
-                  :hx-disabled-elt "#library button, #library select, [data-bulk-select], [data-workspace-filters] input:enabled"}
+        [:select (merge
+                  (help/attrs "Assign this file’s variant. The row keeps shared labels and orientation; split it to edit files separately.")
+                  {:aria-label (str "Variant for " (last chain)) :data-import-file key :data-library-file (when-not (:import/source part) key)
+                   :hx-post (str prefix "/variant") :hx-trigger "change"
+                   :hx-vals (str "js:{file:" (json/write-str key) ",variant:this.value}")
+                   :hx-params "file,variant" :hx-target "#bulk-orient-selection" :hx-swap "outerHTML"
+                   :hx-sync "#workspace-navigation:drop"
+                   :hx-disabled-elt "#library button, #library select, [data-bulk-select], [data-workspace-filters] input:enabled"})
          (for [[value label] [[:unsupported "Unsupported"] [:supported "Supported"] [:unsupported-pitted "Unsupported (pitted / recessed)"]]]
            [:option {:value (name value) :selected (= variant value)} label])]])
      (when (> (count files) 1)
-       [:button {:type "button" :data-import-split (:part/id part)
-                 :hx-post (str prefix "/split") :hx-vals (json/write-str {"group" (:part/id part)})
-                 :hx-params "group" :hx-target "#bulk-orient-selection" :hx-swap "outerHTML"
-                 :hx-sync "#workspace-navigation:drop"
-                 :hx-disabled-elt "#library button, #library select, [data-bulk-select], [data-workspace-filters] input:enabled"}
-        "Split into separate rows"])]))
+       (list [:button (merge
+                       (help/attrs "Give each file its own row for separate labels and orientation.")
+                       {:type "button" :data-import-split (:part/id part)
+                        :hx-post (str prefix "/split") :hx-vals (json/write-str {"group" (:part/id part)})
+                        :hx-params "group" :hx-target "#bulk-orient-selection" :hx-swap "outerHTML"
+                        :hx-sync "#workspace-navigation:drop"
+                        :hx-disabled-elt "#library button, #library select, [data-bulk-select], [data-workspace-filters] input:enabled"})
+              "Split into separate rows"]
+             (when-not (:import/source part) [:span.muted "Moves library files"])))]))
 
 (defn- row-orientation [part]
   (let [editable? (boolean (:part/renderable part))
@@ -60,11 +66,12 @@
       (orientation-views/angle-fields parts/angle-fields angles
                                       {:input-attrs {:data-row-angle true
                                                      :hx-on:input "this.form.elements['orientation-action'].value='save'"}})]
-     [:button {:type "button" :data-row-orientation-reset true
-               :hx-on:click "this.form.querySelectorAll('[data-row-angle]').forEach(i=>i.value='0');this.form.elements['orientation-action'].value='save'"}
+     [:button (merge
+               (help/attrs "Restore the source orientation. Save part commits the reset.")
+               {:type "button" :data-row-orientation-reset true
+                :hx-on:click "this.form.querySelectorAll('[data-row-angle]').forEach(i=>i.value='0');this.form.elements['orientation-action'].value='save'"})
       "Reset orientation"]
-     [:p.muted (if editable? "Angles are saved with Save part. Reset restores the source orientation."
-                   "Orientation needs an unambiguous unsupported source. Assign variants or restore the source first.")]]))
+     (when-not editable? [:p.muted "Assign an unambiguous unsupported source to edit orientation."])]))
 
 (defn row-editor [part message]
   (let [id (:part/id part) prefix (str "part-row-" (urls/encode-id id))]
@@ -81,7 +88,9 @@
       [:fieldset.part-row-edit__fields
        (metadata/metadata-fields prefix part)
        (row-orientation part)
-       [:div.part-row-edit__actions [:button {:type "submit"} "Save part"]
+       [:div.part-row-edit__actions [:button (merge
+                                              (help/attrs "Save this row’s labels and orientation angles.")
+                                              {:type "submit"}) "Save part"]
         [:span {:role "status"} message]]]]
      (when (or (:import/source part) (seq (:library/files part))) (import-files part))]))
 
@@ -202,13 +211,18 @@
              :data-bulk-render "true" :hx-include "#bulk-orient-filters, #part-table-position, [data-part-page]"})
      [:input {:type "hidden" :name "part-ids" :value (or selection "[]") :data-bulk-ids "true"}]
      [:p [:strong {:data-bulk-count "true"} (str (count ids) " selected")]]
-     [:button {:type "submit" :disabled (empty? ids) :data-bulk-render-button "true" :data-workspace-transition "true"} "Orient selection →"]]))
+     [:button (merge
+               (help/attrs "Orientation editing requires an unambiguous unsupported file for each part.")
+               {:type "submit" :disabled (empty? ids) :data-bulk-render-button "true" :data-workspace-transition "true"}) "Orient selection →"]]))
 
 (defn- apply-button [selection]
   [:button#part-bulk-apply {:type "submit" :disabled (empty? (bulk/selected-ids selection))} "Apply to selected"])
 
-(defn selection-updates [selection]
+(declare group-controls)
+
+(defn selection-updates [selection importing?]
   (list (selection-controls selection)
+        (update (group-controls selection importing?) 1 assoc :hx-swap-oob "outerHTML")
         (update (apply-button selection) 1 assoc :hx-swap-oob "outerHTML")
         [:p#part-edit-status {:role "status" :hx-swap-oob "outerHTML"}]))
 
@@ -218,7 +232,7 @@
    [:div#bulk-selection
     (selection-controls selection)
     [:form.part-bulk-edit {:method "post" :action "/parts/metadata" :hx-post "/parts/metadata" :hx-target "#part-edit-status"
-                           :hx-include "#part-table-position, [data-part-page]" :hx-disabled-elt (if importing? "find button, .import-review button" "find button")}
+                           :hx-include "#part-table-position, [data-part-page]" :hx-disabled-elt (if importing? "find button, .import-review button, #part-group-controls button" "find button")}
      [:label "Field" [:select {:name "field"}
                       (for [[value label] (cond-> [["bundle" "Bundle / faction"] ["class" "Class"] ["role" "Role"] ["name" "Name"]] importing? (conj ["variant" "Supported / unsupported"]))]
                         [:option {:value value} label])]]
@@ -237,7 +251,15 @@
           :hx-target "#bulk-orient-selection" :hx-swap "outerHTML" :hx-sync "#workspace-navigation:drop"
           :hx-disabled-elt "#library button, #library select, [data-bulk-select], [data-workspace-filters] input:enabled"}
    [:input {:name "name" :placeholder "Optional group name" :aria-label "Grouped part name"}]
-   [:button {:type "submit" :data-variant-group true :data-import-group (when (= prefix "/imports") true)} "Group selected rows"]])
+   [:button (merge
+             (help/attrs "Combine selected parts into one row with shared labels and orientation.")
+             {:type "submit" :data-variant-group true :data-import-group (when (= prefix "/imports") true)}) "Group selected rows"]
+   (when (= prefix "/parts/variants") [:span.muted "Moves library files"])])
+
+(defn group-controls [selection importing?]
+  [:div#part-group-controls.part-group-controls {:hidden (< (count (bulk/selected-ids selection)) 2)}
+   (when (>= (count (bulk/selected-ids selection)) 2)
+     (group-form (if importing? "/imports" "/parts/variants")))])
 
 (defn panel
   ([facets] (panel facets nil))
@@ -254,9 +276,6 @@
          [:details.import-warnings
           [:summary (str "Skipped " (count skipped) " empty nested ZIP " (if (= 1 (count skipped)) "file" "files"))]
           [:ul (for [chain skipped] [:li (str/join " → " chain)])]])
-       (group-form "/imports")
-       [:p "Matching versions share a row. Expand Files / variants to assign each file or split a group. Select rows to group missed matches; the resulting row shares its labels and orientation."]
-       [:p "Original ZIP archives are kept. Thumbnails prefer unsupported files; supported-only rows show their print supports. Orientation editing requires an unambiguous unsupported file."]
        [:form (merge workspace-views/transition-attrs {:method "post" :action "/imports/commit" :hx-post "/imports/commit" :hx-target "#detail" :hx-disabled-elt "find button"})
         [:button {:type "submit" :data-workspace-transition true} "Import into library"]]
        [:form (merge workspace-views/transition-attrs {:method "post" :action "/imports/cancel" :hx-post "/imports/cancel" :hx-target "#detail"})
@@ -268,8 +287,6 @@
                   :data-workspace-transition true :aria-label "Browse for ZIP archive"} "Import ZIP…"]
         [:span.htmx-indicator "Unpacking archive…"]
         [:p#import-status {:role "status"}]]
-       (group-form "/parts/variants")
-       [:p.muted "Select All variants to include supported-only rows. Group selected rows to fix missed matches; expand a row’s files to assign variants or split it. Library edits move files into canonical folders immediately."]
        [:p#variant-status {:role "status"}]])
     [:form#bulk-orient-filters.filters
      {:data-workspace-filters "true" :hx-get "/orient/parts" :hx-target "#bulk-orient-results" :hx-swap "outerHTML"
@@ -280,7 +297,10 @@
      [:label.filters__field "Class" [:select {:name "class"} (http-views/options "All classes" (:classes facets))]]
      [:label.filters__field "Role" [:select {:name "role"} (http-views/options "All roles" (map name (:roles facets)))]]
      [:label.filters__field "Variant"
-      [:select {:name "variant"}
+      [:select (merge
+                (help/attrs (if import-session "Show rows containing the selected variant, including grouped files."
+                                "Browsable parts excludes supported-only rows. All variants includes them."))
+                {:name "variant"})
        [:option {:value ""} (if import-session "All variants" "Browsable parts")]
        (when-not import-session [:option {:value "all"} "All variants"])
        [:option {:value "unsupported"} "Unsupported"]
@@ -306,6 +326,7 @@
                             {:hidden true :method "get" :action "/workspace/browse" :hx-get "/workspace/browse" :hx-target "#detail" :hx-swap "innerHTML settle:0ms"
                              :hx-include "#bulk-orient-filters, #part-table-position, [data-part-page]"})
      [:input#part-open-id {:type "hidden" :name "part-id"}]]
+    (group-controls selection (some? import-session))
     [:div#bulk-orient-results.bulk-orient__results
      [:input {:type "hidden" :name "page" :value "1" :data-part-page true}]
      [:input {:id "part-table-position" :type "hidden" :name "table-scroll" :value "0"}]

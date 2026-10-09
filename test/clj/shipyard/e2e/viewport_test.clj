@@ -679,7 +679,7 @@
        #(false? (s/js *driver* "() => !!document.querySelector('.mount-wizard__form select[name=part-role]')")))
       "part role should be edited outside the mount wizard")
   (is (= "plug" (s/js *driver* "() => document.querySelector('.mount-wizard__form select[name=kind]').value")))
-  (is (= "Geometry suggests plug. You can change this."
+  (is (= "Suggested: plug"
          (s/text *driver* ".mount-wizard__hint")))
   (is (= true
          (s/js *driver* "() => document.querySelector('.mount-wizard__roles').hidden"))
@@ -945,7 +945,7 @@
     (is (= "true" (s/js *driver* "() => document.querySelector('input[name=mirror][type=hidden]').value")))
     (is (zero? (s/count-els *driver* ".mount-wizard__form input[name=mirror][type=checkbox]")))
     (is (str/includes? (s/text *driver* ".mount-wizard__mirror")
-                       "This mirrored pair is configured together."))
+                       "Editing pair"))
     (is (s/wait-until #(true? (:mirror-visible? (:preview (s/stats *driver*))))))
     (s/fill-and-blur! *driver* ".mount-wizard__form input[name=capacity]" "3")
     (s/click! *driver* ".mount-wizard__actions button[value=update]")

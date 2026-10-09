@@ -1,6 +1,7 @@
 (ns shipyard.scheme.editor
   "Fleet palette authoring owned by the Ship Browser workspace."
-  (:require [shipyard.catalog.db :as catalog]
+  (:require [shipyard.help.views :as help]
+            [shipyard.catalog.db :as catalog]
             [shipyard.loadout.transforms :as loadout]
             [shipyard.loadout.model :as loadout-model]
             [shipyard.paint.transforms :as paint]
@@ -66,7 +67,6 @@
         local-attrs (assoc attrs :hx-target ".scheme-editor" :hx-swap "outerHTML")]
     [:div.scheme-editor
      [:h2 "Fleet schemes"]
-     [:p "One palette for every ship class. Preview it here, then choose it when creating a named ship in Customize."]
      (when error [:p.detail__error {:role "alert"} error])
      [:form#scheme-select (merge attrs {:method "post" :action "/ships/schemes/select" :hx-post "/ships/schemes/select" :hx-trigger "change"})
       [:label "Scheme" [:select {:name "id"} (controls/scheme-options (vals records) (:scheme state))]]]
@@ -106,10 +106,11 @@
          (controls/material-control "Roughness" "roughness" "range" (:roughness value))
          (controls/material-control "Glow" "glow" "range" (get value :glow 0))
          [:label "Paint name" [:input {:name "paint" :maxlength 200 :value (:paint value)}]]
-         [:button {:type "submit"} "Save palette material"]]
+         [:button (merge
+                   (help/attrs "Update every named ship using this fleet scheme, beneath its custom paint.")
+                   {:type "submit"}) "Save palette material"]]
         (presets/panel schemes nil)
         [:p#scheme-status {:role "status" :data-sequence (or (:scheme-sequence state) 0)} "Palette saved."]
-        [:p.muted "Palette changes appear on every named ship using this scheme, beneath its custom paint. Mount colors must be off to see paint."]
         [:details [:summary "Manage scheme"]
          [:form#scheme-rename (merge attrs {:method "post" :action "/ships/schemes/rename" :hx-post "/ships/schemes/rename"})
           [:input {:type "hidden" :name "id" :value (str (:scheme/id record))}]

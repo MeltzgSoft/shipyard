@@ -5,7 +5,8 @@
   unit-testable without opening a socket (§10.1). The handlers in
   `shipyard.http.routes` do the looking-up; this namespace only decides what a
   thing looks like."
-  (:require [shipyard.regions.views :as regions]
+  (:require [shipyard.help.views :as help]
+            [shipyard.regions.views :as regions]
             [shipyard.regions.registry]
             [shipyard.catalog.db :as catalog]
             [clojure.string :as str]
@@ -157,7 +158,7 @@
               :hx-swap   "innerHTML"}
              [:input {:type "hidden" :name "part-id" :value part-id}]
              [:input {:type "hidden" :name "mount-id" :value (name (:mount/id mount))}]
-             [:button {:type "submit"} (if (:mount/mirror-id mount) "Edit pair" "Edit")]]
+             [:button (merge (when (:mount/mirror-id mount) (help/attrs "Edit both mounts in this mirrored pair together.")) {:type "submit"}) (if (:mount/mirror-id mount) "Edit pair" "Edit")]]
             [:form.mounts__action
              {:method "post" :action "/mounts/delete" :hx-post "/mounts/delete"
               :hx-sync "#workspace-navigation:drop"
@@ -247,7 +248,7 @@
 (defn detail-preparing [{:part/keys [id] :as part}]
   [:div.detail
    (detail-head part)
-   [:p.detail__status "Preparing this part for display. A large hull takes a few seconds; it is cached afterwards."]
+   [:p.detail__status "Preparing preview…"]
    (poll id)])
 
 (defn detail-ready
@@ -269,7 +270,6 @@
                              :hx-on:click detail-tab-activation} "Regions"]]
       [:div.detail__summary {:data-detail-panel "part" :role "tabpanel" :hidden mount-active?}
        (detail-head part false)
-       [:p.detail__status "Loaded."]
        (when (#{:hull :hull-section} (:part/role-hint part))
          [:button (merge workspace-views/transition-attrs {:type "button"
                                                            :hx-get (str "/workspace/ships?tab=assembly&part-id=" (urls/encode-id (:part/id part)))
@@ -373,16 +373,17 @@
        [:input {:type "hidden" :name "original-mount-id" :value (name original-mount-id)}])
      (when (and mesh-key facet-indices)
        [:fieldset.mount-wizard__faces
-        [:legend "Mount faces"]
-        [:label.mount-wizard__check [:input {:type "checkbox" :name "face-edit" :data-mount-face-edit true}] " Trim faces (erase brush)"]
+        [:legend "Mount faces" (help/button "Mount face brush" "Left-drag erases whole visible triangles when Trim faces is on. Alt+drag orbits. Save commits the selection.")]
+        [:label.mount-wizard__check [:input (merge
+                                             (help/attrs "Left-drag erases whole visible triangles; Alt+drag orbits. Save commits the trimmed selection.")
+                                             {:type "checkbox" :name "face-edit" :data-mount-face-edit true})] " Trim faces (erase brush)"]
         [:div {:data-mount-face-controls true :hidden true}
          [:label.mount-wizard__field "Brush radius (screen pixels)"
           [:input {:type "range" :min 2 :max 128 :value 12 :data-mount-face-radius true}]]
          [:div.mount-wizard__face-actions
           [:button {:type "button" :data-mount-faces-undo true :disabled true} "Undo erase"]
           [:button {:type "button" :data-mount-faces-reset true} "Reset faces"]]]
-        [:p {:data-mount-face-status true :role "status"} (str (count facet-indices) " triangles selected.")]
-        [:small {:data-mount-face-controls true :hidden true} "Left-drag removes whole visible triangles. Alt+drag orbits. Save commits the selection; the mount frame and capacity positions stay fixed."]])
+        [:p {:data-mount-face-status true :role "status"} (str (count facet-indices) " triangles selected.")]])
      [:label.mount-wizard__field "Mount id"
       [:input {:type "text" :name "mount-id" :value mount-id
                :data-mount-prefix (name id-prefix)
@@ -394,7 +395,7 @@
          [:option {:value (name k) :selected (= k kind)} (name k)])]
       (when kind-hint
         [:span.mount-wizard__hint
-         "Geometry suggests " (name kind-hint) ". You can change this."])]
+         "Suggested: " (name kind-hint)])]
      [:label.mount-wizard__roles (socket-only-attrs kind) "Accepts"
       [:select {:name "accepts" :disabled (= :plug kind)}
        (for [{:keys [id label]} sorted-profiles]
@@ -409,20 +410,23 @@
        [:option {:value "horizontal" :selected (not= :vertical (:split-direction values))}
         "Horizontal — equal heights"]]]
      [:label.mount-wizard__field "Twist"
-      [:input {:type "number" :name "twist-deg" :value (or (:twist-deg values) "0")
-               :step "1"}]]
+      [:input (merge
+               (help/attrs "Rotate the alignment arrow. Assembly rotates the child to match the mating mount.")
+               {:type "number" :name "twist-deg" :value (or (:twist-deg values) "0")
+                :step "1"})]]
      [:label.mount-wizard__field.mount-wizard__alignment "Alignment axis"
-      [:select {:name "alignment-axis"}
+      [:select (merge
+                (help/attrs "Set a direction on both mating mounts to align their arrows in assembly.")
+                {:name "alignment-axis"})
        (for [[axis label] [[:none "None"] [:horizontal "Horizontal (+X)"] [:horizontal-negative "Horizontal (−X)"]
                            [:vertical "Vertical (+Y)"] [:vertical-negative "Vertical (−Y)"]]]
-         [:option {:value (name axis) :selected (= axis (or (:alignment-axis values) :none))} label])]
-      [:small "Set a direction on both mating mounts to align their arrows. Twist adjusts the arrow; the child rotates in assembly."]]
+         [:option {:value (name axis) :selected (= axis (or (:alignment-axis values) :none))} label])]]
      (when (or (not edit?) mirror?)
        [:fieldset.mount-wizard__mirror (socket-only-attrs kind)
         [:legend "Mirror"]
         (if mirror-locked?
           (list [:input {:type "hidden" :name "mirror" :value "true"}]
-                [:p.mount-wizard__hint "This mirrored pair is configured together."])
+                [:p.mount-wizard__hint "Editing pair"])
           [:label.mount-wizard__check
            [:input {:type "checkbox" :name "mirror" :value "true" :checked mirror?}]
            "Mirror socket"])
@@ -438,7 +442,9 @@
      [:fieldset.mount-wizard__cut
       [:legend "Pitted STL"]
       [:label.mount-wizard__check
-       [:input {:type "checkbox" :name "create-pitted" :checked cut-enabled?}]
+       [:input (merge
+                (help/attrs "Save regenerates the source model’s -pitted.stl variant and keeps the original intact.")
+                {:type "checkbox" :name "create-pitted" :checked cut-enabled?})]
        "Create pitted version"]
       [:label.mount-wizard__field {:hidden (not cut-enabled?)} "Cut"
        [:select {:name "cut-kind" :data-cut-kind (name kind) :disabled (not cut-enabled?)}
@@ -455,8 +461,7 @@
                 :min "0" :step "any"}]]
       [:label.mount-wizard__field {:data-cut-field "recess" :hidden (not (and cut-enabled? (= :recess cut-kind)))} "Border (mm)"
        [:input {:type "number" :name "cut-border" :disabled (not (and cut-enabled? (= :recess cut-kind))) :value (or (:cut-border values) (get-in defaults [:recess :border]))
-                :min "0" :step "any"}]]
-      [:p.muted {:hidden (not cut-enabled?)} "Save regenerates the source model’s -pitted.stl variant. The original stays intact."]]
+                :min "0" :step "any"}]]]
      [:div.mount-wizard__actions
       (if edit?
         [:button {:type "submit" :name "action" :value "update"} "Save changes"]
@@ -470,8 +475,7 @@
        "Cancel"]]]))
 
 (defn facet-preview
-  ([] [:div.facet-preview
-       [:p.detail__status "Face selected."]])
+  ([] [:div.facet-preview])
   ([{:keys [frame part] :as preview}]
    [:div.facet-preview
     (when-let [error (:error preview)]
@@ -479,8 +483,6 @@
        [:p.detail__error error]
        (when part
          (dismiss-error-button part))])
-    (when frame
-      [:p.detail__status "Face selected."])
     (when frame
       (mount-form preview))]))
 
@@ -560,8 +562,7 @@
      [:header.masthead
       [:h1 "Shipyard"]
       (workspace-views/navigation (:workspace context))
-      [:div.masthead__spacer]
-      [:p.masthead__stats "Library ready · select a part to begin"]]
+      [:div.masthead__spacer]]
      [:main.layout
       (if (pos? (:activation context))
         [:section#library.panel]

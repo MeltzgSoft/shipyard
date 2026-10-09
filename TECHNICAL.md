@@ -1127,6 +1127,14 @@ returns the results list alone, and the shell's copy of that element is the only
 carrying a `load` trigger: repeating it in the fragment would make the panel refetch
 itself forever.
 
+Shared control help is rendered by `shipyard.help.views` as data and accessible
+descriptions. `shipyard.help.dom` installs delegated hover/focus handlers once, so help
+also works on HTMX replacements. Its single tooltip lives outside scrolling panels,
+clamps to the viewport and dismisses on Escape or removal of its control. Pointer
+help repositions while the control remains focused or hovered, and dismisses otherwise.
+This transient presentation state does not own workspace selection or domain data. Group controls are
+rendered from the server's full selection and replaced alongside selection feedback.
+
 ### 7.2 Viewport module
 
 `src/shipyard/viewport.cljs`, compiled by shadow-cljs - the browser island, and the only

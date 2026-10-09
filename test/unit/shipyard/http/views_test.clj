@@ -221,7 +221,7 @@
                                   :mirror? true :mirror-locked? true
                                   :mirror-id "weapon-1-mirror"}}))]
       (is (re-find #"<input(?=[^>]*name=\"mirror\")(?=[^>]*type=\"hidden\")(?=[^>]*value=\"true\")[^>]*>" html))
-      (is (str/includes? html "This mirrored pair is configured together."))
+      (is (str/includes? html "Editing pair"))
       (is (not (re-find #"<input(?=[^>]*name=\"mirror\")(?=[^>]*type=\"checkbox\")[^>]*>" html)))
       (is (re-find #"name=\"mirror-id\"[^>]+value=\"weapon-1-mirror\"" html))
       (is (str/includes? html "Save changes")))))
@@ -247,7 +247,7 @@
                                                     :kind-hint :plug
                                                     :values {:kind :plug}}}))]
     (is (re-find #"<option selected=\"selected\" value=\"plug\">plug</option>" html))
-    (is (str/includes? html "Geometry suggests plug. You can change this."))
+    (is (str/includes? html "Suggested: plug"))
     (is (re-find #"<label(?=[^>]*class=\"mount-wizard__roles\")(?=[^>]*data-socket-only=\"true\")(?=[^>]*hidden=\"hidden\")[^>]*>"
                  html)
         "plug forms hide the socket acceptance profile")))

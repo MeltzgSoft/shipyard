@@ -140,7 +140,7 @@
                                        :hx-on--config-request "var r=this.querySelector('#ship-results');if(!event.detail.elt.closest('.list-more,#ship-filters')){event.detail.parameters['table-scroll']=String(r.scrollTop)}"
                                        :hx-on--load "if(event.target===this){var r=this.querySelector('#ship-results');r.scrollTop=Number(r.dataset.scrollTop||0)}"}
     [:header.bulk-orient__head
-     [:h2 "Ship Browser"] [:p "Double-click a class to assemble it, or expand its named ships to open custom paint."]
+     [:h2 "Ship Browser"]
      [:form.ship-table__new (merge workspace-views/transition-attrs
                                    {:method "post" :action "/ships/new" :hx-post "/ships/new" :hx-target "#detail"
                                     :hx-include "#ship-filters, #ship-table-position, [data-ship-page]"})

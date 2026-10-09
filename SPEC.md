@@ -736,6 +736,11 @@ color controls retain their purposeful visual distinctions. Mount wizard fields 
 the inspector's available width; face, acceptance, mirror and cut sections align
 without forcing extra columns when the application window is wide.
 
+Brief control help uses shared tooltips available on pointer hover and keyboard focus,
+dismissible with Escape. Canvas gestures have focusable help buttons. Standing workflow
+explanations belong in the manual; conditional prerequisites, warnings, counts and live
+save/progress feedback remain visible.
+
 ### 9.1 Thumbnails
 
 Part-table thumbnails are lazy, shaded PNG previews with saved orientation and the
@@ -862,7 +867,12 @@ Selections persist across batches; changing filters restarts loading, and Back f
 editor restores the loaded rows and scroll position. The table header checkbox selects
 or deselects every filtered result, including unloaded rows, retaining hidden selections.
 It reflects all, some or no matching rows selected. Clear selection beside the filters
-clears the entire selection. Both controls are available during import review.
+clears the entire selection. Both selection controls are available during import review.
+
+Group creation controls sit immediately above the table and appear only when at least
+two parts are selected, including selections retained across filters. Successful grouping
+clears selection and hides these controls again. Grouping and splitting are available
+in the Part Browser and during import review.
 
 Each part and import row expands into a drawer with a larger preview and name, faction/bundle, class, role and yaw/pitch/roll degree fields. Save part atomically saves that row's labels and explicitly edited orientation independently of bulk selection; typing, resetting and closing a drawer do not save. Untouched orientation fields preserve the exact saved quaternion or Unset state. Reset orientation drafts the source pose (zero angles). Invalid angles or metadata commit neither. Orientation requires an unambiguous unsupported source; other rows keep metadata editing with disabled orientation controls and explanatory text. Import edits remain staged until publication and are discarded on cancel. Saving one row preserves other open drawers and their drafts; successful saves refresh its angle/status columns and thumbnail.
 
