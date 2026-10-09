@@ -9,6 +9,7 @@
     (let [tooltip (.createElement js/document "div")
           source (volatile! nil)
           origin (volatile! nil)
+          pointer-down? (volatile! false)
           previous-description (volatile! nil)
           timer (volatile! nil)
           cancel! (fn [] (js/clearTimeout @timer))
@@ -67,10 +68,18 @@
                          #(when (and @source (= @source (trigger %))) (leave! %)))
       (.addEventListener tooltip "pointerenter" cancel!)
       (.addEventListener tooltip "pointerleave" leave!)
-      (.addEventListener js/document "focusin" #(if-let [element (trigger %)] (show! element :keyboard) (hide!)))
+      ;; Mouse focus follows pointerdown, which already dismissed help so it
+      ;; cannot cover the next control. Keyboard focus still opens help.
+      (.addEventListener js/document "focusin"
+                         #(if-let [element (and (not @pointer-down?) (trigger %))]
+                            (show! element :keyboard) (hide!)))
       (.addEventListener js/document "focusout" leave!)
-      (.addEventListener js/document "keydown" #(when (= "Escape" (.-key %)) (hide!)))
-      (.addEventListener js/document "pointerdown" #(when-not (= tooltip (.-target %)) (hide!)))
+      (.addEventListener js/document "keydown" #(do (vreset! pointer-down? false)
+                                                    (when (= "Escape" (.-key %)) (hide!))))
+      (.addEventListener js/document "pointerdown" #(do (vreset! pointer-down? true)
+                                                        (when-not (= tooltip (.-target %)) (hide!))))
+      (.addEventListener js/document "pointerup" #(vreset! pointer-down? false))
+      (.addEventListener js/document "pointercancel" #(vreset! pointer-down? false))
       (.addEventListener js/document "click"
                          #(when-let [element (some-> (.-target %) (.closest ".control-help[data-help]"))]
                             (show! element :pointer)))

@@ -103,6 +103,8 @@
       (is (zero? (s/count-els driver "button[aria-label='Rename Primary'], button[aria-label='Delete Secondary']")))
       (s/click! driver "button[data-region-layer='Primary']")
       (is (= "Primary" (selected)))
+      (is (s/js driver "() => document.querySelector('[role=tooltip]').hidden")
+          "Mouse focus does not reopen dismissed help over the next layer")
       (s/click! driver "button[data-region-layer='Secondary']")
       (is (= "Secondary" (selected)))
       (is (= "facets" (mode)))

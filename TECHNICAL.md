@@ -1133,7 +1133,8 @@ also works on HTMX replacements. Its single tooltip lives outside scrolling pane
 clamps to the viewport and dismisses on Escape or removal of its control. It tracks
 pointer versus keyboard help: pointer exit from the control or tooltip schedules
 dismissal unless either remains hovered, regardless of retained focus. Only keyboard
-help remains open solely on focus. Unrelated pointer targets do not cancel dismissal;
+help remains open solely on focus. Pointerdown dismisses help; focus caused by that
+pointer gesture does not reopen it over adjacent controls. Unrelated pointer targets do not cancel dismissal;
 re-entering the control or tooltip does. Scroll updates preserve the active trigger mode.
 This transient presentation state does not own workspace selection or domain data. Group controls are
 rendered from the server's full selection and replaced alongside selection feedback.

@@ -198,7 +198,8 @@
             (s/click! driver summary)
             (s/select-option! driver (str "[data-import-file='" supported-id "']") label)
             (is (s/wait-until #(= variant (get-in @(:entries (session!)) [supported-id :variant]))))
-            (is (s/wait-until #(not (s/js driver "() => document.querySelector('[data-import-group]').disabled"))))))
+            (is (s/wait-until #(s/js driver "() => document.querySelector('#part-group-controls').hidden")))
+            (is (zero? (s/count-els driver "[data-import-group]")))))
         (testing "a wrong inferred pair can be split, individually edited and manually regrouped"
           (s/click! driver (str "[data-part-row='" group-id "'] > summary"))
           (s/click! driver summary)

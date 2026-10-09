@@ -13,6 +13,7 @@ use the app's blue accent.
 Hover a control or focus it with the keyboard for brief help. The **?** buttons explain
 canvas brushes. Pointer help closes when you leave both the control and its tooltip,
 even if the control stays focused. Keyboard help closes when focus moves away.
+Clicking a regular control dismisses its help; clicking **?** opens help.
 Press **Escape** to dismiss either; full workflows are described below.
 
 ## 1. Installing

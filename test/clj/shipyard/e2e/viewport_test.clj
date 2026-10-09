@@ -1037,10 +1037,10 @@
         (testing "filtering still works, because htmx is a separate file"
           (s/select-option! driver "select[name=bundle]" "Ork Fleet Bundle")
           (is (s/wait-until #(= 1 (s/count-els driver "#bulk-orient-results .bulk-orient__row")))))
-        (testing "and a part still preprocesses and reports itself loaded"
+        (testing "and a part still preprocesses and renders its ready inspector"
           (s/open-part! driver "Ram Ship")
           (is (s/wait-until
-               #(str/includes? (s/text driver "#detail") "Loaded"))))
+               #(pos? (s/count-els driver ".detail--ready #mount-authoring[data-mesh-key]")))))
         (finally
           (s/quit! driver)
           (s/stop-system! system))))))

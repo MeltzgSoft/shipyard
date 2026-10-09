@@ -88,5 +88,5 @@
       (s/click! driver "[data-workspace-mode=settings]")
       (s/wait-visible! driver "[data-classification-field=class][data-classification-value=Universal]")
       (is (= "Built-in" (s/text driver "[data-classification-field=class][data-classification-value=Universal] td:last-child")))
-      (is (zero? (s/count-els driver "[data-classification-field=class][data-classification-value=Universal] button")))
+      (is (zero? (s/count-els driver "[data-classification-field=class][data-classification-value=Universal] form")))
       (finally (s/quit! driver) (fixture/stop! started)))))
