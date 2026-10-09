@@ -50,6 +50,50 @@
       (is (zero? (s/count-els driver "#classification-values option[value='Staged Fleet'], #classification-values option[value='Staged Carrier'], #classification-values option[value='sensor-array']")))
       (finally (s/quit! driver) (fixture/stop! started) (fs/delete-tree directory)))))
 
+(deftest classifications-added-in-settings-infer-the-next-import
+  (let [started (fixture/start! true) driver (s/make-driver) sys (:system started)
+        ^Page page (:page driver) cat (:shipyard.catalog/db sys)
+        directory (fs/create-temp-dir) zip (fs/file directory "Downloads.zip")
+        data (meshes/->binary-stl (meshes/cube)) before (catalog/listing! cat)]
+    (try
+      (with-open [out (io/output-stream zip)]
+        (.write out ^bytes (archives/zip-bytes [["Test_Faction/Carrier/Sensor Array.stl" data]
+                                                ["Test-Faction/Carrier/Sensor Array_Supported.stl" data]])))
+      (s/go! driver (s/base-url sys))
+      (s/choose-path! driver ".import-start" zip)
+      (s/wait-visible! driver ".import-review")
+      (s/click! driver ".part-drawer > summary")
+      (s/wait-visible! driver ".part-row-edit")
+      (is (= "" (s/js driver "() => document.querySelector('.part-row-edit input[name=class]').value")))
+      (is (= "antenna" (s/js driver "() => document.querySelector('.part-row-edit input[name=role]').value")))
+      (s/click! driver "form[hx-post='/imports/cancel'] button")
+      (s/wait-visible! driver ".import-start")
+      (s/click! driver "[data-workspace-mode=settings]")
+      (s/wait-visible! driver "#settings-workspace")
+      (doseq [[label field value saved] [["Faction" "bundle" "Test Faction" "Test Faction"]
+                                         ["Class" "class" "Carrier" "Carrier"]
+                                         ["Role" "role" "Sensor Array" "sensor-array"]]]
+        (let [form (str ".settings-workspace__section:has(h3:text-is('" label "')) .settings-workspace__add")]
+          (.fill page (str form " input[name=value]") value)
+          (s/click! driver (str form " button"))
+          (s/wait-visible! driver (str "[data-classification-field='" field "'][data-classification-value='" saved "']"))))
+      (s/click! driver "[data-workspace-mode=browse]")
+      (s/wait-visible! driver ".import-start")
+      (s/choose-path! driver ".import-start" zip)
+      (s/wait-visible! driver ".import-review")
+      (is (= 1 (s/count-els driver ".bulk-orient__row")))
+      (s/click! driver ".part-drawer > summary")
+      (s/wait-visible! driver ".part-row-edit")
+      (doseq [[field value] [["bundle" "Test Faction"] ["class" "Carrier"] ["role" "sensor-array"]]]
+        (is (= value (s/js driver (str "() => document.querySelector('.part-row-edit input[name=" field "]').value")))))
+      (is (= before (catalog/listing! cat)))
+      (s/click! driver "form[hx-post='/imports/commit'] button")
+      (s/wait-visible! driver ".import-start")
+      (is (= ["Test Faction" "Carrier" :sensor-array]
+             ((juxt :part/bundle :part/class :part/role-hint)
+              (catalog/summary! cat "Test Faction/Carrier/Sensor Array"))))
+      (finally (s/quit! driver) (fixture/stop! started) (fs/delete-tree directory)))))
+
 (deftest expanded-files-have-independent-lazy-thumbnails
   (let [started (fixture/start! true) driver (s/make-driver) ^Page page (:page driver)
         zip (fs/file (:temp started) "Variants.zip") requests (atom [])]

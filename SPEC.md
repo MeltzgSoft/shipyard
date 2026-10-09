@@ -951,7 +951,15 @@ supported/unsupported variant. Splits receive distinct editable names; publicati
 never silently combines separate review groups. Changing a group's unsupported source
 invalidates its saved orientation. Bundle,
 class, role and supported status are editable filename/path hints, with explicit inner
-source markers taking precedence over outer archive labels. Uncertain classifications
+source markers taking precedence over outer archive labels. Every new review uses an
+immutable snapshot of registered classification values and effective durable labels
+across all libraries, including missing parts and custom socket roles. Saved names match
+case-insensitively at word boundaries, treating spaces, underscores and hyphens alike.
+Closer source components win; within a component the longest label wins. Equal matches
+remain unresolved (blank class, Unknown role, outer-ZIP faction fallback). Existing class
+aliases and specialized built-in role rules remain fallbacks, and closer built-in markers
+retain precedence over outer custom hints. Review edits take precedence throughout grouping
+and publication; additions, renames and deletion affect subsequent reviews. Uncertain classifications
 remain reviewable. Bulk label edits and the orientation grid operate on the staged
 import; mount authoring and region painting are unavailable. Switching workspaces
 preserves the review, without changing Ship Browser's catalog or draft.

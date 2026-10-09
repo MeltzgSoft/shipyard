@@ -12,7 +12,8 @@
             [shipyard.store.db :as store]
             [shipyard.jobs :as workers]
             [shipyard.thumbnail.cache :as thumbnails]
-            [shipyard.thumbnail.part :as previews]))
+            [shipyard.thumbnail.part :as previews]
+            [shipyard.vocabulary.db :as vocabulary]))
 
 (defn session! [{:keys [workspace]}]
   (get-in @(:state workspace) [:workspaces :browse :import]))
@@ -99,7 +100,7 @@
     (locking state
       (operation! (active-session! session)))))
 
-(defn- prepare-session! [{:keys [cache library workers thumbnails state] :as owner} path]
+(defn- prepare-session! [{:keys [cache library catalog workers thumbnails state] :as owner} path]
   (when (:closed? @state)
     (throw (ex-info "The importer is shut down." {})))
   (when-not (index/available?! library)
@@ -110,7 +111,8 @@
         register! (fn [key value] (swap! state assoc-in [:sessions id key] value))]
     (swap! state assoc-in [:sessions id] session)
     (try
-      (let [{raw :entries :keys [skipped-empty-archives]} (archive/extract! path directory)
+      (let [inference (t/inference-rules (vocabulary/inference-values! (:store catalog)))
+            {raw :entries :keys [skipped-empty-archives]} (archive/extract! path directory)
             _ (when (empty? raw) (throw (ex-info "This archive contains no STL files." {})))
             root (str (fs/create-dirs (fs/path directory "models")))
             entries (into {} (for [{:keys [key file] :as entry} raw
@@ -118,8 +120,8 @@
                                (do (fs/create-dirs (fs/parent target))
                                    (fs/move file target)
                                    [key (assoc entry :file target)])))
-            entries (t/inferred-entries entries)
-            parts (t/review-parts entries {} {})
+            entries (t/inferred-entries entries inference)
+            parts (t/review-parts entries {} {} inference)
             store (store/open! (fs/path directory "database"))
             _ (register! :store store)
             lib {:store store :state (atom (library-state! parts root entries {}))}
@@ -128,7 +130,7 @@
             _ (register! :jobs mesh-jobs)
             previews (when thumbnails (thumbnails/fork! thumbnails :bulk))
             _ (when previews (register! :thumbnails previews))
-            session (merge (get-in @state [:sessions id]) {:library lib :catalog cat :entries (atom entries)
+            session (merge (get-in @state [:sessions id]) {:library lib :catalog cat :entries (atom entries) :inference inference
                                                            :skipped-empty-archives skipped-empty-archives
                                                            :archive (str path) :target-root (index/root! library)})]
         (swap! state assoc-in [:sessions id] session)
@@ -150,9 +152,9 @@
     (prepare-session! owner path)))
 
 (defn- apply-review!
-  [{:keys [catalog entries jobs] {:keys [state] :as library} :library} {:keys [labels selected] updated :entries}]
+  [{:keys [catalog entries jobs inference] {:keys [state] :as library} :library} {:keys [labels selected] updated :entries}]
   (locking state
-    (let [parts (t/review-parts updated @entries labels)
+    (let [parts (t/review-parts updated @entries labels inference)
           root (index/root! library)
           candidate (library-state! parts root updated @state)
           parts (:parts candidate)

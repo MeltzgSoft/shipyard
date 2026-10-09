@@ -648,6 +648,18 @@ Ship Browser continues to resolve the durable catalog. Workspace activation admi
 also covers import routes. Mount, region and direct single-part authoring routes are
 rejected during review. Normal Part Browser state is restored on commit or cancel.
 
+At import preparation, `vocabulary/inference-values!` projects registered and effective
+part/socket labels from the shared store across all libraries, including missing parts.
+`importer.transforms/inference-rules` compiles their literal, case-insensitive word-boundary
+patterns once. Space/underscore/hyphen normalization permits common archive spellings.
+The session retains this immutable inference context; grouping and review projections
+receive it explicitly and never read the database from pure inference. Closest source
+components take precedence, then longest labels, with ties unresolved. Class aliases
+compete with saved class labels at the same source component. Custom roles supplement
+the scanner while preserving its specialized built-in precedence and exclusions.
+Unmatched factions retain the outer ZIP name; unmatched classes and roles retain existing
+heuristics. Reviewed labels continue to override inferred seeds.
+
 Archive import keeps source files as stable entries and assigns them to review groups.
 Each group is a catalog part in the disposable Datalevin store. Inference groups matching
 bundle/class/role/name labels only when each variant identifies one content hash.

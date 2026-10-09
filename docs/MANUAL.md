@@ -141,8 +141,14 @@ or are removed. Pending work, like the temporary review, does not survive an app
 restart.
 
 Bundle/faction, class, role and supported status are inferred from archive, folder and
-file names. These are hints: review unknown or ambiguous values. An inner **Original
-Files** folder takes precedence over an outer archive labelled **Supported**. Files
+file names. Each new review also uses saved faction, class and custom role values,
+including labels already used by parts in other libraries. Add a value in **Settings**
+or save it on a library part before starting the next import. Matches ignore case and
+treat spaces, underscores and hyphens alike. Closer filenames/folders take precedence;
+within one name, the longest matching label wins. Equal matches remain uncertain:
+class stays blank, role stays Unknown, and faction falls back to the outer ZIP name.
+Existing built-in naming hints still apply when no saved value matches. These are
+hints: review unknown or ambiguous values. An inner **Original Files** folder takes precedence over an outer archive labelled **Supported**. Files
 without a support marker default to unsupported. The table shows the variant and
 original archive paths. Matching names, bundle, class and role are grouped into one
 row when each variant has unambiguous content. Identical repeated files can share a

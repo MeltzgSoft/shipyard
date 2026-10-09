@@ -1,7 +1,8 @@
 (ns shipyard.importer.transforms
   "Archive naming hints and destination planning, independent of IO."
   (:require [clojure.string :as str]
-            [shipyard.library.scan :as scan]))
+            [shipyard.library.scan :as scan]
+            [shipyard.vocabulary.transforms :as vocabulary]))
 
 (defn components [path] (str/split path #"[/\\]+"))
 (defn stem [s] (str/replace s #"(?i)\.(zip|stl)$" ""))
@@ -34,9 +35,42 @@
    [#"(?i)escort|frigate|destroyer" "Escort"]
    [#"(?i)ordnance|ordinance|assault[ _-]*boats|fighters|bombers" "Ordnance"]])
 
-(defn class-hint [chain]
-  (some (fn [s] (some (fn [[pattern label]] (when (re-find pattern s) label)) class-rules))
+(defn- match-text [s]
+  (-> s (str/lower-case) (str/replace #"[\s_-]+" " ") (str/trim)))
+
+(defn inference-rules
+  "Compile one immutable shared vocabulary snapshot for an import review.
+  Built-in roles retain the scanner's specialized precedence and exclusions."
+  [values]
+  (update-vals values
+               (fn [labels]
+                 (mapv (fn [label]
+                         (let [text (match-text label)]
+                           {:value label :specificity (count text)
+                            :pattern (re-pattern (str "(?<![\\p{L}\\p{N}])"
+                                                      (java.util.regex.Pattern/quote text)
+                                                      "(?![\\p{L}\\p{N}])"))}))
+                       labels))))
+
+(defn- closest-hint [chain rules fallback]
+  (some (fn [segment]
+          (let [text (match-text (stem segment))
+                candidates (filter #(re-find (:pattern %) text) rules)
+                builtin (fallback segment)
+                candidates (cond-> candidates builtin (conj builtin))
+                best (when (seq candidates) (apply max (map :specificity candidates)))
+                values (set (map :value (filter #(= best (:specificity %)) candidates)))]
+            ;; A tied closest marker is unresolved, rather than depending on set order.
+            (when (seq values) {:value (when (= 1 (count values)) (first values))})))
         (reverse (mapcat components chain))))
+
+(defn class-hint
+  ([chain] (class-hint chain {}))
+  ([chain rules]
+   (:value (closest-hint chain (:class rules)
+                         (fn [s] (some (fn [[pattern label]]
+                                         (when (re-find pattern s)
+                                           {:value label :specificity (count (match-text label))})) class-rules))))))
 
 (defn part-name [chain]
   (let [leaf (stem (last (components (last chain))))
@@ -48,15 +82,31 @@
         (str/replace #"^[ _-]+|[ _-]+$" "")
         (clean-label))))
 
-(defn infer [id chain]
-  (let [name (part-name chain)
-        class (class-hint chain)
-        [role source] (scan/role-hint {:name name :class class})
-        variant (variant-hint chain)]
-    {:part/id id :part/name name :part/bundle (clean-label (stem (first chain)))
-     :part/class class :part/role-hint role :part/role-source source
-     :part/variants #{variant} :part/source (when (= variant :unsupported) :unsupported)
-     :part/renderable (= variant :unsupported)}))
+(defn infer
+  ([id chain] (infer id chain {}))
+  ([id chain rules]
+   (let [name (part-name chain)
+         class (class-hint chain rules)
+         custom-roles (remove #(contains? (:role vocabulary/builtins) (:value %)) (:role rules))
+         ;; Print-variant suffixes describe source files, never custom part roles.
+         role-chain (->> (mapcat components chain)
+                         (remove #(re-matches #"(?i)(original|supported|unsupported|pre[ _-]*supported)[ _-]+files" (stem %)))
+                         (map #(part-name [%]))
+                         (remove str/blank?))
+         role-hint (when (closest-hint role-chain custom-roles (constantly nil))
+                     (closest-hint role-chain custom-roles
+                                   (fn [segment]
+                                     (let [[role] (scan/role-hint {:name (stem segment) :class class})]
+                                       (when-not (= :unknown role) {:value (clojure.core/name role) :specificity 0})))))
+         [role source] (if role-hint
+                         [(if-let [value (:value role-hint)] (keyword value) :unknown) :inferred]
+                         (scan/role-hint {:name name :class class}))
+         bundle-hint (closest-hint chain (:bundle rules) (constantly nil))
+         variant (variant-hint chain)]
+     {:part/id id :part/name name :part/bundle (or (:value bundle-hint) (clean-label (stem (first chain))))
+      :part/class class :part/role-hint role :part/role-source source
+      :part/variants #{variant} :part/source (when (= variant :unsupported) :unsupported)
+      :part/renderable (= variant :unsupported)})))
 
 (defn destination [part variant]
   (let [segments (concat [(:part/bundle part)]
@@ -110,36 +160,38 @@
 (defn inferred-entries
   "Pair matching inferred labels only when each variant has unambiguous content.
   Identical repeated downloads can share a row; ambiguous candidates stay separate."
-  [entries]
-  (->> (vals entries)
-       (group-by #(-> (infer (:key %) (:chain %))
-                      (select-keys [:part/name :part/bundle :part/class :part/role-hint])
-                      (update-vals (fn [v] (if (string? v) (str/lower-case v) v)))))
-       (vals)
-       (mapcat (fn [files]
-                 (let [unambiguous? (every? #(= 1 (count (set (map :sha %))))
-                                            (vals (group-by :variant files)))
-                       group-id (:key (or (preview-entry (sort-by :key files)) (first (sort-by :key files))))]
-                   (map #(assoc % :group (if unambiguous? group-id (:key %))) files))))
-       (map (juxt :key identity))
-       (into {})))
+  ([entries] (inferred-entries entries {}))
+  ([entries rules]
+   (->> (vals entries)
+        (group-by #(-> (infer (:key %) (:chain %) rules)
+                       (select-keys [:part/name :part/bundle :part/class :part/role-hint])
+                       (update-vals (fn [v] (if (string? v) (str/lower-case v) v)))))
+        (vals)
+        (mapcat (fn [files]
+                  (let [unambiguous? (every? #(= 1 (count (set (map :sha %))))
+                                             (vals (group-by :variant files)))
+                        group-id (:key (or (preview-entry (sort-by :key files)) (first (sort-by :key files))))]
+                    (map #(assoc % :group (if unambiguous? group-id (:key %))) files))))
+        (map (juxt :key identity))
+        (into {}))))
 
 (defn review-parts
   "Project file membership into catalog parts, retaining labels and only a pose
   that still belongs to the same unsupported source. Labels may seed new groups."
-  [entries previous-entries labels]
-  (mapv (fn [[id files]]
-          (let [source (preview-entry files)
-                seed (or (get labels id)
-                         (infer id (:chain (or source (first files)))))
-                old-source (preview-entry (members previous-entries (:part/id seed)))]
-            (cond-> (assoc seed :part/id id
-                           :part/variants (set (map :variant files))
-                           :part/renderable (boolean source)
-                           :part/source (when source :unsupported))
-              (not (and source old-source (= (:key source) (:key old-source))))
-              (dissoc :part/orientation))))
-        (sort-by key (group-by :group (sort-by :key (vals entries))))))
+  ([entries previous-entries labels] (review-parts entries previous-entries labels {}))
+  ([entries previous-entries labels rules]
+   (mapv (fn [[id files]]
+           (let [source (preview-entry files)
+                 seed (or (get labels id)
+                          (infer id (:chain (or source (first files))) rules))
+                 old-source (preview-entry (members previous-entries (:part/id seed)))]
+             (cond-> (assoc seed :part/id id
+                            :part/variants (set (map :variant files))
+                            :part/renderable (boolean source)
+                            :part/source (when source :unsupported))
+               (not (and source old-source (= (:key source) (:key old-source))))
+               (dissoc :part/orientation))))
+         (sort-by key (group-by :group (sort-by :key (vals entries)))))))
 
 (defn group-selection
   "Group the chosen rows and finish that selection, including rows hidden by filters."

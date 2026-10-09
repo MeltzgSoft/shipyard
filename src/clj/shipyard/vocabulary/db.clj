@@ -50,6 +50,11 @@
                           (let [{:keys [parts registered]} (management-snapshot db)]
                             (management/entries parts registered)))))
 
+(defn inference-values!
+  "Registered and effective durable labels across all libraries, including missing parts."
+  [database]
+  (update-vals (entries! database) #(set (map :value %))))
+
 (defn manage! [database action field old-value new-value]
   (store/write! database
                 (fn [connection]

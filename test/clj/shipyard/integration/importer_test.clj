@@ -12,7 +12,8 @@
             [shipyard.import-fixture :as archives]
             [shipyard.importer.db :as importer]
             [shipyard.importer.archive :as archive]
-            [shipyard.library.index :as index]))
+            [shipyard.library.index :as index]
+            [shipyard.vocabulary.db :as vocabulary]))
 
 (deftest review-edit-publish-and-cancel
   (let [started (fixture/start!) system (:system started) handler (:handler started)
@@ -64,6 +65,55 @@
         (post! "/imports/start" {"archive" (str zip)})
         (is (= 422 (:status (post! "/imports/commit" {}))))
         (is (some? (session!))))
+      (finally (fixture/stop! started) (fs/delete-tree directory)))))
+
+(deftest later-imports-use-current-shared-values
+  (let [started (fixture/start!) sys (:system started) handler (:handler started)
+        workspace (:shipyard.workspace/db sys) cat (:shipyard.catalog/db sys)
+        database (:shipyard.store/db sys) directory (fs/create-temp-dir)
+        zip (fs/file directory "Downloads.zip") data (meshes/->binary-stl (meshes/cube))
+        session! #(importer/session! {:workspace workspace})
+        parts! #(catalog/browse (catalog/listing! (:catalog (session!))) {})
+        post! #(handler (mock/request :post %1 %2))]
+    (try
+      (with-open [out (io/output-stream zip)]
+        (.write out ^bytes (archives/zip-bytes [["Test_Faction/Carrier/Sensor Array.stl" data]
+                                                ["Test-Faction/Carrier/Sensor Array_Supported.stl" data]])))
+      (is (= 200 (:status (post! "/imports/start" {"archive" (str zip)}))))
+      (is (= ["Downloads" nil :antenna]
+             ((juxt :part/bundle :part/class :part/role-hint) (first (parts!)))))
+      (is (= 200 (:status (post! "/imports/cancel" {}))))
+      (doseq [[field value] [["bundle" "Test Faction"] ["class" "Carrier"] ["role" "Sensor Array"]]]
+        (is (= 200 (:status (post! "/settings/classifications/add" {"field" field "value" value})))))
+      (let [before (catalog/listing! cat)]
+        (is (= 200 (:status (post! "/imports/start" {"archive" (str zip)}))))
+        (is (= 1 (count (parts!))))
+        (is (= ["Test Faction" "Carrier" :sensor-array #{:unsupported :supported}]
+               ((juxt :part/bundle :part/class :part/role-hint (comp set :part/variants)) (first (parts!)))))
+        (let [id (:part/id (first (parts!)))]
+          (is (= 200 (:status (post! "/imports/split" {"group" id}))))
+          (is (= 2 (count (parts!))))
+          (is (every? #(= :sensor-array (:part/role-hint %)) (parts!))))
+        (is (= before (catalog/listing! cat)))
+        (is (= 200 (:status (post! "/imports/cancel" {}))))
+        (is (= before (catalog/listing! cat))))
+      (testing "renames and deletion affect the next review"
+        (is (= 200 (:status (post! "/settings/classifications/rename"
+                                   {"field" "class" "value" "Carrier" "new-value" "Transport"}))))
+        (is (= 200 (:status (post! "/settings/classifications/delete" {"field" "role" "value" "sensor-array"}))))
+        (is (= 200 (:status (post! "/imports/start" {"archive" (str zip)}))))
+        (is (= [nil :antenna] ((juxt :part/class :part/role-hint) (first (parts!)))))
+        (is (= 200 (:status (post! "/imports/cancel" {})))))
+      (testing "unregistered effective labels from missing parts in another library are reused"
+        (store/write! database #(d/transact! % [{:part/key [(random-uuid) "missing"] :part/id "missing"
+                                                 :part/present? false :part/bundle-override "Test Faction"
+                                                 :part/class-override "Carrier" :part/role-override :sensor-array}]))
+        (is (not (contains? (:class (vocabulary/registered! database)) "Carrier")))
+        (is (= 200 (:status (post! "/imports/start" {"archive" (str zip)}))))
+        (is (= ["Test Faction" "Carrier" :sensor-array]
+               ((juxt :part/bundle :part/class :part/role-hint) (first (parts!)))))
+        (is (= 200 (:status (post! "/imports/commit" {}))))
+        (is (= :sensor-array (:part/role-hint (catalog/summary! cat "Test Faction/Carrier/Sensor Array")))))
       (finally (fixture/stop! started) (fs/delete-tree directory)))))
 
 (deftest failed-move-restores-staging-and-catalog

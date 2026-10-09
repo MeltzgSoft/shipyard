@@ -17,6 +17,76 @@
     (is (nil? (t/class-hint ["Fleet.zip" "Mystery.stl"])))
     (is (= :unknown (:part/role-hint (t/infer "id" ["Fleet.zip" "Mystery.stl"]))))))
 
+(deftest inference-rules-test
+  (let [rules (t/inference-rules {:bundle #{"Test Faction"} :class #{"Carrier"} :role #{"sensor-array"}})
+        fields (juxt :part/bundle :part/class :part/role-hint)]
+    (is (= ["Test Faction" "Carrier" :sensor-array]
+           (fields (t/infer "id" ["Downloads.zip" "TEST_FACTION/carrier/Sensor-Array_01.stl"] rules))))
+    (is (= ["Downloads" nil :antenna]
+           (fields (t/infer "id" ["Downloads.zip" "Test Factional/Carriership/Sensor Arrays.stl"] rules))))
+    (is (= ["Downloads" "Light Cruiser" :hull]
+           (fields (t/infer "id" ["Downloads.zip" "Light Cruisers/Hull.stl"] rules))))))
+
+(deftest class-hint-test
+  (let [rules (t/inference-rules {:class #{"Carrier" "Heavy Carrier" "Cruiser" "Cruiser Carrier"}})]
+    (is (= "Heavy Carrier" (t/class-hint ["Cruisers.zip" "Heavy_Carrier/Hull.stl"] rules)))
+    (is (= "Cruiser Carrier" (t/class-hint ["Fleet.zip" "Cruiser-Carrier/Hull.stl"] rules)))
+    (is (= "Light Cruiser" (t/class-hint ["Carrier.zip" "Light Cruisers/Hull.stl"] rules)))
+    (is (= "Carrier" (t/class-hint ["Battleships.zip" "Carrier/Hull.stl"] rules)))))
+
+(deftest saved-label-patterns-are-literal
+  (let [rules (t/inference-rules {:bundle #{"Fleet.zip"} :class #{"Carrier (Mk.II)"}})]
+    (is (= "Carrier (Mk.II)" (t/class-hint ["Fleet.zip" "Carrier (Mk.II)/Hull.stl"] rules)))
+    (is (nil? (t/class-hint ["Fleet.zip" "Carrier MkXII/Hull.stl"] rules)))
+    (is (= "Downloads" (:part/bundle (t/infer "id" ["Downloads.zip" "Fleet/Hull.stl"] rules))))
+    (is (= "Fleet.zip" (:part/bundle (t/infer "id" ["Downloads.zip" "Fleet.zip_Hull.stl"] rules))))))
+
+(deftest saved-role-inference-preserves-scanner-rules
+  (let [rules (t/inference-rules {:role #{"hull" "fin" "sensor-array" "supported" "original"}})]
+    (is (= :sensor-array (:part/role-hint (t/infer "id" ["Fleet.zip" "Sensor_Array.stl"] rules))))
+    (is (= :hull (:part/role-hint (t/infer "id" ["Fleet.zip" "Sensor Array/Hull.stl"] rules))))
+    (is (= :unknown (:part/role-hint (t/infer "id" ["Fleet.zip" "No Fin.stl"] rules))))
+    (is (= :weapon (:part/role-hint (t/infer "id" ["Fleet.zip" "Turret Bay.stl"] rules))))
+    (is (= :unknown (:part/role-hint (t/infer "id" ["Fleet.zip" "Escort/Hull.stl"] rules))))))
+
+(deftest custom-roles-override-name-aliases-at-the-same-component
+  (let [rules (t/inference-rules {:role #{"sensor"}})]
+    (is (= :sensor (:part/role-hint (t/infer "id" ["Fleet.zip" "Sensor.stl"] rules))))
+    (is (= :hull (:part/role-hint (t/infer "id" ["Fleet.zip" "Sensor/Hull.stl"] rules))))))
+
+(deftest source-markers-do-not-infer-custom-roles
+  (let [rules (t/inference-rules {:role #{"supported" "original" "sensor-array"}})]
+    (doseq [chain [["Fleet.zip" "Hull_Supported.stl"]
+                   ["Fleet.zip" "Hull/supported.stl"]
+                   ["Fleet.zip" "Original Files/Hull.stl"]]]
+      (is (= :hull (:part/role-hint (t/infer "id" chain rules)))))
+    (is (= :sensor-array (:part/role-hint (t/infer "id" ["Fleet.zip" "Sensor_Array_Supported.stl"] rules))))))
+
+(deftest ambiguous-saved-labels-remain-reviewable
+  (let [rules (t/inference-rules {:bundle #{"Fleet One" "Fleet Two"}
+                                  :class #{"Carrier" "carrier"}
+                                  :role #{"sensor-array" "sensor_array"}})
+        part (t/infer "id" ["Download.zip" "Fleet One Fleet Two/Carrier/Sensor Array.stl"] rules)]
+    (is (= "Download" (:part/bundle part)))
+    (is (nil? (:part/class part)))
+    (is (= :unknown (:part/role-hint part))))
+  (let [rules (t/inference-rules {:bundle #{"Fleet" "Inner Fleet"}})]
+    (is (= "Inner Fleet" (:part/bundle (t/infer "id" ["Fleet.zip" "Inner-Fleet/Hull.stl"] rules))))))
+
+(deftest vocabulary-aware-grouping-and-review
+  (let [rules (t/inference-rules {:bundle #{"Shared Fleet"} :class #{"Carrier"} :role #{"sensor-array"}})
+        files {"a" {:key "a" :sha "original" :variant :unsupported
+                    :chain ["Downloads.zip" "Shared_Fleet/Carrier/Sensor Array.stl"]}
+               "b" {:key "b" :sha "supported" :variant :supported
+                    :chain ["Downloads.zip" "Shared-Fleet/Carrier/Sensor Array_Supported.stl"]}}
+        entries (t/inferred-entries files rules)
+        part (first (t/review-parts entries {} {} rules))
+        reviewed (assoc part :part/class "Reviewed Carrier")]
+    (is (= #{"a"} (set (map :group (vals entries)))))
+    (is (= ["Shared Fleet" "Carrier" :sensor-array #{:supported :unsupported}]
+           ((juxt :part/bundle :part/class :part/role-hint :part/variants) part)))
+    (is (= "Reviewed Carrier" (:part/class (first (t/review-parts entries entries {"a" reviewed} rules)))))))
+
 (deftest destination-test
   (testing "weapons and turrets use the scanner hierarchy"
     (is (= {:id "Fleet/Cruiser/weapons/turrets/Gun" :path "Fleet/Cruiser/weapons/turrets/Gun/supported.stl"}
