@@ -36,6 +36,7 @@
             [shipyard.paint.glow :as glow]
             [shipyard.preparation :as preparation]
             [shipyard.paint.brush :as brush]
+            [shipyard.paint.picking :as picking]
             [shipyard.scheme.material :as paint-material]
             [shipyard.scheme.color :as scheme-color]
             [shipyard.scheme.picker :as scheme-picker]
@@ -95,6 +96,7 @@
     (.traverse obj (fn [^js child]
                      (when-let [request (.. child -userData -emissionRequest)] (preparation/cancel! request))
                      (glow/dispose-object! child)
+                     (picking/dispose-object! child)
                      (some-> child .-geometry .dispose)
                      (dispose-material! (.-material child))))))
 
@@ -1556,6 +1558,7 @@
          :target    (let [t (.-target controls)] #js [(.-x t) (.-y t) (.-z t)])
          :camera    (let [p (.-position camera)] #js [(.-x p) (.-y p) (.-z p)])
          :region-mirror-guide (clj->js (mirror-guide/stats sys))
+         :picking (clj->js (picking/stats @parts))
          :region-preview (clj->js (when-let [^js object (first objs)]
                                     {:faces (count (.. object -userData -regionMask))
                                      :vertex-colors (.. object -material -vertexColors)}))

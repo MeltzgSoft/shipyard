@@ -934,6 +934,9 @@
       (let [interfaces (:interfaces (s/stats driver))]
         (paint!)
         (is (= 1 (captures)))
+        (is (= 1 (get-in (s/stats driver) [:picking :geometries])))
+        (is (zero? (get-in (s/stats driver) [:picking :id-attribute-bytes])))
+        (s/js driver "() => window.regionPickingIds=window.__shipyard.stats().picking['geometry-ids']")
         (is (= interfaces (:interfaces (s/stats driver))) "Painting preserves existing mount highlight geometry")
         (apply brush/right-stroke! driver (region-point driver 0))
         (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
@@ -952,7 +955,9 @@
         (.up keyboard "Alt")
         (is (s/wait-until #(not= camera (:camera (s/stats driver)))))
         (paint!)
-        (is (= 2 (captures)) "Orbiting requires a new visibility capture"))
+        (is (= 2 (captures)) "Orbiting requires a new visibility capture")
+        (is (s/js driver "() => JSON.stringify(window.regionPickingIds)===JSON.stringify(window.__shipyard.stats().picking['geometry-ids'])")
+            "Camera changes retain the same source picking geometry"))
       (s/resize! driver 1180 800)
       (s/await-rendered-geometries driver)
       (paint!)
@@ -962,6 +967,7 @@
       (s/click! driver "[data-detail-tab=regions]")
       (paint!)
       (is (= 4 (captures)) "A different source mesh cannot reuse another part's picking data")
+      (is (= 1 (get-in (s/stats driver) [:picking :geometries])) "Old live picking resources are released on source replacement")
       (is (seq (:faces (catalog/part-regions (catalog/part (catalog/snapshot! cat) (:weapon-alt fixture/ids))))))
       (finally (s/quit! driver) (fixture/stop! started)))))
 

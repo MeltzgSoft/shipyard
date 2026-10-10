@@ -5,6 +5,7 @@
             [cljs.reader :as edn]
             [shipyard.http.forms :as forms]
             [shipyard.paint.faces :as faces]
+            [shipyard.paint.picking :as picking]
             [shipyard.paint.render :as render]))
 
 (defn- field [^js form name] (.namedItem (.-elements form) name))
@@ -15,41 +16,33 @@
   (when-let [element (.getElementById js/document "paint-header-status")]
     (set! (.-textContent element) message)))
 
-(defn- id-geometry [^js source start]
-  (let [geometry (if (.-index source) (.toNonIndexed source) (.clone source))
-        count (render/triangle-count geometry)
-        rgb (js/Float32Array. (* count 9))]
-    (dotimes [triangle count]
-      (let [id (+ start triangle) r (/ (bit-and id 255) 255)
-            g (/ (bit-and (bit-shift-right id 8) 255) 255)
-            b (/ (bit-and (bit-shift-right id 16) 255) 255)]
-        (dotimes [corner 3]
-          (let [offset (+ (* triangle 9) (* corner 3))]
-            (aset rgb offset r) (aset rgb (inc offset) g) (aset rgb (+ offset 2) b)))))
-    (.setAttribute geometry "faceId" (three/BufferAttribute. rgb 3))
-    geometry))
-
 (defn visible-buffer
   "Depth-tested face IDs, optionally reflecting world geometry for mirrored rays.
-  Ranges retain every instance; temporary GPU resources are disposed after readback."
+  Ranges retain every instance. Shared source picking geometry survives readback;
+  temporary render targets and materials are always disposed."
   [{:keys [^js renderer ^js camera ^js canvas parts picking-transform]} target]
   (let [width (max 1 (.-clientWidth canvas)) height (max 1 (.-clientHeight canvas))
         transform (when picking-transform (.fromArray (three/Matrix4.) (to-array picking-transform)))
         scene (three/Scene.) surface (three/ShaderMaterial.
-                                      #js {:vertexShader "attribute vec3 faceId; varying vec3 id; void main(){ id=faceId; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }"
-                                           :fragmentShader "varying vec3 id; void main(){ gl_FragColor=vec4(id,1.0); }"
+                                      #js {:vertexShader picking/vertex-shader :fragmentShader picking/fragment-shader
+                                           :glslVersion three/GLSL3 :uniforms #js {:idOffset #js {:value 1}}
                                            :toneMapped false :blending three/NoBlending})
         target-buffer (three/WebGLRenderTarget. width height #js {:minFilter three/NearestFilter :magFilter three/NearestFilter})
         old-target (.getRenderTarget renderer) old-color (.getClearColor renderer (three/Color.))
         old-alpha (.getClearAlpha renderer) old-scissor (.getScissorTest renderer)
-        objects (atom []) selected (atom nil) ranges (atom {}) pixels (js/Uint8Array. (* width height 4))]
+        prepared-at (js/performance.now) selected (atom nil) ranges (atom {}) pixels (js/Uint8Array. (* width height 4))]
     (try
       (loop [entries (seq @parts) start 1]
         (when-let [[slot ^js object] (first entries)]
-          (let [end (+ start (render/triangle-count (.-geometry object)))]
-            (when (> end 16777216) (throw (js/Error. "Model exceeds the brush face-ID capacity.")))
-            (let [geometry (id-geometry (.-geometry object) start) mesh (three/Mesh. geometry surface)]
-              (swap! objects conj mesh)
+          (let [end (picking/range-end start (render/triangle-count (.-geometry object)))]
+            (let [geometry (picking/geometry! object) mesh (three/Mesh. geometry surface)]
+              ;; GPU clipping/depth decide visibility across every source range.
+              ;; Avoid Three.js scanning fresh position wrappers for a sphere.
+              (set! (.-frustumCulled mesh) false)
+              (set! (.-onBeforeRender mesh)
+                    (fn []
+                      (set! (.. surface -uniforms -idOffset -value) start)
+                      (set! (.-uniformsNeedUpdate surface) true)))
               (set! (.-matrixAutoUpdate mesh) false)
               (.copy (.-matrix mesh) (.-matrixWorld object))
               ;; Reflecting world geometry is equivalent to reflecting every camera ray.
@@ -63,14 +56,18 @@
       (.setScissorTest renderer false)
       (.setClearColor renderer 0 1)
       (.clear renderer)
-      (.render renderer scene camera)
-      (.readRenderTargetPixels renderer target-buffer 0 0 width height pixels)
-      (merge @selected {:pixels pixels :width width :height height :ranges @ranges})
+      (let [render-at (js/performance.now)]
+        (.render renderer scene camera)
+        (let [read-at (js/performance.now)]
+          (.readRenderTargetPixels renderer target-buffer 0 0 width height pixels)
+          (let [timing {:prepare-ms (- render-at prepared-at) :render-submit-ms (- read-at render-at)
+                        :readback-ms (- (js/performance.now) read-at) :cpu-buffer-bytes (.-byteLength pixels)}]
+            (doseq [[_ ^js object] @parts] (set! (.. object -userData -brushPickingTiming) timing))
+            (merge @selected {:pixels pixels :width width :height height :ranges @ranges :timing timing}))))
       (finally
         (.setRenderTarget renderer old-target)
         (.setScissorTest renderer old-scissor)
         (.setClearColor renderer old-color old-alpha)
-        (doseq [^js mesh @objects] (.dispose (.-geometry mesh)))
         (.dispose surface)
         (.dispose target-buffer)))))
 
