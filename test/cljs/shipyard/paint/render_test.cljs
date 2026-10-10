@@ -111,3 +111,28 @@
         (render/apply-details! object primary false)
         (is (false? (.-vertexColors surface)) "Changed sources do not apply old region masks")
         (.dispose geometry) (.dispose surface)))))
+
+(deftest numeric-region-and-detail-projection
+  (let [buffer (js/ArrayBuffer. 232) header (js/Uint32Array. buffer 0 2)
+        positions (js/Float32Array. buffer 8 18)
+        primary {:base [0 0 1] :metalness 0 :roughness 0.9 :glow 0}
+        trim {:base [1 1 0] :metalness 1 :roughness 0.2 :glow 0.8}
+        detail {:base [1 0 0] :metalness 0.4 :roughness 0.6 :glow 0.3}]
+    (aset header 0 1) (aset header 1 2)
+    (.set positions #js [0 0 0 1 0 0 0 1 0 0 0 1 1 0 1 0 1 1])
+    (let [geometry (three/BufferGeometry.) object (three/Mesh. geometry (three/MeshStandardMaterial.))]
+      (.setAttribute geometry "position" (three/BufferAttribute. positions 3))
+      (set! (.. geometry -userData -preparedTopology) #js {:count 2})
+      (set! (.. object -userData -partId) "part") (set! (.. object -userData -meshKey) "hash")
+      (render/set-regions! object {:mesh-key "hash" :triangle-layers (js/Uint32Array. #js [1 0]) :layer-table ["Primary" "Trim"]} {"Primary" primary "Trim" trim})
+      (render/set-details! object {:part-id "part" :mesh-key "hash" :triangle-details (js/Uint32Array. #js [0 1]) :detail-table [nil detail]})
+      (render/apply-details! object primary false)
+      (let [finish (.getAttribute geometry "shipyardFinish")]
+        (is (= 1 (.getX finish 0)))
+        (is (near? 0.8 (.getZ finish 0)))
+        (is (near? 0.4 (.getX finish 3)))
+        (is (near? 0.3 (.getZ finish 3)))
+        (is (false? (.. object -userData -paintPreparing)))
+        (render/apply-details! object primary true)
+        (is (false? (.. object -material -vertexColors)))
+        (is (true? (.. object -material -userData -finishEnabled -value)))))))
