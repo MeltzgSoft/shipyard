@@ -5,6 +5,7 @@
  :shipyard.mesh/cache {:crease-deg 35 :lod-tiers [1.0 0.25 0.05]
                        :facet-angle-deg 1.0 :facet-plane-epsilon-mm 0.01
                        :cap-bytes 67108864}
+ :shipyard.preparation/service {:workers #ig/ref :shipyard.jobs/pool :library #ig/ref :shipyard.library/index :cache #ig/ref :shipyard.mesh/cache}
  :shipyard.jobs/pool {:store #ig/ref :shipyard.store/db :threads 2 :queue-size 4096}
  :shipyard.thumbnail/cache {:cache #ig/ref :shipyard.mesh/cache
                             :workers #ig/ref :shipyard.jobs/pool :cap-bytes 134217728}
@@ -28,7 +29,7 @@
  :shipyard.paint/db {:paint/flush-interval-ms 120
                      :preview #ig/ref :shipyard.loadout.operations/preview}
  :shipyard.workspace/db {:importer #ig/ref :shipyard.importer/db}
- :shipyard.http/routes {:importer #ig/ref :shipyard.importer/db
+ :shipyard.http/routes {:preparation #ig/ref :shipyard.preparation/service :importer #ig/ref :shipyard.importer/db
                         :thumbnails #ig/ref :shipyard.thumbnail/cache
                         :library #ig/ref :shipyard.library/index
                         :catalog #ig/ref :shipyard.catalog/db

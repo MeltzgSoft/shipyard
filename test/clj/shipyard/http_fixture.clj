@@ -16,6 +16,7 @@
                     :library (:shipyard.library/index started)
                     :catalog (:shipyard.catalog/db started)
                     :cache (:shipyard.mesh/cache started)
+                    :preparation (:shipyard.preparation/service started)
                     :jobs (:shipyard.http/jobs started)
                     :config-dir config-dir}
           {::system started ::home home}))

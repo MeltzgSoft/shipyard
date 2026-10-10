@@ -24,6 +24,7 @@
   (let [sys (:system started)]
     {:assembly (:shipyard.assembly/db sys) :preview (:shipyard.loadout.operations/preview sys)
      :loadouts (:shipyard.loadout/db sys) :library (:shipyard.library/index sys)
+     :preparation (:shipyard.preparation/service sys)
      :catalog (:shipyard.catalog/db sys) :jobs (:shipyard.http/jobs sys)
      :cache (:shipyard.mesh/cache sys)}))
 

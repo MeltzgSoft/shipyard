@@ -5,6 +5,7 @@
                           :facet-plane-epsilon-mm 0.01
                           :cap-bytes 64000000 }
  :shipyard.store/db {}
+ :shipyard.preparation/service {:workers #ig/ref :shipyard.jobs/pool :library #ig/ref :shipyard.library/index :cache #ig/ref :shipyard.mesh/cache}
  :shipyard.jobs/pool {:store #ig/ref :shipyard.store/db}
  :shipyard.thumbnail/cache {:cache #ig/ref :shipyard.mesh/cache :workers #ig/ref :shipyard.jobs/pool :cap-bytes 134217728}
  :shipyard.file-picker/db {}
@@ -25,7 +26,7 @@
  :shipyard.paint/db {}
  :shipyard.loadout.operations/preview {}
  :shipyard.workspace/db {:importer #ig/ref :shipyard.importer/db}
- :shipyard.http/routes   {:importer #ig/ref :shipyard.importer/db
+ :shipyard.http/routes   {:preparation #ig/ref :shipyard.preparation/service :importer #ig/ref :shipyard.importer/db
                           :thumbnails #ig/ref :shipyard.thumbnail/cache
                           :file-picker #ig/ref :shipyard.file-picker/db
                           :workspace #ig/ref :shipyard.workspace/db
