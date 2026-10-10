@@ -58,6 +58,7 @@
                              (fn [payload]
                                (let [changes (:changes command) patch (:detail-delta changes)]
                                  (cond-> (merge payload (dissoc changes :detail-delta))
+                                   (contains? changes :appearance-ref) (dissoc :appearance-installed?)
                                    patch (assoc :details (merge (:details payload) (dissoc patch :patch)
                                                                 {:faces (delta/apply-patch (get-in payload [:details :faces]) (:patch patch))}
                                                                 (when (:triangle-details (:details payload))

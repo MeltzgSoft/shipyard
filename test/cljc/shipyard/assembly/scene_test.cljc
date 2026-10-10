@@ -68,7 +68,10 @@
                   (assoc-in [:slots (:slot set-a) :payload :appearance-installed?] true))
         updated (scene/accept-event state (event 2 [command]))]
     (is (= (get-in state [:slots (:slot set-a) :token]) (get-in updated [:slots (:slot set-a) :token])))
-    (is (nil? (get-in updated [:slots (:slot set-a) :payload :appearance-installed?])))))
+    (is (nil? (get-in updated [:slots (:slot set-a) :payload :appearance-installed?])))
+    (is (nil? (get-in (scene/accept-event state (event 2 [{:op :paint :slot (:slot set-a)
+                                                           :changes {:appearance-ref {:resource "binary"} :regions {:mesh-key "mesh"}}}]))
+                      [:slots (:slot set-a) :payload :appearance-installed?])))))
 
 (deftest sparse-detail-patches-shadow-the-numeric-baseline
   (let [details {:part-id "weapon" :mesh-key "mesh" :triangle-details [1 1] :detail-table [nil {:base [1 0 0]}] :faces {}}
