@@ -167,10 +167,13 @@
       (is (<= (+ (:y last-part) (:height last-part))
               (+ (:y library) (:height library)))
           (str "the final result should remain visible inside the library: " {:library library :last-part last-part})))
-    (s/scroll-into-view! *driver* ".part-bulk-edit")
+    (doseq [id [s/hull-id s/prow-id]]
+      (s/check! *driver* (str "[data-bulk-select][value='" id "']")))
+    (s/wait-visible! *driver* "[data-bulk-count]:text-is('2 selected')")
+    (s/scroll-into-view! *driver* ".part-column-edit")
     (let [library (s/bounds *driver* "#library")
-          edits (s/bounds *driver* ".part-bulk-edit")]
-      (is (>= (:y edits) (:y library)) "Bulk edits remain reachable below the short table")
+          edits (s/bounds *driver* ".part-column-edit")]
+      (is (>= (:y edits) (:y library)) "Column controls remain reachable above the short table")
       ;; CSS boxes retain fractional pixels, while the browser rounds scroll
       ;; offsets. Allow that rounding without allowing any control to be hidden.
       (is (<= (+ (:y edits) (:height edits)) (+ (:y library) (:height library) 1))
@@ -1047,11 +1050,13 @@
 
 (deftest nonpreviewable-parts-can-edit-labels-and-show-grid-error
   (open-app!)
+  (s/select-option! *driver* "#bulk-orient-filters select[name=has-unsupported]" "Missing")
+  (is (s/wait-until #(= 2 (s/count-els *driver* ".bulk-orient__row"))))
   (s/check! *driver* (str "[data-bulk-select][value='" s/pitted-id "']"))
-  (s/select-option! *driver* ".part-bulk-edit select[name=field]" "Name")
-  (s/select-option! *driver* ".part-bulk-edit select[name=operation]" "Add prefix")
-  (s/fill-and-blur! *driver* ".part-bulk-edit input[name=value]" "Archived ")
-  (s/click! *driver* "#part-bulk-apply")
+  (s/check! *driver* (str "[data-bulk-select][value='" s/supported-id "']"))
+  (s/wait-visible! *driver* "[data-bulk-count]:text-is('2 selected')")
+  (s/fill-and-blur! *driver* "#part-column-name" "Archived Pitted Only Prow")
+  (s/click! *driver* "#part-column-update")
   (is (s/wait-until #(str/includes? (s/text *driver* "#bulk-orient-results") "Archived Pitted Only Prow")))
   (s/click! *driver* "[data-bulk-render-button]")
   (s/wait-visible! *driver* "#part-edit-status[role=alert]")

@@ -18,19 +18,24 @@
         post! #(handler (mock/request :post "/parts/metadata" %))]
     (try
       (swap! state assoc-in [:workspaces :browse :bulk-selection] (pr-str [a b]))
-      (is (= 400 (:status (post! {"field" "orientation" "operation" "set" "value" "45"}))))
-      (is (= 422 (:status (post! {"field" "name" "operation" "set" "value" " "}))))
-      (is (= 422 (:status (post! {"field" "role" "operation" "set" "value" "bad/role"}))))
+      (swap! state assoc-in [:workspaces :browse :filters] {"q" "prow" "class" "Cruiser"})
+      (is (= 400 (:status (post! {"variant" "bad"}))))
+      (is (= 422 (:status (post! {"name" " " "class" ""}))))
+      (is (= 422 (:status (post! {"bundle" "Valid Fleet" "role" "bad/role"}))))
       (is (= initial (catalog/snapshot! cat)))
       (swap! state assoc-in [:workspaces :browse :bulk-selection] (pr-str [a "missing"]))
-      (is (= 422 (:status (post! {"field" "bundle" "operation" "set" "value" "New"}))))
+      (is (= 422 (:status (post! {"bundle" "New"}))))
       (is (= initial (catalog/snapshot! cat)))
       (swap! state assoc-in [:workspaces :browse :bulk-selection] (pr-str [a b]))
-      (is (= 200 (:status (post! {"field" "class" "operation" "set" "value" "New Class"}))))
+      (is (= 200 (:status (post! {"class" "New Class" "bundle" "New Fleet" "name" " " "role" ""}))))
+      (is (= {"q" "prow" "class" "Cruiser"} (get-in @state [:workspaces :browse :filters])))
       (doseq [id [a b]]
         (let [before (catalog/part initial id)
               after (catalog/part (catalog/snapshot! cat) id)]
           (is (= "New Class" (:part/class after)))
+          (is (= "New Fleet" (:part/bundle after)))
+          (is (= (:part/name before) (:part/name after)))
+          (is (= (:part/role-hint before) (:part/role-hint after)))
           (is (= (select-keys before [:part/id :part/uid :part/mounts :part/paint-regions :part/orientation])
                  (select-keys after [:part/id :part/uid :part/mounts :part/paint-regions :part/orientation])))))
       (finally (fixture/stop! started)))))
@@ -128,4 +133,30 @@
             (is (= before (catalog/snapshot! cat)))
             (is (= (orientation/from-euler-degrees 90 0 0)
                    (:part/orientation (catalog/summary! cat "Pose Fleet/Carrier/Row Hull")))))))
+      (finally (fixture/stop! started) (fs/delete-tree directory)))))
+
+(deftest grouped-import-variant-error-rejects-labels-too
+  (let [started (fixture/start!) sys (:system started) handler (:handler started)
+        cat (:shipyard.catalog/db sys) ws (:shipyard.workspace/db sys)
+        directory (fs/create-temp-dir) zip (archives/archive! directory)
+        before (catalog/snapshot! cat)
+        post! #(handler (mock/request :post %1 %2))]
+    (try
+      (is (= 200 (:status (post! "/imports/start" {"archive" (str zip)}))))
+      (let [session (importer/session! {:workspace ws}) staged (:catalog session)
+            initial (catalog/snapshot! staged) entries @(:entries session)
+            ids (mapv :part/id (catalog/browse (catalog/listing! staged) {}))]
+        (swap! (:state ws) assoc-in [:workspaces :browse :bulk-selection] (pr-str ids))
+        (is (= 422 (:status (post! "/parts/metadata" {"bundle" "Reviewed Fleet" "role" "hull" "variant" "supported"}))))
+        (is (= entries @(:entries session)))
+        (is (= initial (catalog/snapshot! staged)))
+        (is (= before (catalog/snapshot! cat)))
+        (is (= 200 (:status (post! "/parts/metadata" {"bundle" "Reviewed Fleet" "role" "hull" "name" " " "class" ""}))))
+        (doseq [id ids]
+          (let [part (catalog/summary! staged id) original (catalog/part initial id)]
+            (is (= ["Reviewed Fleet" :hull] (mapv part [:part/bundle :part/role-hint])))
+            (is (= (select-keys original [:part/name :part/class :part/id :part/uid :part/variants])
+                   (select-keys part [:part/name :part/class :part/id :part/uid :part/variants])))))
+        (is (= entries @(:entries session)))
+        (is (= before (catalog/snapshot! cat))))
       (finally (fixture/stop! started) (fs/delete-tree directory)))))

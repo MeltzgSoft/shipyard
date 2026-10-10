@@ -134,8 +134,8 @@
           content]))))
 
 (defn cards
-  ([entries filters] (cards entries filters nil nil))
-  ([entries filters selected-class selected-ship]
+  ([entries filters] (cards entries filters nil))
+  ([entries filters draft]
    [:section#library.panel.ship-table {:hx-swap-oob "outerHTML" :data-ship-view "table"
                                        :hx-on--config-request "var r=this.querySelector('#ship-results');if(!event.detail.elt.closest('.list-more,#ship-filters')){event.detail.parameters['table-scroll']=String(r.scrollTop)}"
                                        :hx-on--load "if(event.target===this){var r=this.querySelector('#ship-results');r.scrollTop=Number(r.dataset.scrollTop||0)}"}
@@ -147,6 +147,7 @@
       [:button {:type "submit" :data-workspace-transition "true"} "New class"]]
      [:button (merge workspace-views/transition-attrs
                      {:type "button" :data-workspace-transition "true" :data-ship-new "true"
+                      :disabled (nil? (:hull draft))
                       :hx-get "/ships/tab/assembly" :hx-target "#detail" :hx-include "#ship-filters, #ship-table-position, [data-ship-page]"}) "Resume assembly"]]
     [:form#ship-filters.filters {:data-workspace-filters "true" :hx-get "/ships" :hx-target "#ship-results" :hx-swap "outerHTML"
                                  :hx-trigger "change[target.tagName === 'SELECT'], search, keyup changed delay:300ms"
@@ -166,4 +167,4 @@
                                   :hx-target "#detail" :hx-include "#ship-filters, #ship-table-position, [data-ship-page]"})
      [:input {:type "hidden" :name "kind"}] [:input {:type "hidden" :name "id"}]]
     (pagination/progress)
-    (results entries filters selected-class selected-ship)]))
+    (results entries filters)]))

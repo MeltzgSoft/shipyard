@@ -5,8 +5,7 @@
 (defn- input [^js root] (.querySelector root "[data-classification-input]"))
 (defn- menu [^js root] (.querySelector root "[role=listbox]"))
 (defn- field [^js root]
-  (or (.getAttribute (input root) "data-classification-field")
-      (some-> (.namedItem (.-elements (.-form (input root))) "field") .-value)))
+  (.getAttribute (input root) "data-classification-field"))
 (defn- classification? [^js root]
   (contains? #{"bundle" "class" "role"} (field root)))
 
@@ -58,7 +57,6 @@
   (close! root))
 
 (defn- sync! [^js root]
-  ;; Keep one successful value field for classifications, names and import variants.
   ;; The native datalist remains useful until this enhancement initializes.
   (.removeAttribute (input root) "list")
   (let [enabled? (classification? root)]
@@ -73,10 +71,6 @@
     (doseq [root (roots)] (sync! root))
     (.addEventListener body "htmx:afterSwap"
                        #(doseq [root (roots) :when (.hasAttribute (input root) "list")] (sync! root)))
-    (.addEventListener body "change"
-                       (fn [^js e]
-                         (when (.matches (.-target e) ".part-bulk-edit select[name=field]")
-                           (sync! (.querySelector (.-form (.-target e)) ".classification-picker")))))
     (.addEventListener body "input"
                        (fn [^js e]
                          (when (.hasAttribute (.-target e) "data-classification-input")

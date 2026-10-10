@@ -191,9 +191,12 @@ group, even when filters hide it. Select an existing group again if you intend t
 merge it with another row.
 
 Select rows or use the table header checkbox for every filtered result (including
-rows not loaded yet) to apply bulk bundle,
-class, role and name edits. The bulk **Supported / unsupported** field applies to
-single-file rows; use the per-file selectors for grouped rows.
+rows not loaded yet). When at least two rows are selected, controls appear above
+Name, Bundle / faction, Role and Class. Enter any combination and choose **Update
+selected**; blank fields keep their current values. The **Variant** dropdown above the
+Variant column applies to single-file rows; **Unchanged** leaves their variants alone.
+Use the per-file selectors for grouped rows. Invalid fields or variant targets save
+none of the submitted changes.
 Use **Orient selection** for the usual rotation
 grid, then **Save orientations** and **Back to table**. Orientation editing requires
 an unsupported file. Mount authoring and region painting are disabled
@@ -240,17 +243,19 @@ filters hide rows. The checkbox in the table header selects or deselects every
 filtered result, including unloaded rows, while retaining selections hidden by filters.
 It shows a mixed state when some matches are selected. **Clear selection**, beside
 the filter dropdowns, clears the whole selection. These controls also work in import review.
-Choose a field, enter a value and click **Apply to selected** to
-edit bundle/faction, class, role or name. Changing the row selection keeps your
-chosen field, name operation and entered values, including edits made while the
-selection is updating. For names, choose find-and-replace, prefix,
-suffix or set-name. These labels survive rescans and do not rename source files.
+With at least two rows selected, controls appear directly above the Name, Bundle /
+faction, Role and Class columns. Fill the fields you want to set and choose **Update
+selected** once to save them together for the whole selection, including hidden rows.
+Blank and whitespace-only inputs leave existing values unchanged. An invalid field
+rejects the whole update and leaves your inputs available for correction. Changing
+selection keeps entered values, including edits made while selection is updating;
+the controls hide when fewer than two rows remain selected. Labels survive rescans
+and do not rename source files. To edit one part, expand its row drawer instead.
 
-For faction/bundle, class or role, open the bulk edit **Value** dropdown to choose a
-saved value, or type to filter it. Choose **Add “value”** for a missing name. Arrow keys
-and Enter select a choice; Escape closes the list. These controls work in both Part
-Browser and import review. Typing or choosing a value does not save it: choose
-**Apply to selected** to apply the edit. New
+For Bundle / faction, Class or Role, open that column's dropdown to choose a saved
+value, or type to filter it. Choose **Add “value”** for a missing name. Arrow keys and
+Enter select a choice; Escape closes the list. These controls work in both Part
+Browser and import review. Typing or choosing a value waits for **Update selected**. New
 values become available in the current library's filters and editors after saving.
 Values authored in import review remain staged until the import is committed. Role names become lowercase identifiers with spaces replaced
 by hyphens (for example, **Sensor Array** becomes **sensor-array**). Custom roles are
@@ -642,7 +647,8 @@ to open **Assemble**. Expand **named ships** beneath a class to open one of its 
 painted hulls. The editor has **Assembly**, **Schemes**, and **Customize** tabs.
 
 **Back to ships** restores the table's filters, scroll and expanded rows. **New class**
-starts a fresh assembly; **Resume assembly** returns to your working draft. Assembly
+starts a fresh assembly; **Resume assembly** returns to your working draft. Resume is
+disabled until the draft has a hull, including after starting a new empty class. Assembly
 controls now live in the floating inspector alongside scheme and paint controls.
 **Mount colors** starts off and is shared by all three editor tabs.
 

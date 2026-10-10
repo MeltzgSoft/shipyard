@@ -188,3 +188,22 @@
       (is (thrown-with-msg? clojure.lang.ExceptionInfo #"Separate rows"
                             (t/plan [(first parts) (assoc (first parts) :part/id "b")]
                                     (assoc-in entries ["b" :group] "b")))))))
+
+(deftest bulk-metadata-test
+  (let [entries {"a" {:key "a" :group "a" :variant :unsupported}
+                 "b" {:key "b" :group "b" :variant :unsupported}}
+        parts {"a" {:part/id "a" :part/name "Hull" :part/class "Cruiser"}
+               "b" {:part/id "b" :part/name "Prow" :part/class "Cruiser"}}
+        changes [{:id "a" :attribute :part/bundle-override :value "Fleet"}
+                 {:id "b" :attribute :part/bundle-override :value "Fleet"}]
+        result (t/bulk-metadata entries parts ["a" "b"] changes :supported)]
+    (is (= [:supported :supported] (mapv :variant (vals (:entries result)))))
+    (is (= ["Fleet" "Fleet"] (mapv :part/bundle (vals (:labels result)))))
+    (is (= ["Hull" "Prow"] (mapv :part/name (vals (:labels result)))))
+    (is (= ["Cruiser" "Cruiser"] (mapv :part/class (vals (:labels result)))))
+    (doseq [ids [[] ["a"] ["a" "missing"]]]
+      (is (thrown? clojure.lang.ExceptionInfo (t/bulk-metadata entries parts ids changes :supported))))
+    (is (thrown? clojure.lang.ExceptionInfo (t/bulk-metadata entries parts ["a" "b"] changes :bad)))
+    (is (thrown? clojure.lang.ExceptionInfo
+                 (t/bulk-metadata (assoc entries "c" {:key "c" :group "a" :variant :supported})
+                                  parts ["a" "b"] changes :supported)))))

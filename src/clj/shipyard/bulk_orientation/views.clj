@@ -83,7 +83,7 @@
       (if (parts/thumbnail? part (:import/source part)) "…" "No preview")]
      [:form.part-row-edit {:method "post" :action "/parts/metadata/row" :hx-post "/parts/metadata/row"
                            :hx-params "*" :hx-include "unset" :hx-target "closest .part-drawer" :hx-swap "outerHTML" :hx-sync "#workspace-navigation:drop"
-                           :hx-disabled-elt "find fieldset, [data-bulk-select], [data-select-all], [data-workspace-mode], [data-workspace-transition], .part-bulk-edit button"}
+                           :hx-disabled-elt "find fieldset, [data-bulk-select], [data-select-all], [data-workspace-mode], [data-workspace-transition], .part-column-edit button"}
       [:input {:type "hidden" :name "part-id" :value id}]
       [:fieldset.part-row-edit__fields
        (metadata/metadata-fields prefix part)
@@ -150,7 +150,7 @@
    :hx-include "#bulk-orient-filters, #part-table-position, [data-part-page]"
    :hx-params (str/join "," (into ["selection"] (into pagination/filter-keys ["table-scroll" "page"])))
    :hx-sync "#workspace-navigation:drop"
-   :hx-disabled-elt "[data-bulk-select], [data-select-all], [data-workspace-mode], [data-workspace-transition], .part-bulk-edit button"})
+   :hx-disabled-elt "[data-bulk-select], [data-select-all], [data-workspace-mode], [data-workspace-transition], .part-column-edit button"})
 
 (defn matching-checkbox [parts selected]
   (let [ids (map :part/id parts)
@@ -163,6 +163,8 @@
              :data-select-all "all" :checked (boolean all?) :disabled (empty? ids)
              :aria-checked (if mixed? "mixed" (str (boolean all?))) :data-indeterminate (str mixed?)
              :hx-trigger "change" :hx-vals "js:{selection:this.checked?'all':'matching-none'}"})]))
+
+(declare column-controls)
 
 (defn results
   ([parts] (results parts #{}))
@@ -190,14 +192,16 @@
                                   :data-library-variants (when-not importing? true)
                                   :method "post" :action "/orient/selection" :hx-post "/orient/selection" :hx-trigger "change[target.matches('[data-bulk-select]')]" :hx-include ".bulk-orient__table [data-bulk-select], #part-table-position, [data-part-page]" :hx-params "selected,visible,table-scroll,page" :hx-target "#bulk-orient-selection"
                                   :hx-swap "outerHTML" :hx-sync "this:replace"
-                                  :hx-disabled-elt "[data-workspace-mode], [data-workspace-transition], .part-bulk-edit button, [data-select-all], [data-import-group], [data-variant-group]"}
-         [:div.bulk-orient__columns
-          checkbox [:span "Preview"] [:span "Part"] [:span "Bundle / faction"] [:span "Role"] [:span "Class"]
-          (when-not importing?
-            (for [[_ variant label] parts/variant-filters]
-              [:span {:title (when (= variant :unsupported-pitted) "Unsupported (pitted / recessed)")} label]))
-          [:span (if importing? "Variant" "Mount summary")] [:span (if importing? "Files / variants" "Regions")] [:span "Yaw"] [:span "Pitch"]
-          [:span "Roll"] [:span "Orientation"]]
+                                  :hx-disabled-elt "[data-workspace-mode], [data-workspace-transition], .part-column-edit button, [data-select-all], [data-import-group], [data-variant-group]"}
+         [:div.part-table-header
+          (column-controls (pr-str (vec selected)) importing?)
+          [:div.bulk-orient__columns
+           checkbox [:span "Preview"] [:span "Part"] [:span "Bundle / faction"] [:span "Role"] [:span "Class"]
+           (when-not importing?
+             (for [[_ variant label] parts/variant-filters]
+               [:span {:title (when (= variant :unsupported-pitted) "Unsupported (pitted / recessed)")} label]))
+           [:span (if importing? "Variant" "Mount summary")] [:span (if importing? "Files / variants" "Regions")] [:span "Yaw"] [:span "Pitch"]
+           [:span "Roll"] [:span "Orientation"]]]
          (if (seq parts)
            rows
            [:p.bulk-orient__empty "No parts match these filters."])
@@ -215,35 +219,45 @@
                (help/attrs "Orientation editing requires an unambiguous unsupported file for each part.")
                {:type "submit" :disabled (empty? ids) :data-bulk-render-button "true" :data-workspace-transition "true"}) "Orient selection →"]]))
 
-(defn- apply-button [selection]
-  [:button#part-bulk-apply {:type "submit" :disabled (empty? (bulk/selected-ids selection))} "Apply to selected"])
+(defn- update-button [selection]
+  [:button#part-column-update
+   (merge (help/attrs "Update all selected rows, including those hidden by filters. Blank fields keep their current values.")
+          {:type "submit" :disabled (< (count (bulk/selected-ids selection)) 2)}) "Update selected"])
+
+(defn column-controls [selection importing?]
+  [:div#part-column-controls {:hidden (< (count (bulk/selected-ids selection)) 2)}
+   [:form.part-column-edit
+    {:id (if importing? "import-column-edit" "part-column-edit") :method "post" :action "/parts/metadata" :hx-post "/parts/metadata" :hx-target "#part-edit-status" :hx-swap "innerHTML"
+     :hx-preserve true :hx-params "name,bundle,class,role,variant,table-scroll,page"
+     :hx-include "#part-table-position, [data-part-page]" :hx-sync "#workspace-navigation:drop"
+     :hx-disabled-elt "find button, [data-bulk-select], [data-select-all], [data-workspace-mode], [data-workspace-transition], .import-review button, #part-group-controls button"}
+    [:label.part-column-edit__name {:for "part-column-name"} "Set name for selected parts"
+     [:input#part-column-name {:name "name" :placeholder "Name"}]]
+    (for [[field label] [["bundle" "Bundle / faction"] ["role" "Role"] ["class" "Class"]]]
+      (vocabulary/field-picker (str "part-column-" field) field (str "Set " label " for selected parts") ""))
+    (when importing?
+      [:label.part-column-edit__variant {:for "part-column-variant"} "Set variant for selected parts"
+       [:select#part-column-variant (merge (help/attrs "Set variants for selected single-file rows. Use per-file selectors inside grouped rows. Blank fields keep their current values.")
+                                           {:name "variant"})
+        [:option {:value ""} "Unchanged"]
+        (for [[value label] [[:unsupported "Unsupported"] [:supported "Supported"] [:unsupported-pitted "Pitted / recessed"]]]
+          [:option {:value (name value)} label])]])
+    [:div.part-column-edit__actions (update-button selection)]]])
 
 (declare group-controls)
 
 (defn selection-updates [selection importing?]
   (list (selection-controls selection)
         (update (group-controls selection importing?) 1 assoc :hx-swap-oob "outerHTML")
-        (update (apply-button selection) 1 assoc :hx-swap-oob "outerHTML")
+        (update (column-controls selection importing?) 1 assoc :hx-swap-oob "outerHTML")
+        (update (update-button selection) 1 assoc :hx-swap-oob "outerHTML")
         [:p#part-edit-status {:role "status" :hx-swap-oob "outerHTML"}]))
 
 (defn selection-form
   ([selection] (selection-form selection false))
-  ([selection importing?]
+  ([selection _importing?]
    [:div#bulk-selection
     (selection-controls selection)
-    [:form.part-bulk-edit {:method "post" :action "/parts/metadata" :hx-post "/parts/metadata" :hx-target "#part-edit-status"
-                           :hx-include "#part-table-position, [data-part-page]" :hx-disabled-elt (if importing? "find button, .import-review button, #part-group-controls button" "find button")}
-     [:label "Field" [:select {:name "field"}
-                      (for [[value label] (cond-> [["bundle" "Bundle / faction"] ["class" "Class"] ["role" "Role"] ["name" "Name"]] importing? (conj ["variant" "Supported / unsupported"]))]
-                        [:option {:value value} label])]]
-     [:label.part-bulk-edit__name "Name operation" [:select {:name "operation"}
-                                                    [:option {:value "replace"} "Find and replace"]
-                                                    [:option {:value "prefix"} "Add prefix"]
-                                                    [:option {:value "suffix"} "Add suffix"]
-                                                    [:option {:value "set"} "Replace entire name"]]]
-     [:label.part-bulk-edit__find "Find" [:input {:name "find"}]]
-     (vocabulary/picker)
-     (apply-button selection)]
     [:p#part-edit-status {:role "status"}]]))
 
 (defn- group-form [prefix]

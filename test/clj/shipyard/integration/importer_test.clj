@@ -39,7 +39,7 @@
             orientations (into {} (map (fn [p] [(:part/id p) [0 1 0 0]]) unsupported))]
         (testing "bulk metadata and orientations stay in the review until commit"
           (is (= 200 (:status (post! "/orient/selection" {"visible" (pr-str ids) "selected" ids}))))
-          (is (= 200 (:status (post! "/parts/metadata" {"field" "bundle" "operation" "set" "value" "Imported Fleet"}))))
+          (is (= 200 (:status (post! "/parts/metadata" {"bundle" "Imported Fleet"}))))
           (is (= 200 (:status (post! "/orient/save" {"orientations" (pr-str orientations)}))))
           (is (= before (catalog/listing! cat))))
         (testing "canonical filenames, grouping and saved poses survive a rescan"

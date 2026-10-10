@@ -144,16 +144,20 @@
     (htmx/fragment [:p.detail__error "The bulk orientation data was invalid."] {:status 422})))
 
 (defn- metadata-effective! [{:keys [catalog workspace] :as deps} {:keys [params]}]
-  (workspace/remember! workspace :browse params)
+  (workspace/remember! workspace :browse (select-keys params ["table-scroll" "page"]))
   (let [ids (bulk/selected-ids (:bulk-selection (workspace/workspace! workspace :browse)))
         database (db/listing! catalog)
         parts (mapv #(db/part database %) ids)
         result (if (some nil? parts) {:error "A selected part is unavailable. Refresh the table and retry."}
-                   (edits/edits parts params))]
+                   (edits/bulk-edits parts params))]
     (if-let [error (:error result)]
       (htmx/fragment [:span.detail__error error] {:status 422})
       (try
-        (db/save-metadata! catalog (:changes result))
+        (if (str/blank? (get params "variant"))
+          (db/save-metadata! catalog (:changes result))
+          (if-let [session (:import-session deps)]
+            (importer/bulk-metadata! session ids (:changes result) (keyword (get params "variant")))
+            (throw (ex-info "Variant edits are available during import only." {}))))
         (htmx/fragment
          (list [:span (str "Updated " (count ids) " part" (when (not= 1 (count ids)) "s") ".")]
                (update (parts-view! deps {}) 1 assoc :hx-swap-oob "outerHTML")
@@ -168,18 +172,8 @@
 (defn save! [deps request]
   (save-effective! (importer/effective! deps) request))
 
-(defn metadata! [deps {:keys [params] :as request}]
-  (let [deps (importer/effective! deps)]
-    (if (= "variant" (get params "field"))
-      (try
-        (if-let [session (:import-session deps)]
-          (let [ids (bulk/selected-ids (:bulk-selection (workspace/workspace! (:workspace deps) :browse)))]
-            (importer/variants! session ids (keyword (get params "value")))
-            (htmx/fragment (list [:span "Updated variants."]
-                                 (update (parts-view! deps {}) 1 assoc :hx-swap-oob "outerHTML"))))
-          (htmx/fragment [:span "Variant edits are available during import only."] {:status 422}))
-        (catch Exception e (htmx/fragment [:span.detail__error (.getMessage e)] {:status 422})))
-      (metadata-effective! deps request))))
+(defn metadata! [deps request]
+  (metadata-effective! (importer/effective! deps) request))
 
 (defn select-ids! [{:keys [workspace] :as deps} ids]
   (let [selection (pr-str (vec (sort ids)))

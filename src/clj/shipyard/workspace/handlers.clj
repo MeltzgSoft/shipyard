@@ -60,7 +60,7 @@
     (workspace/update-workspace! workspace :ships update :filters dissoc "hull-pages"))
   (workspace/remember! workspace :ships params))
 
-(defn ships! [{:keys [workspace] :as deps} {:keys [headers params] :as request}]
+(defn ships! [{:keys [workspace assembly] :as deps} {:keys [headers params] :as request}]
   (let [table? (not= :editor (:view (workspace/workspace! workspace :ships)))]
     (cond
       (= "1" (get params "chunk"))
@@ -73,7 +73,8 @@
           (htmx/fragment (ship-views/results (class-entries! deps) (:filters (workspace/workspace! workspace :ships)))))
       table?
       (do (remember-ship-filters! workspace params)
-          (htmx/fragment (cond-> (ship-views/cards (class-entries! deps) (:filters (workspace/workspace! workspace :ships)))
+          (htmx/fragment (cond-> (ship-views/cards (class-entries! deps) (:filters (workspace/workspace! workspace :ships))
+                                                   (:draft @(:state assembly)))
                            (get params "error") (conj [:p.detail__error {:role "alert"} (get params "error")]))))
       :else (ship-preview! deps request))))
 

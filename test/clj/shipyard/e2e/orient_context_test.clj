@@ -107,11 +107,18 @@
 (deftest selection-response-preserves-pending-metadata-fields
   (let [system (s/start-system!) driver (s/make-driver)
         ^Page page (:page driver) held (atom nil)
-        fields #(s/js driver "() => Object.fromEntries(new FormData(document.querySelector('.part-bulk-edit')))")
-        expected {:field "name" :operation "prefix" :find "Prow" :value "Archived "}]
+        fields #(s/js driver "() => Object.fromEntries(new FormData(document.querySelector('#part-column-edit')))")
+        expected {:name "Archived Prow" :bundle "" :class "" :role ""}]
     (try
       (s/go! driver (s/base-url system))
       (s/wait-visible! driver "[data-bulk-select]")
+      (is (s/js driver "() => document.querySelector('#part-column-controls').hidden"))
+      (s/check! driver (str "[data-bulk-select][value='" s/hull-id "']"))
+      (s/wait-visible! driver "[data-bulk-count]:text-is('1 selected')")
+      (is (s/js driver "() => document.querySelector('#part-column-controls').hidden"))
+      (s/check! driver (str "[data-bulk-select][value='" s/prow-id "']"))
+      (s/wait-visible! driver "[data-bulk-count]:text-is('2 selected')")
+      (s/wait-visible! driver "#part-column-update")
       (.route page "**/orient/selection"
               (reify Consumer
                 (accept [_ value]
@@ -119,31 +126,29 @@
                     (reset! held [route (.fetch route)])))))
       (s/check! driver (str "[data-bulk-select][value='" s/pitted-id "']"))
       (is (s/wait-until #(do (s/text driver "[data-bulk-count]") (some? @held))))
-      (testing "enabled fields can be edited while the real selection response is pending"
-        (s/select-option! driver ".part-bulk-edit select[name=field]" "Name")
-        (s/fill-and-blur! driver ".part-bulk-edit input[name=find]" "Prow")
-        (s/select-option! driver ".part-bulk-edit select[name=operation]" "Add prefix")
-        (s/fill! driver ".part-bulk-edit input[name=value]" "Archived ")
+      (testing "fields remain editable while the real selection response is pending"
+        (s/fill! driver "#part-column-name" "Archived Prow")
         (is (= expected (fields)))
-        (is (true? (s/js driver "() => document.querySelector('#part-bulk-apply').disabled"))))
+        (is (true? (s/js driver "() => document.querySelector('#part-column-update').disabled"))))
       (let [[^Route route ^APIResponse response] @held]
         (.fulfill route (doto (Route$FulfillOptions.) (.setResponse response))))
-      (testing "selection updates the count and Apply button without replacing the user's edit"
-        (is (s/wait-until #(= "1 selected" (s/text driver "[data-bulk-count]"))))
+      (testing "selection updates controls without replacing the user's edit or caret"
+        (s/wait-visible! driver "[data-bulk-count]:text-is('3 selected')")
         (is (= expected (fields)))
-        (is (= {:name "value" :start 9 :end 9}
+        (is (= {:name "name" :start 13 :end 13}
                (s/js driver "() => ({name:document.activeElement.name,start:document.activeElement.selectionStart,end:document.activeElement.selectionEnd})")))
-        (is (false? (s/js driver "() => document.querySelector('#part-bulk-apply').disabled")))
-        (s/click! driver "#part-bulk-apply")
-        (is (s/wait-until #(str/includes? (s/text driver "#bulk-orient-results") "Archived Pitted Only Prow")))
+        (is (false? (s/js driver "() => document.querySelector('#part-column-update').disabled")))
+        (s/click! driver "#part-column-update")
+        (is (s/wait-until #(str/includes? (s/text driver "#bulk-orient-results") "Archived Prow")))
         (is (= expected (fields)))
         (is (= "Human Navy Fleet Bundle"
                (s/text driver (str "[data-part-row='" s/pitted-id "'] .bulk-orient__bundle")))))
       (.unroute page "**/orient/selection")
-      (testing "clearing the selection disables Apply while retaining the editable fields"
-        (.uncheck page (str "[data-bulk-select][value='" s/pitted-id "']"))
-        (is (s/wait-until #(= "0 selected" (s/text driver "[data-bulk-count]"))))
-        (is (true? (s/js driver "() => document.querySelector('#part-bulk-apply').disabled")))
+      (testing "controls hide below two selected rows and retain their draft"
+        (doseq [id [s/prow-id s/pitted-id]]
+          (.uncheck page (str "[data-bulk-select][value='" id "']")))
+        (s/wait-visible! driver "[data-bulk-count]:text-is('1 selected')")
+        (is (s/js driver "() => document.querySelector('#part-column-controls').hidden"))
         (is (= expected (fields))))
       (finally (s/quit! driver) (s/stop-system! system)))))
 

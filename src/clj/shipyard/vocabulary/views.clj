@@ -12,11 +12,6 @@
               :aria-controls options-id :aria-expanded "false"} "▾"]]
    [:div.classification-picker__options {:id options-id :role "listbox" :aria-label options-label :hidden true}]])
 
-(defn picker []
-  (picker-control {:id "part-edit-value" :field "value" :label "Value" :list-id "part-bundle-values"
-                   :options-id "part-edit-options" :options-label "Classification values"
-                   :toggle-label "Show classification values"}))
-
 (defn field-picker [id field label value]
   (picker-control {:id id :field field :label label :value value :list-id (str "part-" field "-values")
                    :options-id (str id "-options") :options-label label :toggle-label (str "Show " label " values")}))

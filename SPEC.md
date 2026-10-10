@@ -810,7 +810,7 @@ independently. Manual Load more remains available for retry.
 Double-click a class row, press Enter on it, or choose Edit to open the Assemble
 editor. A named-ship row opens the same editor on Customize. Back to ships restores table
 filters, loaded classes, scroll and expanded rows. New class starts an empty assembly; Resume assembly
-returns to the retained draft. The main workspace selector contains Part Browser and
+returns to the retained draft and is disabled when that draft has no hull. The main workspace selector contains Part Browser and
 Ship Browser; Assemble is a view within Ship Browser.
 
 The editor's floating inspector contains Assembly, Schemes and Customize tabs. Assembly
@@ -886,12 +886,22 @@ invalid fields commit no changes and retain the draft. Saving refreshes the head
 labels while preserving authored data, source identity, region editor and loaded pose.
 Individual editing remains unavailable during import review.
 
-The bulk-edit Value control in Part Browser and import review is an editable selector
-for faction/bundle, class and role. It lists saved values, filters as the user types,
-and offers a missing typed value for addition. Choosing or typing a value does not save;
-Apply to selected persists the edit. Names and import variants retain ordinary value entry.
-Saved values become available as editing suggestions
-and filter choices; import values remain staged until publication.
+Part Browser and import review show bulk controls above the editable columns only
+when at least two rows are selected, including selections hidden by filters or not yet
+loaded. Name, Bundle / faction, Role and Class can be set together with **Update
+selected**. Empty or whitespace-only inputs leave each part's existing value unchanged.
+All entered fields and selected targets must be valid before any change is saved;
+invalid batches retain their inputs and save nothing. Selection updates preserve the
+entered values and focus. There is no separate Field/Value/Apply section or name
+operation selector.
+
+Bundle / faction, Class and Role use the shared editable classification selector,
+listing saved values, filtering as the user types and offering valid missing values
+for addition. Typing or choosing values does not save. Import review additionally
+provides a Variant selector for single-file rows, with Unchanged as the default.
+Grouped rows require per-file variant selectors. Combined label/variant updates are
+atomic within the review. Saved classifications become editor suggestions and filter
+choices; import values remain staged until publication.
 Custom roles are available to metadata editing and socket acceptance, with the same
 role matching rules as built-in roles; weapon sockets remain turret-only.
 

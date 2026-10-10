@@ -25,19 +25,12 @@
       (is (s/js driver "() => document.querySelector('.part-thumbnail img').naturalWidth > 0"))
       (doseq [id [a b]] (s/check! driver (str "[data-bulk-select][value='" id "']")))
       (is (s/wait-until #(= "2 selected" (s/text driver "[data-bulk-count]"))))
-      (doseq [[field label value] [["bundle" "Bundle / faction" "New Fleet"] ["class" "Class" "New Class"] ["role" "Role" "prow"]]]
-        (s/select-option! driver ".part-bulk-edit select[name=field]" label)
-        (s/fill-and-blur! driver ".part-bulk-edit input[name=value]" value)
-        (s/click! driver "#part-bulk-apply")
-        (is (s/wait-until #(not (s/js driver "() => document.querySelector('#part-bulk-apply').disabled"))))
-        (is (s/wait-until #(every? (fn [id] (= (if (= field "role") (keyword value) value)
-                                               (get (part id) (keyword "part" (if (= field "role") "role-hint" field))))) [a b]))))
-      (s/select-option! driver ".part-bulk-edit select[name=field]" "Name")
-      (s/select-option! driver ".part-bulk-edit select[name=operation]" "Add prefix")
-      (s/fill-and-blur! driver ".part-bulk-edit input[name=value]" "Custom ")
-      (s/click! driver "#part-bulk-apply")
-      (is (s/wait-until #(not (s/js driver "() => document.querySelector('#part-bulk-apply').disabled"))))
-      (is (s/wait-until #(.startsWith (:part/name (part a)) "Custom ")))
+      (is (zero? (s/count-els driver ".part-bulk-edit, select[name=field], select[name=operation]")))
+      (doseq [[field value] [["bundle" "New Fleet"] ["class" "New Class"] ["role" "prow"] ["name" "Custom part"]]]
+        (s/fill-and-blur! driver (str "#part-column-" field) value))
+      (s/click! driver "#part-column-update")
+      (is (s/wait-until #(every? (fn [id] (= ["Custom part" "New Fleet" "New Class" :prow]
+                                             (mapv (part id) [:part/name :part/bundle :part/class :part/role-hint]))) [a b])))
       (catalog/reingest! cat (index/parts! lib) (index/root! lib))
       (is (= "New Fleet" (:part/bundle (part a))))
       (is (= "New Class" (:part/class (part b))))
@@ -111,4 +104,49 @@
       (s/click! driver "#bulk-orient-filters button:text-is('Clear selection')")
       (s/wait-visible! driver "[data-bulk-count]:text-is('0 selected')")
       (is (s/js driver "() => document.querySelector('#part-select-matching').disabled"))
+      (finally (s/quit! driver) (fixture/stop! started)))))
+
+(deftest column-controls-update-hidden-selections-and-ignore-blanks
+  (let [started (fixture/start! true) sys (:system started) driver (s/make-driver)
+        cat (:shipyard.catalog/db sys) ids [(:prow fixture/ids) (:bridge fixture/ids)]
+        initial (catalog/snapshot! cat)]
+    (try
+      (s/go! driver (s/base-url sys))
+      (s/wait-visible! driver "[data-bulk-select]")
+      (is (s/js driver "() => document.querySelector('#part-column-controls').hidden"))
+      (doseq [id ids] (s/check! driver (str "[data-bulk-select][value='" id "']")))
+      (s/wait-visible! driver "[data-bulk-count]:text-is('2 selected')")
+      (doseq [width [1280 768]]
+        (s/resize! driver width 900)
+        (doseq [[field column] [["name" 3] ["bundle" 4] ["role" 5] ["class" 6]]]
+          (let [control (s/bounds driver (if (= field "name") ".part-column-edit__name"
+                                             (str ".part-column-edit .classification-picker:has(input[name=" field "])")))
+                header (s/bounds driver (str ".bulk-orient__columns > :nth-child(" column ")"))]
+            (is (< (Math/abs (- (:x control) (:x header))) 1) (str field " aligns at " width))
+            (is (< (Math/abs (- (:width control) (:width header))) 1))
+            (is (<= (+ (:y control) (:height control)) (:y header))))))
+      (s/fill-and-blur! driver "#part-column-bundle" "Bulk Fleet")
+      (s/fill-and-blur! driver "#part-column-class" "Bulk Cruiser")
+      (s/fill-and-blur! driver "#part-column-role" "bad/role")
+      (s/click! driver "#part-column-update")
+      (s/wait-visible! driver "#part-edit-status .detail__error")
+      (is (= initial (catalog/snapshot! cat)) "An invalid field rejects the entire batch")
+      (is (= "Bulk Fleet" (s/js driver "() => document.querySelector('#part-column-bundle').value")))
+      (s/fill-and-blur! driver "#part-column-role" " ")
+      (s/fill-and-blur! driver "#part-column-name" " ")
+      (s/fill! driver "#bulk-orient-filters input[name=q]" "bridge")
+      (is (s/wait-until #(= 1 (s/count-els driver ".bulk-orient__row"))))
+      (is (= "2 selected" (s/text driver "[data-bulk-count]")))
+      (s/wait-visible! driver "#part-column-update")
+      (is (= "Bulk Fleet" (s/js driver "() => document.querySelector('#part-column-bundle').value")))
+      (s/click! driver "#part-column-update")
+      (is (s/wait-until #(every? (fn [id] (= ["Bulk Fleet" "Bulk Cruiser"]
+                                             (mapv (catalog/summary! cat id) [:part/bundle :part/class]))) ids)))
+      (doseq [id ids]
+        (let [before (catalog/part initial id) after (catalog/summary! cat id)]
+          (is (= (select-keys before [:part/name :part/role-hint :part/orientation :part/id :part/uid])
+                 (select-keys after [:part/name :part/role-hint :part/orientation :part/id :part/uid])))))
+      (s/click! driver "#bulk-orient-filters button:text-is('Clear selection')")
+      (s/wait-visible! driver "[data-bulk-count]:text-is('0 selected')")
+      (is (s/js driver "() => document.querySelector('#part-column-controls').hidden"))
       (finally (s/quit! driver) (fixture/stop! started)))))

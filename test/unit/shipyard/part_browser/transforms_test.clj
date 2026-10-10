@@ -78,3 +78,18 @@
     (doseq [[field variant] t/variant-filters]
       (is (t/matches-availability? {field "available"} {:part/variants #{variant}}))
       (is (not (t/matches-availability? {field "missing"} {:part/variants #{variant}}))))))
+
+(deftest bulk-edits-test
+  (let [parts [{:part/id "a" :part/name "Hull"} {:part/id "b" :part/name "Prow"}]
+        edit #(t/bulk-edits parts %)]
+    (is (= [{:id "a" :attribute :part/bundle-override :value "Fleet"}
+            {:id "b" :attribute :part/bundle-override :value "Fleet"}
+            {:id "a" :attribute :part/role-override :value :sensor-array}
+            {:id "b" :attribute :part/role-override :value :sensor-array}]
+           (:changes (edit {"name" " " "bundle" " Fleet " "class" "" "role" "Sensor Array"}))))
+    (is (:error (edit {})))
+    (is (:error (edit {"name" "" "bundle" " "})))
+    (is (:error (edit {"bundle" "Valid" "role" "bad/role"})))
+    (is (:error (edit {"name" "Valid" "class" "../bad"})))
+    (is (:error (t/bulk-edits (take 1 parts) {"bundle" "Fleet"})))
+    (is (= {:changes []} (edit {"variant" "supported"})))))

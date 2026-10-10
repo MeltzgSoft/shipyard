@@ -221,6 +221,22 @@
                      parts (map-indexed vector files))
      :selected (mapv :key files)}))
 
+(defn bulk-metadata
+  "Validate all single-file variant targets before planning combined label edits."
+  [entries parts ids changes variant]
+  (let [files (mapv #(members entries %) ids)
+        attributes {:part/name-override :part/name :part/bundle-override :part/bundle
+                    :part/class-override :part/class :part/role-override :part/role-hint}]
+    (when-not (variants variant)
+      (throw (ex-info "Choose supported, unsupported or unsupported-pitted." {})))
+    (when (or (< (count ids) 2) (some empty? files) (some #(nil? (get parts %)) ids))
+      (throw (ex-info "Select at least two available imported parts." {})))
+    (when (some #(> (count %) 1) files)
+      (throw (ex-info "Choose each file's supported/unsupported variant in the grouped row." {})))
+    {:entries (reduce #(assoc-in %1 [(:key (first %2)) :variant] variant) entries files)
+     :labels (reduce (fn [labels {:keys [id attribute value]}]
+                       (assoc-in labels [id (attributes attribute)] value)) parts changes)}))
+
 (defn assign-variant
   "Changing one side of an unambiguous pair swaps the occupied variant, so the
   user can reverse a pair in one action. Ambiguous groups remain editable."

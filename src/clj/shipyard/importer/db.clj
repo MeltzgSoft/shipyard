@@ -200,20 +200,12 @@
                           (apply-review! session {:entries (t/assign-variant @entries file-id variant)
                                                   :labels (reviewed-parts! catalog)}))))
 
-(defn- assign-variants! [{:keys [catalog entries] :as session} ids variant]
-  (when-not (t/variants variant)
-    (throw (ex-info "Choose supported, unsupported or unsupported-pitted." {})))
-  (let [parts (reviewed-parts! catalog)
-        files (mapv #(t/members @entries %) ids)]
-    (when (or (empty? ids) (some empty? files))
-      (throw (ex-info "Select available imported parts." {})))
-    (when (some #(> (count %) 1) files)
-      (throw (ex-info "Choose each file's supported/unsupported variant in the grouped row." {})))
-    (apply-review! session {:entries (reduce #(assoc-in %1 [(:key (first %2)) :variant] variant) @entries files)
-                            :labels parts})))
-
-(defn variants! [session ids variant]
-  (use-session! session #(assign-variants! % ids variant)))
+(defn bulk-metadata!
+  "Publish a validated label/variant review plan in one staging-store transaction."
+  [session ids changes variant]
+  (use-session! session
+                (fn [{:keys [catalog entries] :as session}]
+                  (apply-review! session (t/bulk-metadata @entries (reviewed-parts! catalog) ids changes variant)))))
 
 (defn plan! [session]
   (use-session! session #(t/plan (vals (reviewed-parts! (:catalog %))) @(:entries %))))

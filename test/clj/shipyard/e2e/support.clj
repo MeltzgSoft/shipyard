@@ -410,7 +410,8 @@
 
 (defn open-assembly! [driver]
   (ship-table! driver)
-  (click! driver "[data-ship-new]")
+  (click! driver (if (js driver "() => document.querySelector('[data-ship-new]').disabled")
+                   ".ship-table__new button" "[data-ship-new]"))
   (wait-visible! driver ".assembly__hull"))
 
 (defn open-class! [driver name]

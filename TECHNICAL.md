@@ -2135,9 +2135,13 @@ enabled inputs/selects in `data-workspace-filters` forms until the response arri
 Part Browser, Ship Browser and assembly filter forms share this admission guard, so
 late responses cannot overwrite edits to outgoing filters. Already-disabled filter
 controls are excluded from the temporary guard and retain their disabled state.
-Selection responses replace only the count/Render controls and the metadata Apply
-button and status. The metadata field, name operation, find and value controls remain
-in place, preserving an in-progress edit and its focus/caret while selection updates.
+Selection responses replace count/Render controls, grouping visibility, column-editor
+visibility, its Update selected button and status. The column form uses `hx-preserve`
+to retain entered values and focus/caret across selection and table responses. Import
+and destination-library forms have different ids, preventing draft fields or Variant
+controls from crossing contexts. Visibility and button availability derive from the
+whole server-owned selection (at least two ids). Column controls and row summaries use
+one shared CSS grid track definition, within the sticky table header.
 Render submissions sort the selection by id for stable card order. The server parses
 an EDN vector of string ids, removes duplicates while preserving order, resolves ids
 against the current catalog, and excludes unknown or unpreviewable parts. Empty/invalid
@@ -2513,7 +2517,7 @@ and role override attributes in one Datalevin transaction; scan observations rem
 separate. Source identity and downstream references do not change.
 
 `part-browser.views/metadata-fields` owns the Name/Bundle/Class/Role field set for
-individual forms and drawers; classification fields and the bulk Value input use
+individual forms and drawers; classification fields and bulk column inputs use
 `vocabulary.views` and its shared picker behavior. Individual saves use the same pure
 row edit plan and atomic catalog transaction with only metadata parameters. Opening
 an individual part retains the server-rendered vocabulary datalists in the hidden
@@ -2528,7 +2532,7 @@ block the individual editor during imports and reject stale activations.
 rounding and fractional-degree input step used by individual parts and library/import
 drawers. Each caller retains its field names, save endpoint, preview behavior and Reset
 contract. Relative grid controls continue to use the shared Euler math.
-`vocabulary.views` renders fixed-field and dynamic bulk pickers through one combobox
+`vocabulary.views` renders fixed-field classification pickers through one combobox
 implementation, retaining the server-provided vocabulary and transient dropdown behavior.
 `thumbnail.views/lazy-attrs` owns intersection-request attributes; callers supply the
 scroll root, endpoint and disabling policy. `loadout.views/named-delete-form` owns named-ship
@@ -2632,12 +2636,22 @@ application-wide values with observed/authored labels in the selected library an
 review, the staging catalog. Role identifiers are normalized by a pure transform.
 Part and import row disclosures lazily load the same server-rendered metadata editor through `GET /parts/metadata/row`. `POST /parts/metadata/row` validates all four labels and commits their overrides in one catalog transaction, without changing bulk selection. Its response replaces only the saved drawer and classification/filter choices, preserving other row drafts. Larger 256×176 previews are requested lazily on expansion and use a size-specific thumbnail cache key; list summaries remain metadata-only.
 
-The shared bulk-edit form uses a server-rendered editable classification selector.
-A small ClojureScript DOM enhancement projects the current datalist values into a
-searchable dropdown with keyboard navigation and a missing-value choice. It initializes
-independently of WebGL and keeps transient menu state on the element; selection swaps
-leave the value field intact. Choices and saves remain server-owned: only the existing
-metadata POST applies typed values, with import edits using the staging catalog.
+The shared bulk column form uses fixed-field editable classification selectors.
+A small ClojureScript DOM enhancement projects datalist values into searchable
+dropdowns with keyboard navigation and missing-value choices, independently of WebGL.
+Menus remain transient element state; choices and saves remain server-owned.
+`POST /parts/metadata` accepts optional string `name`, `bundle`, `class`, `role` fields
+and an optional blank or enumerated `variant`. `part-browser.transforms/bulk-edits`
+ignores blank/whitespace labels and validates every supplied field before returning one
+combined change vector. Metadata fields are excluded from workspace filter retention;
+only table scroll/page parameters are remembered by this save path. Empty submissions and selections smaller than two return 422.
+Library edits use one `catalog/save-metadata!` transaction. Import label edits use the
+staging catalog; when a Variant is supplied, `importer.transforms/bulk-metadata`
+validates all single-file targets and builds a combined entry/label plan, published by
+`importer.db/bulk-metadata!` through the existing atomic review boundary. Grouped-row
+variant errors preserve labels and entries. Neither path changes source identities or
+selection. Successful responses refresh table summaries and classification/filter
+choices; invalid responses retain the controls and update the status only.
 Custom singleton roles participate in socket acceptance and existing assembly matching;
 the built-in weapon/turret and shared hull hardpoint constraints remain in force.
 Variable-size viewport events exceeding 2 KiB are carried in escaped
@@ -2688,7 +2702,9 @@ The floating editor wraps the existing assembly, scheme and paint forms. Assembl
 controls render inside that inspector; there is no class-list sidebar in the editor.
 The table replaces the workspace width. Back restores table state without clearing
 the editable draft. New class resets the draft only after the existing revision-bound
-discard confirmation. Opening another class and duplicating use the same protection.
+discard confirmation. The table renders Resume assembly's enabled state from the
+assembly draft snapshot; a draft without a hull cannot be resumed. Opening another
+class and duplicating use the same protection.
 Opening the current class resumes its working copy. All durable class, scheme and
 named-ship edits retain their existing store operations and identity contracts.
 

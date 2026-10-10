@@ -34,8 +34,8 @@
           (is (= 200 (:status response)) (:body response))))
       (is (contains? (:bundle (vocabulary/choices! cat)) "Test Faction"))
       (is (contains? (:class (vocabulary/choices! cat)) "Carrier"))
-      (swap! state assoc-in [:workspaces :browse :bulk-selection] (pr-str [(:prow fixture/ids)]))
-      (is (= 200 (:status (post! "/parts/metadata" {"field" "role" "operation" "set" "value" "Sensor Array"}))))
+      (swap! state assoc-in [:workspaces :browse :bulk-selection] (pr-str [(:prow fixture/ids) (:bridge fixture/ids)]))
+      (is (= 200 (:status (post! "/parts/metadata" {"role" "Sensor Array"}))))
       (is (= :sensor-array (:part/role-hint (catalog/summary! cat (:prow fixture/ids)))))
       (let [lib (:shipyard.library/index sys) id (:bridge fixture/ids)
             {:keys [mesh-key tris]} (cache/ensure! (:shipyard.mesh/cache sys) (index/fresh-source-file! lib id))]

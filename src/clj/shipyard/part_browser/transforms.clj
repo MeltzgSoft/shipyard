@@ -62,6 +62,20 @@
       {:error "Names, bundles and classes cannot be blank."}
       :else {:changes changes})))
 
+(defn bulk-edits
+  "Set all supplied nonblank labels together; blank controls preserve each part's value."
+  [parts params]
+  (let [results (for [field ["name" "bundle" "class" "role"]
+                      :let [value (get params field)]
+                      :when (not (str/blank? value))]
+                  (edits parts {"field" field "operation" "set" "value" value}))]
+    (cond
+      (< (count parts) 2) {:error "Select at least two parts."}
+      (some :error results) (first (filter :error results))
+      (and (empty? results) (str/blank? (get params "variant")))
+      {:error "Enter at least one value to update."}
+      :else {:changes (vec (mapcat :changes results))})))
+
 (def angle-fields ["part-yaw-deg" "part-pitch-deg" "part-roll-deg"])
 
 (defn row-edits [part params]

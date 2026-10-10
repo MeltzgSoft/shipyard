@@ -26,9 +26,11 @@
                                                                                     [:part-roll-deg {:optional true} string?]])}
                                   :responses contracts/html-responses}}]
    ["/parts/metadata" {:post {:handler (partial handlers/metadata! deps)
-                              :parameters {:form [:map [:field [:enum "bundle" "class" "role" "name" "variant"]]
-                                                  [:operation [:enum "set" "replace" "prefix" "suffix"]]
-                                                  [:value string?] [:find {:optional true} string?]]}
+                              :parameters {:form [:map [:name {:optional true} string?]
+                                                  [:bundle {:optional true} string?]
+                                                  [:class {:optional true} string?]
+                                                  [:role {:optional true} string?]
+                                                  [:variant {:optional true} [:enum "" "unsupported" "supported" "unsupported-pitted"]]]}
                               :responses contracts/html-responses}}]
    ["/orient/selection" {:post {:handler (partial handlers/selection! deps)
                                 :parameters {:form [:map [:visible string?]

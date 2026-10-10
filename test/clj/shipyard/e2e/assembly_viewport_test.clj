@@ -16,6 +16,9 @@
              (json/write-str (or params {})) "}); return status; }"
              "finally { document.body.removeEventListener('htmx:afterRequest', capture); } }")))
 
+(defn- draft-revision [driver]
+  (s/js driver "() => document.querySelector('.assembly__hull input[name=revision]').value"))
+
 (defn- await-count! [driver n]
   (s/wait-until
    #(do (request! driver "/assembly?poll=1" nil)
@@ -83,9 +86,10 @@
         (is (s/wait-until #(s/stats driver)))
         (s/open-assembly! driver)
         (s/wait-visible! driver ".assembly__hull")
+        (reset! revision (parse-long (draft-revision driver)))
         (s/js driver "() => { window.assemblyResponses = []; document.body.addEventListener('htmx:afterRequest', e => { const xhr = e.detail.xhr; const doc = new DOMParser().parseFromString(xhr.responseText, 'text/html'); const field = doc.querySelector('[data-assembly-event]'); if (field) window.assemblyResponses.push({status:xhr.status, headers:xhr.getAllResponseHeaders().length, trigger:xhr.getResponseHeader('HX-Trigger'), size:field.getAttribute('data-assembly-event').length}); }); }")
         (is (= 200 (request! driver "/assembly/hull"
-                             {"revision" "0" "part-id" (:hull fixture/ids)})))
+                             {"revision" (str @revision) "part-id" (:hull fixture/ids)})))
         (swap! revision inc)
         (is (await-count! driver 1))
         (doseq [[path part] [[[[:prow 0]] :prow] [[[:bridge 0]] :bridge]
@@ -139,7 +143,7 @@
       (is (s/wait-until #(s/stats driver)))
       (s/open-assembly! driver)
       (s/wait-visible! driver ".assembly__hull")
-      (request! driver "/assembly/hull" {"revision" "0" "part-id" (:hull fixture/ids)})
+      (request! driver "/assembly/hull" {"revision" (draft-revision driver) "part-id" (:hull fixture/ids)})
       (is (await-count! driver 1))
       (let [before (get-in (slots driver) [[] :uuid])]
         (s/js driver "() => { window.drawerComplete=false; document.body.addEventListener('htmx:afterRequest', e => { if(e.detail.xhr.responseURL.endsWith('/assembly/drawer')) window.drawerComplete=true; }); }")
@@ -183,8 +187,8 @@
       (is (zero? (s/count-els driver (drawer [[:weapon 0] [:turret 0]]))))
       (is (false? (open? [[:bridge 0]])))
       (testing "reset removes previous disclosure state"
-        (is (= 200 (request! driver "/assembly/reset" {"revision" "6"})))
-        (is (= 200 (request! driver "/assembly/hull" {"revision" "7" "part-id" (:hull fixture/ids)})))
+        (is (= 200 (request! driver "/assembly/reset" {"revision" (draft-revision driver)})))
+        (is (= 200 (request! driver "/assembly/hull" {"revision" (draft-revision driver) "part-id" (:hull fixture/ids)})))
         (is (await-count! driver 1))
         (is (true? (open? [[:bridge 0]]))))
       (finally (s/quit! driver) (fixture/stop! started)))))
@@ -197,10 +201,10 @@
       (s/open-assembly! driver)
       (s/wait-visible! driver ".assembly__hull")
       (testing "a hull and duplicate weapons occupy distinct transforms"
-        (is (= 200 (request! driver "/assembly/hull" {"revision" "0" "part-id" (:hull fixture/ids)})))
+        (is (= 200 (request! driver "/assembly/hull" {"revision" (draft-revision driver) "part-id" (:hull fixture/ids)})))
         (is (await-count! driver 1))
-        (request! driver "/assembly/assign" {"revision" "1" "slot" "[[:weapon 0]]" "part-id" (:weapon fixture/ids)})
-        (request! driver "/assembly/assign" {"revision" "2" "slot" "[[:weapon 1]]" "part-id" (:weapon fixture/ids)})
+        (request! driver "/assembly/assign" {"revision" (draft-revision driver) "slot" "[[:weapon 0]]" "part-id" (:weapon fixture/ids)})
+        (request! driver "/assembly/assign" {"revision" (draft-revision driver) "slot" "[[:weapon 1]]" "part-id" (:weapon fixture/ids)})
         (is (await-count! driver 3))
         (let [by-slot (slots driver)]
           (is (not= (get-in by-slot [[[:weapon 0]] :matrix]) (get-in by-slot [[[:weapon 1]] :matrix])))
@@ -219,7 +223,7 @@
           (is (> (count (set (:materials (s/stats driver)))) 1))
           (is (pos? (:visible-mount-markers (s/stats driver))))))
       (testing "nested placement and replacement preserve unrelated object identity"
-        (request! driver "/assembly/assign" {"revision" "3" "slot" "[[:weapon 0] [:turret 0]]" "part-id" (:turret fixture/ids)})
+        (request! driver "/assembly/assign" {"revision" (draft-revision driver) "slot" "[[:weapon 0] [:turret 0]]" "part-id" (:turret fixture/ids)})
         (is (await-count! driver 4))
         (let [before (slots driver)
               ^Page page (:page driver)
@@ -235,7 +239,7 @@
                           (.resume route))))))
           (s/js driver "() => { window.assemblyHeldPollSettled = false; const source = document.createElement('div'); document.body.append(source); htmx.ajax('GET', '/assembly?poll=1', {source, target:'#detail', swap:'innerHTML'}).then(() => { window.assemblyHeldPollSettled = true; }); }")
           (is (s/wait-until #(do (s/js driver "() => document.readyState") (some? @held))))
-          (request! driver "/assembly/assign" {"revision" "4" "slot" "[[:weapon 0]]" "part-id" (:weapon-alt fixture/ids)})
+          (request! driver "/assembly/assign" {"revision" (draft-revision driver) "slot" "[[:weapon 0]]" "part-id" (:weapon-alt fixture/ids)})
           (is (s/wait-until #(= (:weapon-alt fixture/ids) (get-in (slots driver) [[[:weapon 0]] :part-id]))))
           (is (= 3 (count (slots driver))))
           (is (= (get-in before [[[:weapon 1]] :uuid]) (get-in (slots driver) [[[:weapon 1]] :uuid])))
@@ -248,8 +252,8 @@
             (is (= recovered (update-vals (slots driver) :uuid))))))
       (testing "late fetch completion cannot resurrect a cleared slot"
         (s/js driver "() => { window.originalFetch = window.fetch; window.pendingMeshes = []; window.fetch = (url, opts) => String(url).startsWith('/mesh/') ? new Promise(resolve => window.pendingMeshes.push(() => window.originalFetch(url, opts).then(resolve))) : window.originalFetch(url, opts); }")
-        (request! driver "/assembly/assign" {"revision" "5" "slot" "[[:weapon 0]]" "part-id" (:weapon fixture/ids)})
-        (request! driver "/assembly/clear" {"revision" "6" "slot" "[[:weapon 0]]"})
+        (request! driver "/assembly/assign" {"revision" (draft-revision driver) "slot" "[[:weapon 0]]" "part-id" (:weapon fixture/ids)})
+        (request! driver "/assembly/clear" {"revision" (draft-revision driver) "slot" "[[:weapon 0]]"})
         (s/js driver "async () => { window.fetch = window.originalFetch; await Promise.all(window.pendingMeshes.map(release => release())); }")
         (is (await-count! driver 2))
         (is (not (contains? (slots driver) [[:weapon 0]]))))
