@@ -283,6 +283,13 @@ reasoning stays on the JVM:
 One round trip per click, which is entirely acceptable for a deliberate authoring action,
 and it means no facet-grouping or convex-hull code has to exist in JavaScript.
 
+Trimming retains immediate local visible-face highlighting. Selected-face boundary
+reconstruction and cut preview offsets run on backend workers, using the same
+pit/recess profiles as generated physical cuts. A brief coalescing interval combines
+rapid edits; pending or failed preparation never saves a draft, blocks navigation,
+or replaces a later selection. Cancel discards pending previews. The browser receives
+compact line buffers and applies only rendering and guide transforms.
+
 #### Facet indices are never persisted
 
 Coplanar-facet grouping is order-dependent and not stable between runs - the existing

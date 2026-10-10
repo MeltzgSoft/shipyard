@@ -47,6 +47,7 @@
             [shipyard.mesh.cache :as cache]
             [shipyard.mesh.facet :as facet]
             [shipyard.mount.facet-input :as facet-input]
+            [shipyard.mount.preview-routes :as mount-preview-routes]
             [shipyard.mount.facet-recovery :as facet-recovery]
             [shipyard.mount.wizard :as wizard]
             [shipyard.mount.split :as split]
@@ -662,6 +663,7 @@
     (ring/router
      (into (routes deps)
            (concat (paint-preparation/routes deps)
+                   (mount-preview-routes/routes deps)
                    (preparation-routes/routes deps)
                    (file-picker/routes deps)
                    (thumbnail-routes/routes deps)

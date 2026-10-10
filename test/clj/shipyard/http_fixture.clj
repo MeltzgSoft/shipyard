@@ -12,7 +12,8 @@
                                      :shipyard.mesh/cache {:cache-home (str home)}})]
     (try
       (let [started (system/start! config)]
-        (with-meta {:workers (:shipyard.jobs/pool started)
+        (with-meta {:mount-previews (:shipyard.mount.preview-db/drafts started)
+                    :workers (:shipyard.jobs/pool started)
                     :library (:shipyard.library/index started)
                     :catalog (:shipyard.catalog/db started)
                     :cache (:shipyard.mesh/cache started)

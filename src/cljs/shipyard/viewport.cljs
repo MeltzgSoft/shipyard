@@ -30,6 +30,7 @@
             [shipyard.mount.face-brush :as mount-face-brush]
             [shipyard.mount.cut :as cut]
             [shipyard.mount.cut-render :as cut-render]
+            [shipyard.mount.preview-wire :as preview-wire]
             [shipyard.part.orientation :as orientation]
             [shipyard.paint.render :as paint-render]
             [shipyard.paint.topology :as paint-topology]
@@ -95,6 +96,7 @@
     (paint-render/cancel! obj)
     (.traverse obj (fn [^js child]
                      (when-let [request (.. child -userData -emissionRequest)] (preparation/cancel! request))
+                     (set! (.. child -userData -mountFacetBuffers) nil)
                      (glow/dispose-object! child)
                      (picking/dispose-object! child)
                      (some-> child .-geometry .dispose)
@@ -264,7 +266,17 @@
   (swap! parts select-keys [part-id])
   (put-part! sys part-id obj))
 
-(defn- clear-preview! [{:keys [^js scene preview]}]
+(defn- clear-preview! [{:keys [^js scene preview cut-controller cut-timer cut-owner cut-request]}]
+  (when-let [owner (some-> cut-owner deref)]
+    (-> (js/fetch "/mounts/preview/cancel"
+                  #js {:method "POST" :headers #js {"content-type" "application/edn"}
+                       :body (pr-str {:owner owner :sequence (swap! cut-request inc)})})
+        (.catch (fn [_])))
+    (reset! cut-owner nil))
+  (when-let [controller (some-> cut-controller deref)]
+    (preparation/cancel! controller)
+    (reset! cut-controller nil))
+  (when cut-timer (js/clearTimeout @cut-timer) (reset! cut-timer nil))
   (when-let [{:keys [^js object]} @preview]
     (.remove scene object)
     (dispose-object! object))
@@ -519,20 +531,31 @@
         position (.getAttribute source "position")
         index (.-index source)
         lift (v3 axis)
-        values (array)]
-    (doseq [triangle facet-indices
-            corner (range 3)]
+        values (array)
+        cache-key [(.-uuid source) facet-indices axis mirror]
+        entries (or (.. obj -userData -mountFacetBuffers) [])
+        cached (some #(when (= cache-key (:key %)) (:positions %)) entries)]
+    (when-not cached
+      (doseq [triangle facet-indices
+              corner (range 3)]
       ;; Region colors expand indexed geometry into per-triangle vertices.
       ;; Facet IDs keep their order in either representation.
-      (let [offset (+ (* triangle 3) corner)
-            vertex-index (if index (.getX index offset) offset)
-            p (three/Vector3.)]
-        (.fromBufferAttribute p position vertex-index)
-        (when mirror (reflect-point! p mirror))
-        (.addScaledVector p lift 0.002)
-        (.push values (.-x p) (.-y p) (.-z p))))
-    (doto (three/BufferGeometry.)
-      (.setAttribute "position" (three/BufferAttribute. (js/Float32Array. values) 3)))))
+        (let [offset (+ (* triangle 3) corner)
+              vertex-index (if index (.getX index offset) offset)
+              p (three/Vector3.)]
+          (.fromBufferAttribute p position vertex-index)
+          (when mirror (reflect-point! p mirror))
+          (.addScaledVector p lift 0.002)
+          (.push values (.-x p) (.-y p) (.-z p)))))
+    (let [positions (or cached (js/Float32Array. values))]
+      (when-not cached
+        (set! (.. obj -userData -mountFacetBuffers)
+              (loop [entries (vec (take-last 4 (conj entries {:key cache-key :positions positions})))]
+                (if (> (reduce + 0 (map #(.-byteLength (:positions %)) entries)) 2097152)
+                  (recur (subvec entries 1))
+                  entries))))
+      (doto (three/BufferGeometry.)
+        (.setAttribute "position" (three/BufferAttribute. positions 3))))))
 
 (defn- preview-length [^js obj]
   (let [g (.-geometry obj)]
@@ -595,12 +618,10 @@
                  [(vec (.toArray (.. highlight -geometry -boundingBox -min)))
                   (vec (.toArray (.. highlight -geometry -boundingBox -max)))])
         cut-mount (if (= mesh-key (get-in mount [:mount/cut :mesh-key])) mount (dissoc mount :mount/cut))
-        cutting (cut-render/object! cut-mount)
         alignment-line (alignment-object mount (preview-length obj))]
     (when highlight (.add group highlight))
     (when-let [split-object (:object split-guide)]
       (.add group split-object))
-    (when cutting (.add group cutting))
     (when alignment-line (.add group alignment-line))
     {:type interface-type
      :mount-id (:mount/id mount)
@@ -610,8 +631,8 @@
      :candidates (count facet-indices)
      :split-lines (or (:split-lines split-guide) [])
      :split-centers (or (:split-centers split-guide) [])
-     :cut-lines (cut-render/lines cut-mount)
-     :object (when (or facet-indices split-guide cutting alignment-line) group)}))
+     :cut-lines []
+     :object (when (or facet-indices split-guide (:mount/cut cut-mount) alignment-line) group)}))
 
 (defn- interface-highlights [^js obj mesh-key mounts part-orientation]
   (let [by-id (into {} (map (juxt :mount/id identity)) mounts)
@@ -649,11 +670,20 @@
 (defn- frame-up [{:mount/keys [axis roll]}]
   (math/cross axis roll))
 
+(defn- frame-from-form [^js form]
+  (let [source (input-value form "[name=frame]")
+        cached (.-mountPreviewFrame form)]
+    (if (= source (:source cached))
+      (:value cached)
+      (let [value (edn/read-string source)]
+        (set! (.-mountPreviewFrame form) {:source source :value value})
+        value))))
+
 (defn- split-preview [frame]
   (when-let [form (.querySelector js/document ".mount-wizard__form")]
     (let [capacity (math/parse-finite-double (input-value form "input[name=capacity]"))
           direction (keyword (or (input-value form "select[name=split-direction]") "horizontal"))
-          source-frame (some-> (input-value form "input[name=frame]") (edn/read-string))]
+          source-frame (frame-from-form form)]
       (when (and capacity (> capacity 1))
         (split/sections (assoc frame :mount/capacity capacity
                                :mount/split (split/metadata-for source-frame frame direction)))))))
@@ -676,7 +706,7 @@
                          (map (fn [field] [field (input-value form (str "[name=" field "]"))])
                               ["cut-kind" "cut-depth" "cut-diameter" "cut-border"]))
             cutting (cut/request params (keyword (input-value form "[name=kind]")))
-            source (edn/read-string (input-value form "[name=frame]"))
+            source (frame-from-form form)
             capacity (or (math/parse-finite-double (input-value form "[name=capacity]")) 1)]
         (when (:cut cutting)
           (assoc frame :mount/cut (:cut cutting) :mount/outline (:mount/outline source)
@@ -706,22 +736,6 @@
     (when-let [line (alignment-object frame length)] (.add group line))
     (when-let [line (when mirrored-frame (alignment-object mirrored-frame length))]
       (.add group line))
-    (when-let [mount (cut-preview-mount frame)]
-      (when-let [cutting (cut-render/object! mount)] (.add group cutting))
-      (when mirrored-frame
-        (let [mirrored (assoc mount :mount/pos (:mount/pos mirrored-frame)
-                              :mount/axis (:mount/axis mirrored-frame) :mount/roll (:mount/roll mirrored-frame)
-                              :mount/outline (mapv (fn [ring]
-                                                     (mapv #(orientation/reflect-position (:orientation mirror) (:plane-keyword mirror) (:offset mirror) %)
-                                                           (reverse ring))) (:mount/outline mount)))
-              mirrored (cond-> mirrored (:mount/split mount)
-                               (update-in [:mount/split :bounds] (fn [[[xmin ymin] [xmax ymax]]] [[xmin (- ymax)] [xmax (- ymin)]])))]
-          (when-let [cutting (cut-render/object! mirrored)] (.add group cutting)))))
-    (when (mount-face-brush/enabled?)
-      (let [geometry (facet-geometry obj (mount-face-brush/border-indices) axis nil)
-            borders (three/WireframeGeometry. geometry)]
-        (.dispose geometry)
-        (.add group (three/LineSegments. borders (three/LineBasicMaterial. #js {:color 0xffffff :depthTest false})))))
     (when highlight
       (.add group highlight))
     (when mirrored-frame
@@ -757,7 +771,9 @@
          :offset offset
          :orientation part-orientation}))))
 
-(defn- install-preview! [{:keys [^js scene parts current authoring preview preview-revision]}
+(declare prepare-preview!)
+
+(defn- install-preview! [{:keys [^js scene parts current authoring preview preview-revision] :as sys}
                          {:keys [part-id mesh-key] :as data}]
   (when (and (current-part? {:current current} part-id mesh-key)
              (= {:part-id part-id :mesh-key mesh-key} @authoring))
@@ -781,11 +797,14 @@
                                :object object
                                :revision revision
                                :mirror mirror
-                               :mirror-frame mirror-frame))))))
+                               :mirror-frame mirror-frame))
+        (prepare-preview! sys)))))
 
 (defn- draw-preview! [sys payload]
   (install-preview! sys (select-keys payload [:part-id :mesh-key :facet-indices :frame
                                               :roll-ambiguous? :roll-source])))
+
+(declare prepare-interfaces!)
 
 (defn- draw-interfaces! [{:keys [^js scene parts current interfaces] :as sys}
                          {:keys [part-id mesh-key mounts orientation]}]
@@ -804,11 +823,69 @@
               (when (seq items) (.add scene object))
               (reset! interfaces {:object object :source source
                                   :part-id part-id :mesh-key mesh-key
-                                  :items items :misses misses}))
+                                  :items items :misses misses})
+              (prepare-interfaces! sys mounts))
             (catch :default e
               (js/console.error "shipyard: interface highlights failed" e)
               (reset! interfaces {:part-id part-id :mesh-key mesh-key
                                   :items [] :error (str e)}))))))))
+
+(defn- prepare-preview! [{:keys [preview current active activation cut-request cut-controller cut-timer cut-owner]}]
+  (when-let [{:keys [part-id mesh-key frame facet-indices mirror revision object]} @preview]
+    (let [generation @activation
+          form (mount-face-brush/form!)
+          mount (cut-preview-mount frame)
+          border (when (mount-face-brush/enabled?) (mount-face-brush/border-indices))
+          owner (or (when form (.-mountPreviewOwner form)) (str (random-uuid)))
+          request (swap! cut-request inc)
+          current? #(and @active (= generation @activation) (= request @cut-request)
+                         (= revision (:revision @preview)) (identical? object (:object @preview))
+                         (= mesh-key (:mesh-key @current)) form (.-isConnected form))]
+      (when form
+        (set! (.-mountPreviewOwner form) owner)
+        (reset! cut-owner owner)
+        (when-let [controller @cut-controller] (preparation/cancel! controller))
+        (js/clearTimeout @cut-timer)
+        (when (and (seq facet-indices) (or mount border))
+          (reset! cut-timer
+                  (js/setTimeout
+                   (fn []
+                     (when (current?)
+                       (let [body (cond-> {:part-id part-id :mesh-key mesh-key :owner owner :sequence request
+                                           :frame (select-keys frame [:mount/pos :mount/axis :mount/roll])
+                                           :indices (vec facet-indices)
+                                           :capacity (or (:mount/capacity mount) 1)
+                                           :direction (keyword (or (input-value form "[name=split-direction]") "horizontal"))}
+                                    mount (assoc :cut (:mount/cut mount))
+                                    border (assoc :border-indices (vec border))
+                                    (and mount mirror) (assoc :mirror {:plane (:plane-keyword mirror) :offset (:offset mirror)}))]
+                         (reset! cut-controller
+                                 (preparation/load! "/mounts/preview"
+                                                    {:method "POST" :body body :current? current?
+                                                     :decode! #(-> (.arrayBuffer %) (.then preview-wire/decode))
+                                                     :ready! (fn [projection]
+                                                               (doseq [group [:cuts :mirror-cuts :border]]
+                                                                 (when-let [line (cut-render/object! (get projection group)
+                                                                                                     (if (= group :border) "mount-face-border" "mount-cut")
+                                                                                                     (if (= group :border) 0xffffff 0xffdf80))]
+                                                                   (.add object line)))
+                                                               (swap! preview assoc :preparation :ready))
+                                                     :failed! (fn [_] (swap! preview assoc :preparation :failed))}))))) 100)))))))
+
+(defn- prepare-interfaces! [{:keys [interfaces current active activation]} mounts]
+  (when (some :mount/cut mounts)
+    (let [{:keys [part-id mesh-key object source]} @interfaces
+          generation @activation
+          current? #(and @active (= generation @activation) (= source (:source @interfaces))
+                         (identical? object (:object @interfaces)) (= mesh-key (:mesh-key @current)))]
+      (preparation/load! (str "/mounts/previews?part-id=" (js/encodeURIComponent part-id) "&mesh-key=" mesh-key)
+                         {:current? current?
+                          :decode! #(-> (.arrayBuffer %) (.then preview-wire/decode))
+                          :ready! (fn [projection]
+                                    (when-let [line (cut-render/object! (:cuts projection))]
+                                      (.add object line))
+                                    (swap! interfaces assoc :preparation :ready))
+                          :failed! (fn [_] (swap! interfaces assoc :preparation :failed))}))))
 
 (defn- canvas-pointer! [^js pointer ^js canvas ^js e]
   (let [rect (.getBoundingClientRect canvas)
@@ -1865,7 +1942,7 @@
                   :interfaces (atom nil) :orientation-guide (atom nil) :region-mirror-guide (atom nil)
                   :mount-markers (atom {}) :mount-colors-enabled (atom true)
                   :bulk (atom {}) :bulk-refresh? (atom false) :bulk-saves (atom {:sequence 0 :pending {}}) :bulk-step (atom 90.0)
-                  :preview-revision (atom 0)
+                  :preview-revision (atom 0) :cut-request (atom 0) :cut-controller (atom nil) :cut-timer (atom nil) :cut-owner (atom nil)
                   :raycaster (three/Raycaster.) :pointer (three/Vector2.)}]
     (set! (.-background scene) (three/Color. 0x14171c))
     (.set (.-position orientation-camera) 3.0 2.6 4.0)
@@ -1881,12 +1958,7 @@
       (mount-face-brush/install! sys
                                  (fn [indices]
                                    (when-let [preview @(:preview sys)]
-                                     (let [^js obj (get @(:parts sys) (:part-id preview))
-                                           outline (cut/outline (mapv #(paint-render/triangle-points (.-geometry obj) %) indices))
-                                           form (mount-face-brush/form!)
-                                           hidden (.querySelector form "input[name=frame]")]
-                                       (set! (.-value hidden) (pr-str (assoc (edn/read-string (.-value hidden)) :mount/outline outline)))
-                                       (install-preview! sys (assoc (preview-data preview) :facet-indices indices)))))))
+                                     (install-preview! sys (assoc (preview-data preview) :facet-indices indices))))))
     sys))
 
 (defn- active-runtime [{:keys [runtimes active-workspace]}]
