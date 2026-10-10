@@ -242,7 +242,8 @@ assembly compatibility. Weapon sockets retain their turret-only restriction.
 
 Part and ship thumbnails are saved in a disk cache and reused across reloads and app
 restarts. Saved geometry, orientation, assembly, region, scheme and paint changes produce
-updated previews when the list is shown again. Rendering shares a background job pool
+updated previews when the list is shown again. Loading and refreshing thumbnails leave navigation and editing controls available.
+Rendering shares a background job pool
 with mesh preparation and mount recovery. By default, two background jobs run at a time
 across the whole app, including import review. The cache removes older images as it fills; missing images
 are recreated automatically. After replacing STL files externally, rescan the library.

@@ -2,9 +2,9 @@
   (:require [clojure.string :as str]))
 
 (defn lazy-attrs [url root disable?]
-  (cond-> {:hx-get url :hx-trigger (str "intersect once root:" root)
-           :hx-sync "this:drop" :hx-target "this" :hx-swap "innerHTML"}
-    disable? (assoc :hx-disabled-elt "this")))
+  {:hx-get url :hx-trigger (str "intersect once root:" root)
+   :hx-sync "this:drop" :hx-target "this" :hx-swap "innerHTML"
+   :hx-disabled-elt (if disable? "this" "unset")})
 
 (defn progress
   ([] (progress nil))
@@ -12,7 +12,7 @@
    [:p.thumbnail-progress
     {:role "status" :data-thumbnail-progress true :aria-live "polite"
      :hx-get "/thumbnail-progress" :hx-trigger (if counts "every 600ms" "load") :hx-target "this" :hx-swap "outerHTML"
-     :hx-sync "this:drop"}
+     :hx-sync "this:drop" :hx-disabled-elt "unset"}
     (if counts
       (str "Thumbnail generation: " (:running counts) " running · " (:queued counts) " queued")
       "Checking thumbnail generation…")]))
@@ -28,7 +28,7 @@
 (defn import-progress [counts]
   [:p.import-progress {:role "status" :data-import-progress true :aria-live "polite"
                        :hx-get "/imports/progress" :hx-trigger (if counts "every 600ms" "load")
-                       :hx-target "this" :hx-swap "outerHTML" :hx-sync "this:drop"
+                       :hx-target "this" :hx-swap "outerHTML" :hx-sync "this:drop" :hx-disabled-elt "unset"
                        :data-accepted (:accepted counts) :data-pending (:pending counts)
                        :data-running (:running counts) :data-completed (:completed counts)
                        :data-failed (:failed counts) :data-cancelled (:cancelled counts) :data-rejected (:rejected counts)}

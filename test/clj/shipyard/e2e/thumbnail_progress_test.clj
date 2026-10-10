@@ -39,6 +39,33 @@
       (is (s/wait-until #(= idle (s/text driver "[data-thumbnail-progress]"))))
       (finally (.countDown release) (s/quit! driver) (fixture/stop! started)))))
 
+(deftest large-preview-loading-and-polling-leave-navigation-enabled
+  (let [started (fixture/start! true) driver (s/make-driver) ^Page page (:page driver)
+        held (atom []) id (:prow fixture/ids) row (str "[data-part-row='" id "']")
+        disabled "() => [...document.querySelectorAll('[data-workspace-mode], [data-workspace-transition], [data-select-all], [data-picker-browse]')].filter(el => el.hasAttribute('disabled')).map(el => el.outerHTML)"]
+    (try
+      (.route page "**/thumbnails/**size=large*"
+              (reify Consumer (accept [_ route] (swap! held conj route))))
+      (s/go! driver (s/base-url (:system started)))
+      (s/wait-visible! driver row)
+      (s/check! driver (str row " [data-bulk-select]"))
+      (s/wait-visible! driver "[data-bulk-count]:text-is('1 selected')")
+      (s/click! driver (str row " > summary"))
+      (s/wait-visible! driver (str row " .part-row-edit"))
+      (s/scroll-into-view! driver (str row " .part-thumbnail--large"))
+      (is (s/wait-until #(do (s/js driver "() => true") (= 1 (count @held)))))
+      (is (empty? (s/js driver disabled)) "Initial thumbnail loading leaves controls enabled")
+      (.resume ^Route (first @held))
+      (is (s/wait-until #(do (s/js driver "() => true") (= 2 (count @held)))))
+      (is (empty? (s/js driver disabled)) "Thumbnail polling leaves controls enabled")
+      (s/click! driver (str row " > summary"))
+      (s/open-part! driver "prow")
+      (s/await-part driver id)
+      (is (= [id] (:parts (s/stats driver))) "Navigation works while a thumbnail poll is pending")
+      (.resume ^Route (second @held))
+      (is (= [id] (:parts (s/stats driver))) "A late thumbnail response cannot replace the model")
+      (finally (s/quit! driver) (fixture/stop! started)))))
+
 (deftest supported-import-thumbnails-and-variant-filter
   (let [started (fixture/start! true) driver (s/make-driver)
         zip (io/file (str (:temp started)) "Supported Fleet.zip")

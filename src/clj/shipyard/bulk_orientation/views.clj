@@ -132,7 +132,8 @@
         (row-editor part message)
         [:div.part-drawer__content
          {:hx-get (str "/parts/metadata/row?part-id=" (urls/encode-id (:part/id part)))
-          :hx-trigger "toggle[event.target.open] once from:closest details" :hx-target "this" :hx-swap "innerHTML" :hx-sync "this:drop"}
+          :hx-trigger "toggle[event.target.open] once from:closest details" :hx-target "this" :hx-swap "innerHTML" :hx-sync "this:drop"
+          :hx-disabled-elt "unset"}
          [:p "Loading part…"]])])))
 
 (def selection-attrs
