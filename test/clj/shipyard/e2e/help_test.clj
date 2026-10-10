@@ -10,11 +10,12 @@
 
 (defn- help! [driver selector expected]
   (let [^Page page (:page driver)]
+    (.hover page ".masthead h1")
     (s/js driver "() => document.activeElement.blur()")
     (.focus page selector)
     (s/wait-visible! driver "[role=tooltip]")
     (is (str/includes? (s/text driver "[role=tooltip]") expected))
-    (is (s/js driver "() => document.activeElement.getAttribute('aria-describedby').split(' ').includes('control-tooltip')")
+    (is (s/js driver "() => (document.activeElement.getAttribute('aria-describedby')||'').split(' ').includes('control-tooltip')")
         "Focused controls reference the shared tooltip")
     (is (s/js driver "() => {const r=document.querySelector('[role=tooltip]').getBoundingClientRect();return r.left>=0&&r.top>=0&&r.right<=innerWidth&&r.bottom<=innerHeight}")
         "Help fits the viewport even inside a scrolling inspector")
@@ -22,6 +23,14 @@
     (is (s/js driver "() => document.querySelector('[role=tooltip]').hidden"))
     (is (not (s/js driver "() => (document.activeElement.getAttribute('aria-describedby')||'').includes('control-tooltip')"))
         "Dismissal removes the temporary description reference")))
+
+(defn- resize! [driver width height]
+  ;; setViewportSize returns before the browser delivers resize. The app
+  ;; dismisses help on that event, so wait for it before focusing a control.
+  (s/js driver "() => {window.helpResizeComplete=false;window.addEventListener('resize',()=>{window.helpResizeComplete=true},{once:true});}")
+  (s/resize! driver width height)
+  (is (s/wait-until #(s/js driver "() => window.helpResizeComplete"))
+      "The browser finishes resizing before the next help interaction"))
 
 (deftest pointer-exit-dismisses-help-even-when-the-control-retains-focus
   (s/assert-bundle!)
@@ -31,11 +40,14 @@
         hidden? #(s/js driver "() => document.querySelector('[role=tooltip]').hidden")]
     (try
       (s/go! driver (s/base-url (:system started)))
-      (s/wait-visible! driver selector)
+      ;; The filters appear before their initial HTMX request finishes. Start
+      ;; pointer checks after the table is loaded and the control is enabled.
+      (s/wait-visible! driver "#bulk-orient-results .bulk-orient__row")
+      (s/wait-visible! driver (str selector ":enabled"))
       (.hover page selector)
       (s/wait-visible! driver "[role=tooltip]")
       (.hover page ".masthead h1")
-      (is (s/wait-until hidden? 2000) "Leaving an unfocused control dismisses its help")
+      (is (s/wait-until hidden?) "Leaving an unfocused control dismisses its help")
       (.focus page selector)
       (s/wait-visible! driver "[role=tooltip]")
       (.hover page selector)
@@ -43,21 +55,21 @@
       (is (s/js driver "() => document.querySelector('[role=tooltip]').matches(':hover')")
           "The pointer can cross from the control to the tooltip")
       (.hover page ".masthead h1")
-      (is (s/wait-until hidden? 2000) "Leaving the tooltip dismisses it despite retained control focus")
+      (is (s/wait-until hidden?) "Leaving the tooltip dismisses it despite retained control focus")
       (is (= "variant" (s/js driver "() => document.activeElement.name"))
           "Dismissal does not blur the control")
       (is (s/js driver "() => document.hasFocus()") "The app window retains focus")
       (.hover page selector)
       (s/wait-visible! driver "[role=tooltip]")
       (.hover page ".masthead h1")
-      (is (s/wait-until hidden? 2000) "Leaving the focused control directly also dismisses help")
+      (is (s/wait-until hidden?) "Leaving the focused control directly also dismisses help")
       (is (not (s/js driver "() => (document.activeElement.getAttribute('aria-describedby')||'').includes('control-tooltip')")))
       ;; Keyboard focus still opens help when the pointer is elsewhere.
       (s/js driver "() => document.activeElement.blur()")
       (.focus page selector)
       (s/wait-visible! driver "[role=tooltip]")
       (.press (.keyboard page) "Tab")
-      (is (s/wait-until hidden? 2000) "Moving keyboard focus away dismisses help")
+      (is (s/wait-until hidden?) "Moving keyboard focus away dismisses help")
       (finally (s/quit! driver) (fixture/stop! started)))))
 
 (deftest shared-help-follows-controls-through-workspace-and-inspector-swaps
@@ -91,7 +103,7 @@
       (s/click! driver "button[aria-label='Region brush help']")
       (s/wait-visible! driver "[role=tooltip]")
       (.hover page ".masthead h1")
-      (is (s/wait-until #(s/js driver "() => document.querySelector('[role=tooltip]').hidden") 2000)
+      (is (s/wait-until #(s/js driver "() => document.querySelector('[role=tooltip]').hidden"))
           "A clicked help button dismisses on pointer exit")
       (is (= "Region brush help" (s/js driver "() => document.activeElement.getAttribute('aria-label')")))
       (help! driver "button[aria-label='Region brush help']" "Release to save regions")
@@ -104,9 +116,9 @@
       (help! driver "#region-stroke select[name=mirror-axis]" "part’s axes")
       (help! driver "#region-stroke input[name=mirror-offset]" "Leave blank")
       (help! driver "#region-fill button" "Primary clears")
-      (.setViewportSize page 600 900)
+      (resize! driver 600 900)
       (help! driver "button[aria-label='Region brush help']" "Alt+drag")
-      (.setViewportSize page 1280 900)
+      (resize! driver 1280 900)
       (s/click! driver "[data-workspace-mode=settings]")
       (s/wait-visible! driver "#settings-workspace")
       (help! driver "#cut-defaults button" "Existing cuts keep")
