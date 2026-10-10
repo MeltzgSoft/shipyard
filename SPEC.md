@@ -688,6 +688,10 @@ named ships. Deletion preserves those references and custom paint. A failed writ
 keeps the scheme and selection intact. Successful deletion clears the Schemes tab's
 selected palette.
 
+Reusable tier-zero picking positions prepare on backend workers alongside paint
+topology. Camera changes and subsequent strokes retain those source buffers while
+refreshing the local depth-tested visibility pass. Picking geometry is shared by live
+instances and released on scene teardown; instance paths and mutable paint stay separate.
 The **Detail brush** paints across visible instances. The rail shows touched
 instances and their running face counts. Alt+drag permits orbiting.
 Occluded instances identified behind the brush are explanatory only and are not painted. Its adjustable circular

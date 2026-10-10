@@ -2926,12 +2926,20 @@ tier 0 only, never facet indices or decimated LOD indices. Rendering filters by 
 part id and current source hash. A mismatch retains data and warns in Customize.
 
 The browser creates one temporary depth-tested RGB triangle-ID render at CSS canvas
-resolution per stroke. All assembly instances occlude. The ID ranges map to full
+resolution per stroke. Immutable backend-expanded tier-zero positions also supply
+picking geometry. The pinned WebGL2/GLSL3 shader computes the local triangle ordinal
+as `gl_VertexID / 3`, adding an instance-specific uint uniform; no RGB ID attribute
+or browser deindexing is needed. Shared-material draws explicitly refresh that uniform
+for each instance. ID zero remains background and aggregate IDs must fit 24 bits.
+One refcounted position-only geometry is shared by each source's live instances,
+retained across strokes and camera changes and released when the last owner is
+removed. Scene teardown releases those geometries even when a readback failed.
+Its arrays share the bounded paint topology; preparation performs no whole-library scan. All assembly instances occlude. The ID ranges map to full
 instance paths and admit every frontmost instance. The pass uses front faces, no MSAA, blending, lighting or
 colour conversion. Readback is sampled at pixel centres inside the circular brush;
 pointer segments are sampled at intervals of at most half the radius. Camera updates
-pause during a stroke. Temporary ID geometries, material and render target are
-disposed immediately after readback. A painted instance uses a nonindexed tier-0
+pause during a stroke. Temporary ID materials and render targets are disposed immediately after readback;
+source picking geometries persist for their live owners. A painted instance uses a nonindexed tier-0
 geometry with linear vertex colours and a three-channel `shipyardFinish` attribute,
 not materials/draws per face. A narrowly scoped MeshStandardMaterial `onBeforeCompile`
 extension substitutes face metalness/roughness at the pinned Three.js shader's PBR

@@ -737,7 +737,8 @@ tolerance. If a stroke reports preparation pending, try again once it is ready;
 Facets and camera orbit remain available. Previously used tolerances reuse cached
 preparation. Raise it to follow curved surfaces; larger creases and disconnected surfaces stop
 the stroke. Expansion can include triangles outside the brush or behind other geometry. Right-drag erasing follows the same mode. Adjust its screen-space
-radius; use Alt+drag to orbit. Region preview colors are chosen for separation from
+radius; use Alt+drag to orbit. After orbiting or resizing, the next stroke paints only triangles visible from
+the new viewpoint. Region preview colors are chosen for separation from
 the other types in your library, then stored so they stay stable when types are
 renamed, added or deleted. Existing types receive new separated colors once when
 upgrading from name-based colors. Schemes supply their final colors and finishes. Opening Regions
