@@ -66,9 +66,11 @@
           (is (nil? (preparation/status! service (:resource old))))
           (is (= 1 (count (:entries @(:state service)))))))
       (let [began (CountDownLatch. 1) job (preparation/request! service {:key [:cancel key] :part-id id :mesh-key key
+                                                                         :retained-bytes 128
                                                                          :run! #(do (.countDown began) (Thread/sleep 10000) {:value :late})})]
         (is (.await began 5 TimeUnit/SECONDS))
         (preparation/close! service)
+        (is (zero? (:retained-in-flight @(:state service))))
         (is (nil? (preparation/status! service (:resource job)))))
       (finally (.countDown release) (fixture/stop! started)))))
 
@@ -83,3 +85,37 @@
         (is (seq (:positions mesh)))
         (is (empty? (:entries @(:meshes service))) "A decoded boxed mesh exceeding the resident budget is not retained"))
       (finally (fixture/stop! started)))))
+
+(deftest stale-producers-retain-admission-until-their-bodies-finish
+  (let [started (fixture/start! false fixture/library! fixture/author!
+                                {:shipyard.preparation/service {:cap-bytes 1024}})
+        sys (:system started) service (:shipyard.preparation/service sys)
+        library (:shipyard.library/index sys) id (:hull fixture/ids)
+        key (:mesh-key (cache/ensure! (:shipyard.mesh/cache sys) (index/fresh-source-file! library id)))
+        entered (CountDownLatch. 2) release (CountDownLatch. 1) revision (atom 1)
+        descriptor (fn []
+                     (let [expected @revision]
+                       {:key [:reclaim key] :part-id id :mesh-key key :retained-bytes 400
+                        :valid?! #(= expected @revision)
+                        :run! #(do (.countDown entered) (.await release) {:value expected})}))]
+    (try
+      (index/record-mesh-key! library id key nil)
+      (let [obsolete (preparation/request! service (descriptor))]
+        (reset! revision 2)
+        (is (nil? (preparation/status! service (:resource obsolete))))
+        (let [replacement (preparation/request! service (descriptor))]
+          (is (not= (:resource obsolete) (:resource replacement)))
+          (is (.await entered 5 TimeUnit/SECONDS) "A replacement claim runs while the stale job for its cache key drains")
+          (is (= 800 (:retained-in-flight @(:state service))))
+          (reset! revision 3)
+          (is (= :overloaded (:state (preparation/request! service (descriptor)))) "Pruning stale cache entries cannot reclaim captured job bytes")
+          (.countDown release)
+          (previews/await! #(zero? (+ (:running (jobs/progress! (:scope service))) (:queued (jobs/progress! (:scope service))))))
+          (is (zero? (:retained-in-flight @(:state service))))
+          (let [fresh (preparation/request! service (descriptor))]
+            (previews/await! #(= :ready (:state (preparation/status! service (:resource fresh)))))
+            (is (= 3 (:value (preparation/status! service (:resource fresh))))))))
+      (preparation/close! service)
+      (is (= :overloaded (:state (preparation/request! service (assoc (descriptor) :key [:rejected key])))))
+      (is (zero? (:retained-in-flight @(:state service))) "Rejected submission releases its reservation")
+      (finally (.countDown release) (fixture/stop! started)))))
