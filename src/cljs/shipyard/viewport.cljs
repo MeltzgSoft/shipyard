@@ -32,6 +32,7 @@
             [shipyard.mount.cut-render :as cut-render]
             [shipyard.part.orientation :as orientation]
             [shipyard.paint.render :as paint-render]
+            [shipyard.paint.topology :as paint-topology]
             [shipyard.paint.glow :as glow]
             [shipyard.paint.brush :as brush]
             [shipyard.scheme.material :as paint-material]
@@ -59,7 +60,7 @@
       (.setAttribute g "normal" (three/BufferAttribute. normals 3))
       ;; The encoder only omits normals for a mesh the welder left flat.
       (.computeVertexNormals g))
-    (.setIndex g (three/BufferAttribute. indices 1))
+    (when indices (.setIndex g (three/BufferAttribute. indices 1)))
     g))
 
 (defn- material []
@@ -89,6 +90,7 @@
   memory without bound."
   [^js obj]
   (when obj
+    (paint-render/cancel! obj)
     (.traverse obj (fn [^js child]
                      (glow/dispose-object! child)
                      (some-> child .-geometry .dispose)
@@ -1105,13 +1107,17 @@
                  (if (.-ok res)
                    (.arrayBuffer res)
                    (throw (js/Error. (str "mesh request failed: " (.-status res)))))))
-        (.then (fn [buf]
+        (.then (fn [buffer]
+                 (-> (paint-topology/fetch! part-id mesh-key)
+                     (.then (fn [topology] {:mesh (wire/decode buffer) :topology topology})))))
+        (.then (fn [{:keys [mesh topology]}]
                  (when (= generation @(:browse-generation sys))
-                   (let [{:keys [bbox-min bbox-max] :as mesh} (wire/decode buf)
+                   (let [{:keys [bbox-min bbox-max]} mesh
                          part-orientation (orientation/orientation-of (:orientation payload))
-                         obj (three/Mesh. (decode->geometry mesh) (material))
+                         obj (three/Mesh. (decode->geometry {:positions (.-positions ^js topology) :normals (.-normals ^js topology)}) (material))
                          [oriented-min oriented-max]
                          (orientation/oriented-bounds bbox-min bbox-max part-orientation)]
+                     (set! (.. obj -geometry -userData -preparedTopology) topology)
                      (set! (.-name obj) (or part-id url))
                      (set! (.. obj -userData -partId) part-id)
                      (set! (.. obj -userData -meshKey) mesh-key)
@@ -1152,20 +1158,15 @@
                 [(.-x maximum) (.-y maximum) (.-z maximum)])))))
 
 (defn- load-assembly-slot! [{:keys [assembly mount-colors-enabled] :as sys} slot {:keys [token payload]}]
-  (-> (js/fetch (:url payload))
-      (.then (fn [^js response]
-               (if (.-ok response) (.arrayBuffer response)
-                   (throw (js/Error. (str "Assembly mesh request failed: " (.-status response)))))))
-      (.then (fn [buffer]
+  (-> (paint-topology/fetch! (:part-id payload) (:mesh-key payload))
+      (.then (fn [^js topology]
                (when (assembly-scene/current? @assembly slot token)
                  (let [payload (get-in @assembly [:slots slot :payload])
-                       geometry (decode->geometry (wire/decode buffer))
+                       geometry (decode->geometry {:positions (.-positions topology) :normals (.-normals topology)})
                        surface (material)
                        object (three/Mesh. geometry surface)]
                    (try
-                     (let [cache (:paint-topology sys) key (:url payload)
-                           topology (or (.get cache key) (let [value #js {}] (.set cache key value) value))]
-                       (set! (.. geometry -userData -paintTopology) topology))
+                     (set! (.. geometry -userData -preparedTopology) topology)
                      (when-let [color (:color payload)]
                        (set! (.. object -userData -mountColor) color))
                      (set! (.-matrixAutoUpdate object) false)
@@ -1564,6 +1565,9 @@
                                        :glow (.. object -material -emissiveIntensity)
                                        :emissive (.getHexString (.. object -material -emissive))
                                        :details (:faces (.. object -userData -paintDetails))
+                                       :paint-preparing (boolean (.. object -userData -paintPreparing))
+                                       :paint-preparation (js->clj (.. object -userData -paintPreparationStats) :keywordize-keys true)
+                                       :prepared-topology (boolean (.. object -geometry -userData -preparedTopology))
                                        :vertex-colors (.. object -material -vertexColors)
                                        :finish-compiled (true? (.. object -material -userData -finishCompiled))
                                        :finish-enabled (boolean (when-let [^js uniform (.. object -material -userData -finishEnabled)] (.-value uniform)))

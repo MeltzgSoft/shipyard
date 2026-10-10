@@ -17,6 +17,7 @@
             [shipyard.workspace.routes :as workspace-routes]
             [shipyard.bulk-orientation.routes :as bulk-routes]
             [shipyard.bulk-orientation.handlers :as bulk]
+            [shipyard.paint.preparation :as paint-preparation]
             [shipyard.preparation.routes :as preparation-routes]
             [shipyard.preparation.transport :as preparation-transport]
             [shipyard.part-browser.navigation :as navigation]
@@ -656,7 +657,8 @@
                     :database #(db/snapshot! (:catalog deps)))]
     (ring/router
      (into (routes deps)
-           (concat (preparation-routes/routes deps)
+           (concat (paint-preparation/routes deps)
+                   (preparation-routes/routes deps)
                    (file-picker/routes deps)
                    (thumbnail-routes/routes deps)
                    (vocabulary-routes/routes deps)

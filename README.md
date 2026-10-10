@@ -174,6 +174,21 @@ for ten seconds, runs the whole-library canary with four threads, and writes `be
 bundle first (`npx shadow-cljs compile viewport`). Use `--viewport-mode swiftshader` only
 for a CPU-renderer comparison; it does not measure the hardware viewport budget.
 
+The paint preparation responsiveness probe uses a deterministic 36,480-triangle hull
+with repeated assembly parts and records cold/warm buffer preparation time and the
+longest measured CPU chunk to `/tmp/shipyard-paint-profile.edn`. Build the dev viewport
+first. The ordinary E2E run uses Chromium; an on-demand Firefox comparison requires
+Playwright's Firefox browser (`com.microsoft.playwright.CLI install firefox`):
+
+```bash
+clojure -M:test:natives-linux --focus shipyard.e2e.paint-preparation-test
+clojure -J-Dshipyard.paint.profile.browser=firefox -M:test:natives-linux --focus shipyard.e2e.paint-preparation-test
+```
+
+These observations depend on browser, GPU, and host load. They separate bounded CPU
+material work from an event-loop gap measurement, which also includes GPU/frame
+scheduling and is not a standalone main-thread CPU profile.
+
 The on-demand job-memory benchmark uses a separate JVM and temporary stores. Choose
 an explicit heap limit. It reports retained queue heap after GC, sampled rendering
 heap peaks, GC time, elapsed time and worker errors as EDN records; these are machine-

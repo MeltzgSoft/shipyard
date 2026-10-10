@@ -985,6 +985,15 @@ Feature endpoints return small EDN `{ :state :resource }` envelopes. Clients pol
 or changed-source resources return 410; overload remains retryable. EDN preparation
 POST descriptors are capped at 1 MiB before Malli coercion. Binary resources are
 prepared by workers, while the browser attaches typed arrays and owns GPU uploads.
+Paint topology format 1 consists of two UInt32 header words (version and triangle
+count), nonindexed positions and normals (9 Float32 values per source triangle),
+canonical face identity words (9 UInt32 values), and source triangle ordinals sorted
+by that identity (one UInt32). Face picking converts only touched identities to
+strings; sparse durable masks use binary search including duplicate source faces.
+Repeated instances share these immutable source buffers while color/finish buffers
+remain instance-owned. Material preparation yields after 256 triangles and rejects
+superseded updates; scene disposal invalidates its generation. Source caches are
+bounded both on the backend and in the browser.
 The shared client loader accepts cancellation and a consumer `:current?` predicate
 for workspace, activation, source and settings guards; canceled or stale responses
 never activate scene state.

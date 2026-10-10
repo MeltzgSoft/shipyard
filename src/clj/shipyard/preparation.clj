@@ -66,7 +66,7 @@
         result (try
                  (let [{:keys [value bytes content-type] :as result} (apply run! args)
                        bytes (or bytes (.getBytes (pr-str value) StandardCharsets/UTF_8))]
-                   (merge result {:state :ready :value value :bytes bytes :size (+ (alength ^bytes bytes) (long (or (:size result) 0)))
+                   (merge result {:state :ready :value value :bytes bytes :size (+ (alength ^bytes bytes) (long (or (:size result) 0)) (long (or (:retained-bytes mine) 0)))
                                   :content-type (or content-type "application/edn; charset=utf-8")}))
                  (catch Throwable error
                    (log/warn error "Derived preparation failed" (:key mine))
@@ -81,7 +81,7 @@
   "Deduplicate source-bound descriptors. Producers run only on shared workers and
   return {:value domain-value :bytes optional-byte-array :content-type optional}.
   Keys include feature/version/mesh/tier/options and all relevant authoring revisions."
-  [{:keys [state library scope] :as service} {:keys [key part-id mesh-key run! args valid?!]}]
+  [{:keys [state library scope cap-bytes] :as service} {:keys [key part-id mesh-key run! args valid?! retained-bytes]}]
   (let [library-lock (:state library)]
     (locking library-lock
       (locking state
@@ -95,10 +95,12 @@
               (do (swap! state update :tick inc)
                   (swap! state assoc-in [:entries cache-key :access] (:tick @state))
                   entry)
-              (let [mine (hash-map :state :running :resource (str (random-uuid)) :part-id part-id
-                                   :mesh-key mesh-key :expected expected :valid?! valid?! :key key :access (:tick @state))]
+              (let [tick (:tick (swap! state update :tick inc))
+                    mine (hash-map :state :running :resource (str (random-uuid)) :part-id part-id
+                                   :mesh-key mesh-key :expected expected :valid?! valid?! :retained-bytes retained-bytes :key key :access tick)]
                 (swap! state assoc-in [:entries cache-key] mine)
-                (if (:accepted? (jobs/submit-batch! scope [{:key cache-key :run! execute! :args [service cache-key mine run! args]}]))
+                (if (and (<= (reduce + 0 (map #(long (or (:retained-bytes %) 0)) (filter #(= :running (:state %)) (vals (:entries @state))))) cap-bytes)
+                         (:accepted? (jobs/submit-batch! scope [{:key cache-key :run! execute! :args [service cache-key mine run! args]}])))
                   mine
                   (do (swap! state update :entries dissoc cache-key)
                       {:state :overloaded :message "Preparation capacity is busy. Retry shortly."}))))))))))

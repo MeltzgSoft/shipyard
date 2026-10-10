@@ -843,8 +843,9 @@ incompatible details before painting a replacement source mesh.
 Check **Details saved.** after release. If saving fails, every touched part returns to
 its pre-stroke appearance; **Retry last stroke** retries the captured stroke. Leaving
 Customize or canceling the drag discards its uncommitted preview. Face counts are
-informational: strokes and saved layers have no face-count limits. Large meshes may
-take longer to prepare their first detail layer.
+informational: strokes and saved layers have no face-count limits. Large meshes prepare their first paint buffers in the background. Camera and
+inspector controls remain available while preparation finishes; later palette edits
+reuse the prepared source geometry.
 
 Replaced parts/source files suppress incompatible details and show a warning in
 Customize. Old masks remain saved until you use **Reset custom paint**.
