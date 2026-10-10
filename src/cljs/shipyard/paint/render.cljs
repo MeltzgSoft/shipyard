@@ -158,16 +158,17 @@
 (defn cancel! [^js object]
   (set! (.. object -userData -paintGeneration) (inc (or (.. object -userData -paintGeneration) 0))))
 
-(defn- triangle-material [^js object inherited overrides triangle]
+(defn- triangle-material [^js object inherited region-overrides detail-overrides triangle]
   (let [regions (.. object -userData -paintRegions) details (.. object -userData -paintDetails)
         layers (.. object -userData -paintLayers)
         region-index (when-let [indices (when-not (:projection-reset? regions) (:triangle-layers regions))] (aget indices triangle))
         detail-index (when-let [indices (when-not (:projection-reset? details) (:triangle-details details))] (aget indices triangle))
-        region (if (and region-index (pos? region-index))
-                 (or (get layers (nth (:layer-table regions) region-index nil)) inherited) inherited)
+        region (or (.get region-overrides triangle)
+                   (if (and region-index (pos? region-index))
+                     (or (get layers (nth (:layer-table regions) region-index nil)) inherited) inherited))
         base (if (and detail-index (pos? detail-index))
                (or (nth (:detail-table details) detail-index nil) region) region)
-        override (.get overrides triangle)]
+        override (.get detail-overrides triangle)]
     (cond
       (= ::erased override) region
       (some? override) (faces/resolve-material region override)
@@ -177,6 +178,7 @@
   (let [geometry (.-geometry object) surface (.-material object)
         mask (projected-mask! object inherited)
         regions (.. object -userData -paintRegions) details (.. object -userData -paintDetails)
+        layers (.. object -userData -paintLayers)
         active? (boolean (or (seq mask) (and (seq (.. object -userData -paintLayers)) (:triangle-layers regions)) (:triangle-details details)))
         signature [inherited mask regions details colors? (.. object -userData -paintLayers)]
         count (triangle-count geometry)]
@@ -193,13 +195,17 @@
             attribute (or (.getAttribute geometry "color") (three/BufferAttribute. (js/Float32Array. (* 9 count)) 3))
             finish (or (.getAttribute geometry "shipyardFinish") (three/BufferAttribute. (js/Float32Array. (* 9 count)) 3))
             palette (js/Map.)
-            overrides (js/Map.)
-            _ (doseq [[key value] mask triangle (topology/triangles (.. geometry -userData -preparedTopology) key)]
-                (.set overrides triangle value))
+            region-overrides (js/Map.) detail-overrides (js/Map.)
+            _ (when (seq layers)
+                (doseq [[key name] (:faces regions)
+                        triangle (topology/triangles (.. geometry -userData -preparedTopology) key)]
+                  (.set region-overrides triangle (or (get layers name) inherited))))
+            _ (doseq [[key value] (:faces details) triangle (topology/triangles (.. geometry -userData -preparedTopology) key)]
+                (.set detail-overrides triangle value))
             _ (doseq [key (:erased details) triangle (topology/triangles (.. geometry -userData -preparedTopology) key)]
-                (.set overrides triangle ::erased))
+                (.set detail-overrides triangle ::erased))
             write! (fn [triangle]
-                     (let [value (triangle-material object inherited overrides triangle)
+                     (let [value (triangle-material object inherited region-overrides detail-overrides triangle)
                            channels (or (.get palette value)
                                         (let [channels (clj->js (concat (mapv material/srgb->linear (:base value))
                                                                         [(:metalness value) (:roughness value) (get value :glow 0)]))]

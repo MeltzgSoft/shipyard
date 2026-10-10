@@ -4,6 +4,7 @@
             [clojure.string :as str]
             [shipyard.paint.render :as render]
             [shipyard.paint.faces :as faces]
+            [shipyard.paint.topology :as topology]
             [shipyard.paint.shader :as shader]))
 
 (deftest repeated-source-shares-topology-not-paint
@@ -28,6 +29,46 @@
     (doseq [^js object objects] (.dispose (.-geometry object)) (.dispose (.-material object)))))
 
 (defn near? [a b] (< (js/Math.abs (- a b)) 0.00001))
+
+(deftest sparse-regions-preserve-numeric-details
+  (let [buffer (js/ArrayBuffer. 120) header (js/Uint32Array. buffer 0 2)
+        positions (js/Float32Array. buffer 8 9) words (js/Uint32Array. buffer 80 9)
+        key (faces/face-key [[0 0 0] [1 0 0] [0 1 0]])
+        primary {:base [0 0 1] :metalness 0 :roughness 0.9 :glow 0}
+        trim {:base [1 1 0] :metalness 1 :roughness 0.2 :glow 0.8}
+        secondary {:base [0 1 0] :metalness 0.2 :roughness 0.7 :glow 0.5}
+        detail {:base [1 0 0] :metalness 0.4 :roughness 0.6 :glow 0.3}
+        regions {:mesh-key "hash" :triangle-layers (js/Uint32Array. #js [1])
+                 :layer-table ["Primary" "Trim"] :faces {key "Secondary"}}
+        details {:part-id "part" :mesh-key "hash" :triangle-details (js/Uint32Array. #js [1])
+                 :detail-table [nil detail] :faces {}}
+        layers {"Primary" primary "Trim" trim "Secondary" secondary}]
+    (aset header 0 1) (aset header 1 1)
+    (.set positions #js [0 0 0 1 0 0 0 1 0])
+    (dotimes [i 9] (aset words i (js/parseInt (subs key (* i 8) (* (inc i) 8)) 16)))
+    (let [source (topology/decode buffer) geometry (three/BufferGeometry.)
+          surface (three/MeshStandardMaterial.) object (three/Mesh. geometry surface)]
+      (.setAttribute geometry "position" (three/BufferAttribute. (.-positions source) 3))
+      (set! (.. geometry -userData -preparedTopology) source)
+      (set! (.. object -userData -partId) "part") (set! (.. object -userData -meshKey) "hash")
+      (render/set-regions! object regions layers)
+      (render/set-details! object details)
+      (render/apply-details! object primary false)
+      (let [color (.getAttribute geometry "color") finish (.getAttribute geometry "shipyardFinish")]
+        (is (= [1 0 0] [(.getX color 0) (.getY color 0) (.getZ color 0)]) "Numeric Detail survives a sparse region edit")
+        (is (near? 0.4 (.getX finish 0))) (is (near? 0.3 (.getZ finish 0)))
+        (render/set-details! object (assoc details :erased #{key}))
+        (render/apply-details! object primary false)
+        (is (= [0 1 0] [(.getX color 0) (.getY color 0) (.getZ color 0)]) "Erasing Detail reveals the current sparse region")
+        (is (near? 0.2 (.getX finish 0))) (is (near? 0.5 (.getZ finish 0)))
+        (render/set-details! object (assoc details :faces {key trim}))
+        (render/apply-details! object primary false)
+        (is (= [1 1 0] [(.getX color 0) (.getY color 0) (.getZ color 0)]) "Sparse Detail still wins over both numeric masks")
+        (render/set-details! object (assoc details :erased #{key}))
+        (render/set-regions! object (assoc regions :faces {key "Primary"}) layers)
+        (render/apply-details! object primary false)
+        (is (= [0 0 1] [(.getX color 0) (.getY color 0) (.getZ color 0)]) "Region removal reveals Primary after Detail erasure"))
+      (.dispose geometry) (.dispose surface))))
 
 (deftest with-finish-test
   (testing "the pinned Three.js standard shader exposes the expected PBR insertion points"
