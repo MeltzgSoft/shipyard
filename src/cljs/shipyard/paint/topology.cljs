@@ -10,12 +10,10 @@
          :normals (js/Float32Array. buffer (+ 8 (* n 36)) (* n 9))
          :words (js/Uint32Array. buffer (+ 8 (* n 72)) (* n 9))
          :sorted (js/Uint32Array. buffer (+ 8 (* n 108)) n)
-         :count n :faceKeys (js/Map.)}))
+         :count n}))
 
 (defn face-key [^js topology triangle]
-  (or (.get (.-faceKeys topology) triangle)
-      (let [key (apply str (for [word (range 9)] (.padStart (.toString (aget (.-words topology) (+ (* triangle 9) word)) 16) 8 "0")))]
-        (.set (.-faceKeys topology) triangle key) key)))
+  (apply str (for [word (range 9)] (.padStart (.toString (aget (.-words topology) (+ (* triangle 9) word)) 16) 8 "0"))))
 
 (defn triangles
   "Binary search immutable canonical identity words; preserve duplicate triangles."
@@ -41,19 +39,35 @@
                      {:current? current? :decode! #(.arrayBuffer %) :ready! #(ready! (decode %)) :failed! failed!}))
 
 (defonce source-cache (atom {}))
+(defonce source-sequence (atom 0))
+(def cache-limits {:entries 16 :bytes 134217728})
+
+(defn- bounded-cache [cache {:keys [entries bytes]}]
+  (loop [cache cache]
+    (if (or (> (count cache) entries) (> (reduce + 0 (map :size (vals cache))) bytes))
+      (recur (dissoc cache (key (apply min-key (comp :order val) cache))))
+      cache)))
+
+(defn- current-entry? [cache mesh-key promise]
+  (identical? promise (get-in cache [mesh-key :promise])))
 
 (defn fetch!
   "Reuse immutable topology buffers across instances; bound browser resident source data."
   [part-id mesh-key]
   (or (get-in @source-cache [mesh-key :promise])
-      (let [promise (js/Promise. (fn [resolve reject]
+      (let [limits cache-limits
+            promise (js/Promise. (fn [resolve reject]
                                    (load! part-id mesh-key (constantly true) resolve reject)))]
-        (swap! source-cache assoc mesh-key {:promise promise :size 0})
+        ;; Eviction forgets reuse, leaving consumers' promises and views alive.
+        (swap! source-cache #(bounded-cache (assoc % mesh-key {:promise promise :size 0 :order (swap! source-sequence inc)}) limits))
         (-> promise
             (.then (fn [^js topology]
-                     (swap! source-cache assoc-in [mesh-key :size] (* 112 (.-count topology)))
-                     (when (or (> (count @source-cache) 16) (> (reduce + (map :size (vals @source-cache))) 134217728))
-                       (swap! source-cache #(select-keys % [mesh-key])))
+                     (let [size (.. topology -positions -buffer -byteLength)]
+                       (swap! source-cache
+                              #(if-not (current-entry? % mesh-key promise) %
+                                       (if (> size (:bytes limits)) (dissoc % mesh-key)
+                                           (bounded-cache (assoc-in % [mesh-key :size] size) limits)))))
                      topology))
-            (.catch (fn [_error] (swap! source-cache dissoc mesh-key))))
+            (.catch (fn [_error]
+                      (swap! source-cache #(if (current-entry? % mesh-key promise) (dissoc % mesh-key) %)))))
         promise)))
