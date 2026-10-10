@@ -71,3 +71,15 @@
         (preparation/close! service)
         (is (nil? (preparation/status! service (:resource job)))))
       (finally (.countDown release) (fixture/stop! started)))))
+
+(deftest decoded-mesh-cache-accounts-for-jvm-residency
+  (let [started (fixture/start! false fixture/library! fixture/author!
+                                {:shipyard.preparation/service {:mesh-cap-bytes 1024}})
+        sys (:system started) service (:shipyard.preparation/service sys)
+        library (:shipyard.library/index sys) id (:hull fixture/ids)
+        key (:mesh-key (cache/ensure! (:shipyard.mesh/cache sys) (index/fresh-source-file! library id)))]
+    (try
+      (let [mesh (preparation/read-mesh! service key 0)]
+        (is (seq (:positions mesh)))
+        (is (empty? (:entries @(:meshes service))) "A decoded boxed mesh exceeding the resident budget is not retained"))
+      (finally (fixture/stop! started)))))

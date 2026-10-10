@@ -9,6 +9,7 @@
 
 (defn topology! [{:keys [preparation]} {:keys [params]}]
   (let [part-id (get params "part-id") mesh-key (get params "mesh-key")
+        _ (when (get params "retry") (preparation/forget! preparation [:paint-topology 1 mesh-key 0]))
         result (preparation/request! preparation {:key [:paint-topology 1 mesh-key 0]
                                                   :part-id part-id :mesh-key mesh-key
                                                   :run! build! :args [preparation mesh-key]})]
@@ -18,4 +19,4 @@
 (defn routes [deps]
   (when (:preparation deps)
     [["/paint/preparation/topology" {:get {:handler (partial topology! deps)
-                                           :parameters {:query [:map [:part-id string?] [:mesh-key [:re #"[0-9a-f]{64}"]]]}}}]]))
+                                           :parameters {:query [:map [:part-id string?] [:mesh-key [:re #"[0-9a-f]{64}"]] [:retry {:optional true} string?]]}}}]]))

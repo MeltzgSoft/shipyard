@@ -54,7 +54,8 @@
 (defn- decode-mesh! [cache mesh-key tier]
   (let [bytes (Files/readAllBytes (fs/path (cache/tier-file cache mesh-key tier)))
         mesh (wire/decode bytes)]
-    {:value mesh :size (* 4 (+ (count (:positions mesh)) (count (:normals mesh)) (count (:indices mesh))))}))
+    ;; JVM vectors retain boxed numbers plus vector nodes, unlike the packed wire.
+    {:value mesh :size (+ 1024 (* 32 (+ (count (:positions mesh)) (count (:normals mesh)) (count (:indices mesh)))))}))
 
 (defn read-mesh!
   "Worker-only shared decoded geometry, bounded independently of derived resources."
@@ -70,7 +71,7 @@
                                   :content-type (or content-type "application/edn; charset=utf-8")}))
                  (catch Throwable error
                    (log/warn error "Derived preparation failed" (:key mine))
-                   {:state :failed :message "Preparation failed. Retry to try again."}))]
+                   {:state :failed :size (long (or (:retained-bytes mine) 0)) :message "Preparation failed. Retry to try again."}))]
     (locking library-lock
       (locking state
         (when (= (:resource mine) (get-in @state [:entries key :resource]))

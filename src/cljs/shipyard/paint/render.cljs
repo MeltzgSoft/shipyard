@@ -161,7 +161,7 @@
 (defn- triangle-material [^js object inherited overrides triangle]
   (let [regions (.. object -userData -paintRegions) details (.. object -userData -paintDetails)
         layers (.. object -userData -paintLayers)
-        region-index (when-let [indices (:triangle-layers regions)] (aget indices triangle))
+        region-index (when-let [indices (when-not (:projection-reset? regions) (:triangle-layers regions))] (aget indices triangle))
         detail-index (when-let [indices (when-not (:projection-reset? details) (:triangle-details details))] (aget indices triangle))
         region (if (and region-index (pos? region-index))
                  (or (get layers (nth (:layer-table regions) region-index nil)) inherited) inherited)
@@ -178,8 +178,12 @@
         mask (projected-mask! object inherited)
         regions (.. object -userData -paintRegions) details (.. object -userData -paintDetails)
         active? (boolean (or (seq mask) (and (seq (.. object -userData -paintLayers)) (:triangle-layers regions)) (:triangle-details details)))
-        signature [inherited mask regions details colors?]
+        signature [inherited mask regions details colors? (.. object -userData -paintLayers)]
         count (triangle-count geometry)]
+    ;; Mount colors take effect immediately while finish buffers refresh in chunks.
+    (when (and colors? (.-vertexColors surface))
+      (set! (.-vertexColors surface) false)
+      (set! (.-needsUpdate surface) true))
     (when (not= signature (.. object -userData -preparedSignature))
       (cancel! object)
       (set! (.. object -userData -preparedSignature) signature)
