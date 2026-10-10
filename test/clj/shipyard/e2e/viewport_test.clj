@@ -89,6 +89,12 @@
 (defn- vec-close? [got want]
   (every? (fn [[a b]] (close? a b)) (map vector got want)))
 
+(defn- cut-points [stats location]
+  (vec (mapcat :points (get-in stats [location :cuts]))))
+
+(defn- point-multiset [points]
+  (frequencies (mapv (fn [point] (mapv #(Math/round (double (* 10000 %))) point)) points)))
+
 (defn- await-preview
   ([] (await-preview -1))
   ([after-revision]
@@ -556,10 +562,15 @@
         "mirrored wireframes mirror the entire cut volume"))
   (let [source (io/file (get (index/source-files! (:shipyard.library/index *system*)) s/mount-plate-id))
         target (io/file (.getParentFile source) "unsupported-pitted.stl")
-        original (java.nio.file.Files/readAllBytes (.toPath source))]
+        original (java.nio.file.Files/readAllBytes (.toPath source))
+        preview-points (cut-points (s/stats *driver*) :preview)
+        saved-after-edit (atom nil)]
     (s/click! *driver* "button[value=create]")
     (is (s/wait-until #(and (.exists target) (nil? (:preview (s/stats *driver*))))))
-    (is (s/wait-until #(= 2 (count (get-in (s/stats *driver*) [:interfaces :cuts])))))
+    (is (s/wait-until #(= 1 (count (get-in (s/stats *driver*) [:interfaces :cuts])))))
+    (let [saved-points (cut-points (s/stats *driver*) :interfaces)]
+      (is (= (count preview-points) (count saved-points)) "Combined saved buffer retains both preview cut volumes")
+      (is (= (point-multiset preview-points) (point-multiset saved-points)) "Saving preserves every original and mirrored cut point"))
     (is (= 2 (count (get-in (catalog/part-context! (:shipyard.catalog/db *system*) s/mount-plate-id) [:part :part/mounts]))))
     (is (> (:triangle-count (stl/parse-file! target)) (:triangle-count (stl/parse-file! source))))
     (is (= (seq original) (seq (java.nio.file.Files/readAllBytes (.toPath source)))))
@@ -594,7 +605,12 @@
       (is (= "0.25" (s/js *driver* "() => document.querySelector('[name=cut-depth]').value")))
       (s/js *driver* "() => {const input = document.querySelector('[name=cut-depth]'); input.value='0.5'; input.dispatchEvent(new Event('input',{bubbles:true}));}")
       (s/click! *driver* "button[value=update]")
-      (is (s/wait-until #(not= (seq initial) (seq (java.nio.file.Files/readAllBytes (.toPath target)))))))
+      (is (s/wait-until #(not= (seq initial) (seq (java.nio.file.Files/readAllBytes (.toPath target))))))
+      (is (s/wait-until #(let [points (cut-points (s/stats *driver*) :interfaces)]
+                           (and (= (count preview-points) (count points))
+                                (not= (point-multiset preview-points) (point-multiset points)))))
+          "Updated depth reaches the prepared saved geometry")
+      (reset! saved-after-edit (cut-points (s/stats *driver*) :interfaces)))
     (s/click! *driver* "[data-part-back]")
     (s/wait-visible! *driver* "#bulk-orient-results .bulk-orient__row")
     (s/go! *driver* (s/base-url *system*))
@@ -602,7 +618,10 @@
     (select-part! "Mount Test Plate")
     (s/await-part *driver* s/mount-plate-id)
     (s/click! *driver* "[data-detail-tab=mounts]")
-    (is (s/wait-until #(= 2 (count (get-in (s/stats *driver*) [:interfaces :cuts])))))
+    (is (s/wait-until #(= 1 (count (get-in (s/stats *driver*) [:interfaces :cuts])))))
+    (let [reloaded-points (cut-points (s/stats *driver*) :interfaces)]
+      (is (= (count @saved-after-edit) (count reloaded-points)) "Reload retains both saved cut volumes")
+      (is (= (point-multiset @saved-after-edit) (point-multiset reloaded-points)) "Reload preserves every edited original and mirrored cut point"))
     (s/click! *driver* "form:has(input[name=mount-id][value='weapon-1']) button:has-text('Edit')")
     (is (s/wait-until #(pos? (s/count-els *driver* ".mount-wizard__form")))
         (str "mount editor after reload: " (s/text *driver* "#detail")))
