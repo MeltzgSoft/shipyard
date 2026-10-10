@@ -73,7 +73,7 @@
                    {:state :failed :message "Preparation failed. Retry to try again."}))]
     (locking library-lock
       (locking state
-        (when (identical? mine (get-in @state [:entries key]))
+        (when (= (:resource mine) (get-in @state [:entries key :resource]))
           (swap! state update :entries
                  #(transforms/trim (if (current?! service mine) (assoc % key (merge mine result)) (dissoc % key)) cap-bytes max-entries)))))))
 
