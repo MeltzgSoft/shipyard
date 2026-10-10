@@ -542,7 +542,9 @@
     }
   }")
   (s/click! *driver* ".mount-wizard__form input[name=mirror][type=checkbox]")
-  (s/js *driver* "() => { const input = document.querySelector('[name=mirror-offset]'); input.value='0'; input.dispatchEvent(new Event('input',{bubbles:true})); }")
+  (let [revision (get-in (s/stats *driver*) [:preview :revision])]
+    (s/fill-and-blur! *driver* ".mount-wizard__form input[name=mirror-offset]" "0")
+    (is (await-preview revision)))
   (is (s/wait-until #(= 2 (count (get-in (s/stats *driver*) [:preview :cuts])))))
   (let [cuts (get-in (s/stats *driver*) [:preview :cuts])
         xs (map first (:points (first cuts)))
