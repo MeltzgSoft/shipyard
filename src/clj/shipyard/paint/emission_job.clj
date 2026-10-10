@@ -5,7 +5,7 @@
 
 (defn- source! [service mesh-key]
   (let [value (emission/source-moments (preparation/read-mesh! service mesh-key 0))]
-    {:value value :size (* 400 (count value))}))
+    {:value value :size (* 600 (count value))}))
 
 (defn build! [service mesh-key regions details]
   (let [source (preparation/cached-source! service [:emission-source 1 mesh-key] source! [service mesh-key])]
@@ -16,6 +16,7 @@
     (let [details (when (= part-id (:part-id details)) details)]
       (select-keys
        (preparation/request! service {:key [:emission 1 mesh-key regions details]
+                                      :retained-bytes (* 256 (+ (count (:faces regions)) (count (:faces details))))
                                       :part-id part-id :mesh-key mesh-key :run! build!
                                       :args [service mesh-key regions details]})
        [:state :resource :message]))))
