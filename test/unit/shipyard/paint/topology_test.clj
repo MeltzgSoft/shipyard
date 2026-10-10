@@ -27,3 +27,12 @@
       (is (= [0 1] (vec (repeatedly 2 #(.getInt buffer)))))))
   (testing "empty topology is a valid bounded resource"
     (is (= 8 (alength (topology/encode {:positions [] :indices []}))))))
+
+(deftest triangle-normal-test
+  (testing "missing wire normals are prepared by workers with source winding"
+    (is (= [0.0 0.0 1.0] (topology/triangle-normal [[0 0 0] [1 0 0] [0 1 0]])))
+    (is (= [0.0 0.0 -1.0] (topology/triangle-normal [[0 0 0] [0 1 0] [1 0 0]])))
+    (is (= [0.0 0.0 0.0] (topology/triangle-normal [[0 0 0] [0 0 0] [0 0 0]])))
+    (let [bytes (topology/encode (dissoc mesh :normals)) buffer (doto (ByteBuffer/wrap bytes) (.order ByteOrder/LITTLE_ENDIAN))]
+      (.position buffer (+ 8 (* 2 36)))
+      (is (= [0.0 0.0 1.0] (vec (repeatedly 3 #(.getFloat buffer))))))))

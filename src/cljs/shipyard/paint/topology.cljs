@@ -37,7 +37,7 @@
             (recur (inc index) (conj result (aget sorted index))) result))))))
 
 (defn load! [part-id mesh-key current? ready! failed!]
-  (preparation/load! (str "/paint/preparation/topology?part-id=" (js/encodeURIComponent part-id) "&mesh-key=" mesh-key)
+  (preparation/load! (str "/paint/preparation/topology?part-id=" (js/encodeURIComponent part-id) "&mesh-key=" mesh-key "&retry=1")
                      {:current? current? :decode! #(.arrayBuffer %) :ready! #(ready! (decode %)) :failed! failed!}))
 
 (defonce source-cache (atom {}))
