@@ -3065,14 +3065,21 @@ loads: Regions enables brushing, Mounts enables face picking and its crosshair,
 and Part disables both. A new part opens Part; mount responses retain Mounts. Full-part assignment is available in either display mode; a
 successful fill switches Browse to layer display using the same workspace context
 and display event as the toggle. Failed fills preserve the display setting.
-Part Browser owns the selection. Region masks travel in the server-rendered panel body, never in HTTP
-headers. The mesh-load event fires after the swap and snapshots the matching panel
-mask before fetching geometry. Successful region mutations carry face-map deltas with
+Part Browser owns the selection. Small region metadata and a source/revision-addressed
+preparation URL travel in the server-rendered panel body, never in HTTP headers. Full
+masks load asynchronously as binary ordinal projections, shared by repeated mounted
+instances. The mesh-load event fires after the swap and starts the matching panel
+projection; geometry installation rechecks the latest resolved panel. Successful region mutations carry face-map deltas with
 the prior revision and source mesh key. A preserved DOM snapshot holds the authoritative
 baseline separately from optimistic brush state. Later panel swaps apply a delta only
 when that baseline matches; otherwise `/parts/regions/snapshot` restores the selected
 part's full saved mask. Errors and source changes retain full snapshot behavior.
 Workspace admission still rejects stale responses before either events or swaps.
+Large deltas (more than 256 changed/removed keys) use a full binary resource instead.
+Small deltas update a sparse overlay over the immutable numeric baseline. Region
+removals explicitly restore Primary; detail removals shadow the custom baseline and
+restore the region underneath. An authoritative small replacement disables the prior
+numeric baseline. A missing revision baseline requests the full saved snapshot again.
 Its Regions tab is server-rendered. Selectable layer rows combine preview swatches,
 selection, inline rename forms and confirmed delete actions. A hidden stroke-form
 layer value drives brushing and full-part assignment; selection and its visible
@@ -3136,9 +3143,22 @@ layer management and whole-part fill/reset continue to use ordinary form POSTs.
 Region brushing reuses one CPU visible-ID buffer until the source objects, their transforms, the camera
 or viewport size changes; radius, layer and mask changes do not affect visibility.
 Stable face keys are cached by source triangle and survive render-only deindexing.
-Each replacement panel carries small EDN metadata plus a JSON face-to-layer map,
-parsed once per panel. JSON keeps the large string-only mask off the EDN reader's
-per-character path. Unchanged mount-interface highlights survive region panel swaps.
+Each replacement panel carries small EDN metadata plus a binary resource reference.
+The version-1 appearance format is little-endian: uint32 magic `0x53595250`, version,
+triangle count and UTF-8 metadata byte length occupy the 16-byte header; padded
+metadata follows, then two uint32 arrays in exact tier-0 triangle order, for layer
+and custom-material indices. Layer table index 0 is Primary; custom table index 0
+is absent. The metadata contains mesh identity, a decimal region revision and
+deduplicated stable-layer/material tables. Decoder checks magic, version, exact
+length, table shape and every index before installation. Browser arrays are views
+over the downloaded buffer, with no dense coordinate-key persistent map construction.
+Assembly/resource installation additionally checks current slot/resource identity,
+source mesh, triangle count and region revision. Failed snapshots remain recoverable
+by reopening; failed region decoding automatically restores the authoritative panel.
+The shared backend pool and cache own preparation, source validation, deduplication,
+format identity and captured-mask memory accounting. Browser assembly deduplication
+retains at most 32 recent resources and 64 MiB of binary buffers and clears on scene reset; installed objects own
+their immutable views. Unchanged mount-interface highlights survive region panel swaps.
 Region brushing reuses the Paint brush's depth-tested picker and stable face keys. Facets mode retains sampled
 triangles. Faces mode uses a cached partition by the angle between adjacent triangle
 normals, in degrees (0–90, default 1). There is no distance-to-seed-plane constraint:

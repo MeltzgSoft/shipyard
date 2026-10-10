@@ -69,7 +69,9 @@
                         changed (when (seq triangles)
                                   (model/change before (:mesh-key before) (:revision before) "assign" layer (vec keys)))]
                     (swap! stroke assoc :keys keys :triangles (into (:triangles current) triangles) :previous [x y])
-                    (when-let [regions (:regions changed)] (paint! object regions))
+                    (when-let [regions (:regions changed)]
+                      (paint! object (cond-> (merge before (select-keys regions [:faces :revision]))
+                                       (= layer "Primary") (update :faces merge (zipmap keys (repeat "Primary"))))))
                     (status! (str (count keys) " faces · release to save"))))))]
       (set! (.-className cursor) "paint-brush-cursor")
       (.appendChild (.-body js/document) cursor)

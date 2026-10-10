@@ -148,6 +148,7 @@
         form! #(.getElementById js/document "paint-brush")
         available? (fn [] (when-let [form (form!)]
                             (and @active (= "true" (value form "enabled"))
+                                 (every? #(not (.. ^js % -userData -appearancePending)) (vals @(:parts sys)))
                                  (not (.-disabled (field form "radius")))
                                  (not @stroke) (not @mount-colors-enabled))))
         point (fn [^js e] (let [bounds (.getBoundingClientRect canvas)] [(- (.-clientX e) (.-left bounds)) (- (.-clientY e) (.-top bounds))]))]
@@ -247,7 +248,10 @@
                                 result (faces/stroke before (.. object -userData -partId) (.. object -userData -meshKey)
                                                      (vec added) (:color current) (:erase? current))]
                             (swap! stroke update :before #(if (contains? % path) % (assoc % path before)))
-                            (render/set-details! object (:layer result))
+                            (render/set-details! object
+                                                 (cond-> (merge before (:layer result))
+                                                   (:erase? current) (update :erased (fnil into #{}) added)
+                                                   (not (:erase? current)) (update :erased #(apply disj (or % #{}) added))))
                             (set! (.. object -userData -paintDirtyFaces) added)
                             (apply-material! object (.. object -userData -paintMaterial) false)))
                         (swap! stroke #(-> % (assoc :last-point now)

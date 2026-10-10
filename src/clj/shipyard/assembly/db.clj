@@ -8,6 +8,7 @@
             [shipyard.library.index :as index]
             [shipyard.mesh.cache :as cache]
             [shipyard.paint.emission-job :as emission]
+            [shipyard.paint.projection-job :as projection]
             [shipyard.scheme.material :as material]
             [shipyard.workspace.db :as workspace]))
 
@@ -97,9 +98,9 @@
           commands (if (and recovery? (not reset?))
                      (transforms/snapshot-commands after mesh-keys)
                      (transforms/commands scene after mesh-keys reset?))
-          envelope (transforms/pack-regions (merge workspace/*context* {:revision (:revision draft) :sequence (inc sequence)
-                                                                        :commands commands
-                                                                        :mount-markers (transforms/mount-markers database effective-draft)}) after)]
+          envelope (projection/pack! (:preparation deps) (merge workspace/*context* {:revision (:revision draft) :sequence (inc sequence)
+                                                                                     :commands commands
+                                                                                     :mount-markers (transforms/mount-markers database effective-draft)}) after)]
       (when (and workspace workspace/*context*)
         (workspace/update-workspace! workspace (:workspace workspace/*context*) assoc :scene-sequence (inc sequence) :scene-reset-sequence reset-sequence :scene after :needs-scene-reset? false))
       (reset! state {:draft effective-draft :sequence (inc sequence) :reset-sequence reset-sequence

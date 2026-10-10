@@ -860,6 +860,10 @@ Customize or canceling the drag discards its uncommitted preview. Face counts ar
 informational: strokes and saved layers have no face-count limits. Large meshes prepare their first paint buffers in the background. Camera and
 inspector controls remain available while preparation finishes; later palette edits
 reuse the prepared source geometry.
+Saved custom paint loads before the detail brush accepts strokes. Camera and
+inspector controls remain available while that saved paint loads. If saved regions
+need restoring after an interrupted update, the region panel shows
+**Restoring saved regions…** and reloads the current assignments.
 
 Replaced parts/source files suppress incompatible details and show a warning in
 Customize. Old masks remain saved until you use **Reset custom paint**.

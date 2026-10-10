@@ -624,6 +624,7 @@
                              :responses contracts/html-responses}}]
    ["/parts/regions/surfaces" {:get {:handler (partial surface-preparation/request! deps)}}]
    ["/parts/regions/mirror" {:get {:handler (partial mirror-preparation/request! deps)}}]
+   ["/parts/regions/projection" {:get {:handler (partial regions/projection! deps)}}]
    ["/parts/regions/snapshot" {:get {:handler (partial regions/snapshot! deps)
                                      :parameters {:query [:map [:part-id string?]
                                                           [:layer {:optional true} string?]

@@ -4,6 +4,7 @@
             [shipyard.library.index :as index]
             [shipyard.paint.strokes :as strokes]
             [shipyard.paint.delta :as delta]
+            [shipyard.paint.projection-job :as projection]
             [shipyard.regions.model :as model]
             [shipyard.regions.views :as views]
             [shipyard.http.htmx :as htmx]
@@ -61,6 +62,17 @@
   (let [body (get-in request [:parameters :body])]
     (save! deps (assoc request :params (:metadata body)
                        :region-selection (select-keys body [:triangle-count :indices])))))
+
+(defn projection! [{:keys [catalog library workspace preparation]} {:keys [params]}]
+  (let [{:strs [part-id mesh-key revision]} params
+        {:keys [part]} (catalog/part-context! catalog part-id)
+        regions (catalog/part-regions part)]
+    (if (and part (= part-id (:selection (workspace/workspace! workspace :browse)))
+             (= mesh-key (index/mesh-key! library part-id))
+             (= revision (str (or (:revision regions) 0))))
+      {:status 200 :headers {"content-type" "application/edn; charset=utf-8" "cache-control" "no-store"}
+       :body (pr-str (projection/request! preparation {:part-id part-id :mesh-key mesh-key :regions regions}))}
+      {:status 409 :body "Region source or revision changed. Restore the current saved snapshot."})))
 
 (defn snapshot! [{:keys [catalog library workspace]} {:keys [parameters]}]
   (let [id (get-in parameters [:query :part-id])

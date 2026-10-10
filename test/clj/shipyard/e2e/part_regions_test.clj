@@ -66,6 +66,9 @@
       (s/open-part! driver "weapon")
       (s/await-part driver id)
       (s/click! driver "[data-detail-tab=regions]")
+      (is (s/wait-until #(= "true" (s/js driver "() => document.querySelector('#part-regions').getAttribute('data-region-projection-ready')"))))
+      (is (s/js driver "() => !document.querySelector('#part-regions').hasAttribute('data-region-faces')")
+          "Full masks are absent from text attributes")
       (doseq [name ["Trim" "Lights" "Armor" "Engines" "Torpedo tube"]]
         (s/fill-and-blur! driver "#region-add input[name=name]" name)
         (s/click! driver "button:text-is('Add layer')")
