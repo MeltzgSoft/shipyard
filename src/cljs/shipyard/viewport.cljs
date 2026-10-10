@@ -266,12 +266,15 @@
   (swap! parts select-keys [part-id])
   (put-part! sys part-id obj))
 
+(defn- cancel-cut-request! [owner sequence]
+  (-> (js/fetch "/mounts/preview/cancel"
+                #js {:method "POST" :headers #js {"content-type" "application/edn"}
+                     :body (pr-str {:owner owner :sequence sequence})})
+      (.catch (fn [_]))))
+
 (defn- clear-preview! [{:keys [^js scene preview cut-controller cut-timer cut-owner cut-request]}]
   (when-let [owner (some-> cut-owner deref)]
-    (-> (js/fetch "/mounts/preview/cancel"
-                  #js {:method "POST" :headers #js {"content-type" "application/edn"}
-                       :body (pr-str {:owner owner :sequence (swap! cut-request inc)})})
-        (.catch (fn [_])))
+    (cancel-cut-request! owner (swap! cut-request inc))
     (reset! cut-owner nil))
   (when-let [controller (some-> cut-controller deref)]
     (preparation/cancel! controller)
@@ -846,6 +849,8 @@
         (reset! cut-owner owner)
         (when-let [controller @cut-controller] (preparation/cancel! controller))
         (js/clearTimeout @cut-timer)
+        (when-not (and (seq facet-indices) (or mount border))
+          (cancel-cut-request! owner request))
         (when (and (seq facet-indices) (or mount border))
           (reset! cut-timer
                   (js/setTimeout
