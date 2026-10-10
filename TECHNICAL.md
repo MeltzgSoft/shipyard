@@ -3045,7 +3045,16 @@ world transforms and reflection matrix. Temporary GPU resources are disposed aft
 readback. Mirror controls are transient client brush settings scoped to the current
 part/source/orientation; server-rendered controls are restored after panel swaps. A translucent, double-sided
 plane with an axis-colored outline is kept in the Browse scene, outside the part
-map used for picking. Precise oriented mesh bounds are cached. A blank offset uses the median
+map used for picking. GET `/parts/regions/mirror` prepares precise oriented mesh
+bounds and automatic offsets on the bounded shared workers. Its small EDN resource
+contains only `:bounds` and `:offset`, cached by immutable tier-0 source, normalized
+orientation, axis and estimator version. Source stamps are checked both when publishing
+and delivering; the browser checks part, source, orientation, axis and workspace
+activation before installation. Enabling mirror or changing axis eagerly requests
+preparation. Pending automatic planes keep brushing available for retry after
+readiness. Explicit offsets apply immediately and remain authoritative, with a cheap
+oriented source box for guide extent until precise bounds arrive. No browser vertex
+scan or projected-grid estimate occurs. Precise oriented mesh bounds are cached. A blank offset uses the median
 midpoint of outer intersections on a uniform 64×64 ray grid along the chosen axis.
 This resists small asymmetric details and avoids triangle-density bias; missing
 opposing intersections fall back to the bounding midpoint. The estimate is cached

@@ -657,7 +657,10 @@ These settings survive region saves and layer operations.
 Regions optionally mirror painting and erasing across a selected canonical part
 plane (YZ/X, XZ/Y or XY/Z). The plane defaults to a center estimated from opposing
 outer surfaces, resisting small asymmetric details. Geometry without opposing
-surfaces falls back to the bounding midpoint. An explicit offset supports off-center parts. While Regions mirroring is enabled,
+surfaces falls back to the bounding midpoint. Backend workers prepare source-bound,
+orientation-specific centers and bounds when mirror settings change. Pending results
+cannot change another axis, part or workspace activation. An explicit offset supports off-center parts
+and remains immediate and authoritative while automatic preparation is pending. While Regions mirroring is enabled,
 a translucent plane marks that location in the normal axis color (X red, Y green,
 Z blue); it follows offset edits immediately and never intercepts painting.
 The brush's picking rays and footprint are reflected across the plane; each side

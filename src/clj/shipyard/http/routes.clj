@@ -25,6 +25,7 @@
             [shipyard.catalog.part :as catalog-part]
             [shipyard.regions.handlers :as regions]
             [shipyard.regions.surface-preparation :as surface-preparation]
+            [shipyard.regions.mirror-preparation :as mirror-preparation]
             [shipyard.regions.transport :as region-transport]
             [shipyard.http.contracts :as contracts]
             [shipyard.file-picker.routes :as file-picker]
@@ -621,6 +622,7 @@
                              :parameters {:form contracts/mount-id-form}
                              :responses contracts/html-responses}}]
    ["/parts/regions/surfaces" {:get {:handler (partial surface-preparation/request! deps)}}]
+   ["/parts/regions/mirror" {:get {:handler (partial mirror-preparation/request! deps)}}]
    ["/parts/regions/snapshot" {:get {:handler (partial regions/snapshot! deps)
                                      :parameters {:query [:map [:part-id string?]
                                                           [:layer {:optional true} string?]

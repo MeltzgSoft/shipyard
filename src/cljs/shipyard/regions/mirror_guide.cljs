@@ -42,14 +42,16 @@
                      (.-checked (field "mirror")))
         raw (when enabled (.-value (field "mirror-offset")))
         offset (when (seq raw) (math/parse-finite-double raw))
-        axis (when enabled (keyword (.-value (field "mirror-axis"))))]
-    (if (and enabled (contains? axis-colors axis)
+        axis (when enabled (keyword (.-value (field "mirror-axis"))))
+        plane-offset (when enabled (mirror/offset! object orientation axis offset))]
+    (if (and enabled (some? plane-offset) (contains? axis-colors axis)
              (not (.. (field "mirror-offset") -validity -badInput))
              (or (empty? raw) (some? offset)))
-      (let [key [object orientation axis offset]]
+      (let [bounds (mirror/bounds! object orientation)
+            key [object orientation axis plane-offset bounds]]
         (when (not= key (:key @region-mirror-guide))
-          (let [{:keys [position size normal]} (symmetry/plane-guide (mirror/bounds! object orientation) axis
-                                                                     (mirror/offset! object orientation axis offset))
+          (let [{:keys [position size normal]} (symmetry/plane-guide bounds axis
+                                                                     plane-offset)
                 color (get axis-colors axis)
                 ^js plane (or (:object @region-mirror-guide) (create! scene color))]
             (.fromArray (.-position plane) (to-array position))

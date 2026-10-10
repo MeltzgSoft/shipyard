@@ -714,7 +714,10 @@ Enable **Mirror painting** to paint or erase the matching opposite side in the
 same stroke. Choose **Mirror plane** (YZ across X, XZ across Y, or XY across Z)
 using the part's canonical axes, independent of camera orbit. Leave **Mirror
 plane offset** blank to estimate the center from opposing surfaces, or enter its coordinate for an
-off-center plane. A translucent guide shows the plane: red for X, green for Y,
+off-center plane. Automatic centers prepare in the background for the current part,
+orientation and axis. If the brush reports preparation pending, retry when the plane
+appears; camera orbit remains available. Explicit offsets apply immediately.
+A translucent guide shows the plane: red for X, green for Y,
 blue for Z. It follows offset edits immediately and disappears when mirroring is
 off or you leave Regions. You can paint through the guide. The brush's position, radius and path are
 mirrored, selecting the first surface hit from the opposite viewpoint. This works
