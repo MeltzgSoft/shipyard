@@ -21,6 +21,7 @@
                         :workers #ig/ref :shipyard.jobs/pool
                         :thumbnails #ig/ref :shipyard.thumbnail/cache}
 
+ :shipyard.mount.preview-db/drafts {}
  :shipyard.assembly/db {}
  :shipyard.loadout/db {:store #ig/ref :shipyard.store/db :catalog #ig/ref :shipyard.catalog/db}
  :shipyard.scheme/db {:store #ig/ref :shipyard.store/db :catalog #ig/ref :shipyard.catalog/db}
@@ -29,7 +30,7 @@
  :shipyard.paint/db {:paint/flush-interval-ms 120
                      :preview #ig/ref :shipyard.loadout.operations/preview}
  :shipyard.workspace/db {:importer #ig/ref :shipyard.importer/db}
- :shipyard.http/routes {:preparation #ig/ref :shipyard.preparation/service :importer #ig/ref :shipyard.importer/db
+ :shipyard.http/routes {:mount-previews #ig/ref :shipyard.mount.preview-db/drafts :preparation #ig/ref :shipyard.preparation/service :importer #ig/ref :shipyard.importer/db
                         :thumbnails #ig/ref :shipyard.thumbnail/cache
                         :library #ig/ref :shipyard.library/index
                         :catalog #ig/ref :shipyard.catalog/db

@@ -68,7 +68,7 @@
         (is (s/wait-until #(near-center? [1.0 0.0] (preview-points))))
         (s/click! driver "[data-mount-faces-reset]")
         (is (s/wait-until #(= 4 (get-in (s/stats driver) [:preview :triangles]))))
-        (is (near-center? [1.0 0.0] (preview-points)))
+        (is (s/wait-until #(near-center? [1.0 0.0] (preview-points))))
         (trim-right!)
         (is (s/wait-until #(near-center? [0.0 0.0] (preview-points))))
         (s/click! driver ".mount-wizard__actions button[value=create]")
@@ -79,7 +79,7 @@
               floor (filter #(< (abs (- 0.75 (last %))) 0.00001)
                             (apply concat (geometry/mesh-triangles (stl/parse-file! target))))]
           (is (= 2 (count (get-in mount [:mount/facet :indices]))))
-          (is (= (:position frame) (:mount/pos mount)))
+          (is (every? #(< (abs %) 0.00001) (map - (:position frame) (:mount/pos mount))))
           (is (near-center? [0.0 0.0] floor))
           (is (Arrays/equals ^bytes original ^bytes (Files/readAllBytes (.toPath source))))
           (.reload (:page driver))
@@ -135,6 +135,15 @@
         (s/select-option! driver "select[name=cut-kind]" "Recess")
         (s/fill-and-blur! driver "[name=cut-depth]" "0.1")
         (s/fill-and-blur! driver "[name=cut-border]" "0.05")
+        (is (s/wait-until #(seq (get-in (s/stats driver) [:preview :cuts]))))
+        (s/fill-and-blur! driver "[name=cut-depth]" "0.15")
+        (s/fill-and-blur! driver "[name=cut-depth]" "0.2")
+        (is (s/wait-until #(let [points (get-in (s/stats driver) [:preview :cuts 0 :points])]
+                             (and (seq points) (= #{0.5 0.30000001192092896} (set (map last points)))))))
+        (s/fill-and-blur! driver "[name=cut-depth]" "0.1")
+        (is (s/wait-until #(let [points (get-in (s/stats driver) [:preview :cuts 0 :points])]
+                             (and (seq points) (= #{0.5 0.4000000059604645} (set (map last points)))))))
+        (is (empty? (:part/mounts (:part (catalog/part-context! cat id)))))
         (s/screenshot-el! driver "#detail" (io/file "/tmp/shipyard-mount-face-brush.png"))
         (let [trimmed (get-in (s/stats driver) [:preview :facet-indices])]
           (s/click! driver ".mount-wizard__actions button[value=create]")

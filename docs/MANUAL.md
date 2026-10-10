@@ -465,7 +465,11 @@ depth and diameter must be positive. Mirrored pairs mirror their cuts too.
 Yellow wireframes show the cut opening, floor and walls through the model,
 including its hidden side, whenever **Mount colors** is enabled, across all Part Browser
 inspector tabs. Turning Mount colors off hides saved cut wireframes. Measurement changes
-update the preview immediately. **Save mount** or **Save changes** rebuilds the
+update the preview after a brief pause while Shipyard prepares the cut lines in the
+background. You can keep editing or orbiting while it works. Rapid edits replace the
+pending preview, and Cancel discards it. Saved wireframes use the same inset geometry
+as the generated cut, including concave outlines, holes and a zero border.
+**Save mount** or **Save changes** rebuilds the
 variant from the original source with all saved cuts. It writes a sibling file
 with the **`-pitted.stl`** suffix: `unsupported.stl` produces
 `unsupported-pitted.stl`. The original source stays intact, and the viewport

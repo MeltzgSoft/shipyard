@@ -1850,6 +1850,33 @@ Mount position/axes/roll and assembly capacity bounds stay fixed; membership and
 outline change, and pit centers derive from the retained outline bounds. Linked mirrors reflect the original subset. Definitions and cut
 exports retain the existing atomic publication contract.
 
+Draft selected-face boundary reconstruction, triangle-border lines and pit/recess
+profiles are prepared on the shared bounded preparation service (On-demand feature preparation), with the
+same `shipyard.pitting.geometry/profiles` JTS inset rules used for physical cuts.
+The browser performs highlighting, picking and guide transforms only; it does not
+run `cut/outline`, Clipper offsets or `WireframeGeometry` for trimming.
+`POST /mounts/preview` accepts a bounded Malli-validated EDN descriptor containing
+the current part/mesh, frame, up to 4096 selected triangle ordinals, optional opening
+selection, dimensions, capacity and mirror settings. It returns a small resource
+envelope immediately. `GET /mounts/previews` prepares the saved cuts independently
+of the draft. Neither endpoint writes mounts or STL outputs.
+Prepared resources use a little-endian 20-byte header (magic, version and three
+segment counts) followed by float32 XYZ endpoint pairs for cuts, mirrored cuts and
+opening-selection borders. Shared CLJC validation checks format, capacity and exact
+length; the browser attaches aligned typed-array views directly to line buffers.
+Keys include source mesh, preparation version, selected ordinals, dimensions,
+orientation/mirror settings and authoring revision. Source and authoring freshness
+are rechecked at publication and delivery. Draft requests coalesce after 100 ms of
+edits and cancel their preceding fetch; installation also checks preview sequence,
+form identity, current mesh and workspace activation. Cancel and teardown release
+line geometries and reject all late results. Failed preparation leaves highlighting
+and form editing available; the next edit can retry. Saved cut lines retain the
+workspace-owned Mount colors visibility.
+Live highlights reuse up to four selection-position buffers per displayed source,
+with a 2 MiB cap, so dimension edits do not rematerialize unchanged selected faces.
+Form frames are decoded once per unchanged form value. Teardown clears the selection
+cache and disposes every rendered line/highlight geometry.
+
 ### 12.2 Geometric edges and facet growth
 
 Crease splitting deliberately gives one geometric point several vertex ids (§6.2), so
