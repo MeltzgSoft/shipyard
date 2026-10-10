@@ -316,6 +316,7 @@
        :hx-sync "this:replace"
        :hx-vals "js:{page: event.type==='load' ? (document.querySelector('[data-part-page]')?.value || '1') : '1', 'table-scroll': event.type==='load' ? (document.querySelector('#part-table-position')?.value || '0') : '0'}"
        :hx-trigger "load, change[target.tagName === 'SELECT'], search, keyup changed delay:300ms"}
+      [:label.filters__field "Name" [:input {:type "search" :name "q" :placeholder "Search names"}]]
       [:label.filters__field "Bundle" [:select {:name "bundle"} (http-views/options "All bundles" (:bundles facets))]]
       [:label.filters__field "Class" [:select {:name "class"} (http-views/options "All classes" (:classes facets))]]
       [:label.filters__field "Role" [:select {:name "role"} (http-views/options "All roles" (map name (:roles facets)))]]
@@ -333,9 +334,6 @@
                                             [:option {:value "all"} "Any orientation"]
                                             [:option {:value "unset"} "Orientation unset"]
                                             [:option {:value "saved"} "Orientation saved"]]]
-      [:label.filters__field "Name" [:input {:type "search" :name "q" :placeholder "Search names"}]]
-      [:button {:type "button" :data-filter-clear true
-                :hx-on:click "var f=this.form;f.querySelectorAll('select').forEach(el=>el.selectedIndex=0);f.querySelectorAll('input[type=search]').forEach(el=>el.value='');f.dispatchEvent(new Event('search',{bubbles:true}));"} "Clear filters"]
       (when-not import-session
         [:fieldset.filters__variants
          [:legend "Variant availability"]
@@ -344,7 +342,9 @@
             [:select {:name field :title (when (= variant :unsupported-pitted) "Unsupported (pitted / recessed)")}
              [:option {:value ""} "Any"]
              [:option {:value "available"} "Available"]
-             [:option {:value "missing"} "Missing"]]])])]
+             [:option {:value "missing"} "Missing"]]])])
+      [:button {:type "button" :data-filter-clear true
+                :hx-on:click "var f=this.form;f.querySelectorAll('select').forEach(el=>el.selectedIndex=0);f.querySelectorAll('input[type=search]').forEach(el=>el.value='');f.dispatchEvent(new Event('search',{bubbles:true}));"} "Clear filters"]]
      [[:form#part-open (merge workspace-views/transition-attrs
                               {:hidden true :method "get" :action "/workspace/browse" :hx-get "/workspace/browse" :hx-target "#detail" :hx-swap "innerHTML settle:0ms"
                                :hx-include "#bulk-orient-filters, #part-table-position, [data-part-page]"})

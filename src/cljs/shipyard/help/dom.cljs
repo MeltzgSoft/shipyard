@@ -23,7 +23,10 @@
                   (vreset! origin nil)
                   (set! (.-hidden tooltip) true))
           show! (fn [element cause]
-                  (when (and element (.contains js/document element))
+                  ;; The shell disables tooltip presentation while its UX is revised.
+                  ;; Retain handlers and descriptions so re-enabling needs one flag.
+                  (when (and (= "true" (.getAttribute (.-documentElement js/document) "data-tooltips-enabled"))
+                             element (.contains js/document element))
                     (cancel!)
                     (when-not (= element @source)
                       (hide!)

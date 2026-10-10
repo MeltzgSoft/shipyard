@@ -154,12 +154,12 @@
      [:form#ship-filters.filters {:data-workspace-filters "true" :hx-get "/ships" :hx-target "#ship-results" :hx-swap "outerHTML"
                                   :hx-trigger "change[target.tagName === 'SELECT'], search, keyup changed delay:300ms"
                                   :hx-include "#ship-table-position" :hx-vals "{\"page\":\"1\",\"table-scroll\":\"0\"}" :hx-sync "this:replace"}
+      [:label "Name" [:input {:type "search" :name "q" :value (get filters "q") :placeholder "Class or ship name"}]]
       (for [[field label] [["bundle" "Bundle / faction"] ["class" "Class"]]]
         [:label label [:select {:name field}
                        [:option {:value ""} (str "All " (str/lower-case label))]
                        (for [value (sort (distinct (keep (keyword field) entries)))]
-                         [:option {:value value :selected (= value (get filters field))} value])]])
-      [:label "Name" [:input {:type "search" :name "q" :value (get filters "q") :placeholder "Class or ship name"}]]]
+                         [:option {:value value :selected (= value (get filters field))} value])]])]
      [[:form#ship-table-position
        [:input {:type "hidden" :name "table-scroll" :value (or (get filters "table-scroll") "0")}]
        [:input {:type "hidden" :name "expanded" :value (or (get filters "expanded") "")}]]

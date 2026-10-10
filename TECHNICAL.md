@@ -1130,7 +1130,11 @@ carrying a `load` trigger: repeating it in the fragment would make the panel ref
 itself forever.
 
 Shared control help is rendered by `shipyard.help.views` as data and accessible
-descriptions. `shipyard.help.dom` installs delegated hover/focus handlers once, so help
+descriptions. The shell sets `data-tooltips-enabled="false"` on the root HTML element.
+`help.dom/show!` checks that presentation flag before opening help, while CSS hides
+its tooltip and question-mark buttons. Descriptions, handlers and tooltip text stay
+in place; enabling the flag restores the implementation for UX work and browser tests.
+`shipyard.help.dom` installs delegated hover/focus handlers once, so help
 also works on HTMX replacements. Its single tooltip lives outside scrolling panels,
 clamps to the viewport and dismisses on Escape or removal of its control. It tracks
 pointer versus keyboard help: pointer exit from the control or tooltip schedules

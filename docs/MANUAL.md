@@ -10,11 +10,8 @@ Buttons and form fields use the same dark theme across the app. Keyboard focus h
 a blue outline; unavailable controls are dimmed. Checkboxes, radio buttons and sliders
 use the app's blue accent.
 
-Hover a control or focus it with the keyboard for brief help. The **?** buttons explain
-canvas brushes. Pointer help closes when you leave both the control and its tooltip,
-even if the control stays focused. Keyboard help closes when focus moves away.
-Clicking a regular control dismisses its help; clicking **?** opens help.
-Press **Escape** to dismiss either; full workflows are described below.
+Control tooltips and **?** help buttons are currently disabled. Use the workflows
+in this manual; accessible control descriptions remain available.
 
 ## 1. Installing
 
@@ -259,7 +256,8 @@ It shows a mixed state when some matches are selected. **Clear filters**, beside
 the filter dropdowns, restores their defaults and empties the name search without
 changing selected rows. Use the header checkbox to deselect the matching rows. These controls also work in import review.
 Part Browser, import review, Ship Browser and the Assembly hull picker show their
-filters in a sidebar. Sidebars start collapsed, expand while the cursor is over them,
+filters in a sidebar, with name search first and **Clear filters** last where available.
+Sidebars start collapsed, expand while the cursor is over them,
 and collapse when it leaves. Choose **Pin filters** to keep a sidebar open, or
 **Unpin filters** to restore hover behavior. Pins survive panel updates and workspace
 navigation until the page is reloaded. You can also focus **Filters** with Tab and

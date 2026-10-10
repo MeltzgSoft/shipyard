@@ -530,14 +530,14 @@
     :hx-swap    "outerHTML"
     ;; `load from:body` is what populates the list on first paint.
     :hx-trigger "load from:body, change, search, keyup changed delay:300ms"}
+   [:label.filters__field "Name"
+    [:input {:type "search" :name "q" :placeholder "Search names" :autocomplete "off"}]]
    [:label.filters__field "Bundle"
     [:select {:name "bundle"} (options "All bundles" bundles)]]
    [:label.filters__field "Class"
     [:select {:name "class"} (options "All classes" classes)]]
    [:label.filters__field "Role"
-    [:select {:name "role"} (options "All roles" (map name roles))]]
-   [:label.filters__field "Name"
-    [:input {:type "search" :name "q" :placeholder "Search names" :autocomplete "off"}]]])
+    [:select {:name "role"} (options "All roles" (map name roles))]]])
 
 (defn shell
   "`GET /`. The canvas is created once here and never again: it is an island
@@ -547,7 +547,7 @@
   ([facets root theme] (shell facets root {:workspace :browse :activation 0} true theme))
   ([facets root context colors] (shell facets root context colors :dark))
   ([facets _root context colors theme]
-   [:html {:lang "en"}
+   [:html {:lang "en" :data-tooltips-enabled "false"}
     [:head
      [:meta {:charset "utf-8"}]
      [:meta {:name "viewport" :content "width=device-width, initial-scale=1"}]

@@ -6,6 +6,11 @@
             [shipyard.loadout.db :as classes])
   (:import [com.microsoft.playwright Page]))
 
+(defn- assert-filter-order! [driver form clear?]
+  (is (= "q" (s/js driver (str "() => document.querySelector('" form "').querySelector('input,select').name"))))
+  (when clear?
+    (is (s/js driver (str "() => document.querySelector('" form "').lastElementChild.matches('[data-filter-clear]')")))))
+
 (defn- leave-sidebar! [driver]
   (.hover ^Page (:page driver) "#workspace-navigation"))
 
@@ -42,6 +47,7 @@
     (try
       (s/go! driver (s/base-url (:system started)))
       (s/wait-visible! driver "[data-bulk-select]")
+      (assert-filter-order! driver "#bulk-orient-filters" true)
       (is (false? (open? driver "part-filter-sidebar")) "Filters start collapsed")
       (s/check! driver (str "[data-part-row='" (:prow fixture/ids) "'] [data-bulk-select]"))
       (s/wait-visible! driver "[data-bulk-count]:text-is('1 selected')")
@@ -64,6 +70,7 @@
       (s/wait-visible! driver "#settings-workspace")
       (s/click! driver "[data-workspace-mode=browse]")
       (s/wait-visible! driver "[data-bulk-select]")
+      (assert-filter-order! driver "#bulk-orient-filters" true)
       (is (open? driver "part-filter-sidebar") "Pinned presentation survives a workspace round trip")
       (is (= "1 selected" (s/text driver "[data-bulk-count]")))
       (s/click! driver "#part-filter-sidebar [data-filter-pin]")
@@ -83,6 +90,7 @@
       (s/choose-path! driver ".import-start" zip)
       (s/wait-visible! driver ".import-review")
       (s/wait-visible! driver "[data-bulk-select]")
+      (assert-filter-order! driver "#bulk-orient-filters" true)
       (s/check! driver "#part-select-matching")
       (s/wait-visible! driver "[data-bulk-count]:text-is('2 selected')")
       (s/fill! driver "#bulk-orient-filters input[name=q]" "Hull")
@@ -106,6 +114,7 @@
                                 :loadout/hull (:hull fixture/ids) :loadout/slots {}} :create))
       (s/go! driver (s/base-url sys))
       (s/ship-table! driver)
+      (assert-filter-order! driver "#ship-filters" false)
       (s/fill! driver "#ship-filters input[name=q]" "Cruiser")
       (is (s/wait-until #(= 1 (s/count-els driver ".ship-card"))))
       (let [before @workspace]

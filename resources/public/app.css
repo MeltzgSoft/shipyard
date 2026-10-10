@@ -1205,3 +1205,7 @@ body:has(#workspace-context[data-workspace="settings"]) .stage { display: none; 
 .part-group-controls:not([hidden]) { margin-block: 6px; }
 
 .settings-workspace__appearance { display: flex; align-items: end; flex-wrap: wrap; gap: .75rem; }
+
+/* Keep help implementation and descriptions while tooltip presentation is off. */
+html[data-tooltips-enabled="false"] .control-tooltip,
+html[data-tooltips-enabled="false"] .control-help { display: none; }

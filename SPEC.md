@@ -715,7 +715,8 @@ Undo is unavailable until the current drag has finished.
 All server-rendered hiccup driven by htmx, except the viewport.
 
 Part Browser, import review, Ship Browser and Assembly hull filters live in
-collapsible sidebars beside their tables or controls. Sidebars start collapsed,
+collapsible sidebars beside their tables or controls. Name search appears first;
+Clear filters appears last where available. Sidebars start collapsed,
 expand on hover and collapse when the cursor leaves. A pin control keeps them open
 until unpinned, preserving the pin through panel updates and workspace navigation
 until the page is reloaded. Filters are also accessible using Tab and Enter/Space.
@@ -748,11 +749,9 @@ color controls retain their purposeful visual distinctions. Mount wizard fields 
 the inspector's available width; face, acceptance, mirror and cut sections align
 without forcing extra columns when the application window is wide.
 
-Brief control help uses shared tooltips available on pointer hover and keyboard focus,
-dismissible with Escape. Pointer help closes after the cursor leaves both the control
-and tooltip, even when the control retains focus; a short grace period permits crossing
-between them. Keyboard-triggered help remains available until focus leaves or it is
-dismissed. Canvas gestures have focusable help buttons. Standing workflow
+Shared control tooltips and their help buttons are disabled. Help descriptions
+remain available as accessibility metadata, and the implementation and text are retained.
+Standing workflow
 explanations belong in the manual; conditional prerequisites, warnings, counts and live
 save/progress feedback remain visible.
 

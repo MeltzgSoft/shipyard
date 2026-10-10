@@ -40,6 +40,8 @@
         hidden? #(s/js driver "() => document.querySelector('[role=tooltip]').hidden")]
     (try
       (s/go! driver (s/base-url (:system started)))
+      ;; Exercise the retained implementation with presentation explicitly enabled.
+      (s/js driver "() => document.documentElement.dataset.tooltipsEnabled = 'true'")
       ;; The filters appear before their initial HTMX request finishes. Start
       ;; pointer checks after the table is loaded and the control is enabled.
       (s/wait-visible! driver "#bulk-orient-results .bulk-orient__row")
@@ -83,6 +85,7 @@
                     {:loadout/id (random-uuid) :loadout/name "Help Cruiser"
                      :loadout/hull (:hull lf/draft) :loadout/slots lf/assignments} :create)
       (s/go! driver (s/base-url sys))
+      (s/js driver "() => document.documentElement.dataset.tooltipsEnabled = 'true'")
       (s/wait-visible! driver "#bulk-orient-filters select[name=variant]")
       (s/click! driver "#part-filter-sidebar [data-filter-pin]")
       (.hover page "#bulk-orient-filters select[name=variant]")
@@ -153,4 +156,37 @@
       (is (not (str/includes? (s/text driver "#detail") "Whole visible triangles, nearest surface only")))
       (is (zero? (s/count-els driver ".masthead__stats")))
       (s/screenshot-el! driver "#detail" (java.io.File. "/tmp/shipyard-ui-copy-customize.png"))
+      (finally (s/quit! driver) (fixture/stop! started)))))
+
+(deftest shared-tooltips-are-disabled-by-default-through-panel-replacements
+  (s/assert-bundle!)
+  (let [started (fixture/start! true) driver (s/make-driver) page ^Page (:page driver)]
+    (try
+      (s/go! driver (s/base-url (:system started)))
+      (s/wait-visible! driver "#bulk-orient-filters select[name=variant]")
+      (s/click! driver "#part-filter-sidebar [data-filter-pin]")
+      (is (s/wait-until #(s/js driver "() => !!document.querySelector('#control-tooltip')")))
+      (doseq [selector ["#bulk-orient-filters select[name=variant]"]]
+        (.hover page selector)
+        (.focus page selector)
+        (is (s/js driver "() => document.querySelector('#control-tooltip').hidden"))
+        (is (s/js driver "() => !document.activeElement.getAttribute('aria-describedby')")))
+      (s/open-part! driver "prow")
+      (s/await-part driver (:prow fixture/ids))
+      (.hover page "#mount-colors-toggle")
+      (.focus page "#mount-colors-toggle")
+      (is (s/js driver "() => document.querySelector('#control-tooltip').hidden"))
+      (s/click! driver "[data-detail-tab=regions]")
+      (s/wait-visible! driver "#part-regions")
+      (is (pos? (s/count-els driver "#part-regions .control-help")))
+      (is (s/js driver "() => [...document.querySelectorAll('#part-regions .control-help')].every(el => !el.checkVisibility())"))
+      (.hover page "[data-region-mode=faces]")
+      (.focus page "[data-region-mode=faces]")
+      (is (s/js driver "() => document.querySelector('#control-tooltip').hidden"))
+      (is (s/js driver "() => !!document.activeElement.getAttribute('aria-description')"))
+      (s/click! driver "[data-workspace-mode=settings]")
+      (s/wait-visible! driver "#appearance-theme")
+      (.hover page "#appearance-theme")
+      (.focus page "#appearance-theme")
+      (is (s/js driver "() => document.querySelector('#control-tooltip').hidden"))
       (finally (s/quit! driver) (fixture/stop! started)))))
