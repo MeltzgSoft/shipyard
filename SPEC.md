@@ -650,7 +650,10 @@ Facets mode assigns touched triangles. Faces mode follows connected triangles wh
 neighboring normals differ by at most the selected angle tolerance (0–90°, default
 1°), allowing painting around curves while stopping at larger creases. Expansion can
 include triangles outside the brush or behind occluders. Erasing uses the same
-mode and tolerance. These settings survive region saves and layer operations.
+mode and tolerance. Reusable surface analysis runs on bounded backend workers,
+starts when the part or tolerance changes, and caches source-bound compact components.
+Faces brushing waits for preparation without freezing camera or other controls.
+These settings survive region saves and layer operations.
 Regions optionally mirror painting and erasing across a selected canonical part
 plane (YZ/X, XZ/Y or XY/Z). The plane defaults to a center estimated from opposing
 outer surfaces, resisting small asymmetric details. Geometry without opposing

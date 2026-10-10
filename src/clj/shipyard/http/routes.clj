@@ -24,6 +24,7 @@
             [shipyard.catalog.db :as db]
             [shipyard.catalog.part :as catalog-part]
             [shipyard.regions.handlers :as regions]
+            [shipyard.regions.surface-preparation :as surface-preparation]
             [shipyard.regions.transport :as region-transport]
             [shipyard.http.contracts :as contracts]
             [shipyard.file-picker.routes :as file-picker]
@@ -619,6 +620,7 @@
    ["/mounts/delete" {:post {:handler (partial delete-mount! deps)
                              :parameters {:form contracts/mount-id-form}
                              :responses contracts/html-responses}}]
+   ["/parts/regions/surfaces" {:get {:handler (partial surface-preparation/request! deps)}}]
    ["/parts/regions/snapshot" {:get {:handler (partial regions/snapshot! deps)
                                      :parameters {:query [:map [:part-id string?]
                                                           [:layer {:optional true} string?]

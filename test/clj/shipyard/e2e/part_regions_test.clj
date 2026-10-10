@@ -2,6 +2,8 @@
   (:require [shipyard.persistence-fixture :as persisted]
             [babashka.fs :as fs]
             [clojure.test :refer [deftest is]]
+            [clojure.string :as str]
+            [shipyard.jobs :as workers]
             [clojure.java.io :as io]
             [shipyard.fixtures :as fixtures]
             [shipyard.assembly-fixture :as fixture]
@@ -962,3 +964,33 @@
       (is (= 4 (captures)) "A different source mesh cannot reuse another part's picking data")
       (is (seq (:faces (catalog/part-regions (catalog/part (catalog/snapshot! cat) (:weapon-alt fixture/ids))))))
       (finally (s/quit! driver) (fixture/stop! started)))))
+
+(deftest surface-preparation-pending-keeps-facets-available
+  (s/assert-bundle!)
+  (let [started (fixture/start! true) sys (:system started) driver (s/make-driver)
+        id (:weapon fixture/ids) gate (promise)
+        scope (workers/scope! (:shipyard.jobs/pool sys))]
+    (try
+      (s/go! driver (s/base-url sys))
+      (s/open-part! driver "weapon")
+      (s/await-part driver id)
+      (workers/submit-batch! scope (mapv (fn [i] {:key i :run! (fn [] @gate) :args []}) (range 2)))
+      (s/click! driver "[data-detail-tab=regions]")
+      (s/click! driver "button[data-region-mode=faces]")
+      (is (s/wait-until #(= "running" (s/js driver "() => document.querySelector('#region-stroke').dataset.surfaceState"))))
+      (apply s/click-point! driver (region-point driver 0))
+      (is (str/includes? (s/text driver "#region-status") "Preparing connected surfaces"))
+      (s/click! driver "button[data-region-mode=facets]")
+      (apply brush/stroke! driver (region-point driver 0))
+      (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
+      (deliver gate true)
+      (s/click! driver "button[data-region-mode=faces]")
+      (is (s/wait-until #(= "ready" (s/js driver "() => document.querySelector('#region-stroke').dataset.surfaceState"))))
+      (workspace/switch! driver "assembly")
+      (workspace/switch! driver "browse")
+      (s/await-part driver id)
+      (s/click! driver "[data-detail-tab=regions]")
+      (s/click! driver "button[data-region-mode=faces]")
+      (apply brush/stroke! driver (region-point driver 0))
+      (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
+      (finally (deliver gate true) (workers/close! scope) (s/quit! driver) (fixture/stop! started)))))

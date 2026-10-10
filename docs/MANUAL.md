@@ -729,7 +729,10 @@ The brush
 starts from visible triangles. **Facets** paints the triangles touched by the brush;
 **Faces** follows connected surfaces. Its **Angle tolerance** slider (0–90°, default
 1°) sets the largest bend between neighboring triangles that the brush can cross.
-Raise it to follow curved surfaces; larger creases and disconnected surfaces stop
+Connected surfaces prepare in the background when you select Faces or change
+tolerance. If a stroke reports preparation pending, try again once it is ready;
+Facets and camera orbit remain available. Previously used tolerances reuse cached
+preparation. Raise it to follow curved surfaces; larger creases and disconnected surfaces stop
 the stroke. Expansion can include triangles outside the brush or behind other geometry. Right-drag erasing follows the same mode. Adjust its screen-space
 radius; use Alt+drag to orbit. Region preview colors are chosen for separation from
 the other types in your library, then stored so they stay stable when types are

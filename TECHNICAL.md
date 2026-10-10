@@ -3090,7 +3090,16 @@ normals, in degrees (0–90, default 1). There is no distance-to-seed-plane cons
 small neighboring bends can join a curved surface. Coordinate-shared edges connect
 triangles despite hard-normal seams; non-manifold seams and degenerate triangles
 stop growth. Groups retain tier-0 order across indexed/nonindexed rendering. The
-cache holds only the latest angle's partition. Mode and angle are captured per stroke,
+application preparation service retains bounded source/angle partitions. Normals and
+coordinate-shared edge adjacency are prepared once per immutable tier-0 source on
+shared workers; each angle builds a compact component projection. GET
+`/parts/regions/surfaces` admits only the selected part and a valid angle, reusing source topology while the partition resource prepares. Its binary data is little-endian
+uint32 triangle count, component count, triangle component IDs, component offsets
+(including the final sentinel), and triangle members. Browser typed-array views
+perform only seed component lookup; no mesh graph or normal analysis runs there.
+Part/mode/tolerance changes eagerly prepare the resource. Faces strokes wait for
+readiness while camera controls and Facets remain available. Late results check
+part, source hash, tolerance and workspace activation before installation. Mode and angle are captured per stroke,
 apply equally to assignment and erasing, and survive region saves and layer operations.
 Only valid stable face keys cross the persistence boundary; expanded surfaces may
 include occluded triangles. Navigation/cancellation drops

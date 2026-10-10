@@ -19,11 +19,17 @@
                                 (false? (s/js driver "() => document.querySelector('#paint-brush input[name=radius]').disabled"))))
     (throw (ex-info "Stroke was not confirmed" {:status (s/text driver "#brush-status")}))))
 
+(defn await-region-surfaces! [driver]
+  (when-not (s/wait-until #(s/js driver "() => {const f=document.querySelector('#region-stroke');return !f || f.elements.mode.value !== 'faces' || f.dataset.surfaceState === 'ready';}"))
+    (throw (ex-info "Connected surface preparation was not ready" {}))))
+
 (defn stroke! [driver x y]
+  (await-region-surfaces! driver)
   (let [mouse (.mouse ^Page (:page driver))]
     (.move mouse (double x) (double y)) (.down mouse) (.up mouse)))
 
 (defn right-stroke! [driver x y]
+  (await-region-surfaces! driver)
   (let [mouse (.mouse ^Page (:page driver))]
     (.move mouse (double x) (double y))
     (.down mouse (doto (Mouse$DownOptions.) (.setButton MouseButton/RIGHT)))
