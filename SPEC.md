@@ -850,7 +850,10 @@ parts are subsequently viewed or assembled. Source STL files and existing mount
 records remain unchanged. Table, grid and individual editor are views within one workspace.
 
 **Select.** A table fills the workspace and supports filters by bundle, class, role,
-name, saved-orientation status (any, unset or saved) and variant availability. Each row shows a thumbnail,
+name, saved-orientation status (any, unset or saved) and variant availability.
+The toolbar below the table holds Import ZIP, the selection count and Orient selection;
+the import action does not require a separate header. Active import review retains its
+archive status, publication and cancellation controls above the filters. Each row shows a thumbnail,
 part name, bundle/faction, role, class, Unsupported/Supported/Pitted or recessed availability,
 mount summary, whether saved regions exist,
 saved yaw/pitch/roll and orientation status. Each availability filter chooses Any,

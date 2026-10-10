@@ -106,6 +106,30 @@
       (is (s/js driver "() => document.querySelector('#part-select-matching').disabled"))
       (finally (s/quit! driver) (fixture/stop! started)))))
 
+(deftest import-action-shares-the-selection-toolbar
+  (let [started (fixture/start! true) driver (s/make-driver)]
+    (try
+      (s/go! driver (s/base-url (:system started)))
+      (s/wait-visible! driver "[data-bulk-select]")
+      (is (zero? (s/count-els driver ".library-variants, form form")))
+      (is (= 1 (s/count-els driver "#bulk-selection .bulk-orient__selection > .import-start")))
+      (is (s/js driver "() => !document.querySelector('.import-start button').disabled"))
+      (s/check! driver (str "[data-bulk-select][value='" (:prow fixture/ids) "']"))
+      (s/wait-visible! driver "[data-bulk-count]:text-is('1 selected')")
+      (doseq [[width height] [[1280 900] [768 900] [1280 360]]]
+        (s/resize! driver width height)
+        (s/scroll-into-view! driver ".import-start button")
+        (let [button (s/bounds driver ".import-start button")
+              orient (s/bounds driver "[data-bulk-render-button]")
+              results (s/bounds driver "#bulk-orient-results")
+              library (s/bounds driver "#library")]
+          (is (< (Math/abs (- (:y button) (:y orient))) 1) "Both actions share one row")
+          (is (>= (:y button) (+ (:y results) (:height results))) "Import sits below the table")
+          (is (>= (:y button) (:y library)))
+          (is (<= (+ (:y button) (:height button)) (+ (:y library) (:height library) 1)))))
+      (is (s/js driver "() => [...document.querySelectorAll('#bulk-selection > p')].every(p=>p.getBoundingClientRect().height===0)"))
+      (finally (s/quit! driver) (fixture/stop! started)))))
+
 (deftest column-controls-update-hidden-selections-and-ignore-blanks
   (let [started (fixture/start! true) sys (:system started) driver (s/make-driver)
         cat (:shipyard.catalog/db sys) ids [(:prow fixture/ids) (:bridge fixture/ids)]

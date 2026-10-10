@@ -2142,6 +2142,10 @@ and destination-library forms have different ids, preventing draft fields or Var
 controls from crossing contexts. Visibility and button availability derive from the
 whole server-owned selection (at least two ids). Column controls and row summaries use
 one shared CSS grid track definition, within the sticky table header.
+The bottom selection toolbar holds separate sibling forms for Import ZIP and orientation.
+Selection responses replace only the orientation form, preserving the import action's
+library-root availability and chooser transport. Empty status elements occupy no space;
+active import review keeps its archive/publication controls above the filters.
 Render submissions sort the selection by id for stable card order. The server parses
 an EDN vector of string ids, removes duplicates while preserving order, resolves ids
 against the current catalog, and excludes unknown or unpreviewable parts. Empty/invalid

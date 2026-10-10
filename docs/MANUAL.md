@@ -129,7 +129,8 @@ self-intersections.
 
 ### Importing a ZIP archive
 
-Choose your library folder first. In **Part Browser**, click **Import ZIP…**.
+Choose your library folder first. In **Part Browser**, click **Import ZIP…** in
+the toolbar below the table, beside the selection count and orientation action.
 Browse for the archive or type/paste its full path in the desktop selector's
 **File name** field, then choose **Open**. Approval immediately starts import review;
 canceling leaves the table unchanged. ZIP import requires a graphical desktop.

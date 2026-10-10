@@ -180,6 +180,7 @@
         (is (= before (catalog/listing! cat))))
       (s/choose-path! driver ".import-start" zip)
       (s/wait-visible! driver ".import-review")
+      (is (zero? (s/count-els driver ".import-start")) "Review keeps its commit/cancel actions without another import button")
       (testing "an empty nested download is skipped and identified in review"
         (is (= "Skipped 1 empty nested ZIP file" (s/text driver ".import-warnings summary")))
         (s/click! driver ".import-warnings summary")

@@ -687,7 +687,9 @@ body {
 .bulk-orient__unset { color: var(--warn); font-size: 11px; }
 .bulk-orient__empty { padding: 14px; color: var(--ink-dim); }
 .bulk-orient__selection { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--line); background: var(--panel); }
+.bulk-orient__render { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; }
 .bulk-orient__selection p { flex: 1; margin: 0; font-size: 12px; }
+#bulk-selection > p:empty { display: none; }
 
 .bulk-orient__stage { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
 .bulk-orient__stage:empty { display: none; }
@@ -942,8 +944,7 @@ body:has(#workspace-context[data-workspace="ships"]) #library[data-ship-view="ed
 .bulk-orient__mounts { color: var(--ink-dim); overflow-wrap: anywhere; }
 .bulk-orient__regions[data-has-regions="true"] { color: var(--accent); }
 
-.import-start { display: flex; align-items: end; gap: .75rem; flex-wrap: wrap; padding: .65rem 1rem; }
-.import-start #import-status { flex-basis: 100%; margin: 0; }
+.import-start { display: flex; align-items: center; gap: .75rem; }
 .import-review { padding: .5rem 1rem; border-bottom: 1px solid var(--line); }
 .import-review p { margin: .35rem 0; }
 .import-review form { display: inline-block; margin-right: .75rem; }
@@ -957,8 +958,6 @@ body:has(#workspace-context[data-workspace="ships"]) #library[data-ship-view="ed
 .file-picker > label { display: block; margin-bottom: .3rem; color: var(--ink-dim); }
 .file-picker__selection { display: flex; align-items: end; gap: .5rem; }
 .file-picker input { min-width: 0; width: 100%; }
-
-.import-start > .file-picker { flex-basis: 20rem; }
 
 .file-picker__message:empty { display: none; }
 .file-picker__message { margin: .4rem 0 0; }

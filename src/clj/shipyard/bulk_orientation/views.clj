@@ -209,7 +209,7 @@
 
 (defn- selection-controls [selection]
   (let [ids (bulk/selected-ids selection)]
-    [:form#bulk-orient-selection.bulk-orient__selection
+    [:form#bulk-orient-selection.bulk-orient__render
      (merge workspace-views/transition-attrs
             {:method "post" :action "/orient/render" :hx-post "/orient/render" :hx-target "#detail"
              :data-bulk-render "true" :hx-include "#bulk-orient-filters, #part-table-position, [data-part-page]"})
@@ -255,9 +255,19 @@
 
 (defn selection-form
   ([selection] (selection-form selection false))
-  ([selection _importing?]
+  ([selection importing?] (selection-form selection importing? nil))
+  ([selection importing? root]
    [:div#bulk-selection
-    (selection-controls selection)
+    [:div.bulk-orient__selection
+     (when-not importing?
+       [:form.import-start (merge workspace-views/transition-attrs {:method "post" :action "/imports/choose" :hx-post "/imports/choose" :hx-target "#detail"})
+        [:button {:type "submit" :disabled (nil? root) :data-picker-browse true
+                  :data-workspace-transition true :aria-label "Browse for ZIP archive"} "Import ZIP…"]
+        [:span.htmx-indicator "Unpacking archive…"]])
+     (selection-controls selection)]
+    (when-not importing?
+      (list [:p#import-status {:role "status"}]
+            [:p#variant-status {:role "status"}]))
     [:p#part-edit-status {:role "status"}]]))
 
 (defn- group-form [prefix]
@@ -282,7 +292,7 @@
   ([facets selection root import-session]
    [:section#library.panel.bulk-orient
     (pagination/progress)
-    (if import-session
+    (when import-session
       [:div.import-review
        [:p "Archive: " (:archive import-session)]
        (thumbnails/import-progress nil)
@@ -294,14 +304,7 @@
         [:button {:type "submit" :data-workspace-transition true} "Import into library"]]
        [:form (merge workspace-views/transition-attrs {:method "post" :action "/imports/cancel" :hx-post "/imports/cancel" :hx-target "#detail"})
         [:button {:type "submit" :data-workspace-transition true} "Cancel import"]]
-       [:p#import-status {:role "status"}]]
-      [:div.library-variants
-       [:form.import-start (merge workspace-views/transition-attrs {:method "post" :action "/imports/choose" :hx-post "/imports/choose" :hx-target "#detail"})
-        [:button {:type "submit" :disabled (nil? root) :data-picker-browse true
-                  :data-workspace-transition true :aria-label "Browse for ZIP archive"} "Import ZIP…"]
-        [:span.htmx-indicator "Unpacking archive…"]
-        [:p#import-status {:role "status"}]]
-       [:p#variant-status {:role "status"}]])
+       [:p#import-status {:role "status"}]])
     [:form#bulk-orient-filters.filters
      {:data-workspace-filters "true" :hx-get "/orient/parts" :hx-target "#bulk-orient-results" :hx-swap "outerHTML"
       :hx-sync "this:replace"
@@ -345,7 +348,7 @@
      [:input {:type "hidden" :name "page" :value "1" :data-part-page true}]
      [:input {:id "part-table-position" :type "hidden" :name "table-scroll" :value "0"}]
      [:p.muted "Loading parts…"]]
-    (selection-form selection (some? import-session))
+    (selection-form selection (some? import-session) root)
     (vocabulary/choices (:values facets))]))
 
 (defn filter-updates [facets filters]
