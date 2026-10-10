@@ -90,6 +90,7 @@
       (s/fill-and-blur! driver (str drawer " input[name=name]") "Drawer Part")
       (s/click! driver (str drawer " button:text-is('Save part')"))
       (s/wait-visible! driver (str drawer " [role=status]:text-is('Saved.')"))
+      (s/scroll-into-view! driver (str drawer " .part-thumbnail--large"))
       (s/wait-visible! driver (str drawer " .part-thumbnail--large img"))
       (s/screenshot-el! driver drawer (java.io.File. "/tmp/shipyard-part-drawer.png"))
       (s/go! driver (s/base-url sys))
