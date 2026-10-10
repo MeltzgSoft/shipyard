@@ -970,6 +970,25 @@ These are the required working practices for the native interop boundary.
 
 ---
 
+### On-demand feature preparation
+
+`:shipyard.preparation/service` owns an interactive cancellation scope on the shared
+bounded job pool. Feature descriptors include source mesh identity, tier, preparation
+format and every relevant authoring revision. The service deduplicates pending work,
+rechecks source/root stamps before publication and delivery, and bounds completed
+resources by byte budget and entry count. Immutable decoded meshes and source analysis
+share a separate bounded worker-only cache; no library-wide startup pass runs.
+Producers can supply an additional `:valid?!` revision guard checked before delivery.
+
+Feature endpoints return small EDN `{ :state :resource }` envelopes. Clients poll
+`GET /preparation/:resource` and fetch ready bytes from its `/data` resource. Expired
+or changed-source resources return 410; overload remains retryable. EDN preparation
+POST descriptors are capped at 1 MiB before Malli coercion. Binary resources are
+prepared by workers, while the browser attaches typed arrays and owns GPU uploads.
+The shared client loader accepts cancellation and a consumer `:current?` predicate
+for workspace, activation, source and settings guards; canceled or stale responses
+never activate scene state.
+
 ## 7. HTTP surface
 
 | Route | Returns |

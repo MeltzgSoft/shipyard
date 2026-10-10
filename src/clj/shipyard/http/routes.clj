@@ -17,6 +17,8 @@
             [shipyard.workspace.routes :as workspace-routes]
             [shipyard.bulk-orientation.routes :as bulk-routes]
             [shipyard.bulk-orientation.handlers :as bulk]
+            [shipyard.preparation.routes :as preparation-routes]
+            [shipyard.preparation.transport :as preparation-transport]
             [shipyard.part-browser.navigation :as navigation]
             [shipyard.catalog.db :as db]
             [shipyard.catalog.part :as catalog-part]
@@ -654,7 +656,8 @@
                     :database #(db/snapshot! (:catalog deps)))]
     (ring/router
      (into (routes deps)
-           (concat (file-picker/routes deps)
+           (concat (preparation-routes/routes deps)
+                   (file-picker/routes deps)
                    (thumbnail-routes/routes deps)
                    (vocabulary-routes/routes deps)
                    (settings-routes/routes deps)
@@ -666,6 +669,7 @@
      {:data {:coercion malli-coercion/coercion
              :middleware [params/wrap-params
                           region-transport/wrap-body
+                          preparation-transport/wrap-body
                           validation/wrap-errors
                           coercion/coerce-request-middleware
                           coercion/coerce-response-middleware]}})))
