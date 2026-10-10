@@ -78,11 +78,11 @@
                :cut {:kind :recess :depth 0.1 :border 0.0}}
         scope (jobs/scope! (:shipyard.jobs/pool sys))
         entered (CountDownLatch. 2) release (CountDownLatch. 1)
-        calls (atom 0) original preview/draft]
+        calls (atom 0) original preview/selection]
     (try
       (jobs/submit-batch! scope (mapv (fn [key] {:key key :run! #(do (.countDown entered) (.await release))}) [0 1]))
       (is (.await entered 5 TimeUnit/SECONDS))
-      (with-redefs [preview/draft (fn [& args] (swap! calls inc) (apply original args))]
+      (with-redefs [preview/selection (fn [& args] (swap! calls inc) (apply original args))]
         (let [old-resource (:resource (edn/read-string (:body (handler (request input)))))
               resource (:resource (edn/read-string (:body (handler (request (-> input (assoc :sequence 2)
                                                                                 (assoc-in [:cut :depth] 0.2)))))))]
@@ -90,5 +90,8 @@
           (is (= :ready (:state (ready! service resource))))
           (is (= 410 (:status (handler (mock/request :get (str "/preparation/" old-resource "/data"))))))
           (previews/await! #(= {:running 0 :queued 0} (jobs/progress! (:scope service))))
+          (let [edited (:resource (edn/read-string (:body (handler (request (-> input (assoc :sequence 3)
+                                                                                (assoc-in [:cut :depth] 0.3)))))))]
+            (is (= :ready (:state (ready! service edited)))))
           (is (= 1 @calls))))
       (finally (.countDown release) (jobs/close! scope) (fixture/stop! started)))))
