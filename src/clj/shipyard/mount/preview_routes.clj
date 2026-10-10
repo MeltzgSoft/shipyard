@@ -30,8 +30,16 @@
   {:status 200 :headers {"content-type" "application/edn; charset=utf-8" "cache-control" "no-store"}
    :body (pr-str (transforms/envelope entry))})
 
-(defn- build-draft! [service mesh-key value opts]
-  (let [bytes (wire/encode (preview/draft (preparation/read-mesh! service mesh-key 0) value opts))]
+(defn- build-selection! [service mesh-key indices border-indices opts]
+  (let [value (preview/selection (preparation/read-mesh! service mesh-key 0) indices border-indices opts)]
+    {:value value
+     :size (+ (* 128 (count (mapcat identity (:outline value)))) (* 256 (count (:border value)))
+              (* 32 (+ (count indices) (count border-indices))))}))
+
+(defn- build-draft! [service mesh-key {:keys [indices border-indices] :as value} opts]
+  (let [selection (preparation/cached-source! service [:mount-preview-selection wire/version mesh-key indices border-indices opts]
+                                              build-selection! [service mesh-key indices border-indices opts])
+        bytes (wire/encode (preview/from-selection selection value))]
     {:value {:bytes bytes :content-type "application/octet-stream"}
      :size (+ (alength ^bytes bytes) (* 32 (+ (count (:indices value)) (count (:border-indices value)))))}))
 

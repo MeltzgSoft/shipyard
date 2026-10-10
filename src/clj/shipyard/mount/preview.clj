@@ -19,16 +19,21 @@
        (distinct)
        (vec)))
 
-(defn draft
-  "Derive a source-space preview without writing mounts, facets, or generated files."
-  [mesh {:keys [frame indices border-indices cut capacity direction mirror part-orientation]} opts]
-  (when-not (and (wizard/valid-frame? frame)
-                 (or (nil? indices) (facet-input/in-facet? mesh indices opts))
+(defn selection
+  "Reusable source-space boundary and border geometry, independent of cut controls."
+  [mesh indices border-indices opts]
+  (when-not (and (or (nil? indices) (facet-input/in-facet? mesh indices opts))
                  (or (nil? border-indices) (facet-input/in-facet? mesh border-indices opts)))
     (throw (ex-info "Choose a nonempty selection from one current mount face." {})))
-  (let [outline (if indices
-                  (cut/outline (geometry/mesh-triangles mesh indices))
-                  (:mount/outline frame))
+  {:outline (when indices (cut/outline (geometry/mesh-triangles mesh indices)))
+   :border (if border-indices (border-lines mesh border-indices) [])})
+
+(defn from-selection
+  "Apply inexpensive frame controls and physical offset profiles to a prepared boundary."
+  [{:keys [outline border]} {:keys [frame cut capacity direction mirror part-orientation]}]
+  (when-not (wizard/valid-frame? frame)
+    (throw (ex-info "Choose a valid current mount frame." {})))
+  (let [outline (or outline (:mount/outline frame))
         _ (when (and cut (not (seq outline)))
             (throw (ex-info "The selected triangles do not have a supported boundary." {})))
         mount (cond-> (assoc frame :mount/capacity capacity)
@@ -40,4 +45,9 @@
                                         (or part-orientation orientation/identity-quaternion)))]
     {:cuts (if cut (lines mount) [])
      :mirror-cuts (if (and cut mirrored) (lines mirrored) [])
-     :border (if border-indices (border-lines mesh border-indices) [])}))
+     :border border}))
+
+(defn draft
+  "Derive a source-space preview without writing mounts, facets, or generated files."
+  [mesh {:keys [indices border-indices] :as value} opts]
+  (from-selection (selection mesh indices border-indices opts) value))
