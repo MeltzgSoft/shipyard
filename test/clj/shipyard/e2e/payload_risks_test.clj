@@ -26,7 +26,7 @@
       (s/click! driver "[data-select-all=all]")
       (is (s/wait-until #(= "69 selected" (s/text driver "[data-bulk-count]")))
           "Select all includes unloaded matches and excludes the supported-only part")
-      (s/click! driver "[data-select-all=none]")
+      (s/clear-part-selection! driver)
       (is (s/wait-until #(= "0 selected" (s/text driver "[data-bulk-count]"))))
       (s/check! driver "[data-list-page=\"1\"] .bulk-orient__row:nth-child(3) input[type=checkbox]")
       (s/wait-visible! driver "[data-bulk-count]:text-is('1 selected')")

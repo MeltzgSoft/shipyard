@@ -1,22 +1,18 @@
 (ns shipyard.bulk-orientation.handlers
   "Ring orchestration for filtering, preparing, and saving orientation sets."
-  (:require [babashka.fs :as fs]
-            [clojure.set :as set]
+  (:require [clojure.set :as set]
             [clojure.string :as str]
             [shipyard.bulk-orientation.transforms :as bulk]
             [shipyard.bulk-orientation.save-state :as saves]
             [shipyard.bulk-orientation.views :as views]
             [shipyard.catalog.db :as db]
             [shipyard.part-browser.transforms :as edits]
+            [shipyard.part-browser.preparation :as preparation]
             [shipyard.http.htmx :as htmx]
-            [shipyard.http.jobs :as jobs]
             [shipyard.http.pagination :as pagination]
-            [shipyard.http.urls :as urls]
             [shipyard.http.views :as http-views]
-            [shipyard.library.index :as index]
             [shipyard.importer.db :as importer]
             [shipyard.importer.transforms :as imports]
-            [shipyard.mesh.cache :as cache]
             [shipyard.vocabulary.db :as vocabulary]
             [shipyard.vocabulary.views :as vocabulary-views]
             [shipyard.workspace.db :as workspace]))
@@ -78,25 +74,6 @@
                     (set (bulk/selected-ids selection)))
                    1 assoc :hx-swap-oob "outerHTML")))))
 
-(defn grid-entry! [{:keys [library cache jobs]} part]
-  (let [part-id (:part/id part)
-        mesh-key (index/mesh-key! library part-id)
-        cached? (and mesh-key (fs/regular-file? (cache/tier-file cache mesh-key 0)))
-        source (index/fresh-source-file! library part-id)
-        job (when (and source (not cached?)) (jobs/submit! jobs part-id source))]
-    (cond
-      (nil? source)
-      {:part part :state :failed :message "The source mesh is unavailable or changed. Rescan the library."}
-
-      cached?
-      {:part part :state :ready :mesh-key mesh-key :mesh-url (urls/mesh-url mesh-key 0)}
-
-      (= :failed (:state job))
-      {:part part :state :failed :message "Could not prepare this part."}
-
-      :else
-      {:part part :state :preparing :message "Preparing…"})))
-
 (defn- render-effective! [{:keys [catalog] :as deps} {:keys [params]}]
   (let [part-ids (bulk/selected-ids (get params "part-ids"))]
     (if-not (seq part-ids)
@@ -106,7 +83,7 @@
                          (map #(db/part catalog %))
                          (filter :part/id)
                          (remove http-views/unrenderable-reason)
-                         (map #(grid-entry! deps %)))]
+                         (map #(preparation/entry! deps %)))]
         (if (seq entries)
           (do
             (when (:workspace deps)

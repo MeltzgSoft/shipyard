@@ -87,7 +87,7 @@
       (s/wait-visible! driver "#part-select-matching")
       (is (zero? (s/count-els driver "#library .bulk-orient__head")))
       (is (zero? (s/count-els driver "#import-archive, .classification-editor")))
-      (is (= 1 (s/count-els driver "#bulk-orient-filters button:text-is('Clear selection')")))
+      (is (= 1 (s/count-els driver "#bulk-orient-filters button:text-is('Clear filters')")))
       (s/fill! driver "#bulk-orient-filters input[name=q]" "prow")
       (is (s/wait-until #(= 2 (s/count-els driver ".bulk-orient__row"))))
       (s/check! driver (str "[data-bulk-select][value='" (:prow fixture/ids) "']"))
@@ -97,13 +97,27 @@
       (is (s/js driver "() => document.querySelector('#part-select-matching').checked && !document.querySelector('#part-select-matching').indeterminate"))
       (s/click! driver (str "[data-bulk-select][value='" (:prow fixture/ids) "']"))
       (is (s/wait-until #(s/js driver "() => document.querySelector('#part-select-matching').indeterminate")))
+      (doseq [[field label] [["bundle" "Synthetic Navy"] ["class" "Cruiser"] ["role" "prow"]
+                             ["orientation" "Orientation unset"] ["has-unsupported" "Available"]
+                             ["has-supported" "Missing"] ["has-pitted" "Missing"]]]
+        (s/select-option! driver (str "#bulk-orient-filters select[name=" field "]") label))
       (s/fill! driver "#bulk-orient-filters input[name=q]" "no matching part")
       (s/wait-visible! driver ".bulk-orient__empty")
       (is (s/js driver "() => document.querySelector('#part-select-matching').disabled && !document.querySelector('#part-select-matching').checked"))
       (is (= "1 selected" (s/text driver "[data-bulk-count]")))
-      (s/click! driver "#bulk-orient-filters button:text-is('Clear selection')")
+      (s/click! driver "[data-filter-clear]")
+      (s/wait-visible! driver "[data-bulk-select]")
+      (is (= "1 selected" (s/text driver "[data-bulk-count]")))
+      (is (s/js driver "() => [...document.querySelectorAll('#bulk-orient-filters select')].every(el=>el.selectedIndex===0) && document.querySelector('#bulk-orient-filters input[name=q]').value===''"))
+      (s/check! driver "#part-select-matching")
+      (is (s/wait-until #(s/js driver "() => document.querySelector('#part-select-matching').checked && !document.querySelector('#part-select-matching').indeterminate")))
+      (.uncheck ^Page (:page driver) "#part-select-matching")
       (s/wait-visible! driver "[data-bulk-count]:text-is('0 selected')")
-      (is (s/js driver "() => document.querySelector('#part-select-matching').disabled"))
+      (s/click! driver "[data-workspace-mode=settings]")
+      (s/wait-visible! driver "#settings-workspace")
+      (s/click! driver "[data-workspace-mode=browse]")
+      (s/wait-visible! driver "[data-bulk-select]")
+      (is (s/js driver "() => [...document.querySelectorAll('#bulk-orient-filters select')].every(el=>el.selectedIndex===0) && document.querySelector('#bulk-orient-filters input[name=q]').value===''"))
       (finally (s/quit! driver) (fixture/stop! started)))))
 
 (deftest import-action-shares-the-selection-toolbar
@@ -170,7 +184,7 @@
         (let [before (catalog/part initial id) after (catalog/summary! cat id)]
           (is (= (select-keys before [:part/name :part/role-hint :part/orientation :part/id :part/uid])
                  (select-keys after [:part/name :part/role-hint :part/orientation :part/id :part/uid])))))
-      (s/click! driver "#bulk-orient-filters button:text-is('Clear selection')")
+      (s/clear-part-selection! driver)
       (s/wait-visible! driver "[data-bulk-count]:text-is('0 selected')")
       (is (s/js driver "() => document.querySelector('#part-column-controls').hidden"))
       (finally (s/quit! driver) (fixture/stop! started)))))

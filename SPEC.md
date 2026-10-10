@@ -717,7 +717,12 @@ All server-rendered hiccup driven by htmx, except the viewport.
 - **Part Browser** — a full-width table of library parts, with row thumbnails and
   filters by bundle/faction, class, role, name, saved-orientation status and variant availability. Select
   rows to edit metadata or open the orientation grid (§9.4). Double-click a row (or
-  press Enter on it) to open the individual editor. Back to table restores filters,
+  press Enter on it) to open the individual editor. Double-click a file row inside
+  an expanded row's Files / variants (or press Enter on it) to preview that exact
+  STL read-only, including supported and pitted variants. The floating inspector
+  exposes only Back to table; metadata, orientation, mount, region, assembly and
+  Previous/Next controls are absent. Variant selection is workspace-owned and
+  never makes the source editable or assembly-eligible. Back to table restores filters,
   selected rows and scroll position; the individual editor has no listing sidebar.
 - **Assembly view** - the viewport plus a slot panel. Each slot lists compatible parts,
   filtered by the socket's `:mount/accepts`. Selecting one issues the `HX-Trigger` event
@@ -872,8 +877,9 @@ an explicit empty state. Tables load successive batches of 50 rows as the user s
 Selections persist across batches; changing filters restarts loading, and Back from an
 editor restores the loaded rows and scroll position. The table header checkbox selects
 or deselects every filtered result, including unloaded rows, retaining hidden selections.
-It reflects all, some or no matching rows selected. Clear selection beside the filters
-clears the entire selection. Both selection controls are available during import review.
+It reflects all, some or no matching rows selected. Clear filters beside the filters
+resets every filter to its default without changing selection. The header checkbox
+and Clear filters are available during import review.
 
 Group creation controls sit immediately above the table and appear only when at least
 two parts are selected, including selections retained across filters. Successful grouping

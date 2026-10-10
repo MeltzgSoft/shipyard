@@ -66,7 +66,7 @@
       (s/click! driver ".import-files > summary")
       (s/click! driver "[data-import-split]")
       (s/wait-visible! driver (table/row source/b))
-      (s/click! driver "[data-select-all=none]")
+      (s/clear-part-selection! driver)
       (s/wait-visible! driver "[data-bulk-count]:text-is('0 selected')")
       (group!)
       (.dblclick ^Page (:page driver) (str (table/row source/a) " .bulk-orient__part"))

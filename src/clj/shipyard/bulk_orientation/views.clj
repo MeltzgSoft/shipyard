@@ -31,7 +31,11 @@
     [:details.import-files
      [:summary (str (count files) (if (= 1 (count files)) " file" " files"))]
      (for [{:keys [key chain variant]} files]
-       [:label.import-files__file
+       [:div.import-files__file
+        (when-not (:import/source part)
+          {:tabindex "0" :data-variant-file key :data-workspace-transition true
+           :hx-on:dblclick "if(!this.hasAttribute('disabled')&&!event.target.closest('input,button,select,a')){document.getElementById('variant-open-id').value=this.dataset.variantFile;document.getElementById('variant-open').requestSubmit();}"
+           :hx-on:keydown "if(!this.hasAttribute('disabled')&&event.key==='Enter'&&event.target===this){event.preventDefault();document.getElementById('variant-open-id').value=this.dataset.variantFile;document.getElementById('variant-open').requestSubmit();}"})
         [:span.part-thumbnail.import-file-thumbnail
          (thumbnails/lazy-attrs (str prefix "/thumbnails/" key) "#bulk-orient-results" true) "…"]
         [:span {:title (str/join " → " chain)} (str/join " → " chain)]
@@ -328,8 +332,8 @@
                                            [:option {:value "unset"} "Orientation unset"]
                                            [:option {:value "saved"} "Orientation saved"]]]
      [:label.filters__field "Name" [:input {:type "search" :name "q" :placeholder "Search names"}]]
-     [:button (merge selection-attrs {:type "button" :data-select-all "none" :hx-trigger "click"
-                                      :hx-vals "{\"selection\":\"none\"}"}) "Clear selection"]
+     [:button {:type "button" :data-filter-clear true
+               :hx-on:click "var f=this.form;f.querySelectorAll('select').forEach(el=>el.selectedIndex=0);f.querySelectorAll('input[type=search]').forEach(el=>el.value='');f.dispatchEvent(new Event('search',{bubbles:true}));"} "Clear filters"]
      (when-not import-session
        [:fieldset.filters__variants
         [:legend "Variant availability"]
@@ -343,6 +347,11 @@
                             {:hidden true :method "get" :action "/workspace/browse" :hx-get "/workspace/browse" :hx-target "#detail" :hx-swap "innerHTML settle:0ms"
                              :hx-include "#bulk-orient-filters, #part-table-position, [data-part-page]"})
      [:input#part-open-id {:type "hidden" :name "part-id"}]]
+    (when-not import-session
+      [:form#variant-open (merge workspace-views/transition-attrs
+                                 {:hidden true :method "get" :action "/workspace/browse" :hx-get "/workspace/browse" :hx-target "#detail"
+                                  :hx-include "#bulk-orient-filters, #part-table-position, [data-part-page]"})
+       [:input#variant-open-id {:type "hidden" :name "variant-file"}]])
     (group-controls selection (some? import-session))
     [:div#bulk-orient-results.bulk-orient__results
      [:input {:type "hidden" :name "page" :value "1" :data-part-page true}]

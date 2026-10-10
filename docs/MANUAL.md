@@ -116,8 +116,8 @@ Shipyard expects **one folder per part**, holding that part's variants:
 ```
 <Bundle>/[<Class>/][weapons/]<Part Name>/
     unsupported.stl              <- what Shipyard displays
-    unsupported-pitted.stl       <- magnet pits; file thumbnail during import only
-    supported.stl                <- print scaffolding; thumbnail during import only
+    unsupported-pitted.stl       <- magnet pits; read-only file preview
+    supported.stl                <- print scaffolding; read-only file preview
 ```
 
 A folder counts as a part if it holds at least one of those three files. Folders named
@@ -237,6 +237,12 @@ the editable assembly draft. Workspace navigation, filters and selection remain
 available if the 3D view cannot load.
 
 Part Browser opens as a table with part thumbnails showing saved region colors.
+Expand a row and **Files / variants**, then double-click a file row (or focus it and
+press Enter) to view that exact model, including supported and pitted files. This
+view is read-only: the floating inspector shows only **Back to table** plus the
+file name. Returning restores table filters, selection and scroll; switching
+workspaces and returning restores the variant preview. Open the main part row to
+edit the plain unsupported model.
 A failed preview stops polling; choose **Retry preview** to try again. A full preview
 queue also offers that action after pending jobs finish.
 Mount summary lists plugs and socket capacity by accepted role. Regions shows Yes
@@ -249,8 +255,9 @@ while navigation restores the destination view. Filter by bundle/faction, class,
 role, name or orientation status. Check rows to select them; selection remains when
 filters hide rows. The checkbox in the table header selects or deselects every
 filtered result, including unloaded rows, while retaining selections hidden by filters.
-It shows a mixed state when some matches are selected. **Clear selection**, beside
-the filter dropdowns, clears the whole selection. These controls also work in import review.
+It shows a mixed state when some matches are selected. **Clear filters**, beside
+the filter dropdowns, restores their defaults and empties the name search without
+changing selected rows. Use the header checkbox to deselect the matching rows. These controls also work in import review.
 With at least two rows selected, controls appear directly above the Name, Bundle /
 faction, Role and Class columns. Fill the fields you want to set and choose **Update
 selected** once to save them together for the whole selection, including hidden rows.

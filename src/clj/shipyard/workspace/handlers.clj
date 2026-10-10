@@ -20,6 +20,7 @@
             [shipyard.scheme.editor :as scheme-editor]
             [shipyard.scheme.material :as material]
             [shipyard.catalog.db :as catalog]
+            [shipyard.part-browser.variant-preview :as variant-preview]
             [shipyard.ship.db :as named-ships]
             [shipyard.settings.handlers :as settings]
             [shipyard.vocabulary.views :as vocabulary-views]
@@ -198,10 +199,13 @@
     (when (and (= mode :browse) (= "1" (get params "table")))
       (workspace/update-workspace! workspace mode assoc :view :table))
     (when (and (= mode :browse) (not (importer/session! deps)) (get params "part-id"))
-      (workspace/update-workspace! workspace :browse assoc :view :part :selection (get params "part-id")))
+      (workspace/update-workspace! workspace :browse assoc :view :part :selection (get params "part-id"))
+      (workspace/update-workspace! workspace :browse dissoc :variant-selection))
+    (when (and (= mode :browse) (not (importer/session! deps)) (seq (get params "variant-file")))
+      (workspace/update-workspace! workspace :browse assoc :view :variant :variant-selection (get params "variant-file")))
     (workspace/update-workspace! workspace :ships dissoc :brush-pending)
     (binding [workspace/*context* context]
-      (let [{:keys [filters selection colors bulk-selection view]} (workspace/workspace! workspace mode)]
+      (let [{:keys [filters selection variant-selection colors bulk-selection view]} (workspace/workspace! workspace mode)]
         (if (not= "true" (get headers "hx-request"))
           (htmx/page (views/shell (facets) (index/root! library) context colors))
           (transition-response
@@ -213,9 +217,11 @@
                                      (html/raw (:body (settings/current! deps {})))]))
               :ships (ships! deps {:params (cond-> (select-keys params ["error" "part-id"]) same-ships? (assoc "poll" "1"))})
               :browse
-              (if (= view :part)
-                (-> (if selection (part-handler {:params {} :path-params {:id selection}})
-                        (htmx/fragment (views/detail-empty) {:events {:clear nil}}))
+              (if (#{:part :variant} view)
+                (-> (if (= view :variant)
+                      (variant-preview/current! deps variant-selection)
+                      (if selection (part-handler {:params {} :path-params {:id selection}})
+                          (htmx/fragment (views/detail-empty) {:events {:clear nil}})))
                     (append [:section#library.panel {:hx-swap-oob "outerHTML" :data-part-view "part"}
                              (vocabulary-views/choices (:values (facets)))])
                     (append [:section#bulk-orient.bulk-orient__stage {:hx-swap-oob "innerHTML"}]))

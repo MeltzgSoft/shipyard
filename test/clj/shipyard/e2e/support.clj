@@ -400,6 +400,17 @@
                       #(some #{part-id} (get-in % [:viewport :parts])))
   (stats driver))
 
+(defn clear-part-selection! [driver]
+  (click! driver "[data-filter-clear]")
+  (wait-until #(js driver "() => !document.querySelector('#bulk-orient-filters.htmx-request')"))
+  (when (js driver "() => !!document.querySelector('#bulk-orient-filters select[name=variant] option[value=all]')")
+    (select-option! driver "#bulk-orient-filters select[name=variant]" "All variants")
+    (wait-until #(js driver "() => !document.querySelector('#bulk-orient-filters.htmx-request')")))
+  (check! driver "#part-select-matching")
+  (wait-until #(js driver "() => document.querySelector('#part-select-matching').checked && !document.querySelector('#part-select-matching').indeterminate"))
+  (.uncheck ^Page (:page driver) "#part-select-matching")
+  (wait-visible! driver "[data-bulk-count]:text-is('0 selected')"))
+
 (defn ship-table! [driver]
   (click! driver "[data-workspace-mode=ships]")
   (wait-until #(= "ships" (js driver "() => document.querySelector('.masthead__mode--active').dataset.workspaceMode")))

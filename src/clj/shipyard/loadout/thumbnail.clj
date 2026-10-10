@@ -3,7 +3,7 @@
   (:require [babashka.fs :as fs]
             [clojure.tools.logging :as log]
             [shipyard.assembly.transforms :as assembly]
-            [shipyard.bulk-orientation.handlers :as bulk]
+            [shipyard.part-browser.preparation :as preparation]
             [shipyard.catalog.db :as catalog]
             [shipyard.geom :as geom]
             [shipyard.http.htmx :as htmx]
@@ -85,7 +85,7 @@
         (let [{:keys [database record stamp label]} context
               placements (assembly/placements database (model/from-record record 0 :preview))
               prepared (into {} (for [id (distinct (map :part-id (vals placements)))]
-                                  [id (bulk/grid-entry! deps (catalog/part database id))]))]
+                                  [id (preparation/entry! deps (catalog/part database id))]))]
           (cond
             (or (empty? placements) (some #(= :failed (:state %)) (vals prepared)))
             (htmx/fragment [:span "Preview unavailable"])

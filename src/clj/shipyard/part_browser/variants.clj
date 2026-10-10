@@ -56,6 +56,24 @@
                    (= (:mtime entry) (fs/file-time->millis (fs/last-modified-time source))))
       (throw (ex-info "A variant file changed. Rescan the library and retry." {})))))
 
+(defn preview-source!
+  "Register an exact library file for guarded preview preparation, never for authoring."
+  [{:keys [catalog library jobs]} key]
+  (let [state (:state library)]
+    (locking state
+      (when-let [entry (file! catalog key)]
+        (let [root (index/root! library) source (fs/file (safe-path! root (:path entry)))
+              id (str "library-file-" key) stamp (select-keys entry [:size :mtime])
+              unchanged? (and (= source (get-in @state [:source-files id]))
+                              (= stamp (select-keys (get-in @state [:entries id]) [:size :mtime])))]
+          (fresh-file! root entry)
+          (swap! state (fn [current]
+                         (-> current
+                             (assoc-in [:source-files id] source)
+                             (assoc-in [:entries id] (merge stamp (when unchanged? (get-in current [:entries id])))))))
+          (when-not unchanged? (jobs/forget! jobs id))
+          {:id id :entry entry})))))
+
 (defn- relocate! [root moves publish!]
   (let [sources (set (map #(str (safe-path! root (get-in % [:before :path]))) moves))
         stage (fs/path root (str ".shipyard-variants-" (random-uuid)))

@@ -1,9 +1,7 @@
 (ns shipyard.part-browser.handlers
-  (:require [babashka.fs :as fs]
-            [shipyard.catalog.db :as catalog]
+  (:require [shipyard.catalog.db :as catalog]
             [shipyard.http.htmx :as htmx]
             [shipyard.http.urls :as urls]
-            [shipyard.library.index :as index]
             [shipyard.part-browser.variants :as variants]
             [shipyard.importer.db :as importer]
             [shipyard.importer.transforms :as imports]
@@ -36,21 +34,12 @@
           {:state :unavailable})
       (str "/imports/thumbnails/" key) "closest .import-file-thumbnail" (last (:chain entry))))))
 
-(defn library-file-thumbnail! [{:keys [catalog library] :as deps} {:keys [path-params params]}]
-  (let [key (:file path-params) entry (variants/file! catalog key)
-        id (str "library-file-" key) url (str "/parts/variants/thumbnails/" key)]
-    (if-not entry
-      (htmx/fragment [:span "Preview unavailable"])
-      (let [state (:state library)]
-        (locking state
-          (let [source (fs/file (index/root! library) (:path entry))
-                stamp (select-keys entry [:size :mtime])]
-            (swap! state (fn [current]
-                           (-> current
-                               (assoc-in [:source-files id] source)
-                               (assoc-in [:entries id] (merge stamp (when (and (= source (get-in current [:source-files id]))
-                                                                               (= stamp (select-keys (get-in current [:entries id]) [:size :mtime])))
-                                                                      (get-in current [:entries id])))))))))
+(defn library-file-thumbnail! [deps {:keys [path-params params]}]
+  (let [key (:file path-params) url (str "/parts/variants/thumbnails/" key)]
+    (try
+      (if-let [{:keys [id entry]} (variants/preview-source! deps key)]
         (htmx/fragment
          (preview-views/preview (part-preview/file-request! deps id (= "1" (get params "retry")))
-                                url "closest .import-file-thumbnail" (:path entry)))))))
+                                url "closest .import-file-thumbnail" (:path entry)))
+        (htmx/fragment [:span "Preview unavailable"]))
+      (catch clojure.lang.ExceptionInfo _ (htmx/fragment [:span "Preview unavailable"])))))

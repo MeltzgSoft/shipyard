@@ -13,7 +13,7 @@
   ;; Freeze outgoing filter edits, preserving controls already disabled by the view.
   {:hx-swap "innerHTML settle:0ms"
    :hx-sync "#workspace-navigation:drop"
-   :hx-disabled-elt "[data-workspace-mode], [data-workspace-transition], [data-bulk-select], [data-select-all], [data-workspace-filters] input:enabled, [data-workspace-filters] select:enabled"})
+   :hx-disabled-elt "[data-workspace-mode], [data-workspace-transition], [data-bulk-select], [data-select-all], [data-workspace-filters] input:enabled, [data-workspace-filters] select:enabled, [data-workspace-filters] button:enabled"})
 
 (def transport-attrs
   ;; HTMX reads the current server-rendered context when sending a request.

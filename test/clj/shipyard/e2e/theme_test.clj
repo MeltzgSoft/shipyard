@@ -45,7 +45,7 @@
       (s/check! driver "#part-select-matching")
       (is (s/wait-until #(pos? (s/js driver "() => document.querySelectorAll('[data-bulk-select]:checked').length"))))
       (themed! driver "button[data-variant-group]")
-      (s/click! driver "button:text-is('Clear selection')")
+      (s/clear-part-selection! driver)
       (s/open-class! driver "Theme Cruiser")
       (s/wait-visible! driver ".assembly__save")
       (themed! driver ".assembly__save input[name=name]")

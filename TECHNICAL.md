@@ -591,7 +591,9 @@ scan. Until that analysis exists, escort-class parts remain renderable with
 
 A part with only `supported.stl` (73 exist) is catalogued with `:part/variants
 #{:supported}` and no renderable source. It remains in the catalog but is hidden from
-the regular Part Browser. Import review may use a supported file for a thumbnail;
+the default Part Browser table. All variants and availability filters can include it;
+expanded file rows open exact supported or pitted meshes in a read-only inspector.
+Import review may use a supported file for a thumbnail;
 that staging-only source does not make the part eligible for orientation or assembly.
 
 ### 5.4 Incremental index
@@ -2125,7 +2127,8 @@ metadata is treated as unset and previews at identity at this boundary (§12.6).
 
 The server holds the selected part ids independently of which filtered rows are
 currently visible. The table header checkbox adds or removes the complete matching
-set, preserving selected nonmatches; Clear selection clears the whole set. Its checked,
+set, preserving selected nonmatches. Clear filters resets all controls, submits the
+ordinary filter request and retains the selected set. Its checked,
 mixed and disabled states are projected from all matching ids, including unloaded rows,
 and refreshed after individual selection changes. Checkbox changes submit the visible ids and checked values; the
 server replaces that visible subset and retains selected parts hidden by filters.
@@ -2493,8 +2496,18 @@ Model transient application state by workspace identity. Each workspace owns its
 selected part or loadout, filters, working state and mount-color setting. In particular,
 Ship Browser owns its class table and Assemble editor. The assembly draft and named-ship paint
 projection remain distinct model cells within this workspace, so palette preview cannot overwrite
-class edits or custom paint. Table filters are separate from assembly hull filters. Part Browser owns a `:view` (`:table`, `:part`, or `:grid`), an
-individual `:selection` and a separate `:bulk-selection`. Its table filters and scroll
+class edits or custom paint. Table filters are separate from assembly hull filters. Part Browser owns a `:view` (`:table`, `:part`, `:variant`, or `:grid`), an
+individual `:selection`, a separate `:bulk-selection`, and `:variant-selection`
+for the read-only `:variant` view. Exact-file previews use the existing workspace
+transition with a source entity key (`variant-file`), not a user-supplied path.
+`part-browser.variants/preview-source!` validates and registers the current source
+under a distinct library-file preview identity, shared with source thumbnails;
+`part-browser.preparation/entry!` handles guarded background mesh preparation.
+Variant responses load the exact tier-0 mesh without authored mounts or regions,
+and render only Back to table plus file/status text in the inspector. Supported
+and pitted sources remain ineligible for authoring and assembly. Its polls preserve
+the workspace activation and late responses obey the existing admission guard.
+Its table filters and scroll
 position survive opening an individual part and returning. `/orient/*` routes are
 owned by `:browse`, whose entry point is `/workspace/browse`.
 Settings is owned by `:settings`, with `/workspace/settings` as its entry point and

@@ -4,7 +4,7 @@
             [ring.mock.request :as mock]
             [shipyard.assembly-fixture :as fixture]
             [shipyard.http.urls :as urls]
-            [shipyard.bulk-orientation.handlers :as bulk]
+            [shipyard.part-browser.preparation :as preparation]
             [shipyard.catalog.db :as catalog]
             [shipyard.loadout-fixture :as lf]
             [shipyard.loadout.db :as loadouts]
@@ -27,7 +27,7 @@
       (doseq [id (cons (:hull lf/draft) (distinct (vals lf/assignments)))]
         (let [deadline (+ (System/currentTimeMillis) 30000)
               part (:part (catalog/part-context! cat id))
-              prepared (loop [] (let [entry (bulk/grid-entry! deps part)]
+              prepared (loop [] (let [entry (preparation/entry! deps part)]
                                   (if (or (= :ready (:state entry)) (> (System/currentTimeMillis) deadline)) entry
                                       (do (Thread/sleep 20) (recur)))))]
           (is (= :ready (:state prepared)))
