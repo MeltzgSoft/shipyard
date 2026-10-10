@@ -42,6 +42,10 @@
       (is (s/wait-until #(pos? (:queued (jobs/progress! (:scope (:shipyard.preparation/service sys)))))))
       (testing "input and animation frames continue while derived geometry is queued"
         (is (true? (s/js driver "async () => {let frames=0; await new Promise(resolve=>{function tick(){if(++frames===3)resolve();else requestAnimationFrame(tick)} requestAnimationFrame(tick)});const field=document.querySelector('[name=cut-depth]');field.value='0.3';field.dispatchEvent(new Event('input',{bubbles:true}));return frames===3 && field.value==='0.3'}")))
+        (s/click! driver "[name=create-pitted]")
+        (is (s/wait-until #(some :cancelled? (vals @(:state (:shipyard.mount.preview-db/drafts sys))))))
+        (s/check! driver "[name=create-pitted]")
+        (is (s/wait-until #(some (complement :cancelled?) (vals @(:state (:shipyard.mount.preview-db/drafts sys))))))
         (s/click! driver ".mount-wizard__actions button:text-is('Cancel')")
         (is (s/wait-until #(nil? (:preview (s/stats driver)))))
         (.countDown release)
