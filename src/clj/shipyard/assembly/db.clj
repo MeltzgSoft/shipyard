@@ -7,6 +7,7 @@
             [shipyard.http.jobs :as jobs]
             [shipyard.library.index :as index]
             [shipyard.mesh.cache :as cache]
+            [shipyard.paint.emission-job :as emission]
             [shipyard.scheme.material :as material]
             [shipyard.workspace.db :as workspace]))
 
@@ -86,6 +87,7 @@
           prepared (prepare! deps sources (map :part-id (vals after)) retry)
           mesh-keys (into {} (keep (fn [[id status]] (when (= :ready (:state status)) [id (:mesh-key status)]))) prepared)
           after (into {} (map (fn [[path placement]] [path (assoc placement :mesh-key (get mesh-keys (:part-id placement)))])) after)
+          after (into {} (map (fn [[path placement]] [path (assoc placement :emission (emission/request! (:preparation deps) placement))])) after)
           intentional-reset? (or resume? (:needs-scene-reset? workspace-state)
                                  (and operation (not (:error result)) (#{:hull :reset} (:op operation))))
           reset-sequence (if intentional-reset? (inc sequence) reset-sequence)

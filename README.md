@@ -224,6 +224,11 @@ benchmark process.
 Report exports use ordinary file writes and create missing parent directories. An
 interrupted write can leave a partial report; rerun the command to regenerate it.
 
+`clojure -J-Xmx2g -M:dev -m shipyard.emission-benchmark 100000` measures synthetic
+source-space emissive preparation and repeated region grouping, including thread
+allocation. It reports observations rather than CI thresholds; browser palette changes
+combine prepared directional summaries and perform no triangle aggregation.
+
 **htmx is copied, not bundled** - `clojure -T:build uber` does it for you, but the dev
 commands above do not, so a fresh clone needs it once. The `mkdir` is not decoration:
 `resources/public/js/` is gitignored build output, so it does not exist until something

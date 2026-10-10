@@ -62,7 +62,7 @@
                                                                 (delta/apply-patch (get-in payload [:details :faces]) (:patch patch))))))))
                   state)
          :set (let [payload (dissoc command :op)]
-                (if (= (dissoc payload :material :details :regions :layers) (dissoc (get-in state [:slots slot :payload]) :material :details :regions :layers))
+                (if (= (dissoc payload :material :details :regions :layers :emission) (dissoc (get-in state [:slots slot :payload]) :material :details :regions :layers :emission))
                   (assoc-in state [:slots slot :payload] payload)
                   (assoc-in state [:slots slot]
                             {:payload payload :token [(:generation state) sequence index]})))

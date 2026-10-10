@@ -83,7 +83,7 @@
                 {[] {:part-id (:hull draft) :matrix (geom/orientation-matrix (:part/orientation root))}}
                 slots)))))
 
-(def appearance-keys [:material :details :regions :layers])
+(def appearance-keys [:material :details :regions :layers :emission])
 
 (defn commands
   "Send geometry only when changed, and appearance patches without unchanged masks."
@@ -96,7 +96,7 @@
             :when (not= (apply dissoc (get before slot) appearance-keys)
                         (apply dissoc (get after slot) appearance-keys))]
         {:op :remove :slot slot}))
-    (keep (fn [[slot {:keys [part-id matrix mount-position material role details regions layers] :as placement}]]
+    (keep (fn [[slot {:keys [part-id matrix mount-position material role details regions layers emission] :as placement}]]
             (when-let [mesh-key (get mesh-keys part-id)]
               (let [previous (get before slot)
                     same-geometry? (and (not reset?) (= mesh-key (:mesh-key previous))
@@ -117,7 +117,7 @@
                   {:op :set :slot slot :part-id part-id :matrix matrix
                    :mesh-key mesh-key :url (urls/mesh-url mesh-key 0)
                    :color (:hex (scene/color-for-slot slot))
-                   :mount-position mount-position :material material :role role :details details :regions regions :layers layers}))))
+                   :mount-position mount-position :material material :role role :details details :regions regions :layers layers :emission emission}))))
           (sort-by (comp pr-str key) after)))))
 
 (defn snapshot-commands

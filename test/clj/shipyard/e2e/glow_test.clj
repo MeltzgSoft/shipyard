@@ -30,6 +30,8 @@
         (apply brush/stroke! driver (brush/face-point driver [["weapon" 0]] 2))
         (brush/await-saved! driver)
         (is (s/wait-until #(true? (get-in (s/stats driver) [:glow :active?]))))
+        (is (= true (s/js driver "() => Object.values(window.__shipyard.stats().assembly.slots).some(s => s.emissionPrepared)"))
+            "Lighting consumes a backend-prepared surface summary")
         (let [after (mapv sample points)]
           (is (some true? (map (fn [a b] (> (- (first b) (first a)) 0.01)) before after))
               (pr-str {:before before :after after})))
