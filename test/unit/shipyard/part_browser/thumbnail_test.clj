@@ -2,7 +2,19 @@
   (:require [clojure.test :refer [deftest is]]
             [shipyard.paint.faces :as faces]
             [shipyard.part-browser.thumbnail :as thumbnail]
-            [shipyard.regions.model :as regions]))
+            [shipyard.regions.model :as regions])
+  (:import [java.io ByteArrayInputStream]
+           [javax.imageio ImageIO]))
+
+(deftest thumbnail-background-is-transparent-with-opaque-geometry
+  (doseq [scale [1 2]]
+    (let [mesh {:positions [0 0 0 1 0 0 0 1 0] :indices [0 1 2]}
+          image (ImageIO/read (ByteArrayInputStream. (thumbnail/png! mesh nil scale)))
+          alpha #(bit-and 255 (unsigned-bit-shift-right (.getRGB image %1 %2) 24))]
+      (is (zero? (alpha 0 0)) "The UI palette supplies the background in either theme")
+      (is (some #(= 255 (apply alpha %))
+                (for [x (range (* 128 scale)) y (range (* 88 scale))] [x y]))
+          "Rendered geometry remains opaque"))))
 
 (deftest region-style-ignores-unused-layers-and-revisions
   (is (= (thumbnail/region-style nil)

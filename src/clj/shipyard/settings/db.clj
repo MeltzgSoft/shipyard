@@ -33,6 +33,17 @@
                 #(d/transact! % [{:store/key "shipyard" :settings/mount-cut-defaults values}]))
   values)
 
+(defn theme! [database]
+  (or (store/read! database
+                   #(:settings/theme (d/pull % [:settings/theme] [:store/key "shipyard"])))
+      :dark))
+
+(defn save-theme! [database theme]
+  (when-not (#{:light :dark :auto} theme)
+    (throw (ex-info "Choose Light, Dark or Auto." {:theme theme})))
+  (store/write! database #(d/transact! % [{:store/key "shipyard" :settings/theme theme}]))
+  theme)
+
 (defn- legacy-root! [config-dir]
   (when config-dir
     (let [file (fs/file config-dir "shipyard" "library.edn")]

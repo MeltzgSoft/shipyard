@@ -2468,12 +2468,25 @@ M3 draft and viewport protocol in §13. Product requirements are in SPEC §9.2�
 
 `resources/public/app.css` owns ordinary control appearance globally through low-specificity
 element rules: typography, surfaces, borders, focus, disabled states and native accents.
-The root dark color scheme also themes native dropdowns, checkboxes, radios and ranges.
+Root palette variables and `color-scheme` theme native dropdowns, checkboxes, radios
+and ranges in both Light and Dark.
 Component selectors own layout and deliberate visual variants, such as tabs, primary
 actions, mount candidates and material color pickers. New or swapped forms inherit
 the control theme without needing a panel selector. Mount authoring grids size to
 their container and share full-width group shells rather than using viewport-width
 breakpoints to choose a column count inside the floating inspector.
+
+Application appearance is a shared durable preference, `:settings/theme` on the
+application settings entity, with `:dark` as the default and `:light` and `:auto` as
+the other values. `POST /settings/theme` validates and saves it. The shell renders
+the hidden `#app-appearance` marker; settings fragments update it out of band. CSS
+resolves explicit Light or Auto's `prefers-color-scheme` media query without requiring
+the viewport bundle. The shared renderer reads `--viewport-bg` after HTMX swaps and
+system-theme changes and updates every existing workspace scene's background. Lights,
+materials and model state remain unchanged. This app-wide preference is separate from
+workspace-owned model display settings and may change during import review.
+Derived part and ship PNG previews have transparent backgrounds so their CSS surfaces
+follow either palette. Thumbnail renderer version 2 invalidates older opaque previews.
 
 Model transient application state by workspace identity. Each workspace owns its
 selected part or loadout, filters, working state and mount-color setting. In particular,

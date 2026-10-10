@@ -56,13 +56,11 @@
 (defn png!
   ([mesh pose] (png! mesh pose 1))
   ([mesh pose scale]
-   (let [image (BufferedImage. (* 128 scale) (* 88 scale) BufferedImage/TYPE_INT_RGB)
+   (let [image (BufferedImage. (* 128 scale) (* 88 scale) BufferedImage/TYPE_INT_ARGB)
          graphics (.createGraphics image)
          output (ByteArrayOutputStream.)]
      (try
        (.scale graphics (double scale) (double scale))
-       (.setColor graphics (Color. 20 23 28))
-       (.fillRect graphics 0 0 128 88)
        (.setRenderingHint graphics RenderingHints/KEY_ANTIALIASING RenderingHints/VALUE_ANTIALIAS_ON)
        (doseq [{:keys [points shade color]} (triangles mesh pose)]
          (.setColor graphics (if color

@@ -33,12 +33,22 @@
                   [:button {:type "submit" :disabled (or blocked? (pos? (+ parts sockets)))
                             :title (when (pos? (+ parts sockets)) "Only unused values can be deleted.")} "Delete"]])]])]]])
 
-(defn panel [{:keys [root entries defaults blocked? error message draft]}]
+(defn panel [{:keys [root entries defaults blocked? error message draft theme]}]
   [:div#settings-workspace.settings-workspace {:data-workspace-filters "true"}
    [:h2 "Settings"]
    (when error [:p.detail__error {:role "alert"} error])
    (when message [:p {:role "status"} message])
    (when blocked? [:p "Finish or cancel the import to change the library or classification values."])
+   [:section.settings-workspace__section
+    [:h3 "Appearance"]
+    [:form#appearance-settings.settings-workspace__appearance
+     {:method "post" :action "/settings/theme" :hx-post "/settings/theme" :hx-target "#settings-workspace" :hx-swap "outerHTML"
+      :hx-include "#settings, #cut-defaults" :hx-sync "#workspace-navigation:drop" :hx-disabled-elt "find button"}
+     [:label {:for "appearance-theme"} "Theme"
+      [:select#appearance-theme (merge (help/attrs "Auto follows your system's light or dark theme, including changes while the app is open.") {:name "theme"})
+       (for [[mode label] [[:light "Light"] [:dark "Dark"] [:auto "Auto"]]]
+         [:option {:value (name mode) :selected (= mode (or theme :dark))} label])]]
+     [:button {:type "submit"} "Save appearance"]]]
    [:section.settings-workspace__section
     [:h3 "Library folder"]
     [:p.settings__current (if root [:code root] [:span.muted "Not set"])]

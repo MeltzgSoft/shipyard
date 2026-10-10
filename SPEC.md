@@ -1031,6 +1031,13 @@ Library selection appears only here, with direct path entry and the desktop choo
 A successful folder change rescans the library and clears obsolete Part Browser
 selection and filters; a failed change preserves the active library and allows retry.
 
+Appearance offers Light, Dark and Auto, with Dark as the initial default. The saved
+choice applies across libraries and workspaces and survives application restarts.
+Auto follows the system color scheme, including changes while the application is
+open. UI controls, panels and viewport backgrounds use the resolved theme; authored
+material colors, geometry, working poses and import staging are preserved. Appearance
+remains available during import review and when the viewport bundle is unavailable.
+
 Faction, class and role values are shared across libraries. Settings includes registered
 values and values used by all durable parts and socket acceptance lists, including
 missing parts. Rename updates all effective part labels and role acceptance lists in

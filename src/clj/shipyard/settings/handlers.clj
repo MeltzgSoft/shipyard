@@ -3,18 +3,29 @@
             [shipyard.importer.db :as importer]
             [shipyard.library.index :as index]
             [shipyard.settings.db :as db]
+            [shipyard.settings.appearance-views :as appearance]
             [shipyard.settings.transforms :as transforms]
             [shipyard.settings.views :as views]
             [shipyard.vocabulary.db :as vocabulary]
             [shipyard.workspace.db :as workspace]))
 
 (defn current! [{:keys [catalog library workspace] :as deps} options]
-  (htmx/fragment (views/panel (merge {:draft (when workspace (:draft (workspace/workspace! workspace :settings)))
-                                      :root (index/root! library)
-                                      :entries (vocabulary/entries! (:store catalog))
-                                      :defaults (db/cut-defaults! (:store catalog))
-                                      :blocked? (boolean (when workspace (importer/session! deps)))} options))
-                 {:status (or (:status options) 200)}))
+  (let [theme (db/theme! (:store catalog))]
+    (htmx/fragment (list (views/panel (merge {:draft (when workspace (:draft (workspace/workspace! workspace :settings)))
+                                              :theme theme
+                                              :root (index/root! library)
+                                              :entries (vocabulary/entries! (:store catalog))
+                                              :defaults (db/cut-defaults! (:store catalog))
+                                              :blocked? (boolean (when workspace (importer/session! deps)))} options))
+                         (appearance/state theme true))
+                   {:status (or (:status options) 200)})))
+
+(defn theme! [{:keys [catalog workspace] :as deps} {:keys [params]}]
+  (when workspace (workspace/outgoing! deps params))
+  (try
+    (db/save-theme! (:store catalog) (keyword (get params "theme")))
+    (current! deps {:message "Saved appearance."})
+    (catch Exception e (current! deps {:error (str "Could not save appearance. " (ex-message e)) :status 422}))))
 
 (defn cuts! [{:keys [catalog workspace] :as deps} {:keys [params]}]
   (let [{:keys [error values]} (transforms/cut-settings params)]

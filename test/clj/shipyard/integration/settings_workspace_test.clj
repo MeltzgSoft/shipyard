@@ -85,3 +85,45 @@
       (let [database (store/open! directory)]
         (try (is (= defaults (settings/cut-defaults! database))) (finally (store/close! database))))
       (finally (fs/delete-tree directory)))))
+
+(deftest appearance-is-durable-and-workspace-guarded
+  (let [started (fixture/start!) sys (:system started) handler (:handler started)
+        database (:shipyard.store/db sys) ws (:shipyard.workspace/db sys)
+        post! #(handler (mock/request :post "/settings/theme" {"theme" %}))]
+    (try
+      (is (= :dark (settings/theme! database)))
+      (is (str/includes? (:body (handler (mock/request :get "/"))) "data-theme=\"dark\""))
+      (handler (mock/request :get "/workspace/settings"))
+      (doseq [theme ["light" "dark" "auto"]]
+        (let [response (post! theme)]
+          (is (= 200 (:status response)))
+          (is (= (keyword theme) (settings/theme! database)))
+          (is (str/includes? (:body response) (str "data-theme=\"" theme "\"")))
+          (is (str/includes? (:body response) "hx-swap-oob=\"outerHTML\""))))
+      (is (= 400 (:status (post! "sepia"))))
+      (is (= 400 (:status (handler (mock/request :post "/settings/theme" {})))))
+      (is (= :auto (settings/theme! database)))
+      (let [context (workspace/active-context! ws)]
+        (workspace/activate! ws :browse)
+        (is (= 204 (:status (handler (assoc (mock/request :post "/settings/theme" {"theme" "light"})
+                                            :headers {"x-shipyard-workspace" "settings"
+                                                      "x-shipyard-activation" (str (:activation context))})))))
+        (is (= :auto (settings/theme! database))))
+      (workspace/update-workspace! ws :browse assoc :import {:active true})
+      (handler (mock/request :get "/workspace/settings"))
+      (let [before (workspace/workspace! ws :browse)]
+        (is (= 200 (:status (post! "light"))))
+        (is (= before (workspace/workspace! ws :browse)) "Cosmetic settings preserve import staging"))
+      (finally (workspace/update-workspace! ws :browse dissoc :import) (fixture/stop! started)))))
+
+(deftest appearance-survives-store-reopening
+  (let [directory (fs/create-temp-dir)]
+    (try
+      (let [database (store/open! directory)]
+        (try
+          (settings/save-theme! database :auto)
+          (is (thrown? Exception (settings/save-theme! database :sepia)))
+          (finally (store/close! database))))
+      (let [database (store/open! directory)]
+        (try (is (= :auto (settings/theme! database))) (finally (store/close! database))))
+      (finally (fs/delete-tree directory)))))

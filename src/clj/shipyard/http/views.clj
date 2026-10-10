@@ -6,6 +6,7 @@
   `shipyard.http.routes` do the looking-up; this namespace only decides what a
   thing looks like."
   (:require [shipyard.help.views :as help]
+            [shipyard.settings.appearance-views :as appearance]
             [shipyard.regions.views :as regions]
             [shipyard.regions.registry]
             [shipyard.catalog.db :as catalog]
@@ -542,8 +543,10 @@
   "`GET /`. The canvas is created once here and never again: it is an island
   holding a WebGL context and hundreds of megabytes of GPU buffers, so it is
   marked `hx-preserve` and is never the target of a swap (SPEC §6.1)."
-  ([facets root] (shell facets root {:workspace :browse :activation 0} true))
-  ([facets _root context colors]
+  ([facets root] (shell facets root :dark))
+  ([facets root theme] (shell facets root {:workspace :browse :activation 0} true theme))
+  ([facets root context colors] (shell facets root context colors :dark))
+  ([facets _root context colors theme]
    [:html {:lang "en"}
     [:head
      [:meta {:charset "utf-8"}]
@@ -558,6 +561,7 @@
      [:script {:src "/browser-lists.js" :defer true}]
      [:script {:src "/js/viewport.js" :defer true}]]
     [:body workspace-views/transport-attrs
+     (appearance/state theme)
      (workspace-views/context context colors)
      [:header.masthead
       [:h1 "Shipyard"]

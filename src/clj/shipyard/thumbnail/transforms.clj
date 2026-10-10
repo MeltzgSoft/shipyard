@@ -2,7 +2,7 @@
   "Stable identities for derived previews, independent of map insertion order."
   (:require [digest]))
 
-(def renderer-version 1)
+(def renderer-version 2)
 
 (defn- canonical [value]
   (cond

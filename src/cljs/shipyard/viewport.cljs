@@ -1521,9 +1521,11 @@
   Asserting on WebGL through pixels is brittle - driver, antialiasing and
   timing all move it - so the tests read this instead. Compiled out of release
   builds by `TEST-HOOKS`, so it cannot ship."
-  [{:keys [^js renderer ^js camera ^js controls parts status authoring] :as sys}]
-  (let [objs (vals @parts)]
+  [{:keys [^js renderer ^js camera ^js controls ^js scene parts status authoring] :as sys}]
+  (let [objs (vals @parts)
+        ^js background (.-background scene)]
     #js {:workspace (name (:workspace sys))
+         :background (.getHexString background)
          :activation @(:activation sys)
          :parts     (clj->js (vec (keys @parts)))
          :vertices  (reduce + 0 (map (fn [^js o] (.. o -geometry -attributes -position -count)) objs))
@@ -1885,6 +1887,12 @@
       (sync-inspector-tool! next)
       (resize! next))))
 
+(defn- sync-appearance! [{:keys [runtimes]} renderer]
+  (let [background (.trim (.getPropertyValue (js/getComputedStyle (.-documentElement js/document)) "--viewport-bg"))]
+    (.setClearColor renderer background)
+    (doseq [[_ {:keys [scene]}] runtimes]
+      (set! (.-background scene) (three/Color. background)))))
+
 (defn start!
   "One renderer with independently owned workspace scenes and logical editing sessions."
   [canvas]
@@ -1897,7 +1905,11 @@
       (set! (.-outputColorSpace renderer) three/SRGBColorSpace)
       (.setPixelRatio renderer (min 2 (.-devicePixelRatio js/window)))
       (set! (.-autoClear renderer) false)
-      (.setClearColor renderer 0x14171c)
+      (sync-appearance! app renderer)
+      (.addEventListener (js/matchMedia "(prefers-color-scheme: light)") "change"
+                         (fn [_] (sync-appearance! app renderer)))
+      (.addEventListener (.-body js/document) "htmx:afterSwap"
+                         (fn [_] (sync-appearance! app renderer)))
       (when-let [context (.getElementById js/document "workspace-context")]
         (activate-runtime! app #js {:mode (.. context -dataset -workspace)
                                     :activation (js/Number (.. context -dataset -activation))

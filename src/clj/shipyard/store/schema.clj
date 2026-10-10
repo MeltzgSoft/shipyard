@@ -24,7 +24,7 @@
                 :part/accepts-turrets? :layer/deleted? :scheme/deleted? :loadout/deleted? :loadout/allow-other-factions?
                 :ship/deleted? :layer/builtin?])
    (attributes :db.type/keyword
-               [:part/source :part/role-hint :part/role-source :part/role-override :mount/id :mount/kind
+               [:settings/theme :part/source :part/role-hint :part/role-source :part/role-override :mount/id :mount/kind
                 :mount/origin :mount/mirror-id :mount/alignment-axis :source/variant :vocabulary/field])
    (attributes :db.type/data
                [:settings/mount-cut-defaults :scan/escort-analysis :part/orientation :mount/pos :mount/axis :mount/roll :mount/magnet
