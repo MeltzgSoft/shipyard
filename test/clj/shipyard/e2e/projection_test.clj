@@ -32,15 +32,16 @@
       (is (s/wait-until #(= "true" (s/js driver "() => document.querySelector('#part-regions').getAttribute('data-region-projection-ready')"))))
       (is (s/js driver "() => !document.querySelector('#part-regions').hasAttribute('data-region-faces')"))
       (s/input! driver "#region-stroke input[name=radius]" "2" "input")
+      ;; Lose the preserved numeric baseline after local preview has finished,
+      ;; immediately before applying the saved delta. A later layer form can
+      ;; legitimately return a full projection when its face revision is stale.
+      (s/js driver "() => { const loseBaseline = e => { if (e.detail.xhr.responseURL.includes('/parts/regions/stroke')) { document.querySelector('#region-snapshot').shipyardRegions = null; document.body.removeEventListener('htmx:beforeSwap', loseBaseline); } }; document.body.addEventListener('htmx:beforeSwap', loseBaseline); }")
       (apply brush/stroke! driver (regions/region-point driver 1))
       (is (s/wait-until #(= 2 (:revision (saved)))))
-      (is (s/wait-until #(s/js driver "() => !!document.querySelector('#part-regions').dataset.regionDelta")))
-      (s/fill-and-blur! driver "#region-add input[name=name]" "Recovered")
-      (s/js driver "() => { document.querySelector('#region-snapshot').shipyardRegions = null; }")
-      (s/click! driver "button:text-is('Add layer')")
-      (s/wait-visible! driver "[data-region-layer] .paint-swatch")
       (is (= 2 (:revision (saved))))
-      (is (s/wait-until #(pos? @recoveries))
+      ;; Playwright's synchronous API dispatches request callbacks while an API
+      ;; call is active, so each poll must also communicate with the browser.
+      (is (s/wait-until #(do (s/stats driver) (pos? @recoveries)))
           (s/js driver "() => ({status:document.querySelector('#region-status').textContent,meta:document.querySelector('#part-regions').dataset.regions,delta:document.querySelector('#part-regions').dataset.regionDelta,cached:!!document.querySelector('#region-snapshot').shipyardRegions})"))
       (is (s/wait-until #(= "true" (s/js driver "() => document.querySelector('#part-regions').getAttribute('data-region-projection-ready')"))))
       (is (= 2 (count (:faces (saved)))))
