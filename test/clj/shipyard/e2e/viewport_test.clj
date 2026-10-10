@@ -983,6 +983,8 @@
   (s/js *driver* "() => { document.getElementById('viewport').__alive = 42; }")
   (testing "swap the library panel and the detail panel"
     (s/click! *driver* "[data-part-back]")
+    (is (s/wait-until #(zero? (s/count-els *driver* "[data-part-back]")))
+        "Back completes before the filter request starts")
     (s/select-option! *driver* "select[name=bundle]" "Ork Fleet Bundle")
     (is (s/wait-until #(= 1 (s/count-els *driver* "#bulk-orient-results .bulk-orient__row"))))
     (select-part! "Ram Ship")
