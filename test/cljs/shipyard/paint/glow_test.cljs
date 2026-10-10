@@ -15,6 +15,9 @@
     (render/set-details! object {:part-id "part" :mesh-key "hash"
                                  :faces {(render/face-key geometry 0) (assoc primary :glow 1)}})
     (render/apply-details! object primary false)
+    (set! (.. object -userData -paintMaterial) primary)
+    (set! (.. object -userData -emissionSummaries)
+          [{:detail (assoc primary :glow 1) :buckets {5 [0.5 (/ 1 6) (/ 1 6) 0 0 0 0.5]}}])
     (let [sources (glow/sources [object]) {:keys [^js position ^js color power]} (first sources)]
       (is (= 1 (count sources)))
       (is (= 0.5 power))
@@ -25,5 +28,7 @@
       (is (= 2 (:power (first (glow/sources [object])))) "Lighting scales with model units"))
     (render/set-details! object nil)
     (render/apply-details! object primary false)
+    (set! (.. object -userData -emissionSummaries)
+          [{:layer "Primary" :buckets {5 [0.5 (/ 1 6) (/ 1 6) 0 0 0 0.5]}}])
     (is (empty? (glow/sources [object])) "Erasing the glowing face removes its light")
     (.dispose geometry) (.dispose surface)))

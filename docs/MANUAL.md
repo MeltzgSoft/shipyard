@@ -781,6 +781,9 @@ color; **Metalness**, **Roughness**, **Glow** and optional **Paint name** remain
 Glow runs from 0 (off) to 1 and makes the selected color self-lit with a soft halo
 and colored light on nearby parts. Nearby lighting is an approximation without cast shadows.
 It is available for scheme layers, the detail brush as **Detail glow**.
+Surface lighting becomes available when the part's saved appearance finishes preparing.
+After saving custom paint, its lighting updates automatically; palette changes reuse
+the prepared surface lighting immediately.
 Turning on **Mount colors** temporarily hides glow. Changes preview while dragging
 and save on release. Select another class and choose Schemes to preview the same palette there. Preview
 never creates a named ship or assigns a scheme to a class. Palette editing also works

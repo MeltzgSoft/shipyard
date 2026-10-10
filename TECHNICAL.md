@@ -2943,6 +2943,17 @@ Base material changes refresh inherited buffer values while explicit detail mate
 stay fixed. This preserves normals, studio lighting and placement; erase restores
 the complete underlying material. Tests check the pinned shader insertion points,
 actual browser compilation and rendered finish buffers.
+Emissive area, centroid and dominant-normal integration runs on the shared backend
+preparation workers. A bounded source cache retains immutable weighted moments by
+mesh hash; separate region/custom-detail summaries group those moments by stable
+layer selector or complete detail material. Palette changes combine at most six
+directional sums per selector in the viewport without reading triangle attributes.
+Custom paint acknowledgements request a new summary; its asynchronous installation
+checks both the mounted object and its current resource. Source changes invalidate
+cached publication and delivery. Pending summaries temporarily disable that object's
+surface lighting, while the GPU material/bloom state remains local. World transforms,
+scale, final emitter selection and the eight-light limit stay in the viewport.
+
 Source triangle keys and the face-to-triangle index are shared by repeated instances
 of the same immutable mesh URL within the viewport runtime. Mutable color/finish
 buffers remain instance-owned. Scene reset clears the source cache. Browser key encoding

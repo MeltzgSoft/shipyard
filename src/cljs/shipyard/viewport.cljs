@@ -34,6 +34,7 @@
             [shipyard.paint.render :as paint-render]
             [shipyard.paint.topology :as paint-topology]
             [shipyard.paint.glow :as glow]
+            [shipyard.preparation :as preparation]
             [shipyard.paint.brush :as brush]
             [shipyard.scheme.material :as paint-material]
             [shipyard.scheme.color :as scheme-color]
@@ -92,6 +93,7 @@
   (when obj
     (paint-render/cancel! obj)
     (.traverse obj (fn [^js child]
+                     (when-let [request (.. child -userData -emissionRequest)] (preparation/cancel! request))
                      (glow/dispose-object! child)
                      (some-> child .-geometry .dispose)
                      (dispose-material! (.-material child))))))
@@ -1157,6 +1159,22 @@
         (frame! sys [(.-x minimum) (.-y minimum) (.-z minimum)]
                 [(.-x maximum) (.-y maximum) (.-z maximum)])))))
 
+(defn- load-emission! [{:keys [assembly parts]} slot ^js object payload]
+  (let [resource (get-in payload [:emission :resource])]
+    (when (not= resource (.. object -userData -emissionResource))
+      (when-let [request (.. object -userData -emissionRequest)] (preparation/cancel! request))
+      (set! (.. object -userData -emissionResource) resource)
+      (set! (.. object -userData -emissionSummaries) nil)
+      (when resource
+        (set! (.. object -userData -emissionRequest)
+              (preparation/load!
+               (str "/preparation/" resource)
+               {:current? #(and (identical? object (get @parts slot))
+                                (= resource (get-in @assembly [:slots slot :payload :emission :resource])))
+                :decode! #(-> (.text %) (.then edn/read-string))
+                :ready! #(set! (.. object -userData -emissionSummaries) %)
+                :failed! #(set! (.. object -userData -emissionError) (str %))}))))))
+
 (defn- load-assembly-slot! [{:keys [assembly mount-colors-enabled] :as sys} slot {:keys [token payload]}]
   (-> (paint-topology/fetch! (:part-id payload) (:mesh-key payload))
       (.then (fn [^js topology]
@@ -1178,6 +1196,7 @@
                      (apply-material! object (:material payload) @mount-colors-enabled)
                      (.updateMatrixWorld object true)
                      (put-part! sys slot object)
+                     (load-emission! sys slot object payload)
                      (frame-assembly! sys)
                      (swap! (:status sys) assoc :state :loaded)
                      (catch :default error
@@ -1211,7 +1230,8 @@
       (doseq [[slot ^js object] @parts]
         (paint-render/set-details! object (get-in after [:slots slot :payload :details]))
         (paint-render/set-regions! object (get-in after [:slots slot :payload :regions]) (get-in after [:slots slot :payload :layers]))
-        (apply-material! object (get-in after [:slots slot :payload :material]) @(:mount-colors-enabled sys)))
+        (apply-material! object (get-in after [:slots slot :payload :material]) @(:mount-colors-enabled sys))
+        (load-emission! sys slot object (get-in after [:slots slot :payload])))
       (sync-mount-markers! sys (:mount-markers event))
       (doseq [{:keys [op slot] :as command} (:commands event)
               :when (= :set op)]
@@ -1564,6 +1584,7 @@
                                        :roughness (.. object -material -roughness)
                                        :glow (.. object -material -emissiveIntensity)
                                        :emissive (.getHexString (.. object -material -emissive))
+                                       :emissionPrepared (boolean (.. object -userData -emissionSummaries))
                                        :details (:faces (.. object -userData -paintDetails))
                                        :paint-preparing (boolean (.. object -userData -paintPreparing))
                                        :paint-preparation (js->clj (.. object -userData -paintPreparationStats) :keywordize-keys true)

@@ -1,53 +1,39 @@
 (ns shipyard.paint.glow
   "Selective bloom and bounded surface lighting for emissive paint."
   (:require ["three" :as three]
+            [shipyard.scheme.material :as material]
             ["three/examples/jsm/postprocessing/UnrealBloomPass.js" :refer [UnrealBloomPass]]
             ["three/examples/jsm/postprocessing/Pass.js" :refer [FullScreenQuad]]))
 
 (def light-limit 8)
 
 (defn- patches! [^js object]
-  (let [geometry (.-geometry object) surface (.-material object)
-        position (.getAttribute geometry "position") index (.-index geometry)
-        finish (.getAttribute geometry "shipyardFinish") color (.getAttribute geometry "color")
-        faces? (and (.-vertexColors surface) finish color)
-        signature [geometry (when faces? (.-version finish)) (when faces? (.-version color))
-                   (boolean faces?) (.-emissiveIntensity surface) (.getHex (.-emissive surface))]]
+  (let [summaries (.. object -userData -emissionSummaries)
+        inherited (.. object -userData -paintMaterial)
+        layers (.. object -userData -paintLayers)
+        signature [summaries inherited layers]]
     (if (= signature (.. object -userData -glowSignature))
       (.. object -userData -glowPatches)
-      (let [groups (js/Array. 6) a (three/Vector3.) b (three/Vector3.) c (three/Vector3.)
-            ab (three/Vector3.) normal (three/Vector3.)
-            count (/ (if index (.-count index) (.-count position)) 3)]
-        (when (or faces? (pos? (.-emissiveIntensity surface)))
-          (dotimes [triangle count]
-            (let [offset (* triangle 3) vertex (if index (.getX index offset) offset)
-                  glow (if faces? (.getZ finish vertex) (.-emissiveIntensity surface))
-                  r (if faces? (.getX color vertex) (.. surface -emissive -r))
-                  g (if faces? (.getY color vertex) (.. surface -emissive -g))
-                  b-color (if faces? (.getZ color vertex) (.. surface -emissive -b))]
-              (when (and (pos? glow) (pos? (+ r g b-color)))
-                (.fromBufferAttribute a position vertex)
-                (.fromBufferAttribute b position (if index (.getX index (inc offset)) (inc offset)))
-                (.fromBufferAttribute c position (if index (.getX index (+ offset 2)) (+ offset 2)))
-                (.crossVectors normal (.subVectors ab b a) (.subVectors normal c a))
-                (let [area (* 0.5 (.length normal))]
-                  (when (pos? area)
-                    (.normalize normal)
-                    (let [axis (if (> (abs (.-x normal)) (abs (.-y normal)))
-                                 (if (> (abs (.-x normal)) (abs (.-z normal))) 0 2)
-                                 (if (> (abs (.-y normal)) (abs (.-z normal))) 1 2))
-                          bucket (+ (* axis 2) (if (neg? (.getComponent normal axis)) 0 1))
-                          ^js group (or (aget groups bucket)
-                                        (aset groups bucket #js {:area 0 :energy 0 :position (three/Vector3.)
-                                                                 :normal (three/Vector3.) :color (three/Color. 0)}))
-                          weight (* area glow)]
-                      (.addScaledVector (.-position group) (.multiplyScalar (.add (.add a b) c) (/ 1 3)) weight)
-                      (.addScaledVector (.-normal group) normal weight)
-                      (set! (.. group -color -r) (+ (.. group -color -r) (* weight r)))
-                      (set! (.. group -color -g) (+ (.. group -color -g) (* weight g)))
-                      (set! (.. group -color -b) (+ (.. group -color -b) (* weight b-color)))
-                      (set! (.-area group) (+ (.-area group) area))
-                      (set! (.-energy group) (+ (.-energy group) weight)))))))))
+      (let [groups (js/Array. 6)]
+        ;; Workers have already integrated area, centroid and normals by material
+        ;; selector. Palette edits combine these small summaries, never mesh attributes.
+        (doseq [{:keys [layer detail buckets]} summaries
+                :let [paint (or detail (get layers layer) inherited)
+                      intensity (get paint :glow 0)
+                      [r g b] (mapv material/srgb->linear (:base paint))]
+                :when (and (pos? intensity) (pos? (+ r g b)))
+                [bucket [area px py pz nx ny nz]] buckets]
+          (let [^js group (or (aget groups bucket)
+                              (aset groups bucket #js {:area 0 :energy 0 :position (three/Vector3.)
+                                                       :normal (three/Vector3.) :color (three/Color. 0)}))
+                weight (* area intensity)]
+            (.add (.-position group) (three/Vector3. (* px intensity) (* py intensity) (* pz intensity)))
+            (.add (.-normal group) (three/Vector3. (* nx intensity) (* ny intensity) (* nz intensity)))
+            (set! (.. group -color -r) (+ (.. group -color -r) (* weight r)))
+            (set! (.. group -color -g) (+ (.. group -color -g) (* weight g)))
+            (set! (.. group -color -b) (+ (.. group -color -b) (* weight b)))
+            (set! (.-area group) (+ (.-area group) area))
+            (set! (.-energy group) (+ (.-energy group) weight))))
         (let [patches (vec (keep (fn [^js group]
                                    (when group
                                      (.multiplyScalar (.-position group) (/ 1 (.-energy group)))
