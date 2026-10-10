@@ -1,7 +1,7 @@
 (ns shipyard.regions.views
   (:require [shipyard.help.views :as help]
             [clojure.string :as str]
-            [clojure.data.json :as json]
+            [shipyard.http.urls :as urls]
             [shipyard.regions.model :as model]
             [shipyard.regions.registry :as registry]
             [shipyard.workspace.views :as workspace]))
@@ -67,17 +67,24 @@
    (panel part-id mesh-key saved selected error shared {}))
   ([part-id mesh-key saved selected error shared {:keys [mode angle face-delta] :or {mode "facets" angle 1}}]
    (let [available (registry/ids shared)
+         face-delta (when (<= (+ (count (get-in face-delta [:patch :replace]))
+                                 (count (get-in face-delta [:patch :set]))
+                                 (count (get-in face-delta [:patch :remove]))) 256) face-delta)
          regions (assoc (or saved (model/empty-regions mesh-key))
                         :layer-revision (:revision shared)
                         :layer-definitions (:layers shared))
          preview (assoc regions :layers available)
+         preview (assoc preview :revision-token (str (:revision regions)))
          selected (if (some #{selected} available) selected "Secondary")
          stale? (not= mesh-key (:mesh-key regions))]
      [:section#part-regions (cond-> {:hx-sync "this:queue last"
                                      :data-regions (pr-str (dissoc preview :faces))
                                      :data-mesh-key mesh-key :data-part-id part-id}
-                              face-delta (assoc :data-region-delta (pr-str face-delta))
-                              (nil? face-delta) (assoc :data-region-faces (json/write-str (:faces preview))))
+                              face-delta (assoc :data-region-delta (pr-str (assoc face-delta :from-token (str (:from face-delta)))))
+                              (and (nil? face-delta) (empty? (:faces preview))) (assoc :data-region-empty "true")
+                              (nil? face-delta) (assoc :data-region-projection
+                                                       (str "/parts/regions/projection?part-id=" (urls/encode-id part-id)
+                                                            "&mesh-key=" mesh-key "&revision=" (:revision regions))))
       [:span#region-snapshot (cond-> {:hidden true} face-delta (assoc :hx-preserve "true"))]
       [:h3 "Paint regions" (help/button "Region brush" "Left-drag paints; right-drag erases; Alt+drag orbits. Release to save regions.")]
       (when error [:p.detail__error {:role "alert"} error])

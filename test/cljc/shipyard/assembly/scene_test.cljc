@@ -62,6 +62,23 @@
     (is (= details (get-in updated [:slots (:slot set-a) :payload :details])))
     (is (not (scene/current? (scene/leave updated) (:slot set-a) token)))))
 
+(deftest repeated-binary-snapshots-retain-geometry-and-request-reinstallation
+  (let [command (assoc set-a :appearance-ref {:resource "binary"})
+        state (-> (scene/accept-event scene/empty-state (event 1 [{:op :reset} command]))
+                  (assoc-in [:slots (:slot set-a) :payload :appearance-installed?] true))
+        updated (scene/accept-event state (event 2 [command]))]
+    (is (= (get-in state [:slots (:slot set-a) :token]) (get-in updated [:slots (:slot set-a) :token])))
+    (is (nil? (get-in updated [:slots (:slot set-a) :payload :appearance-installed?])))))
+
+(deftest sparse-detail-patches-shadow-the-numeric-baseline
+  (let [details {:part-id "weapon" :mesh-key "mesh" :triangle-details [1 1] :detail-table [nil {:base [1 0 0]}] :faces {}}
+        state (scene/accept-event scene/empty-state (event 1 [{:op :reset} (assoc set-a :details details)]))
+        patch #(scene/accept-event state (event 2 [{:op :paint :slot (:slot set-a)
+                                                    :changes {:detail-delta {:part-id "weapon" :mesh-key "mesh" :patch %}}}]))]
+    (is (= #{"erased"} (get-in (patch {:remove ["erased"] :set {"new" {:base [0 1 0]}}}) [:slots (:slot set-a) :payload :details :erased])))
+    (is (= [1 1] (get-in (patch {:remove ["erased"]}) [:slots (:slot set-a) :payload :details :triangle-details])))
+    (is (true? (get-in (patch {:replace {}}) [:slots (:slot set-a) :payload :details :projection-reset?])))))
+
 (deftest appearance-patches-retain-source-masks-and-tokens
   (let [regions {:mesh-key "key" :faces {"face" "Secondary"}}
         initial (scene/accept-event scene/empty-state

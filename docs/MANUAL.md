@@ -865,6 +865,10 @@ inspector controls remain available while preparation finishes; later palette ed
 reuse the prepared source geometry. Subsequent strokes reuse visible-face picking until
 you move the camera, resize the viewport or change the model. Small brush edits update
 the changed faces while preserving the brightness and finishes of untouched parts.
+Saved custom paint loads before the detail brush accepts strokes. Camera and
+inspector controls remain available while that saved paint loads. If saved regions
+need restoring after an interrupted update, the region panel shows
+**Restoring saved regions…** and reloads the current assignments.
 
 Replaced parts/source files suppress incompatible details and show a warning in
 Customize. Old masks remain saved until you use **Reset custom paint**.

@@ -35,6 +35,7 @@
             [shipyard.paint.render :as paint-render]
             [shipyard.paint.topology :as paint-topology]
             [shipyard.paint.glow :as glow]
+            [shipyard.paint.projection :as projection]
             [shipyard.preparation :as preparation]
             [shipyard.paint.brush :as brush]
             [shipyard.paint.picking :as picking]
@@ -339,6 +340,7 @@
 (defn clear! [{:keys [^js canvas parts authoring current bulk] :as sys}]
   (glow/dispose! sys)
   (when-let [cache (:paint-topology sys)] (.clear cache))
+  (when-let [cache (:appearance-cache sys)] (.clear cache))
   (when-let [assembly (:assembly sys)] (swap! assembly assembly-scene/leave))
   (when-let [generation (:browse-generation sys)] (swap! generation inc))
   (clear-authoring-preview! sys)
@@ -1199,6 +1201,7 @@
         (.then (fn [{:keys [mesh topology]}]
                  (when (= generation @(:browse-generation sys))
                    (let [{:keys [bbox-min bbox-max]} mesh
+                         regions (or (region-dom/regions! part-id mesh-key) regions)
                          part-orientation (orientation/orientation-of (:orientation payload))
                          obj (three/Mesh. (decode->geometry {:positions (.-positions ^js topology) :normals (.-normals ^js topology)}) (material))
                          [oriented-min oriented-max]
@@ -1259,6 +1262,76 @@
                 :ready! #(set! (.. object -userData -emissionSummaries) %)
                 :failed! #(set! (.. object -userData -emissionError) (str %))}))))))
 
+(defn- trim-projections! [^js cache]
+  (let [total (volatile! 0)]
+    (.forEach cache (fn [^js entry] (vswap! total + (or (.-shipyardBytes entry) 0))))
+    (loop []
+      (when (or (> (.-size cache) 32) (> @total (* 64 1024 1024)))
+        (let [key (.-value (.next (.keys cache)))
+              ^js entry (.get cache key)]
+          (vswap! total - (or (.-shipyardBytes entry) 0))
+          (.delete cache key)
+          (recur))))))
+
+(defn- projection-promise! [^js cache resource]
+  (or (.get cache resource)
+      (let [entry (js/Promise.
+                   (fn [resolve reject]
+                     (preparation/load! (str "/preparation/" resource)
+                                        {:decode! #(-> (.arrayBuffer %) (.then projection/decode))
+                                         :ready! (fn [value]
+                                                   (when-let [^js cached (.get cache resource)]
+                                                     (set! (.-shipyardBytes cached)
+                                                           (.-byteLength (.-buffer (:triangle-layers value))))
+                                                     (trim-projections! cache))
+                                                   (resolve value))
+                                         :failed! reject})))]
+        (.set cache resource entry)
+        ;; Installed objects own their views. The deduplication cache only keeps
+        ;; recent resources and cannot retain every appearance revision forever.
+        (trim-projections! cache)
+        entry)))
+
+(defn- load-appearance! [{:keys [assembly parts mount-colors-enabled appearance-cache] :as sys} slot ^js object payload]
+  (let [resource (get-in payload [:appearance-ref :resource])]
+    (when-not resource
+      (set! (.. object -userData -appearanceResource) nil)
+      (set! (.. object -userData -appearancePending) false))
+    (when (and resource (or (not= resource (.. object -userData -appearanceResource))
+                            (not (:appearance-installed? payload))))
+      (set! (.. object -userData -appearanceResource) resource)
+      (set! (.. object -userData -appearancePending) true)
+      (-> (projection-promise! appearance-cache resource)
+          (.then
+           (fn [value]
+             (when (and (identical? object (get @parts slot))
+                        (= resource (get-in @assembly [:slots slot :payload :appearance-ref :resource])))
+               (let [payload (get-in @assembly [:slots slot :payload])
+                     regions (:regions payload)
+                     details (:details payload)]
+                 (when (or (not= (:mesh-key value) (:mesh-key payload))
+                           (not= (:triangle-count value) (paint-render/triangle-count (.-geometry object)))
+                           (and regions (not= (or (:revision-token regions) (str (:revision regions))) (:region-revision value))))
+                   (throw (js/Error. "Appearance source/revision mismatch.")))
+                 (let [regions (merge {:mesh-key (:mesh-key payload) :faces {}} regions
+                                      (when (> (count (:layer-table value)) 1)
+                                        (select-keys value [:triangle-layers :layer-table])))
+                       details (merge {:part-id (:part-id payload) :mesh-key (:mesh-key payload) :faces {}} details
+                                      (when (> (count (:detail-table value)) 1)
+                                        (select-keys value [:triangle-details :detail-table])))]
+                   (swap! assembly update-in [:slots slot :payload] merge {:regions regions :details details :appearance-installed? true})
+                   (paint-render/set-regions! object regions (:layers payload))
+                   (paint-render/set-details! object details)
+                   (apply-material! object (:material payload) @mount-colors-enabled)
+                   (set! (.. object -userData -appearancePending) false))))))
+          (.catch (fn [error]
+                    (when (and (identical? object (get @parts slot))
+                               (= resource (.. object -userData -appearanceResource)))
+                      (.delete appearance-cache resource)
+                      (set! (.. object -userData -appearanceResource) nil)
+                      (swap! (:status sys) assoc :state :failed
+                             :message (str "Appearance failed. Reopen the ship to restore its saved snapshot. " error)))))))))
+
 (defn- load-assembly-slot! [{:keys [assembly mount-colors-enabled] :as sys} slot {:keys [token payload]}]
   (-> (paint-topology/fetch! (:part-id payload) (:mesh-key payload))
       (.then (fn [^js topology]
@@ -1281,6 +1354,7 @@
                      (.updateMatrixWorld object true)
                      (put-part! sys slot object)
                      (load-emission! sys slot object payload)
+                     (load-appearance! sys slot object payload)
                      (frame-assembly! sys)
                      (swap! (:status sys) assoc :state :loaded)
                      (catch :default error
@@ -1315,7 +1389,8 @@
         (paint-render/set-details! object (get-in after [:slots slot :payload :details]))
         (paint-render/set-regions! object (get-in after [:slots slot :payload :regions]) (get-in after [:slots slot :payload :layers]))
         (apply-material! object (get-in after [:slots slot :payload :material]) @(:mount-colors-enabled sys))
-        (load-emission! sys slot object (get-in after [:slots slot :payload])))
+        (load-emission! sys slot object (get-in after [:slots slot :payload]))
+        (load-appearance! sys slot object (get-in after [:slots slot :payload])))
       (sync-mount-markers! sys (:mount-markers event))
       (doseq [{:keys [op slot] :as command} (:commands event)
               :when (= :set op)]
@@ -1620,6 +1695,34 @@
    :orientations (into {} (keep (fn [[part-id {:keys [object orientation]}]]
                                   (when object [part-id orientation]))) @bulk)})
 
+(defn- detail-stats [^js object]
+  (let [details (.. object -userData -paintDetails)
+        geometry (.-geometry object)]
+    (if (and (:triangle-details details) (<= (paint-render/triangle-count geometry) 64))
+      (merge
+       (when-not (:projection-reset? details)
+         (into {} (keep (fn [triangle]
+                          (let [key (paint-render/face-key geometry triangle)
+                                index (aget (:triangle-details details) triangle)]
+                            (when (and (pos? index) (not (contains? (:erased details) key)))
+                              [key (nth (:detail-table details) index)]))))
+               (range (paint-render/triangle-count geometry))))
+       (:faces details))
+      (:faces details))))
+
+(defn- region-count [^js object]
+  (let [regions (.. object -userData -paintRegions)
+        indices (:triangle-layers regions)
+        geometry (.-geometry object)
+        baseline (when (and indices (not (:projection-reset? regions)))
+                   (into #{} (keep (fn [triangle]
+                                     (when (pos? (aget indices triangle))
+                                       (paint-render/face-key geometry triangle))))
+                         (range (paint-render/triangle-count geometry))))]
+    (count (reduce-kv (fn [keys key layer]
+                        (if (= layer "Primary") (disj keys key) (conj keys key)))
+                      (or baseline #{}) (or (:faces regions) {})))))
+
 (defn stats
   "Scene facts for the E2E suite (§10.3).
 
@@ -1642,7 +1745,7 @@
          :region-mirror-guide (clj->js (mirror-guide/stats sys))
          :picking (clj->js (picking/stats @parts))
          :region-preview (clj->js (when-let [^js object (first objs)]
-                                    {:faces (count (.. object -userData -regionMask))
+                                    {:faces (region-count object)
                                      :vertex-colors (.. object -material -vertexColors)}))
          :region-faces (clj->js (when-let [^js object (first objs)]
                                   (paint-render/projected-faces object camera (:canvas sys))))
@@ -1670,10 +1773,19 @@
                                        :glow (.. object -material -emissiveIntensity)
                                        :emissive (.getHexString (.. object -material -emissive))
                                        :emissionPrepared (boolean (.. object -userData -emissionSummaries))
-                                       :details (:faces (.. object -userData -paintDetails))
                                        :paint-preparing (boolean (.. object -userData -paintPreparing))
                                        :paint-preparation (js->clj (.. object -userData -paintPreparationStats) :keywordize-keys true)
                                        :prepared-topology (boolean (.. object -geometry -userData -preparedTopology))
+                                       :details (detail-stats object)
+                                       :appearance-prepared (and (some? (.. object -userData -appearanceResource))
+                                                                 (not (.. object -userData -appearancePending)))
+                                       :appearance-resource (.. object -userData -appearanceResource)
+                                       :projection-layers (some-> (.. object -userData -paintRegions) :triangle-layers .-length)
+                                       :projection-details (some-> (.. object -userData -paintDetails) :triangle-details .-length)
+                                       :projection-sample (when-let [color (.getAttribute (.-geometry object) "color")]
+                                                            (mapv (fn [triangle]
+                                                                    [(.getX color (* 3 triangle)) (.getY color (* 3 triangle)) (.getZ color (* 3 triangle))])
+                                                                  (range (min 8 (paint-render/triangle-count (.-geometry object))))))
                                        :vertex-colors (.. object -material -vertexColors)
                                        :finish-compiled (true? (.. object -material -userData -finishCompiled))
                                        :finish-enabled (boolean (when-let [^js uniform (.. object -material -userData -finishEnabled)] (.-value uniform)))
@@ -1854,6 +1966,7 @@
                          (.click button)))))
     (listen-event! body sys "shipyard:clear-preview" (fn [_] (clear-authoring-preview! sys)))
     (listen-event! body sys "shipyard:assembly" #(apply-assembly! sys (payload %)))
+    (listen-event! body sys "shipyard:region-projection" (fn [_] (sync-regions-from-dom! sys)))
     (listen-event! body sys "shipyard:facet-preview" #(draw-preview! sys (payload %)))
     (listen-event! body sys "shipyard:facet-error" (fn [_] (clear-authoring-preview! sys)))
     (listen-event! body sys "shipyard:interfaces" #(draw-interfaces! sys (payload %)))
@@ -1937,6 +2050,7 @@
                   :canvas canvas :renderer renderer :scene scene :camera camera
                   :glow (atom nil)
                   :paint-topology (js/Map.)
+                  :appearance-cache (js/Map.)
                   :orientation-scene orientation-scene
                   :orientation-camera orientation-camera
                   :controls controls :parts (atom {}) :status (atom {:state :idle})

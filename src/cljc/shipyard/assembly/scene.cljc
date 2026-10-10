@@ -58,11 +58,17 @@
                              (fn [payload]
                                (let [changes (:changes command) patch (:detail-delta changes)]
                                  (cond-> (merge payload (dissoc changes :detail-delta))
-                                   patch (assoc :details (assoc (dissoc patch :patch) :faces
-                                                                (delta/apply-patch (get-in payload [:details :faces]) (:patch patch))))))))
+                                   patch (assoc :details (merge (:details payload) (dissoc patch :patch)
+                                                                {:faces (delta/apply-patch (get-in payload [:details :faces]) (:patch patch))}
+                                                                (when (:triangle-details (:details payload))
+                                                                  (if (contains? (:patch patch) :replace)
+                                                                    {:projection-reset? true :erased #{}}
+                                                                    {:erased (apply disj (into (get-in payload [:details :erased] #{})
+                                                                                               (get-in patch [:patch :remove]))
+                                                                                    (keys (get-in patch [:patch :set])))}))))))))
                   state)
          :set (let [payload (dissoc command :op)]
-                (if (= (dissoc payload :material :details :regions :layers :emission) (dissoc (get-in state [:slots slot :payload]) :material :details :regions :layers :emission))
+                (if (= (dissoc payload :material :details :regions :layers :emission :appearance-ref :appearance-installed?) (dissoc (get-in state [:slots slot :payload]) :material :details :regions :layers :emission :appearance-ref :appearance-installed?))
                   (assoc-in state [:slots slot :payload] payload)
                   (assoc-in state [:slots slot]
                             {:payload payload :token [(:generation state) sequence index]})))

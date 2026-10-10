@@ -101,9 +101,9 @@
       (s/click! driver "button:text-is('Add layer')")
       (is (s/wait-until #(= 1 (s/js driver "() => window.recoveries")))
           (s/js driver "() => ({errors:window.regionErrors,pending:document.querySelector('#part-regions').shipyardRecoveryPending,meta:document.querySelector('#part-regions').dataset.regions,status:document.querySelector('#region-status').textContent,cached:!!document.querySelector('#region-snapshot').shipyardRegions})"))
-      (is (s/wait-until #(s/js driver "() => !!document.querySelector('#part-regions').dataset.regionFaces")))
-      (is (= (set (keys (:faces (saved))))
-             (set (s/js driver "() => Object.keys(JSON.parse(document.querySelector('#part-regions').dataset.regionFaces))"))))
+      (is (s/wait-until #(s/js driver "() => document.querySelector('#part-regions').dataset.regionProjectionReady === 'true'")))
+      (is (s/js driver "() => !document.querySelector('#part-regions').hasAttribute('data-region-faces')"))
+      (is (= (count (:faces (saved))) (get-in (s/stats driver) [:region-preview :faces])))
       (is (= "loaded" (:status (s/stats driver))))
       (finally (s/quit! driver) (fixture/stop! started)))))
 

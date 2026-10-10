@@ -49,8 +49,11 @@
       (compact! (post "/assembly/drawer" {:revision (str (get-in @(:state (:assembly deps)) [:draft :revision])) :slot "[[:weapon 0]]" :open "true"}))
       (get! "/ships/tab/schemes")
       (let [response (post "/ships/schemes/select" {:id (str scheme-id)})]
-        (is (str/includes? (:body response) ":region-data"))
-        (is (= 2 (count (re-seq (re-pattern (last keys)) (:body response)))) "Each part's masks appear once despite repeated mounts"))
+        (compact! response)
+        (is (str/includes? (:body response) ":appearance-ref"))
+        (is (not (str/includes? (:body response) ":region-data")))
+        (is (zero? (count (re-seq (re-pattern (last keys)) (:body response))))
+            "Dense masks travel through shared binary resources"))
       (compact! (post "/ships/schemes/layer" {:layer "Secondary"}))
       (get! "/ships/tab/paint")
       (post "/ships/paint/create" {:name "Painted" :class (str class-id) :scheme (str scheme-id)})

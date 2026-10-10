@@ -229,6 +229,13 @@ source-space emissive preparation and repeated region grouping, including thread
 allocation. It reports observations rather than CI thresholds; browser palette changes
 combine prepared directional summaries and perform no triangle aggregation.
 
+`npx shadow-cljs compile projection-benchmark && node target/js/projection-benchmark.js 100000`
+compares full numeric appearance snapshot decoding with the previous JSON and
+persistent-map reconstruction on a synthetic mask. It reports encoded sizes,
+elapsed times and live heap growth; heap growth includes uncollected garbage and
+is not a portable peak or retained-memory guarantee. The numeric arrays are views
+over the received buffer. Timings are observations, not CI thresholds.
+
 **htmx is copied, not bundled** - `clojure -T:build uber` does it for you, but the dev
 commands above do not, so a fresh clone needs it once. The `mkdir` is not decoration:
 `resources/public/js/` is gitignored build output, so it does not exist until something

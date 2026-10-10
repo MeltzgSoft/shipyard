@@ -7,6 +7,11 @@
            :output-to "electron/compiled/main.js"
            :main shipyard.desktop.main/main!}
 
+          :projection-benchmark
+          {:target :node-script
+           :output-to "target/js/projection-benchmark.js"
+           :main shipyard.paint.projection-benchmark/main!}
+
           :desktop-support
           {:target :node-library
            :output-to "electron/compiled/backend-tests.js"
