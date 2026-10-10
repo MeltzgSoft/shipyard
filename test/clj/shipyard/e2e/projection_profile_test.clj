@@ -64,7 +64,7 @@
           (named/scheme-layer! driver "Secondary")
           (s/input! driver "#scheme-material input[name=base]" "#0000ff" "input")
           (s/input! driver "#scheme-material input[name=base]" "#0000ff" "change")
-          (is (s/wait-until #(= [0 0 1] (get-in (schemes/record! (:shipyard.scheme/db sys) scheme-id) [:scheme/layers "Secondary" :base]))))
+          (is (s/wait-until #(= [0.0 0.0 1.0] (get-in (schemes/record! (:shipyard.scheme/db sys) scheme-id) [:scheme/layers "Secondary" :base]))))
           ;; Schemes previews the class; Customize restores the named ship's masks.
           (named/tab! driver "Customize")
           (is (s/wait-until #(and (prepared)
