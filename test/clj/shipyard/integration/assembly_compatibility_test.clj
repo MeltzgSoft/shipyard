@@ -34,7 +34,10 @@
         (is (= 422 (:status response)))
         (is (str/includes? (:body response) "Clear parts from other factions"))
         (is (= before (:draft @state)))
-        (is (= (update-vals scene #(dissoc % :mesh-key)) (update-vals (:scene @state) #(dissoc % :mesh-key)))))
+        ;; Source preparation may finish while a rejected command refreshes the
+        ;; scene. Its derived source key and summary state are not placements.
+        (is (= (update-vals scene #(dissoc % :mesh-key :emission))
+               (update-vals (:scene @state) #(dissoc % :mesh-key :emission)))))
       (is (= 200 (:status (post! "/assembly/save" {:revision (revision) :name "Mixed Cruiser"}))))
       (let [id (get-in @state [:draft :loadout-id]) record (loadouts/record! (:loadouts deps) id)]
         (is (true? (:loadout/allow-other-factions? record)))
