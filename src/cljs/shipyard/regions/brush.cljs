@@ -7,7 +7,7 @@
             [shipyard.paint.brush :as brush]
             [shipyard.paint.render :as render]
             [shipyard.regions.model :as model]
-            [shipyard.regions.surfaces :as surfaces]))
+            [shipyard.regions.surface-preparation :as surfaces]))
 
 (defn- select-layer! [layer]
   (when-let [form (.getElementById js/document "region-stroke")]
@@ -22,19 +22,12 @@
     (doseq [button (array-seq (.querySelectorAll js/document "[data-region-mode]"))]
       (.setAttribute button "aria-pressed" (str (= mode (.getAttribute button "data-region-mode")))))))
 
-(defn- surface-groups! [^js object angle]
-  (let [cached (.. object -userData -regionSurfaces)]
-    (if (= angle (:angle cached)) (:groups cached)
-        (let [geometry (.-geometry object)
-              groups (surfaces/groups (mapv #(render/triangle-points geometry %) (range (render/triangle-count geometry))) angle)]
-          (set! (.. object -userData -regionSurfaces) {:angle angle :groups groups})
-          groups))))
-
 (defn install! [sys apply-material!]
   (transport/install!)
   (let [{:keys [^js canvas ^js controls active parts mount-colors-enabled]} sys
         stroke (atom nil)
         mirror-controls (mirror/install! sys)
+        surface-preparation (surfaces/install! sys)
         picking (atom nil)
         cursor (.createElement js/document "div")
         form! #(.getElementById js/document "region-stroke")
@@ -97,14 +90,14 @@
                                                    :mode (.-value (field form "mode"))
                                                    :angle (.-value (field form "angle"))
                                                    :mirror-buffer ((:begin! mirror-controls) slot object)
-                                                   :groups (when (= "faces" (.-value (field form "mode"))) (surface-groups! object (js/Number (.-value (field form "angle")))))
+                                                   :groups (when (= "faces" (.-value (field form "mode"))) ((:groups! surface-preparation)))
                                                    :buffer (brush/cached-visible-buffer! picking sys slot) :keys #{} :triangles #{} :locked locked})
                                    (set! (.-enabled controls) false)
                                    (doseq [[el _] locked] (set! (.-disabled el) true))
                                    (.setPointerCapture canvas (.-pointerId e))
                                    (sample! e)))
                                (catch :default error
-                                 (let [message (if (= :mirror-input (:type (ex-data error)))
+                                 (let [message (if (#{:mirror-input :surface-preparation} (:type (ex-data error)))
                                                  (ex-message error)
                                                  "Could not start region brush. Reopen this part and retry.")]
                                    (cancel! message)

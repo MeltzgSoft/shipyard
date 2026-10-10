@@ -43,3 +43,15 @@
     (is (= a (surfaces/expand groups (range 2048))))
     (is (= (conj a 4096 4097 5000)
            (surfaces/expand groups (concat (range 2048) [4096 4097 5000]))))))
+
+(deftest compact-components-match-groups
+  (testing "Compact lookup preserves each existing surface boundary and seed union"
+    (doseq [triangles [square [(first square) (vec (reverse (second square)))]
+                       (conj square [[0 0 0] [1 1 0] [2 0 0]]) []]
+            angle [0 1 45 90]]
+      (let [compact (surfaces/partition-components (surfaces/topology triangles) angle)]
+        (is (= (surfaces/expand (surfaces/groups triangles angle) (range (count triangles)))
+               (surfaces/expand-components compact (range (count triangles)))))
+        (doseq [i (range (count triangles))]
+          (is (= (nth (surfaces/groups triangles angle) i)
+                 (surfaces/expand-components compact [i]))))))))

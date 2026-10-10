@@ -22,22 +22,42 @@
         (recur (into (pop pending) (get adj i)) (conj selected i)))
       selected)))
 
+(defn topology
+  "Prepare immutable coordinate-shared adjacency and normals once per source."
+  [triangles]
+  {:normals (mapv (fn [[a b c]] (math/normalize (math/cross (math/subtract b a) (math/subtract c a)) 1e-12)) triangles)
+   :adjacency (adjacency triangles)})
+
+(defn partition-components
+  "Compact linear projection: one component ID per triangle, offsets and members.
+  Partition an already prepared topology without rebuilding its edge graph."
+  [{:keys [normals adjacency]} angle]
+  (let [threshold (#?(:clj Math/cos :cljs js/Math.cos) (* angle (/ #?(:clj Math/PI :cljs js/Math.PI) 180)))
+        adj (into {} (map (fn [[i neighbors]]
+                            [i (filterv #(and (get normals i) (get normals %)
+                                              (>= (math/dot (get normals i) (get normals %)) (- threshold 1e-10))) neighbors)])) adjacency)]
+    (loop [i 0 ids (vec (repeat (count normals) nil)) offsets [0] members []]
+      (cond
+        (= i (count normals)) {:ids ids :offsets offsets :members members}
+        (some? (get ids i)) (recur (inc i) ids offsets members)
+        :else (let [component (dec (count offsets)) selected (vec (sort (surface adj i)))]
+                (recur (inc i) (reduce #(assoc %1 %2 component) ids selected)
+                       (conj offsets (+ (count members) (count selected))) (into members selected)))))))
+
+(defn expand-components
+  "Live brush lookup touches only the selected components, never a mesh graph."
+  [{:keys [ids offsets members]} seeds]
+  (reduce (fn [selected component]
+            (into selected (subvec members (get offsets component) (get offsets (inc component)))))
+          #{} (into #{} (keep #(get ids %)) seeds)))
+
 (defn groups
-  "Partition by the angle between adjacent triangles, allowing gradual curves.
-  Angles are degrees; shared sets keep storage linear. Non-manifold seams stop growth."
+  "Compatibility projection for callers/tests; browser brushing uses compact components."
   ([triangles] (groups triangles 1))
   ([triangles angle]
-   (let [normals (mapv (fn [[a b c]] (math/normalize (math/cross (math/subtract b a) (math/subtract c a)) 1e-12)) triangles)
-         threshold (#?(:clj Math/cos :cljs js/Math.cos) (* angle (/ #?(:clj Math/PI :cljs js/Math.PI) 180)))
-         adj (into {} (map (fn [[i neighbors]]
-                             [i (filterv #(and (get normals i) (get normals %)
-                                               (>= (math/dot (get normals i) (get normals %)) (- threshold 1e-10))) neighbors)]))
-                   (adjacency triangles))]
-     (reduce (fn [assigned i]
-               (if (get assigned i) assigned
-                   (let [members (surface adj i)]
-                     (reduce #(assoc %1 %2 members) assigned members))))
-             (vec (repeat (count triangles) nil)) (range (count triangles))))))
+   (let [{:keys [ids offsets members]} (partition-components (topology triangles) angle)
+         components (mapv #(set (subvec members %1 %2)) offsets (rest offsets))]
+     (mapv #(get components %) ids))))
 
 (defn expand
   "Expand each connected component only once, even when many seeds hit it."
