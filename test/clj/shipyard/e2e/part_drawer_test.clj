@@ -13,6 +13,7 @@
 
 (defn- edit-drawer! [driver drawer]
   (s/click! driver (str drawer " > summary"))
+  (s/scroll-into-view! driver (str drawer " .part-thumbnail--large"))
   (s/wait-visible! driver (str drawer " .part-thumbnail--large img"))
   (is (= 256 (s/js driver (str "() => document.querySelector(" (pr-str (str drawer " .part-thumbnail--large img")) ").naturalWidth"))))
   (is (= 256.0 (s/width driver (str drawer " .part-thumbnail--large"))))
@@ -24,6 +25,7 @@
     (.fill ^Page (:page driver) (str drawer " input[name=" field "]") value))
   (s/click! driver (str drawer " button:text-is('Save part')"))
   (s/wait-visible! driver (str drawer " [role=status]:text-is('Saved.')"))
+  (s/scroll-into-view! driver (str drawer " .part-thumbnail--large"))
   (s/wait-visible! driver (str drawer " .part-thumbnail--large img"))
   (is (= 256 (s/js driver (str "() => document.querySelector(" (pr-str (str drawer " .part-thumbnail--large img")) ").naturalWidth"))))
   (is (= "Drawer Part" (s/text driver (str drawer " .bulk-orient__part"))))
