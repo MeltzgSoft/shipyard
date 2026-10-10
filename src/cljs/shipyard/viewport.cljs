@@ -989,6 +989,9 @@
         form (when (and target (.-closest target))
                (.closest target ".mount-wizard__form"))]
     (when (and form @(:preview sys))
+      (when (= "mirror-plane" (.-name target))
+        (when-let [offset (some-> (.-selectedOptions target) (aget 0) (.getAttribute "data-mirror-offset"))]
+          (set! (.-value (.querySelector form "input[name=mirror-offset]")) offset)))
       (install-preview! sys (preview-data @(:preview sys))))))
 
 (defn- refresh-preview-after-swap! [sys]

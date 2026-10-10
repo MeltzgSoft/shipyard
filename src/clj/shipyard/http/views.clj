@@ -324,8 +324,8 @@
 
 ;; --- facet preview ----------------------------------------------------------
 
-(defn- plane-choice [selected plane]
-  [:option {:value (name plane) :selected (= selected plane)} (name plane)])
+(defn- plane-choice [selected offsets plane]
+  [:option {:value (name plane) :selected (= selected plane) :data-mirror-offset (get offsets plane)} (name plane)])
 
 (defn- default-kind [part]
   (if (#{:hull :hull-section} (:part/role-hint part)) :socket :plug))
@@ -334,7 +334,7 @@
   (cond-> {:data-socket-only "true"}
     (= :plug kind) (assoc :hidden true :disabled true)))
 
-(defn- mount-form [{:keys [part frame mesh-key draft? facet-indices kind-hint mode original-mount-id values roles cut-defaults]}]
+(defn- mount-form [{:keys [part frame mesh-key draft? facet-indices kind-hint mode original-mount-id values roles cut-defaults mirror-offsets]}]
   (let [kind (or (:kind values) (default-kind part))
         accepts (or (:accepts values) #{:weapon})
         profiles (wizard/acceptance-profiles (:part/role-hint part) (or roles wizard/role-options))
@@ -351,7 +351,7 @@
         mirror-id (or (:mirror-id values)
                       (some-> mount-id (keyword) (wizard/suggest-mirror-id) (name)))
         mirror-plane (or (:mirror-plane values) :x)
-        mirror-offset (or (:mirror-offset values) 0)
+        mirror-offset (or (:mirror-offset values) (get mirror-offsets mirror-plane) 0)
         edit? (= :edit mode)
         cut-kind (if (#{:pit :recess} (:cut-kind values)) (:cut-kind values) (cut/default-kind kind))
         defaults (or cut-defaults {:pit {:depth 1 :diameter 2} :recess {:depth 1 :border 0.5}})
@@ -428,7 +428,7 @@
            "Mirror socket"])
         [:label.mount-wizard__field "Plane"
          [:select {:name "mirror-plane"}
-          (map (partial plane-choice mirror-plane) wizard/symmetry-plane-options)]]
+          (map (partial plane-choice mirror-plane mirror-offsets) wizard/symmetry-plane-options)]]
         [:label.mount-wizard__field "Offset"
          [:input {:type "number" :name "mirror-offset" :value mirror-offset :step "0.01"}]]
         [:label.mount-wizard__field "Mirrored id"

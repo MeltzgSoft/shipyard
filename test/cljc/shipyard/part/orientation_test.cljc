@@ -8,6 +8,26 @@
 (defn- vector-close? [a b]
   (every? true? (map close? a b)))
 
+(deftest mirror-offsets-test
+  (testing "translated dense bounds retain their center on every canonical axis"
+    (is (= {:x 42.0 :y 21.0 :z 31.0}
+           (orientation/mirror-offsets [[40 20 30] [44 22 32]] nil))))
+  (testing "rotation applies to actual points rather than approximating rotated box corners"
+    (let [q (orientation/from-euler-degrees 0 0 90)
+          offsets (orientation/mirror-offsets [[40 20 30] [44 22 32]] q)
+          source [40 21 31]
+          reflected (orientation/reflect-position q :x (:x offsets) source)]
+      (is (close? -21.0 (:x offsets)))
+      (is (close? 42.0 (:y offsets)))
+      (is (vector-close? source reflected)))
+    (let [offsets (orientation/mirror-offsets [[0 0 0] [4 0 0] [0 2 0]]
+                                              (orientation/from-euler-degrees 0 0 45))]
+      (is (close? (/ (Math/sqrt 2) 2) (:x offsets)))
+      (is (close? (Math/sqrt 2) (:y offsets)))))
+  (testing "a single point is its own plane center; empty geometry has no default"
+    (is (= {:x 1.0 :y 2.0 :z 3.0} (orientation/mirror-offsets [[1 2 3]] nil)))
+    (is (nil? (orientation/mirror-offsets [] nil)))))
+
 (deftest normalize-quaternion-test
   (testing "normalizes finite quaternion components"
     (is (vector-close? [0.0 0.0 0.0 1.0]

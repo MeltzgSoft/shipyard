@@ -852,6 +852,7 @@
       "changing acceptance updates generated mount and mirror prefixes")
   (s/js *driver* "() => { document.querySelector('.mount-wizard__form input[name=capacity]').value = '2'; }")
   (s/select-option! *driver* "select[name=accepts]" "turret")
+  (s/fill-and-blur! *driver* ".mount-wizard__form input[name=mirror-offset]" "0")
   (s/click! *driver* ".mount-wizard__form input[name=mirror]")
   (let [mirrored (s/wait-until
                   #(let [preview (:preview (s/stats *driver*))]
@@ -931,6 +932,7 @@
   (is (some? (await-preview)))
   (s/select-option! *driver* ".mount-wizard__form select[name=kind]" "socket")
   (s/fill-and-blur! *driver* ".mount-wizard__form input[name=capacity]" "2")
+  (s/fill-and-blur! *driver* ".mount-wizard__form input[name=mirror-offset]" "0")
   (s/check! *driver* ".mount-wizard__form input[name=mirror]")
   (s/click! *driver* ".mount-wizard__actions button[value=create]")
   (is (s/wait-until #(str/includes? (s/text *driver* "#detail") "weapon-1-mirror")))

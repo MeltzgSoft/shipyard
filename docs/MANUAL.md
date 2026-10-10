@@ -356,8 +356,12 @@ When the preview looks right, fill in the mount form:
   Saved mounts reopen with their direction selected. Choose None and **Save changes** to
   clear it. If either mating mount is None, assembly uses its usual placement rule.
 - **Mirror** creates a linked second socket by reflecting the picked frame across a symmetry
-  plane. Human Navy Cruiser hulls use the X plane at offset `0`; change the plane or
-  offset only when the part's centreline is different. The pair is configured, edited,
+  plane. The offset defaults to the dense mesh midpoint along the selected canonical
+  axis, accounting for the part's saved orientation and source translation. Changing
+  Plane selects that axis's midpoint; adjust Offset when the actual symmetry plane
+  differs. Saved pairs keep their authored offset when reopened. To correct an older
+  pair mirrored around the wrong origin, edit the pair, change Plane away and back, then
+  review the new offset before saving. The pair is configured, edited,
   and deleted together. When mirror is selected,
   Shipyard highlights the reflected face in blue before you save.
 

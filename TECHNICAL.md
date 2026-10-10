@@ -1953,10 +1953,14 @@ publication overwrites the original source.
 
 M2 supports the three axis-aligned planes in the part's canonical coordinates. A plane is the
 transient pair `{:axis :x|:y|:z :offset number}`. The UI defaults the offset to the dense
-mesh bounding-box midpoint on the chosen axis and defaults the axis to `:x`, but always
+mesh bounding-box midpoint on the chosen axis after rotating dense vertices into canonical
+coordinates, retaining source translation, and defaults the axis to `:x`, but always
 shows both for confirmation; print layouts mean neither the origin nor a guessed axis is
 universally correct. The offset is editable, which covers parts whose symmetry plane is
-away from zero.
+away from zero. The server supplies per-axis midpoint defaults on each new picked face
+and pair-edit form. Plane changes select the corresponding default before updating
+the preview; explicit/saved offsets survive rendering, validation and reopening.
+The submitted offset drives both preview reflection and durable mirror generation.
 
 For unit plane normal `n` and plane offset `d`, choose `q = d n`. Reflection is:
 

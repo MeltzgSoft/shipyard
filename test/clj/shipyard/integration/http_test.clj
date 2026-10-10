@@ -19,6 +19,7 @@
             [shipyard.mesh.cache :as cache]
             [shipyard.mesh.stl :as stl]
             [shipyard.math :as math]
+            [shipyard.part.orientation :as orientation]
             [shipyard.pitting.geometry :as pitting-geometry]
             [shipyard.library.index :as index]
             [shipyard.wire :as wire])
@@ -962,3 +963,33 @@
     (is (= "innerHTML" (get-in response [:headers "HX-Reswap"])))
     (is (str/includes? (:body response) "Undo the erase"))
     (is (empty? (:part/mounts (:part (catalog-db/part-context! (:catalog sys) hull-id)))))))
+
+(deftest translated-oriented-mirror-defaults-are-saved-and-retained
+  (let [root (library-tree) sys (system root) h (handler sys)
+        q (orientation/from-euler-degrees 0 0 90)
+        _ (catalog-db/save-part-orientation! (:catalog sys) hull-id q)
+        triangle [[[40 20 30] [44 20 30] [40 22 30]]
+                  [[44 20 30] [44 22 30] [40 22 30]]
+                  [[40 40 30] [44 40 30] [40 42 30]]
+                  [[44 40 30] [44 42 30] [40 42 30]]]
+        mesh (assoc (authoring-mesh triangle) :bbox-min [40 20 30] :bbox-max [44 42 30])
+        mesh-key (seed-authoring-cache! sys (apply str (repeat 64 "2")) mesh)
+        response (facet-post h hull-id mesh-key 0)
+        offset (some-> (re-find #"name=\"mirror-offset\"[^>]*value=\"([^\"]+)\"" (:body response)) second parse-double)
+        frame (:frame (get (triggers response) "shipyard:facet-preview"))
+        saved (mount-post h {:part-id hull-id :mount-id "original" :kind "socket" :accepts "weapon" :capacity "1"
+                             :frame (pr-str frame) :mirror "true" :mirror-plane "x" :mirror-offset (str offset)
+                             :mirror-id "opposite" :action "create"})
+        mounts (:mounts (persisted/authored! (:catalog sys) hull-id))
+        by-id (into {} (map (juxt :mount/id identity)) mounts)]
+    (is (= 200 (:status response)))
+    (is (< (abs (+ 31 offset)) 1e-6))
+    (is (= 200 (:status saved)))
+    (is (every? #(< (abs %) 1e-6) (map - [42.0 41.0 30.0] (get-in by-id [:opposite :mount/pos]))))
+    (is (< (abs (+ 31 (get-in by-id [:original :mount/mirror-offset]))) 1e-6))
+    (let [edit (mount-edit h {:part-id hull-id :mount-id "opposite"})]
+      (is (= 200 (:status edit)))
+      (is (str/includes? (:body edit) (str "value=\"" offset "\""))))
+    (let [repick (facet-post h hull-id mesh-key 0 {"mirror" "true" "mirror-plane" "y" "mirror-offset" "42.75"})]
+      (is (= 200 (:status repick)))
+      (is (str/includes? (:body repick) "value=\"42.75\"")))))

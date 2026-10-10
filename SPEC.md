@@ -258,6 +258,10 @@ before persistence.
 **Symmetry mirroring halves the work.** These ships are bilaterally symmetric - the Human
 Navy Cruiser hull spans X ∈ [-19.06, 19.06] about a centreline at zero. Picking `port-1`
 offers to generate `starboard-1` by mirroring the frame across the hull's symmetry plane.
+New mount forms default the offset to the dense mesh bounds midpoint on the selected
+canonical axis after applying the saved part orientation; source translations are
+retained. Changing the plane selects its midpoint. Explicit and saved offsets remain
+editable and are preserved when reopening a pair.
 Since mount authoring is the project's main cost centre (§11), this is one of the
 highest-leverage features in the application.
 

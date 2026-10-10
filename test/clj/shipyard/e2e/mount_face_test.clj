@@ -120,3 +120,64 @@
         (is (s/wait-until #(nil? (:preview (s/stats driver)))))
         (is (= stable (select-keys (first (:part/mounts (:part (catalog/part-context! cat id)))) (keys stable)))))
       (finally (s/quit! driver) (fixture/stop! started)))))
+
+(deftest translated-oriented-mirror-plane-survives-save-and-reopen
+  (s/assert-bundle!)
+  (let [translation [40 20 30]
+        translated (mapv #(mapv (partial math/add translation) %) triangles)
+        build! (fn [root]
+                 (let [file (io/file (str root) id "unsupported.stl")]
+                   (fs/create-dirs (.getParentFile file))
+                   (with-open [out (io/output-stream file)] (.write out ^bytes (fixtures/->binary-stl translated))))
+                 root)
+        q (orientation/from-euler-degrees 0 0 180)
+        started (fixture/start! true build! #(catalog/save-part-orientation! % id q))
+        sys (:system started) cat (:shipyard.catalog/db sys) driver (s/make-driver)
+        mounts! #(get-in (catalog/part-context! cat id) [:part :part/mounts])]
+    (try
+      (s/go! driver (s/base-url sys)) (s/open-part! driver "Large Mount Plate") (s/await-part driver id)
+      (s/click! driver "[data-detail-tab=mounts]")
+      (let [key (faces/face-key (first translated))
+            target (first (filter #(= key (:key %)) (:region-faces (s/stats driver))))
+            bounds (s/bounds driver "#viewport")]
+        (s/click-point! driver (+ (:x bounds) (:x target)) (+ (:y bounds) (:y target))))
+      (s/wait-visible! driver ".mount-wizard__form")
+      (is (< (abs (+ 40 (parse-double (s/js driver "() => document.querySelector('.mount-wizard__form [name=mirror-offset]').value")))) 1e-6))
+      (s/select-option! driver ".mount-wizard__form select[name=kind]" "socket")
+      (s/check! driver ".mount-wizard__form input[name=mirror]")
+      (s/select-option! driver "select[name=mirror-plane]" "z")
+      (is (= 30.0 (parse-double (s/js driver "() => document.querySelector('.mount-wizard__form [name=mirror-offset]').value"))))
+      (s/select-option! driver "select[name=mirror-plane]" "x")
+      (is (s/wait-until #(let [{:keys [position mirror-position mirror-offset]} (:preview (s/stats driver))]
+                           (and mirror-position (< (abs (+ 40 mirror-offset)) 1e-6)
+                                (every? (fn [difference] (< (abs difference) 1e-6))
+                                        (map - mirror-position [(- 80 (first position)) (second position) (nth position 2)]))))))
+      (let [preview (:preview (s/stats driver))]
+        (s/click! driver ".mount-wizard__actions button[value=create]")
+        (is (s/wait-until #(= 2 (count (mounts!)))))
+        (let [base (first (filter #(= :picked (:mount/origin %)) (mounts!)))
+              mirror (first (filter #(= :mirrored (:mount/origin %)) (mounts!)))]
+          (is (every? #(< (abs %) 1e-6) (map - (:mirror-position preview) (:mount/pos mirror))))
+          (is (< (abs (+ 40 (:mount/mirror-offset base))) 1e-6))
+          (is (s/wait-until #(= [2 2] (mapv :triangles (get-in (s/stats driver) [:interfaces :items])))))
+          (doseq [[[lo hi] expected] (map vector
+                                          (sort-by #(get-in % [0 0]) (map :face-bounds (get-in (s/stats driver) [:interfaces :items])))
+                                          [[[28 20 30] [37 60 30]] [[43 20 30] [52 60 30]]])]
+            (is (every? #(< (abs %) 1e-6) (map - (subvec lo 0 2) (subvec (first expected) 0 2))))
+            (is (every? #(< (abs %) 1e-6) (map - (subvec hi 0 2) (subvec (second expected) 0 2))))
+            (is (< (abs (- 30 (nth lo 2))) 0.003))
+            (is (< (abs (- 30 (nth hi 2))) 0.003)))
+          (s/go! driver (s/base-url sys)) (s/open-part! driver "Large Mount Plate") (s/await-part driver id)
+          (s/click! driver "[data-detail-tab=mounts]")
+          (s/click! driver (str "form:has(input[name=mount-id][value='" (name (:mount/id base)) "']) button:has-text('Edit')"))
+          (s/wait-visible! driver ".mount-wizard__form")
+          (is (< (abs (+ 40 (parse-double (s/js driver "() => document.querySelector('.mount-wizard__form [name=mirror-offset]').value")))) 1e-6))
+          (is (s/wait-until #(let [p (get-in (s/stats driver) [:preview :mirror-position])]
+                               (and p (every? (fn [x] (< (abs x) 1e-6)) (map - p (:mount/pos mirror)))))))
+          (s/fill-and-blur! driver ".mount-wizard__form input[name=mirror-offset]" "-39")
+          (s/click! driver ".mount-wizard__actions button[value=update]")
+          (is (s/wait-until #(= -39.0 (:mount/mirror-offset (first (filter (fn [m] (= :picked (:mount/origin m))) (mounts!)))))))
+          (s/click! driver (str "form:has(input[name=mount-id][value='" (name (:mount/id base)) "']) button:has-text('Edit')"))
+          (s/wait-visible! driver ".mount-wizard__form")
+          (is (= "-39.0" (s/js driver "() => document.querySelector('.mount-wizard__form [name=mirror-offset]').value")))))
+      (finally (s/quit! driver) (fixture/stop! started)))))

@@ -116,6 +116,17 @@
     [(mapv (fn [idx] (apply min (map #(nth % idx) corners))) (range 3))
      (mapv (fn [idx] (apply max (map #(nth % idx) corners))) (range 3))]))
 
+(defn mirror-offsets
+  "Midpoints of dense mesh bounds in canonical part coordinates. Empty geometry
+  has no default plane. Source translation is retained while applying orientation."
+  [points part-orientation]
+  (when-let [[lo hi] (reduce (fn [bounds point]
+                               (let [p (rotate-vector part-orientation point)]
+                                 (if-let [[lo hi] bounds]
+                                   [(mapv min lo p) (mapv max hi p)]
+                                   [p p]))) nil points)]
+    (zipmap [:x :y :z] (mapv #(/ (+ %1 %2) 2.0) lo hi))))
+
 (defn canonical-mount-roll
   "Derive mount +X so mount +Y follows canonical part up. If the selected
   normal is vertical, canonical forward becomes mount +Y instead."

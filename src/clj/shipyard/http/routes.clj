@@ -261,6 +261,7 @@
                                        :mesh-key mesh-key
                                        :facet-indices facet-indices
                                        :kind-hint kind-hint
+                                       :mirror-offsets (orientation/mirror-offsets (partition 3 (:positions mesh)) (:part/orientation part))
                                        :draft? true
                                        :values (assoc (merge (:values edit)
                                                              (wizard/preview-values params))
@@ -294,9 +295,15 @@
 
 (defn- mount-response!
   ([deps part-id events] (mount-response! deps part-id events nil))
-  ([{:keys [catalog library] :as deps} part-id events view-options]
+  ([{:keys [catalog library cache] :as deps} part-id events view-options]
    (let [part (with-navigation deps (:part (db/part-context! catalog part-id)))
-         mesh-key (index/mesh-key! library part-id)]
+         mesh-key (index/mesh-key! library part-id)
+         view-options (if (and (:part/id part) (:preview view-options) mesh-key
+                               (fs/regular-file? (cache/tier-file cache mesh-key 0)))
+                        (let [mesh (wire/decode (Files/readAllBytes (fs/path (cache/tier-file cache mesh-key 0))))]
+                          (assoc-in view-options [:preview :mirror-offsets]
+                                    (orientation/mirror-offsets (partition 3 (:positions mesh)) (:part/orientation part))))
+                        view-options)]
      (if (and (:part/id part) mesh-key)
        (htmx/fragment (views/detail-ready part mesh-key (assoc (merge {:mount-active? true :preserve-regions? true} view-options)
                                                                :region-layers (db/region-registry! catalog) :roles (vocabulary/roles! catalog) :cut-defaults (settings-db/cut-defaults! (:store catalog))))
