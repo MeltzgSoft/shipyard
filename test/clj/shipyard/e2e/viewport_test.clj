@@ -781,6 +781,8 @@
   (is (s/wait-until #(str/includes? (s/text *driver* "#detail") "Manual"))
       "part-level role edits should live in the metadata form")
   (s/click! *driver* "[data-part-back]")
+  (is (s/wait-until #(zero? (s/count-els *driver* "[data-part-back]")))
+      "Back finishes restoring the table before its replacement filter sidebar is opened")
   (s/select-option! *driver* "#bulk-orient-filters select[name=class]" "Cruiser")
   (is (s/wait-until #(= "hull" (s/js *driver* "() => {
     const card = [...document.querySelectorAll('.bulk-orient__row')].find((el) => el.textContent.includes('Mount Test Plate'));
