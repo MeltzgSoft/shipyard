@@ -63,20 +63,24 @@
   (cached-source! service [:mesh mesh-key tier] decode-mesh! [cache mesh-key tier]))
 
 (defn- execute! [{:keys [state library cap-bytes max-entries] :as service} key mine run! args]
-  (let [library-lock (:state library)
-        result (try
-                 (let [{:keys [value bytes content-type] :as result} (apply run! args)
-                       bytes (or bytes (.getBytes (pr-str value) StandardCharsets/UTF_8))]
-                   (merge result {:state :ready :value value :bytes bytes :size (+ (alength ^bytes bytes) (long (or (:size result) 0)) (long (or (:retained-bytes mine) 0)))
-                                  :content-type (or content-type "application/edn; charset=utf-8")}))
-                 (catch Throwable error
-                   (log/warn error "Derived preparation failed" (:key mine))
-                   {:state :failed :size (long (or (:retained-bytes mine) 0)) :message "Preparation failed. Retry to try again."}))]
-    (locking library-lock
-      (locking state
-        (when (= (:resource mine) (get-in @state [:entries key :resource]))
-          (swap! state update :entries
-                 #(transforms/trim (if (current?! service mine) (assoc % key (merge mine result)) (dissoc % key)) cap-bytes max-entries)))))))
+  (try
+    (let [library-lock (:state library)
+          result (try
+                   (let [{:keys [value bytes content-type] :as result} (apply run! args)
+                         bytes (or bytes (.getBytes (pr-str value) StandardCharsets/UTF_8))]
+                     (merge result {:state :ready :value value :bytes bytes :size (+ (alength ^bytes bytes) (long (or (:size result) 0)) (long (or (:retained-bytes mine) 0)))
+                                    :content-type (or content-type "application/edn; charset=utf-8")}))
+                   (catch Throwable error
+                     (log/warn error "Derived preparation failed" (:key mine))
+                     {:state :failed :size (long (or (:retained-bytes mine) 0)) :message "Preparation failed. Retry to try again."}))]
+      (locking library-lock
+        (locking state
+          (when (= (:resource mine) (get-in @state [:entries key :resource]))
+            (swap! state update :entries
+                   #(transforms/trim (if (current?! service mine) (assoc % key (merge mine result)) (dissoc % key)) cap-bytes max-entries))))))
+    (finally
+      ;; Stale jobs still capture descriptors until their bodies finish.
+      (swap! state update :retained-in-flight - (long (or (:retained-bytes mine) 0))))))
 
 (defn request!
   "Deduplicate source-bound descriptors. Producers run only on shared workers and
@@ -97,22 +101,29 @@
                   (swap! state assoc-in [:entries cache-key :access] (:tick @state))
                   entry)
               (let [tick (:tick (swap! state update :tick inc))
+                    retained-bytes (long (or retained-bytes 0))
                     mine (hash-map :state :running :resource (str (random-uuid)) :part-id part-id
                                    :mesh-key mesh-key :expected expected :valid?! valid?! :retained-bytes retained-bytes :key key :access tick)]
                 (swap! state assoc-in [:entries cache-key] mine)
-                (if (and (<= (reduce + 0 (map #(long (or (:retained-bytes %) 0)) (filter #(= :running (:state %)) (vals (:entries @state))))) cap-bytes)
-                         (:accepted? (jobs/submit-batch! scope [{:key cache-key :run! execute! :args [service cache-key mine run! args]}])))
+                (if (and (<= (+ retained-bytes (:retained-in-flight @state)) cap-bytes)
+                         (do
+                           (swap! state update :retained-in-flight + retained-bytes)
+                           ;; Resource identity lets a new source/revision claim run
+                           ;; while an obsolete producer for the same cache key drains.
+                           (if (:accepted? (jobs/submit-batch! scope [{:key (:resource mine) :run! execute! :args [service cache-key mine run! args]}]))
+                             true
+                             (do (swap! state update :retained-in-flight - retained-bytes) false))))
                   mine
                   (do (swap! state update :entries dissoc cache-key)
                       {:state :overloaded :message "Preparation capacity is busy. Retry shortly."}))))))))))
 
 (defn close! [{:keys [scope state meshes]}]
   (jobs/close! scope)
-  (reset! state {:entries {} :tick 0})
+  (reset! state {:entries {} :tick 0 :retained-in-flight 0})
   (reset! meshes {:entries {} :tick 0}))
 
 (defmethod ig/init-key :shipyard.preparation/service [_ {:keys [workers] :as options}]
   (merge {:cap-bytes 134217728 :mesh-cap-bytes 67108864 :max-entries 128} options
-         {:scope (jobs/scope! workers) :state (atom {:entries {} :tick 0}) :meshes (atom {:entries {} :tick 0})}))
+         {:scope (jobs/scope! workers) :state (atom {:entries {} :tick 0 :retained-in-flight 0}) :meshes (atom {:entries {} :tick 0})}))
 
 (defmethod ig/halt-key! :shipyard.preparation/service [_ service] (close! service))
