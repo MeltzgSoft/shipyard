@@ -57,6 +57,17 @@
      (if colors "View: Mount faces" "View: Layer types")
      "Mount colors")])
 
+(defn filter-sidebar
+  "A collapsible filter rail; forms retain their existing transport and state."
+  [id filters content]
+  [:div.filter-layout
+   [:details.filter-sidebar {:id id :data-filter-sidebar true}
+    [:summary.filter-sidebar__toggle "Filters"]
+    [:aside.filter-sidebar__controls {:aria-label "Filters"}
+     [:button.filter-sidebar__pin {:type "button" :data-filter-pin true :aria-pressed "false"} "Pin filters"]
+     filters]]
+   (into [:div.filter-layout__content] content)])
+
 (defn ship-editor [tab content]
   [:section.ship-inspector {:data-ship-inspector-tab tab}
    [:button.ship-editor__back (merge transition-attrs

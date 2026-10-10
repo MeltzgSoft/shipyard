@@ -559,6 +559,7 @@
     ;; build cannot take the whole UI down with it (TECHNICAL.md §8).
      [:script {:src "/js/htmx.min.js" :defer true}]
      [:script {:src "/browser-lists.js" :defer true}]
+     [:script {:src "/filter-sidebars.js" :defer true}]
      [:script {:src "/js/viewport.js" :defer true}]]
     [:body workspace-views/transport-attrs
      (appearance/state theme)
@@ -572,9 +573,11 @@
         [:section#library.panel]
         [:section#library.panel
          [:h2.panel__title "Library"]
-         (filter-form facets)
-         [:div#library-results.results
-          [:p.muted "Loading the library…"]]])
+         (workspace-views/filter-sidebar
+          "library-filter-sidebar"
+          (filter-form facets)
+          [[:div#library-results.results
+            [:p.muted "Loading the library…"]]])])
       [:section.stage
        [:canvas#viewport.stage__canvas {:hx-preserve "true"}]
        (workspace-views/colors-toggle colors (:workspace context))

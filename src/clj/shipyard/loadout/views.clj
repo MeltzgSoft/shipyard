@@ -149,22 +149,24 @@
                      {:type "button" :data-workspace-transition "true" :data-ship-new "true"
                       :disabled (nil? (:hull draft))
                       :hx-get "/ships/tab/assembly" :hx-target "#detail" :hx-include "#ship-filters, #ship-table-position, [data-ship-page]"}) "Resume assembly"]]
-    [:form#ship-filters.filters {:data-workspace-filters "true" :hx-get "/ships" :hx-target "#ship-results" :hx-swap "outerHTML"
-                                 :hx-trigger "change[target.tagName === 'SELECT'], search, keyup changed delay:300ms"
-                                 :hx-include "#ship-table-position" :hx-vals "{\"page\":\"1\",\"table-scroll\":\"0\"}" :hx-sync "this:replace"}
-     (for [[field label] [["bundle" "Bundle / faction"] ["class" "Class"]]]
-       [:label label [:select {:name field}
-                      [:option {:value ""} (str "All " (str/lower-case label))]
-                      (for [value (sort (distinct (keep (keyword field) entries)))]
-                        [:option {:value value :selected (= value (get filters field))} value])]])
-     [:label "Name" [:input {:type "search" :name "q" :value (get filters "q") :placeholder "Class or ship name"}]]]
-    [:form#ship-table-position
-     [:input {:type "hidden" :name "table-scroll" :value (or (get filters "table-scroll") "0")}]
-     [:input {:type "hidden" :name "expanded" :value (or (get filters "expanded") "")}]]
+    (workspace-views/filter-sidebar
+     "ship-filter-sidebar"
+     [:form#ship-filters.filters {:data-workspace-filters "true" :hx-get "/ships" :hx-target "#ship-results" :hx-swap "outerHTML"
+                                  :hx-trigger "change[target.tagName === 'SELECT'], search, keyup changed delay:300ms"
+                                  :hx-include "#ship-table-position" :hx-vals "{\"page\":\"1\",\"table-scroll\":\"0\"}" :hx-sync "this:replace"}
+      (for [[field label] [["bundle" "Bundle / faction"] ["class" "Class"]]]
+        [:label label [:select {:name field}
+                       [:option {:value ""} (str "All " (str/lower-case label))]
+                       (for [value (sort (distinct (keep (keyword field) entries)))]
+                         [:option {:value value :selected (= value (get filters field))} value])]])
+      [:label "Name" [:input {:type "search" :name "q" :value (get filters "q") :placeholder "Class or ship name"}]]]
+     [[:form#ship-table-position
+       [:input {:type "hidden" :name "table-scroll" :value (or (get filters "table-scroll") "0")}]
+       [:input {:type "hidden" :name "expanded" :value (or (get filters "expanded") "")}]]
     ;; Stable request origin survives an in-flight filter replacing the clicked row.
-    [:form#ship-open-form (merge workspace-views/transition-attrs
-                                 {:hidden true :method "post" :action "/ships/open" :hx-post "/ships/open"
-                                  :hx-target "#detail" :hx-include "#ship-filters, #ship-table-position, [data-ship-page]"})
-     [:input {:type "hidden" :name "kind"}] [:input {:type "hidden" :name "id"}]]
-    (pagination/progress)
-    (results entries filters)]))
+      [:form#ship-open-form (merge workspace-views/transition-attrs
+                                   {:hidden true :method "post" :action "/ships/open" :hx-post "/ships/open"
+                                    :hx-target "#detail" :hx-include "#ship-filters, #ship-table-position, [data-ship-page]"})
+       [:input {:type "hidden" :name "kind"}] [:input {:type "hidden" :name "id"}]]
+      (pagination/progress)
+      (results entries filters)])]))

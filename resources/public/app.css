@@ -1034,14 +1034,28 @@ body:has(#workspace-context[data-workspace="browse"]) #library[data-part-view="p
 .classification-picker__options button { display: block; width: 100%; text-align: left; border: 0; cursor: pointer; }
 .classification-picker__options button[aria-selected=true], .classification-picker__options button:hover { background: var(--line); }
 [data-part-back] { margin-bottom: 12px; }
-#bulk-orient-filters { display: grid; grid-template-columns: repeat(5, minmax(100px, 1fr)) auto; align-items: center; gap: 8px; padding: 12px; }
-#bulk-orient-filters:has(select[name=variant]) { grid-template-columns: repeat(6, minmax(100px, 1fr)) auto; }
-#bulk-orient-filters .filters__field { margin: 0; }
-.filters__variants { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0; padding: 8px; border: 1px solid var(--line); border-radius: 4px; }
+.filter-layout { display: flex; flex: 1 1 auto; min-width: 0; min-height: 0; overflow: hidden; }
+.filter-layout__content { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; min-height: 0; }
+.filter-sidebar { flex: 0 0 42px; min-width: 0; border-right: 1px solid var(--line); overflow-y: auto; background: var(--panel); }
+.filter-sidebar[open] { flex-basis: 220px; }
+.filter-sidebar__toggle { position: sticky; top: 0; z-index: 6; padding: 12px; cursor: pointer; font-size: 12px; background: var(--panel); border-bottom: 1px solid var(--line); }
+.filter-sidebar:not([open]) > summary { writing-mode: vertical-rl; padding: 12px 10px; }
+.filter-sidebar__pin { margin: 12px 12px 0; width: calc(100% - 24px); }
+.filter-sidebar__pin[aria-pressed=true] { border-color: var(--selection-line); background: var(--selection-bg); color: var(--selection-ink); }
+.filter-sidebar__toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.filter-sidebar .filters, .filter-sidebar .assembly__filters { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 10px; margin: 0; padding: 12px; border: 0; }
+.filter-sidebar label, .filter-sidebar .filters__field { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; margin: 0; font-size: 11px; color: var(--ink-dim); }
+.filter-sidebar select, .filter-sidebar input { width: 100%; min-width: 0; }
+.filters__variants { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; margin: 0; padding: 8px; border: 1px solid var(--line); border-radius: 4px; }
 .filters__variants legend { padding: 0 4px; font-size: 11px; color: var(--ink-dim); }
-.filters__variants .filters__field { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; font-size: 11px; color: var(--ink-dim); }
-@media (max-width: 800px) {
-  #bulk-orient-filters, #bulk-orient-filters:has(select[name=variant]) { grid-template-columns: repeat(2, minmax(100px, 1fr)); }
+/* Hull filters sit beside the assembly controls within the floating inspector. */
+.stage:has(.ship-inspector #assembly-filter-sidebar) .stage__detail { width: min(620px, calc(100% - 28px)); }
+#assembly-rail .filter-sidebar[open] { flex-basis: 180px; }
+#assembly-rail .filter-layout { overflow: visible; }
+#assembly-rail .filter-sidebar { align-self: flex-start; }
+@media (max-width: 600px) {
+  .filter-sidebar[open] { flex-basis: 180px; }
+  #assembly-rail .filter-sidebar[open] { flex-basis: 130px; }
 }
 
 /* Ships use a full-width table and one Assembly / Schemes / Paint editor. */
@@ -1050,8 +1064,6 @@ body:has(#workspace-context[data-workspace="ships"]) #library[data-ship-view="ed
 .layout:has(#library[data-ship-view="table"]) > #library { grid-column: 1; grid-row: 1; z-index: 4; }
 .layout:has(#library[data-ship-view="table"]) > .stage { grid-column: 1; grid-row: 1; visibility: hidden; }
 #library.ship-table { display: flex; flex-direction: column; min-height: 0; }
-#ship-filters { display: grid; grid-template-columns: repeat(3, minmax(100px, 1fr)); gap: 12px; padding: 12px; }
-#ship-filters label { display: grid; gap: 4px; font-size: 12px; }
 .ship-table__results { flex: 1; min-height: 0; overflow: auto; }
 .ship-table__columns, .ship-table__row { display: grid; grid-template-columns: 96px minmax(180px, 2fr) minmax(100px, 1fr) minmax(90px, 1fr) 110px 200px; align-items: center; gap: 12px; padding: 12px; min-width: 760px; }
 .ship-table__columns { position: sticky; top: 0; z-index: 2; background: var(--panel); border-bottom: 1px solid var(--line); color: var(--ink-dim); font-size: 11px; text-transform: uppercase; }

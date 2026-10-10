@@ -2469,6 +2469,14 @@ M3 draft and viewport protocol in §13. Product requirements are in SPEC §9.2�
 
 ### 14.1 State ownership
 
+`workspace.views/filter-sidebar` shares the filter layout across part tables, import
+review, ship tables and the Assembly hull picker. Native `details` and `summary`
+provide keyboard behavior; `filter-sidebars.js` opens on pointer entry, closes on
+pointer exit, and keeps an in-memory set of pinned sidebar IDs across fragment
+replacements. Pinning affects presentation only and resets on page reload. Existing
+filter forms, IDs, HTMX requests and workspace state ownership stay unchanged. The
+table or assembly controls retain their own scrolling area.
+
 `resources/public/app.css` owns ordinary control appearance globally through low-specificity
 element rules: typography, surfaces, borders, focus, disabled states and native accents.
 Root palette variables and `color-scheme` theme native dropdowns, checkboxes, radios

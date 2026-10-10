@@ -98,38 +98,40 @@
 
 (defn- assembly-rail [{:keys [database hulls selected-bundle selected-class revision hull selected-hull root slots available draft error saved? drawers]}]
   [:div#assembly-rail
-   (assembly-filters database selected-bundle selected-class)
+   (workspace-views/filter-sidebar
+    "assembly-filter-sidebar"
+    (assembly-filters database selected-bundle selected-class)
    ;; The included draft name can be blank; the hull is validated by the server.
-   [:form.assembly__hull {:novalidate true :method "post" :action "/assembly/hull" :hx-post "/assembly/hull"
-                          :hx-target "#detail" :hx-swap "innerHTML settle:0ms"
-                          :hx-include ".assembly__save input[name=name]"}
-    (hidden "revision" revision) (hidden "bundle" selected-bundle) (hidden "class" selected-class)
-    [:label "Hull" [:select {:name "part-id" :required true :disabled (empty? hulls)}
-                    [:option {:value ""} "Choose a hull…"]
-                    (for [part hulls] [:option {:value (:part/id part) :selected (= (or hull selected-hull) (:part/id part))} (:part/name part)])]]
-    [:button {:type "submit" :disabled (empty? hulls)} "Start assembly"]]
-   (when hull
-     [:form.assembly__compatibility (assoc (form-attrs "/assembly/compatibility")
-                                           :hx-trigger "change" :hx-include ".assembly__save input[name=name]")
-      (hidden "revision" revision)
-      (hidden "bundle" selected-bundle) (hidden "class" selected-class)
-      [:label [:input (merge
-                       (help/attrs "Allow other factions without relaxing class matching. Classes must match the hull; Universal parts fit any hull class.")
-                       {:type "checkbox" :name "allow-other-factions" :value "true"
-                        :checked (boolean (:allow-other-factions? draft))})]
-       " Allow parts from other factions"]])
-   (when hull
-     [:form.assembly__save (form-attrs "/assembly/save")
-      (hidden "revision" revision)
-      [:label "Class name" [:input {:name "name" :value (or (:name draft) "") :required true :maxlength 200}]]
-      [:button {:type "submit"} (if (:loadout-id draft) "Save changes" "Save class")]])
-   (when saved? [:p {:role "status"} "Class saved."])
-   (when (:loadout-id draft) (paint/transfer-button "assembly" "Create named ship"))
-   (when error [:p.detail__error {:role "alert"} (get responses/messages error (name error))])
-   [:p.assembly__rail-count (str (count hulls) " compatible hulls")]
-   (when root
-     [:div.assembly__rail-slots {:data-hull-id hull}
-      (slot-tree database root revision available selected-bundle selected-class drawers slots draft)])])
+    [[:form.assembly__hull {:novalidate true :method "post" :action "/assembly/hull" :hx-post "/assembly/hull"
+                            :hx-target "#detail" :hx-swap "innerHTML settle:0ms"
+                            :hx-include ".assembly__save input[name=name]"}
+      (hidden "revision" revision) (hidden "bundle" selected-bundle) (hidden "class" selected-class)
+      [:label "Hull" [:select {:name "part-id" :required true :disabled (empty? hulls)}
+                      [:option {:value ""} "Choose a hull…"]
+                      (for [part hulls] [:option {:value (:part/id part) :selected (= (or hull selected-hull) (:part/id part))} (:part/name part)])]]
+      [:button {:type "submit" :disabled (empty? hulls)} "Start assembly"]]
+     (when hull
+       [:form.assembly__compatibility (assoc (form-attrs "/assembly/compatibility")
+                                             :hx-trigger "change" :hx-include ".assembly__save input[name=name]")
+        (hidden "revision" revision)
+        (hidden "bundle" selected-bundle) (hidden "class" selected-class)
+        [:label [:input (merge
+                         (help/attrs "Allow other factions without relaxing class matching. Classes must match the hull; Universal parts fit any hull class.")
+                         {:type "checkbox" :name "allow-other-factions" :value "true"
+                          :checked (boolean (:allow-other-factions? draft))})]
+         " Allow parts from other factions"]])
+     (when hull
+       [:form.assembly__save (form-attrs "/assembly/save")
+        (hidden "revision" revision)
+        [:label "Class name" [:input {:name "name" :value (or (:name draft) "") :required true :maxlength 200}]]
+        [:button {:type "submit"} (if (:loadout-id draft) "Save changes" "Save class")]])
+     (when saved? [:p {:role "status"} "Class saved."])
+     (when (:loadout-id draft) (paint/transfer-button "assembly" "Create named ship"))
+     (when error [:p.detail__error {:role "alert"} (get responses/messages error (name error))])
+     [:p.assembly__rail-count (str (count hulls) " compatible hulls")]
+     (when root
+       [:div.assembly__rail-slots {:data-hull-id hull}
+        (slot-tree database root revision available selected-bundle selected-class drawers slots draft)])])])
 
 (defn panel [{:keys [database draft available prepared error saved? selected-hull selected-bundle selected-class drawers scroll]}]
   (let [{:keys [revision hull assignments]} draft

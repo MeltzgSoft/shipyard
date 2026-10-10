@@ -309,56 +309,58 @@
        [:form (merge workspace-views/transition-attrs {:method "post" :action "/imports/cancel" :hx-post "/imports/cancel" :hx-target "#detail"})
         [:button {:type "submit" :data-workspace-transition true} "Cancel import"]]
        [:p#import-status {:role "status"}]])
-    [:form#bulk-orient-filters.filters
-     {:data-workspace-filters "true" :hx-get "/orient/parts" :hx-target "#bulk-orient-results" :hx-swap "outerHTML"
-      :hx-sync "this:replace"
-      :hx-vals "js:{page: event.type==='load' ? (document.querySelector('[data-part-page]')?.value || '1') : '1', 'table-scroll': event.type==='load' ? (document.querySelector('#part-table-position')?.value || '0') : '0'}"
-      :hx-trigger "load, change[target.tagName === 'SELECT'], search, keyup changed delay:300ms"}
-     [:label.filters__field "Bundle" [:select {:name "bundle"} (http-views/options "All bundles" (:bundles facets))]]
-     [:label.filters__field "Class" [:select {:name "class"} (http-views/options "All classes" (:classes facets))]]
-     [:label.filters__field "Role" [:select {:name "role"} (http-views/options "All roles" (map name (:roles facets)))]]
-     [:label.filters__field "Variant"
-      [:select (merge
-                (help/attrs (if import-session "Show rows containing the selected variant, including grouped files."
-                                "Browsable parts excludes supported-only rows. All variants includes them."))
-                {:name "variant"})
-       [:option {:value ""} (if import-session "All variants" "Browsable parts")]
-       (when-not import-session [:option {:value "all"} "All variants"])
-       [:option {:value "unsupported"} "Unsupported"]
-       [:option {:value "supported"} "Supported"]
-       [:option {:value "unsupported-pitted"} "Unsupported (pitted / recessed)"]]]
-     [:label.filters__field "Orientation" [:select {:name "orientation"}
-                                           [:option {:value "all"} "Any orientation"]
-                                           [:option {:value "unset"} "Orientation unset"]
-                                           [:option {:value "saved"} "Orientation saved"]]]
-     [:label.filters__field "Name" [:input {:type "search" :name "q" :placeholder "Search names"}]]
-     [:button {:type "button" :data-filter-clear true
-               :hx-on:click "var f=this.form;f.querySelectorAll('select').forEach(el=>el.selectedIndex=0);f.querySelectorAll('input[type=search]').forEach(el=>el.value='');f.dispatchEvent(new Event('search',{bubbles:true}));"} "Clear filters"]
-     (when-not import-session
-       [:fieldset.filters__variants
-        [:legend "Variant availability"]
-        (for [[field variant label] parts/variant-filters]
-          [:label.filters__field label
-           [:select {:name field :title (when (= variant :unsupported-pitted) "Unsupported (pitted / recessed)")}
-            [:option {:value ""} "Any"]
-            [:option {:value "available"} "Available"]
-            [:option {:value "missing"} "Missing"]]])])]
-    [:form#part-open (merge workspace-views/transition-attrs
-                            {:hidden true :method "get" :action "/workspace/browse" :hx-get "/workspace/browse" :hx-target "#detail" :hx-swap "innerHTML settle:0ms"
-                             :hx-include "#bulk-orient-filters, #part-table-position, [data-part-page]"})
-     [:input#part-open-id {:type "hidden" :name "part-id"}]]
-    (when-not import-session
-      [:form#variant-open (merge workspace-views/transition-attrs
-                                 {:hidden true :method "get" :action "/workspace/browse" :hx-get "/workspace/browse" :hx-target "#detail"
-                                  :hx-include "#bulk-orient-filters, #part-table-position, [data-part-page]"})
-       [:input#variant-open-id {:type "hidden" :name "variant-file"}]])
-    (group-controls selection (some? import-session))
-    [:div#bulk-orient-results.bulk-orient__results
-     [:input {:type "hidden" :name "page" :value "1" :data-part-page true}]
-     [:input {:id "part-table-position" :type "hidden" :name "table-scroll" :value "0"}]
-     [:p.muted "Loading parts…"]]
-    (selection-form selection (some? import-session) root)
-    (vocabulary/choices (:values facets))]))
+    (workspace-views/filter-sidebar
+     "part-filter-sidebar"
+     [:form#bulk-orient-filters.filters
+      {:data-workspace-filters "true" :hx-get "/orient/parts" :hx-target "#bulk-orient-results" :hx-swap "outerHTML"
+       :hx-sync "this:replace"
+       :hx-vals "js:{page: event.type==='load' ? (document.querySelector('[data-part-page]')?.value || '1') : '1', 'table-scroll': event.type==='load' ? (document.querySelector('#part-table-position')?.value || '0') : '0'}"
+       :hx-trigger "load, change[target.tagName === 'SELECT'], search, keyup changed delay:300ms"}
+      [:label.filters__field "Bundle" [:select {:name "bundle"} (http-views/options "All bundles" (:bundles facets))]]
+      [:label.filters__field "Class" [:select {:name "class"} (http-views/options "All classes" (:classes facets))]]
+      [:label.filters__field "Role" [:select {:name "role"} (http-views/options "All roles" (map name (:roles facets)))]]
+      [:label.filters__field "Variant"
+       [:select (merge
+                 (help/attrs (if import-session "Show rows containing the selected variant, including grouped files."
+                                 "Browsable parts excludes supported-only rows. All variants includes them."))
+                 {:name "variant"})
+        [:option {:value ""} (if import-session "All variants" "Browsable parts")]
+        (when-not import-session [:option {:value "all"} "All variants"])
+        [:option {:value "unsupported"} "Unsupported"]
+        [:option {:value "supported"} "Supported"]
+        [:option {:value "unsupported-pitted"} "Unsupported (pitted / recessed)"]]]
+      [:label.filters__field "Orientation" [:select {:name "orientation"}
+                                            [:option {:value "all"} "Any orientation"]
+                                            [:option {:value "unset"} "Orientation unset"]
+                                            [:option {:value "saved"} "Orientation saved"]]]
+      [:label.filters__field "Name" [:input {:type "search" :name "q" :placeholder "Search names"}]]
+      [:button {:type "button" :data-filter-clear true
+                :hx-on:click "var f=this.form;f.querySelectorAll('select').forEach(el=>el.selectedIndex=0);f.querySelectorAll('input[type=search]').forEach(el=>el.value='');f.dispatchEvent(new Event('search',{bubbles:true}));"} "Clear filters"]
+      (when-not import-session
+        [:fieldset.filters__variants
+         [:legend "Variant availability"]
+         (for [[field variant label] parts/variant-filters]
+           [:label.filters__field label
+            [:select {:name field :title (when (= variant :unsupported-pitted) "Unsupported (pitted / recessed)")}
+             [:option {:value ""} "Any"]
+             [:option {:value "available"} "Available"]
+             [:option {:value "missing"} "Missing"]]])])]
+     [[:form#part-open (merge workspace-views/transition-attrs
+                              {:hidden true :method "get" :action "/workspace/browse" :hx-get "/workspace/browse" :hx-target "#detail" :hx-swap "innerHTML settle:0ms"
+                               :hx-include "#bulk-orient-filters, #part-table-position, [data-part-page]"})
+       [:input#part-open-id {:type "hidden" :name "part-id"}]]
+      (when-not import-session
+        [:form#variant-open (merge workspace-views/transition-attrs
+                                   {:hidden true :method "get" :action "/workspace/browse" :hx-get "/workspace/browse" :hx-target "#detail"
+                                    :hx-include "#bulk-orient-filters, #part-table-position, [data-part-page]"})
+         [:input#variant-open-id {:type "hidden" :name "variant-file"}]])
+      (group-controls selection (some? import-session))
+      [:div#bulk-orient-results.bulk-orient__results
+       [:input {:type "hidden" :name "page" :value "1" :data-part-page true}]
+       [:input {:id "part-table-position" :type "hidden" :name "table-scroll" :value "0"}]
+       [:p.muted "Loading parts…"]]
+      (selection-form selection (some? import-session) root)
+      (vocabulary/choices (:values facets))])]))
 
 (defn filter-updates [facets filters]
   (for [[field key label] [["bundle" :bundles "All bundles"] ["class" :classes "All classes"] ["role" :roles "All roles"]]

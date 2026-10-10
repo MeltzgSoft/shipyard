@@ -14,7 +14,7 @@
   (:import [com.microsoft.playwright Browser Browser$NewPageOptions BrowserType$LaunchOptions
             Dialog Locator$ScreenshotOptions Page Page$WaitForSelectorOptions
             Playwright]
-           [com.microsoft.playwright.options BoundingBox SelectOption]
+           [com.microsoft.playwright.options BoundingBox SelectOption WaitForSelectorState]
            [java.io File]
            [java.util.function Consumer]
            [org.eclipse.jetty.server Server ServerConnector]))
@@ -211,13 +211,27 @@
 
 (defn go! [{:keys [^Page page]} url] (.navigate page url))
 
+(defn- reveal-filter-sidebar! [^Page page sel]
+  ;; Hover is the user action that makes sidebar filters available to the browser.
+  (let [locator (.locator page sel)]
+    (when (pos? (.count locator))
+      (when-let [id (.evaluate (.first locator) "el => { const s = el.closest('[data-filter-sidebar]'); return s && !s.open ? s.id : null; }")]
+        (.hover page (str "#" id " > summary"))))))
+
 (defn wait-visible!
   ([driver sel] (wait-visible! driver sel 20000))
   ([{:keys [^Page page]} sel timeout-ms]
+   (when (re-find #"bulk-orient-filters|ship-filters|assembly__filters|^#filters" sel)
+     (.waitForSelector page sel (doto (Page$WaitForSelectorOptions.)
+                                  (.setState WaitForSelectorState/ATTACHED)
+                                  (.setTimeout (double timeout-ms))))
+     (reveal-filter-sidebar! page sel))
    (.waitForSelector page sel (doto (Page$WaitForSelectorOptions.)
                                 (.setTimeout (double timeout-ms))))))
 
-(defn click! [{:keys [^Page page]} sel] (.click page sel))
+(defn click! [{:keys [^Page page]} sel]
+  (reveal-filter-sidebar! page sel)
+  (.click page sel))
 
 (defn- choose-part! [{:keys [^Page page] :as driver} part-name]
   (when (pos? (.count (.locator page "[data-part-back]")))
@@ -260,11 +274,13 @@
   without keystrokes never fires the search - the box shows the text and the
   list never narrows."
   [{:keys [^Page page]} sel value]
+  (reveal-filter-sidebar! page sel)
   (.pressSequentially (.locator page sel) value))
 
 (defn fill-and-blur!
   "Set a value in a regular form control and commit its change event."
   [{:keys [^Page page]} sel value]
+  (reveal-filter-sidebar! page sel)
   (let [input (.locator page sel)]
     (.fill input value)
     (.blur input)))
@@ -288,6 +304,7 @@
   \"All bundles\" is the empty-value option the filter form emits, so selecting
   by value cannot distinguish it from an unset select."
   [{:keys [^Page page]} sel label]
+  (reveal-filter-sidebar! page sel)
   (.selectOption page sel (doto (SelectOption.) (.setLabel label))))
 
 (defn count-els [{:keys [^Page page]} sel] (.count (.locator page sel)))

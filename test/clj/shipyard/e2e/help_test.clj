@@ -44,6 +44,8 @@
       ;; pointer checks after the table is loaded and the control is enabled.
       (s/wait-visible! driver "#bulk-orient-results .bulk-orient__row")
       (s/wait-visible! driver (str selector ":enabled"))
+      ;; Keep filters visible while testing tooltip focus after pointer exit.
+      (s/click! driver "#part-filter-sidebar [data-filter-pin]")
       (.hover page selector)
       (s/wait-visible! driver "[role=tooltip]")
       (.hover page ".masthead h1")
@@ -82,6 +84,7 @@
                      :loadout/hull (:hull lf/draft) :loadout/slots lf/assignments} :create)
       (s/go! driver (s/base-url sys))
       (s/wait-visible! driver "#bulk-orient-filters select[name=variant]")
+      (s/click! driver "#part-filter-sidebar [data-filter-pin]")
       (.hover page "#bulk-orient-filters select[name=variant]")
       (s/wait-visible! driver "[role=tooltip]")
       (is (str/includes? (s/text driver "[role=tooltip]") "supported-only"))
