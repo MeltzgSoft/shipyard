@@ -759,7 +759,7 @@ body {
 .bulk-orient__head { padding: 12px; border-bottom: 1px solid var(--line); }
 .bulk-orient__head h2 { margin: 0; font-size: 14px; }
 .bulk-orient__head p { margin: 3px 0 0; color: var(--ink-dim); font-size: 12px; }
-.bulk-orient__results { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.bulk-orient__results { flex: 1 1 auto; min-height: 0; overflow: auto; overflow-anchor: none; }
 .bulk-orient__table { min-width: 620px; }
 .bulk-orient__columns, .bulk-orient__row, .part-drawer__summary {
   display: grid;

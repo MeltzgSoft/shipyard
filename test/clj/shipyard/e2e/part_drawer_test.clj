@@ -31,6 +31,25 @@
 
 (def drawer-pose (orientation/from-euler-degrees 90 -15 5.5))
 
+(deftest double-click-opens-the-part-after-focusing-and-closing-its-drawer
+  (let [started (fixture/start! true) driver (s/make-driver)
+        row (str "[data-part-row='" (:prow fixture/ids) "']")]
+    (try
+      (s/go! driver (s/base-url (:system started)))
+      (s/wait-visible! driver row)
+      (s/click! driver (str row " > summary"))
+      (s/wait-visible! driver (str row " .part-row-edit"))
+      (s/scroll-into-view! driver (str row " .part-thumbnail--large"))
+      (s/wait-visible! driver (str row " .part-thumbnail--large img"))
+      (.focus ^Page (:page driver) (str row " [data-row-orientation-reset]"))
+      (s/click! driver (str row " > summary"))
+      (s/open-part! driver "prow")
+      (s/await-part driver (:prow fixture/ids))
+      (is (= [(:prow fixture/ids)] (:parts (s/stats driver))))
+      (s/click! driver "[data-part-back]")
+      (s/wait-visible! driver row)
+      (finally (s/quit! driver) (fixture/stop! started)))))
+
 (defn- pose-close? [a b]
   (and (= 4 (count a) (count b)) (every? #(< (Math/abs (double %)) 1e-6) (map - a b))))
 
