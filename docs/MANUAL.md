@@ -74,8 +74,9 @@ using the folder it already had.
 In **Settings → Appearance**, choose **Light**, **Dark** or **Auto**, then press
 **Save appearance**. Dark is the initial theme. Auto follows your system theme,
 including changes while Shipyard is open. Your choice is remembered across restarts
-and applies to every workspace and library. Changing appearance preserves models,
-authored material colors and imports in progress.
+and applies to every workspace and library. The viewport background stays dark in
+every theme. Changing appearance preserves models, authored material colors and
+imports in progress.
 
 The Swing selectors open on the desktop of the computer running Shipyard. Use the
 browser on that same computer. **Cancel** leaves the previous selection unchanged;

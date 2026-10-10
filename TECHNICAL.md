@@ -2482,7 +2482,8 @@ the other values. `POST /settings/theme` validates and saves it. The shell rende
 the hidden `#app-appearance` marker; settings fragments update it out of band. CSS
 resolves explicit Light or Auto's `prefers-color-scheme` media query without requiring
 the viewport bundle. The shared renderer reads `--viewport-bg` after HTMX swaps and
-system-theme changes and updates every existing workspace scene's background. Lights,
+system-theme changes and updates every existing workspace scene's background. This
+token and the canvas CSS background remain dark in every appearance mode. Lights,
 materials and model state remain unchanged. This app-wide preference is separate from
 workspace-owned model display settings and may change during import review.
 Derived part and ship PNG previews have transparent backgrounds so their CSS surfaces

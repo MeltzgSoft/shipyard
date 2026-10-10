@@ -2,7 +2,7 @@
    and a detail panel, and a framework would be more machinery than layout.
 
    Global palettes theme every control and surface. Material and axis colors
-   retain their meaning; viewport appearance changes backgrounds only. */
+   retain their meaning; viewport backgrounds stay dark in every theme. */
 
 :root {
   --bg:        #14171c;
@@ -36,6 +36,7 @@
   --row-line: rgba(47, 55, 66, .5);
   --card-line: rgba(111, 177, 216, .55);
   --viewport-bg: #14171c;
+  --thumbnail-bg: #14171c;
   --swatch-line: rgba(255, 255, 255, .25);
   --shadow: rgba(0, 0, 0, .6);
   --menu-shadow: #0008;
@@ -68,12 +69,10 @@
   --light-toggle-bg: rgba(237, 241, 245, .95);
   --light-overlay-line: #c4ced9;
   --light-inspector-line: #b6c3d1;
-  --light-stage-inner: #e5ebf2;
-  --light-stage-outer: #cbd5e1;
   --light-row-alt: rgba(237, 241, 245, .6);
   --light-row-line: #d6dee7;
   --light-card-line: #7ea9c2;
-  --light-viewport-bg: #dce3eb;
+  --light-thumbnail-bg: #dce3eb;
   --light-swatch-line: rgba(29, 39, 51, .3);
   --light-shadow: rgba(20, 35, 55, .18);
   --light-menu-shadow: rgba(20, 35, 55, .16);
@@ -108,12 +107,10 @@
   --toggle-bg: var(--light-toggle-bg);
   --overlay-line: var(--light-overlay-line);
   --inspector-line: var(--light-inspector-line);
-  --stage-inner: var(--light-stage-inner);
-  --stage-outer: var(--light-stage-outer);
   --row-alt: var(--light-row-alt);
   --row-line: var(--light-row-line);
   --card-line: var(--light-card-line);
-  --viewport-bg: var(--light-viewport-bg);
+  --thumbnail-bg: var(--light-thumbnail-bg);
   --swatch-line: var(--light-swatch-line);
   --shadow: var(--light-shadow);
   --menu-shadow: var(--light-menu-shadow);
@@ -148,12 +145,10 @@
     --toggle-bg: var(--light-toggle-bg);
     --overlay-line: var(--light-overlay-line);
     --inspector-line: var(--light-inspector-line);
-    --stage-inner: var(--light-stage-inner);
-    --stage-outer: var(--light-stage-outer);
     --row-alt: var(--light-row-alt);
     --row-line: var(--light-row-line);
     --card-line: var(--light-card-line);
-    --viewport-bg: var(--light-viewport-bg);
+    --thumbnail-bg: var(--light-thumbnail-bg);
     --swatch-line: var(--light-swatch-line);
     --shadow: var(--light-shadow);
     --menu-shadow: var(--light-menu-shadow);
@@ -263,7 +258,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
 
 /* The canvas is an island: hx-preserve keeps the WebGL context alive across
    every swap on the page (SPEC §6.1). Nothing here may hide or replace it. */
-.stage__canvas { width: 100%; height: 100%; display: block; min-height: 0; }
+.stage__canvas { width: 100%; height: 100%; display: block; min-height: 0; background: var(--viewport-bg); }
 .stage__mount-colors-toggle {
   display: none;
   position: absolute;
@@ -705,7 +700,6 @@ body {
   overflow: hidden;
 }
 .stage:has(.assembly), .stage:has(.mount-wizard__form) { grid-template-rows: 1fr; }
-.stage__canvas { background: transparent; }
 .stage__axis-legend {
   top: auto;
   right: auto;
@@ -1017,7 +1011,7 @@ body:has(#workspace-context[data-workspace="browse"]) #library[data-part-view="p
 .bulk-orient__variant[data-available=false] { color: var(--ink-dim); }
 .bulk-orient__row:has(input:checked) { background: color-mix(in srgb, var(--accent) 12%, var(--panel)); }
 .bulk-orient__bundle { color: var(--ink-dim); overflow-wrap: anywhere; }
-.part-thumbnail { display: flex; width: 96px; height: 66px; align-items: center; justify-content: center; font-size: 10px; color: var(--ink-faint); background: var(--viewport-bg); border-radius: 4px; overflow: hidden; }
+.part-thumbnail { display: flex; width: 96px; height: 66px; align-items: center; justify-content: center; font-size: 10px; color: var(--ink-faint); background: var(--thumbnail-bg); border-radius: 4px; overflow: hidden; }
 .part-thumbnail img { width: 96px; height: 66px; object-fit: contain; }
 .part-column-edit { align-items: end; border-bottom: 1px solid var(--line); }
 .part-column-edit > *, .part-column-edit .classification-picker { min-width: 0; }
@@ -1081,7 +1075,7 @@ body:has(#workspace-context[data-workspace="ships"]) #library[data-ship-view="ed
 .ship-inspector .assembly__rail-slots { height: auto; overflow: visible; }
 .ship-table__new { display: inline-block; margin: 0 8px 0 0; }
 
-.ship-thumbnail { width: 96px; height: 66px; display: grid; place-items: center; overflow: hidden; border-radius: 4px; background: var(--viewport-bg); color: var(--ink-dim); font-size: 10px; }
+.ship-thumbnail { width: 96px; height: 66px; display: grid; place-items: center; overflow: hidden; border-radius: 4px; background: var(--thumbnail-bg); color: var(--ink-dim); font-size: 10px; }
 .ship-thumbnail img { width: 96px; height: 66px; object-fit: contain; }
 
 .table-pages { display: flex; align-items: center; gap: .6rem; padding: .6rem; }
