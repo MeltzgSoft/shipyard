@@ -23,13 +23,19 @@
   (when-not (s/wait-until #(s/js driver "() => {const f=document.querySelector('#region-stroke');return !f || f.elements.mode.value !== 'faces' || f.dataset.surfaceState === 'ready';}"))
     (throw (ex-info "Connected surface preparation was not ready" {}))))
 
+(defn await-region-mirror! [driver]
+  (when-not (s/wait-until #(s/js driver "() => {const f=document.querySelector('#region-stroke');return !f || !f.elements.mirror.checked || f.elements['mirror-offset'].value !== '' || f.dataset.mirrorState === 'ready';}"))
+    (throw (ex-info "Automatic mirror preparation was not ready" {}))))
+
 (defn stroke! [driver x y]
   (await-region-surfaces! driver)
+  (await-region-mirror! driver)
   (let [mouse (.mouse ^Page (:page driver))]
     (.move mouse (double x) (double y)) (.down mouse) (.up mouse)))
 
 (defn right-stroke! [driver x y]
   (await-region-surfaces! driver)
+  (await-region-mirror! driver)
   (let [mouse (.mouse ^Page (:page driver))]
     (.move mouse (double x) (double y))
     (.down mouse (doto (Mouse$DownOptions.) (.setButton MouseButton/RIGHT)))
