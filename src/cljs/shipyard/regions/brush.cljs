@@ -24,8 +24,9 @@
 
 (defn install! [sys apply-material!]
   (transport/install!)
-  (let [{:keys [^js canvas ^js controls active parts mount-colors-enabled]} sys
+  (let [{:keys [^js canvas ^js controls active activation parts mount-colors-enabled]} sys
         stroke (atom nil)
+        projection-locks (atom nil)
         mirror-controls (mirror/install! sys)
         surface-preparation (surfaces/install! sys)
         picking (atom nil)
@@ -43,14 +44,41 @@
             (unlock! [current]
               (doseq [[el disabled] (:locked current) :when (.-isConnected el)] (set! (.-disabled el) disabled))
               (set! (.-enabled controls) @active))
+            (panel-key [^js panel]
+              (when-let [form (.querySelector panel "#region-stroke")]
+                (mapv #(.-value (field form %)) ["part-id" "mesh-key" "revision"])))
+            (current-panel? [panel]
+              (let [[part-id mesh-key] (panel-key panel)
+                    ^js object (get @parts part-id)
+                    selected @(:current sys)]
+                (and @active (identical? panel (.getElementById js/document "part-regions"))
+                     (seq part-id) (seq mesh-key)
+                     (or (nil? selected) (and (= part-id (:part-id selected)) (= mesh-key (:mesh-key selected))))
+                     (or (nil? object) (= mesh-key (.. object -userData -meshKey))))))
+            (release-projection! []
+              (when-let [{:keys [panel locked]} @projection-locks]
+                (doseq [[el disabled] locked :when (.-isConnected el)] (set! (.-disabled el) disabled))
+                (.removeAttribute panel "aria-busy")
+                (reset! projection-locks nil)
+                ((:restore! mirror-controls))))
+            (finish-save! [current]
+              (unlock! current)
+              (reset! stroke nil)
+              (status! "Regions saved.")
+              (when-let [form (form!)] (set! (.-value (field form "radius")) (:radius current)))
+              (select-layer! (:selected-layer current))
+              (select-mode! (:mode current)))
             (cancel! [message]
               (when-let [current @stroke]
-                (paint! (:object current) (:before current))
+                (when-not (:awaiting-panel current) (paint! (:object current) (:before current)))
                 (unlock! current)
                 (select-layer! (:selected-layer current))
                 (reset! stroke nil)
                 (set! (.. cursor -style -display) "none")
-                (status! message)))
+                (if @projection-locks
+                  (do (swap! projection-locks assoc :completion-message message)
+                      (status! "Preparing saved regions…"))
+                  (status! message))))
             (sample! [^js e]
               (when-let [{:keys [buffer radius ^js object before layer previous groups mirror-buffer] :as current} @stroke]
                 (when-not (:saving? current)
@@ -75,6 +103,54 @@
                     (status! (str (count keys) " faces · release to save"))))))]
       (set! (.-className cursor) "paint-brush-cursor")
       (.appendChild (.-body js/document) cursor)
+      (.addEventListener js/document "shipyard:region-projection-pending"
+                         (fn [^js event]
+                           (let [panel (.-target event)]
+                             (when (and (current-panel? panel) (not (identical? panel (:panel @projection-locks))))
+                               (release-projection!)
+                               (let [locked (mapv (fn [el] [el (.-disabled el)])
+                                                  (array-seq (.querySelectorAll panel "button, input:not([type=hidden]), select")))]
+                                 (reset! projection-locks {:panel panel :key (panel-key panel) :activation @activation :locked locked})
+                                 (.setAttribute panel "aria-busy" "true")
+                                 (doseq [[el _] locked] (set! (.-disabled el) true))
+                                 (status! "Preparing saved regions…"))))))
+      (.addEventListener js/document "shipyard:region-projection"
+                         (fn [^js event]
+                           (let [panel (.-target event)
+                                 pending @projection-locks
+                                 current @stroke
+                                 valid? (and (identical? panel (:panel pending)) (current-panel? panel)
+                                             (= (:activation pending) @activation) (= (:key pending) (panel-key panel)))]
+                             (when (identical? panel (:panel pending))
+                               (release-projection!)
+                               (when valid?
+                                 (if (and current (identical? panel (:awaiting-panel current))
+                                          (= (:saved-key current) (panel-key panel)))
+                                   (finish-save! current)
+                                   (when-not current (status! (or (:completion-message pending) "Saved regions ready.")))))
+                               (when (and (not valid?) current (identical? panel (:awaiting-panel current)))
+                                 (unlock! current)
+                                 (reset! stroke nil))))))
+      (.addEventListener js/document "htmx:afterSwap"
+                         (fn [_]
+                           (let [current @stroke
+                                 panel (.getElementById js/document "part-regions")]
+                             (when (and (:awaiting-panel current) panel (current-panel? panel)
+                                        (= (:saved-key current) (panel-key panel)))
+                               (swap! stroke assoc :awaiting-panel panel)))
+                           (when-let [panel (:panel @projection-locks)]
+                             (when-not (identical? panel (.getElementById js/document "part-regions"))
+                               (release-projection!)))))
+      (.addEventListener js/document "shipyard:workspace"
+                         (fn [_]
+                           (when-let [panel (.getElementById js/document "part-regions")]
+                             (when (current-panel? panel)
+                               (if-let [pending @projection-locks]
+                                 (when (and (identical? panel (:panel pending)) (= (:key pending) (panel-key panel)))
+                                   (swap! projection-locks assoc :activation @activation))
+                                 (when (and (= "true" (.getAttribute panel "data-region-projection-ready"))
+                                            (.startsWith (or (some-> (.getElementById js/document "region-status") .-textContent) "") "Preparing saved regions"))
+                                   (status! "Saved regions ready.")))))))
       (.addEventListener canvas "pointerdown"
                          (fn [^js e]
                            (when (and (available?) (#{0 2} (.-button e)) (not (.-altKey e)))
@@ -119,7 +195,7 @@
       (.addEventListener canvas "wheel" (fn [^js e] (when @stroke (.preventDefault e) (.stopImmediatePropagation e))) #js {:capture true :passive false})
       (.addEventListener canvas "pointerup"
                          (fn [^js e]
-                           (when-let [current @stroke]
+                           (when-let [current (when-not (:saving? @stroke) @stroke)]
                              (.preventDefault e) (.stopImmediatePropagation e)
                              (if (empty? (:keys current)) (cancel! "No visible faces selected.")
                                  (let [form (:form current) ^js object (:object current)]
@@ -153,20 +229,32 @@
                              (let [message (:message (reader/read-string (.. e -detail -value)))]
                                (cancel! message)
                                (status! message)))))
+      (doseq [event-name ["htmx:responseError" "htmx:sendError" "htmx:timeout"]]
+        (.addEventListener js/document event-name
+                           (fn [^js event]
+                             (let [panel (:panel @projection-locks)
+                                   target (.. event -detail -elt)]
+                               (when (and panel target (.contains panel target))
+                                 (release-projection!)
+                                 (cancel! "Could not restore saved regions. Reopen this part to retry.")
+                                 (when-let [form (form!)] (set! (.-disabled (field form "radius")) true))
+                                 (status! "Could not restore saved regions. Reopen this part to retry."))))))
       (.addEventListener js/document "htmx:afterRequest"
                          (fn [^js e]
                            (when-let [current @stroke]
                              (when (identical? (:form current) (.. e -detail -requestConfig -elt))
                                (if (and (.. e -detail -successful)
                                         (not (.querySelector js/document "#part-regions [role=alert]")))
-                                 (do (unlock! current) (reset! stroke nil) (status! "Regions saved.")
-                                     (when-let [form (form!)]
-                                       (set! (.-value (field form "radius")) (:radius current)))
-                                     (select-layer! (:selected-layer current))
-                                     (select-mode! (:mode current)))
+                                 (let [panel (.getElementById js/document "part-regions")
+                                       ^js object (:object current)
+                                       saved (dom/regions! (.. object -userData -partId) (.. object -userData -meshKey))]
+                                   (if saved (finish-save! current)
+                                       (do (swap! stroke assoc :awaiting-panel panel :saved-key (panel-key panel))
+                                           (status! "Preparing saved regions…"))))
                                  (cancel! "Region save failed. Reopen this part or retry the stroke."))))))
       (.addEventListener js/document "htmx:beforeRequest"
                          (fn [^js e]
                            (set! (.. cursor -style -display) "none")
-                           (when (and @stroke (not= (:form @stroke) (.. e -detail -elt)))
+                           (when (and @stroke (not= (:form @stroke) (.. e -detail -elt))
+                                      (not (identical? (:awaiting-panel @stroke) (.. e -detail -elt))))
                              (cancel! "Region stroke canceled by navigation.")))))))

@@ -22,7 +22,7 @@
             [shipyard.e2e.named-ship-test :as named]
             [shipyard.scheme.db :as schemes]
             [shipyard.scheme.material :as material])
-  (:import [com.microsoft.playwright Page Dialog Request]
+  (:import [com.microsoft.playwright Page Dialog Request Route]
            [java.util.function Consumer]))
 
 (defn region-point [driver ordinal]
@@ -393,8 +393,16 @@
         sys (:system started) driver (s/make-driver)
         cat (:shipyard.catalog/db sys)
         regions #(catalog/part-regions (catalog/part (catalog/snapshot! cat) id))
-        requests (atom [])]
+        requests (atom [])
+        delay-projection? (atom true)
+        held-projection (atom nil)]
     (try
+      (.route ^Page (:page driver) "**/parts/regions/projection**"
+              (reify Consumer
+                (accept [_ route]
+                  (if (compare-and-set! delay-projection? true false)
+                    (reset! held-projection route)
+                    (.resume ^Route route)))))
       (.onRequest ^Page (:page driver)
                   (reify Consumer
                     (accept [_ value]
@@ -415,6 +423,16 @@
       (let [center (s/js driver "() => {const c=document.querySelector('canvas').getBoundingClientRect();return [c.x+c.width/2,c.y+c.height/2];}")]
         (apply brush/stroke! driver center)
         (is (s/wait-until #(> (count (:faces (regions))) 100)))
+        (is (s/wait-until #(do (s/js driver "() => true") (some? @held-projection)))
+            "A large save restores a compact authoritative snapshot")
+        (is (= "Preparing saved regions…" (s/text driver "#region-status")))
+        (is (s/js driver "() => document.querySelector('#region-stroke input[name=radius]').disabled")
+            "The brush stays unavailable until its saved baseline is installed")
+        (apply brush/stroke! driver center)
+        (is (= 1 (:revision (regions))))
+        (is (= 1 (count @requests)))
+        (.resume ^Route @held-projection)
+        (reset! held-projection nil)
         (when-not (s/wait-until #(= "Regions saved." (s/text driver "#region-status")))
           (throw (ex-info "Dense region save response failed" {:status (s/text driver "#region-status")})))
         (is (> (count (pr-str (regions))) 8192) "Region payload exceeds Jetty's response header budget")
@@ -465,10 +483,21 @@
         (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
         (is (= 5 (:revision (regions))))
         (is (= "indices" (:encoding (transport/decode (:body (last @requests))))))
+        (reset! delay-projection? true)
         (s/go! driver (s/base-url sys))
+        (is (s/wait-until #(do (s/js driver "() => true") (some? @held-projection))))
+        (is (s/js driver "() => document.querySelector('#region-stroke input[name=radius]').disabled"))
+        (is (s/js driver "() => [...document.querySelectorAll('#workspace-navigation button')].every(button => !button.disabled)")
+            "Restoring a saved snapshot leaves workspace navigation available")
+        (workspace/switch! driver "assembly")
+        (.resume ^Route @held-projection)
+        (reset! held-projection nil)
+        (workspace/switch! driver "browse")
         (s/await-part driver id)
         (is (s/wait-until #(= {:faces (count (:faces (regions))) :vertex-colors true} (:region-preview (s/stats driver))))))
-      (finally (s/quit! driver) (fixture/stop! started)))))
+      (finally
+        (when-let [route @held-projection] (.resume ^Route route))
+        (s/quit! driver) (fixture/stop! started)))))
 
 (deftest whole-part-layer-and-display-toggle
   (s/assert-bundle!)

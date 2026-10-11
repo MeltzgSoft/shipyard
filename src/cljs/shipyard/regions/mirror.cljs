@@ -39,8 +39,9 @@
                        (set! (.-checked (field form "mirror")) enabled)
                        (set! (.-value (field form "mirror-axis")) (name axis))
                        (set! (.-value (field form "mirror-offset")) offset)
-                       (set! (.-disabled (field form "mirror-axis")) (not enabled))
-                       (set! (.-disabled (field form "mirror-offset")) (not enabled)))))]
+                       (let [pending? (= "true" (some-> (.getElementById js/document "part-regions") (.getAttribute "aria-busy")))]
+                         (set! (.-disabled (field form "mirror-axis")) (or pending? (not enabled)))
+                         (set! (.-disabled (field form "mirror-offset")) (or pending? (not enabled)))))))]
     (letfn [(sync! []
               (when-let [form (form!)]
                 (ensure! form)

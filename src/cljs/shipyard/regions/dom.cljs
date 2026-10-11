@@ -7,6 +7,7 @@
 (defn- recover! [^js panel part-id]
   (when-not (.-shipyardRecoveryPending panel)
     (set! (.-shipyardRecoveryPending panel) true)
+    (.dispatchEvent panel (js/CustomEvent. "shipyard:region-projection-pending" #js {:bubbles true}))
     (when-let [status (.querySelector panel "#region-status")]
       (set! (.-textContent status) "Restoring saved regions…"))
     ;; Finish the triggering save first so its brush completion cannot cancel recovery.
@@ -28,6 +29,7 @@
 (defn- load-projection! [^js panel ^js snapshot metadata part-id mesh-key]
   (when-not (.-shipyardProjectionPending panel)
     (set! (.-shipyardProjectionPending panel) true)
+    (.dispatchEvent panel (js/CustomEvent. "shipyard:region-projection-pending" #js {:bubbles true}))
     (preparation/load!
      (.getAttribute panel "data-region-projection")
      {:current? #(and (identical? panel (.getElementById js/document "part-regions"))
@@ -37,6 +39,7 @@
                 (if (and (= mesh-key (:mesh-key value))
                          (= (:revision-token metadata) (:region-revision value)))
                   (let [regions (merge metadata (select-keys value [:triangle-layers :layer-table]) {:faces {}})]
+                    (set! (.-shipyardProjectionPending panel) false)
                     (set! (.-shipyardRegions snapshot) regions)
                     (set! (.-shipyardRegions panel) regions)
                     (.setAttribute panel "data-region-projection-ready" "true")

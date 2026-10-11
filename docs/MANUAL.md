@@ -711,7 +711,11 @@ Open **Regions**, click a colored layer row, and brush visible faces. The select
 row is highlighted and marked with a check. The brush is
 active whenever this tab is visible; no extra toggle is needed. Release saves one complete stroke to the part’s regions in the database. Large
 strokes are sent in the save request body without changing the page URL. Back to table
-and workspace navigation are briefly disabled until each region save response arrives.
+and workspace navigation are briefly disabled until the saved regions are ready for
+the next stroke. Large saves show **Preparing saved regions…** while brush controls
+remain disabled, then **Regions saved.** when painting can continue. Opening or
+restoring saved regions disables only the region controls; workspace navigation
+remains available.
 The brush restores the saved preview if a request is rejected and identifies the rejected
 fields beneath the brush controls. A database save failure also restores the saved
 preview and leaves the brush available; the message directs you to the server log,
