@@ -342,6 +342,14 @@ model appears when it is done - you can keep browsing in the meantime. After tha
 cached and opens instantly. The cache holds derived data only - deleting it costs nothing
 but a little recomputation.
 
+A **Preparing preview…** spinner appears over the viewport while a model, assembly,
+saved appearance or mount preview is being prepared. It remains until the current
+preview is ready, and clears if the request fails or you leave that preview.
+You can still navigate, orbit and use inspector controls. Background thumbnails
+do not show this overlay. Regions, Customize detail painting and mount-face trimming
+keep their own brush preparation and save feedback without covering the viewport.
+The spinner stops rotating when your system requests reduced motion.
+
 Meshes with identical source contents share cached preprocessing, even when they
 belong to different parts. Their previews and saved orientations remain independent.
 

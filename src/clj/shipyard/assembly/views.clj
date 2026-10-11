@@ -164,7 +164,7 @@
            [:p.detail__error "Could not prepare " id ": " message " "
             [:a {:href (str "/assembly?retry=" (urls/encode-id id)) :hx-get (str "/assembly?retry=" (urls/encode-id id)) :hx-target "#detail"} "Retry"]]
            [:p {:role "status"} "Preparing " id "…"])])
-      (when pending? [:div {:hx-get "/assembly?poll=1" :hx-trigger "load delay:400ms" :hx-target "#detail" :hx-swap "innerHTML settle:0ms" :hx-sync "#detail:abort"}])]
+      (when pending? [:div {:data-viewport-pending true :hx-get "/assembly?poll=1" :hx-trigger "load delay:400ms" :hx-target "#detail" :hx-swap "innerHTML settle:0ms" :hx-sync "#detail:abort"}])]
      (assembly-rail {:database database :hulls hulls :selected-bundle selected-bundle :selected-class selected-class
                      :revision revision :hull hull :selected-hull selected-hull :root root :slots slots :available available
                      :draft draft :error error :saved? saved? :drawers drawers})]))

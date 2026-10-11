@@ -12,7 +12,7 @@
    [:header.detail__head
     [:h2.detail__name (:path entry)]]
    (case state
-     :preparing [:div.detail__poll {:hx-get "/workspace/browse?resume=1" :hx-trigger "load delay:400ms"
+     :preparing [:div.detail__poll {:data-viewport-pending true :hx-get "/workspace/browse?resume=1" :hx-trigger "load delay:400ms"
                                     :hx-target "#detail" :hx-sync "this:drop" :hx-disabled-elt "unset"}
                  [:p.detail__status "Preparing preview…"]]
      :failed [:p.detail__error message]

@@ -37,6 +37,7 @@
             [shipyard.paint.glow :as glow]
             [shipyard.paint.projection :as projection]
             [shipyard.preparation :as preparation]
+            [shipyard.viewport-loading :as loading]
             [shipyard.paint.brush :as brush]
             [shipyard.paint.picking :as picking]
             [shipyard.scheme.material :as paint-material]
@@ -868,7 +869,7 @@
                                     (and mount mirror) (assoc :mirror {:plane (:plane-keyword mirror) :offset (:offset mirror)}))]
                          (reset! cut-controller
                                  (preparation/load! "/mounts/preview"
-                                                    {:method "POST" :body body :current? current?
+                                                    {:method "POST" :body body :current? current? :viewport? true
                                                      :decode! #(-> (.arrayBuffer %) (.then preview-wire/decode))
                                                      :ready! (fn [projection]
                                                                (doseq [group [:cuts :mirror-cuts :border]]
@@ -886,7 +887,7 @@
           current? #(and @active (= generation @activation) (= source (:source @interfaces))
                          (identical? object (:object @interfaces)) (= mesh-key (:mesh-key @current)))]
       (preparation/load! (str "/mounts/previews?part-id=" (js/encodeURIComponent part-id) "&mesh-key=" mesh-key)
-                         {:current? current?
+                         {:current? current? :viewport? true
                           :decode! #(-> (.arrayBuffer %) (.then preview-wire/decode))
                           :ready! (fn [projection]
                                     (when-let [line (cut-render/object! (:cuts projection))]
@@ -973,7 +974,10 @@
                                       (trigger-header! trigger)
                                       (sync-viewport-events! target))))))))
             (.catch (fn [e]
-                      (js/console.error "shipyard: facet selection failed" e))))))))
+                      (js/console.error "shipyard: facet selection failed" e)))
+            (loading/track! #(and @active (= generation @activation)
+                                  (= request @facet-request) (= selection @authoring)
+                                  (.-isConnected target))))))))
 
 (defn- input-value [^js form selector]
   (some-> (.querySelector form selector) .-value))
@@ -1236,7 +1240,8 @@
         (.catch (fn [e]
                   (when (= generation @(:browse-generation sys))
                     (js/console.error "shipyard: could not load" url e)
-                    (swap! (:status sys) assoc :state :failed :message (str e))))))))
+                    (swap! (:status sys) assoc :state :failed :message (str e)))))
+        (loading/track! #(and @(:active sys) (= generation @(:browse-generation sys)))))))
 
 (defn- frame-assembly! [{:keys [parts] :as sys}]
   (when (seq @parts)
@@ -1246,7 +1251,7 @@
         (frame! sys [(.-x minimum) (.-y minimum) (.-z minimum)]
                 [(.-x maximum) (.-y maximum) (.-z maximum)])))))
 
-(defn- load-emission! [{:keys [assembly parts]} slot ^js object payload]
+(defn- load-emission! [{:keys [assembly parts] :as sys} slot ^js object payload]
   (let [resource (get-in payload [:emission :resource])]
     (when (not= resource (.. object -userData -emissionResource))
       (when-let [request (.. object -userData -emissionRequest)] (preparation/cancel! request))
@@ -1256,7 +1261,9 @@
         (set! (.. object -userData -emissionRequest)
               (preparation/load!
                (str "/preparation/" resource)
-               {:current? #(and (identical? object (get @parts slot))
+               {:viewport? true
+                :viewport-current? #(deref (:active sys))
+                :current? #(and (identical? object (get @parts slot))
                                 (= resource (get-in @assembly [:slots slot :payload :emission :resource])))
                 :decode! #(-> (.text %) (.then edn/read-string))
                 :ready! #(set! (.. object -userData -emissionSummaries) %)
@@ -1330,7 +1337,9 @@
                       (.delete appearance-cache resource)
                       (set! (.. object -userData -appearanceResource) nil)
                       (swap! (:status sys) assoc :state :failed
-                             :message (str "Appearance failed. Reopen the ship to restore its saved snapshot. " error)))))))))
+                             :message (str "Appearance failed. Reopen the ship to restore its saved snapshot. " error)))))
+          (loading/track! #(and @(:active sys) (identical? object (get @parts slot))
+                                (= resource (.. object -userData -appearanceResource))))))))
 
 (defn- load-assembly-slot! [{:keys [assembly mount-colors-enabled] :as sys} slot {:keys [token payload]}]
   (-> (paint-topology/fetch! (:part-id payload) (:mesh-key payload))
@@ -1363,7 +1372,8 @@
       (.catch (fn [error]
                 (when (assembly-scene/current? @assembly slot token)
                   (swap! (:status sys) assoc :state :failed
-                         :message (str "Assembly mesh failed. Reopen Assembly to retry. " error)))))))
+                         :message (str "Assembly mesh failed. Reopen Assembly to retry. " error)))))
+      (loading/track! #(and @(:active sys) (assembly-scene/current? @assembly slot token)))))
 
 (defn- apply-assembly! [{:keys [assembly parts ^js scene] :as sys} event]
   (let [before @assembly
@@ -1488,7 +1498,9 @@
                     (when (and @active (= generation @activation) (= token (:token (get @bulk part-id))))
                       (swap! bulk assoc part-id {:state :failed :token token})
                       (when-let [card (.querySelector js/document (str "[data-bulk-part=\"" (js/CSS.escape part-id) "\"]"))]
-                        (sync-bulk-card! (get @bulk part-id) card)))))))))
+                        (sync-bulk-card! (get @bulk part-id) card)))))
+          (loading/track! #(and @active (= generation @activation)
+                                (= token (:token (get @bulk part-id)))))))))
 
 (defn- retry-bulk-mesh! [{:keys [bulk] :as sys} ^js button]
   (when-let [card (.closest button "[data-bulk-part]")]
@@ -1877,6 +1889,8 @@
 (defn- render-frame!
   [{:keys [^js renderer ^js scene ^js camera ^js controls ^js canvas
            ^js orientation-scene ^js orientation-camera orientation-guide bulk] :as sys}]
+  (loading/sync! canvas (:workspace sys)
+                 (some (fn [^js object] (true? (.. object -userData -paintPreparing))) (vals @(:parts sys))))
   (let [w (max 1 (.-clientWidth canvas))
         h (max 1 (.-clientHeight canvas))]
     (when (= :browse (:workspace sys)) (mirror-guide/update! sys axis-colors))
@@ -2144,6 +2158,7 @@
       app)))
 
 (defn ^:export init []
+  (loading/install!)
   (scheme-picker/install!)
   (vocabulary-dom/install!)
   (help/install!)

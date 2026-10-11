@@ -123,7 +123,8 @@
   a ready or failed fragment arrives without it - no timer to cancel."
   [id]
   [:div.detail__poll
-   {:hx-get     (urls/part-url id)
+   {:data-viewport-pending true
+    :hx-get     (urls/part-url id)
     :hx-trigger "load delay:400ms"
     :hx-target  "#detail"
     :hx-swap    "innerHTML"}])
@@ -579,7 +580,10 @@
           [[:div#library-results.results
             [:p.muted "Loading the library…"]]])])
       [:section.stage
-       [:canvas#viewport.stage__canvas {:hx-preserve "true"}]
+       [:canvas#viewport.stage__canvas {:hx-preserve "true" :aria-busy "false"}]
+       [:div#viewport-loading.stage__loading {:hidden true :role "status" :aria-live "polite" :aria-atomic "true"}
+        [:span.stage__spinner {:aria-hidden "true"}]
+        [:span "Preparing preview…"]]
        (workspace-views/colors-toggle colors (:workspace context))
        [:div.stage__axis-legend {:aria-label "Canonical axes"}
         [:span.stage__axis.stage__axis--x [:i {:aria-hidden "true"}] "+X / Pitch"]

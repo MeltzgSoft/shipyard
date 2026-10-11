@@ -1190,6 +1190,19 @@ Owns: renderer, scene, camera, `OrbitControls`, an IBL environment, a map of par
 `Object3D`, and the `.symesh` decoder. Listens for the `shipyard:*` events on
 `document.body`.
 
+`viewport-loading` projects pending preview work onto one server-rendered overlay
+sharing the preserved canvas's grid area. Inspector HTMX requests, guarded mesh and
+appearance promises, and opt-in preparation lifetimes retain independent completion
+handles. Server-rendered `data-viewport-pending` poll markers keep feedback visible
+between requests; failed self-polls remove their marker. Completion, failure, abort
+and stale consumer guards release work independently, so overlapping operations do
+not clear each other. Pending material uploads keep the overlay until the prepared
+preview is usable. This registry holds transient presentation lifetimes only; it
+does not own workspace/model state or count unrelated thumbnail and list requests.
+Regions, Customize and active mount-face trimming suppress the overlay and retain
+their existing brush feedback. The overlay allows pointer events through to the
+canvas, announces its status and respects reduced motion.
+
 **The map holds several parts; browsing shows one.** `put-part!` is the primitive - it
 replaces one part by id and leaves the rest alone, which assembly needs when a slot
 changes. `show-only!` is the browsing policy on top of it: a new selection replaces the

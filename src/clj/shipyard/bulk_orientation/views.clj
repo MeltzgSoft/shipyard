@@ -398,7 +398,7 @@
      [:div.bulk-grid__cards
       (when preparing?
         [:span.bulk-grid__poll
-         {:hidden true :hx-post "/orient/render" :hx-trigger "load delay:400ms"
+         {:hidden true :data-viewport-pending true :hx-post "/orient/render" :hx-trigger "load delay:400ms"
           :hx-target ".bulk-grid__cards" :hx-swap "outerHTML"
           :hx-select ".bulk-grid__cards" :hx-select-oob "#bulk-grid-controls,#bulk-grid-actions"
           :hx-vals (json/write-str {"part-ids" (pr-str ids) "poll" "1"})}])
