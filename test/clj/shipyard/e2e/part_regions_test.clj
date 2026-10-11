@@ -1036,7 +1036,7 @@
 (deftest explicit-mirror-offset-wins-over-pending-auto-center
   (s/assert-bundle!)
   (let [started (fixture/start! true) sys (:system started) driver (s/make-driver)
-        id (:weapon fixture/ids) gate (promise)
+        id (:weapon fixture/ids) gate (promise) held-mesh (atom nil)
         scope (workers/scope! (:shipyard.jobs/pool sys))]
     (try
       (s/go! driver (s/base-url sys))
@@ -1056,9 +1056,24 @@
       (s/input! driver "#region-stroke input[name=mirror-offset]" "0" "input")
       (apply brush/stroke! driver (region-point driver 0))
       (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
-      (workspace/switch! driver "assembly")
-      (workspace/switch! driver "browse")
-      (s/await-part driver id)
-      (s/click! driver "[data-detail-tab=regions]")
-      (is (s/wait-until #(= [0 0 1] (get-in (s/stats driver) [:region-mirror-guide :normal]))))
-      (finally (deliver gate true) (workers/close! scope) (s/quit! driver) (fixture/stop! started)))))
+      (let [mesh-key (s/js driver "() => document.querySelector('#region-stroke').elements['mesh-key'].value")]
+        (workspace/switch! driver "assembly")
+        ;; The numeric region projection deliberately finishes before geometry.
+        (.route ^Page (:page driver) (str "**/mesh/" mesh-key ".0.symesh")
+                (reify Consumer (accept [_ route] (reset! held-mesh route))))
+        (workspace/switch! driver "browse")
+        (is (s/wait-until #(do (s/js driver "() => true") (some? @held-mesh)))
+            "The same-source mesh is still preparing")
+        (s/click! driver "[data-detail-tab=regions]")
+        (is (s/wait-until #(= "true" (s/js driver "() => document.querySelector('#part-regions').getAttribute('data-region-projection-ready')"))))
+        (is (empty? (:parts (s/stats driver))) "Projection restoration precedes geometry installation")
+        (is (= [true "z" "0"]
+               (s/js driver "() => {const e=document.querySelector('#region-stroke').elements;return [e.mirror.checked,e['mirror-axis'].value,e['mirror-offset'].value];}"))
+            "Pending geometry preserves the saved mirror controls")
+        (.resume ^Route @held-mesh)
+        (reset! held-mesh nil)
+        (s/await-part driver id)
+        (is (s/wait-until #(= [0 0 1] (get-in (s/stats driver) [:region-mirror-guide :normal])))))
+      (finally
+        (when-let [route @held-mesh] (.resume ^Route route))
+        (deliver gate true) (workers/close! scope) (s/quit! driver) (fixture/stop! started)))))

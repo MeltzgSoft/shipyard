@@ -735,8 +735,8 @@ across different triangulation and small shape differences; the two sides need
 not match exactly. Mirrored faces can be hidden from your current view. Rays that
 miss the model leave it unchanged, and Facets mode does not paint through the
 first surface it hits. Faces mode follows connected surfaces independently on each side.
-The settings survive saves and layer edits, and reset when changing part, source
-or orientation. Symmetry currently applies to Regions only.
+The settings survive saves, layer edits and workspace returns to the same part,
+and reset when changing part, source or orientation. Symmetry currently applies to Regions only.
 
 The brush
 starts from visible triangles. **Facets** paints the triangles touched by the brush;

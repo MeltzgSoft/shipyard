@@ -9,6 +9,18 @@
 
 (defn- field [^js form name] (.namedItem (.-elements form) name))
 
+(defn settings-for-source
+  "Keep controls across a pending reload; only authoritative source/pose changes reset them."
+  [settings source current]
+  (let [same-source? (= source (some-> (:key settings) (subvec 0 2)))
+        previous-orientation (when same-source? (nth (:key settings) 2))
+        orientation (when (= source [(:part-id current) (:mesh-key current)]) (:orientation current))
+        key (conj source (or orientation previous-orientation))]
+    (if (or (not same-source?)
+            (and orientation previous-orientation (not= orientation previous-orientation)))
+      {:key key :enabled false :axis :x :offset ""}
+      (assoc settings :key key))))
+
 (defn bounds! [^js object part-orientation]
   (let [prepared (.. object -userData -regionMirrorPrepared)
         [lo hi] (.. object -userData -regionMirrorSourceBounds)]
@@ -29,9 +41,10 @@
         picking (atom nil)
         form! #(.getElementById js/document "region-stroke")
         ensure! (fn [form]
-                  (let [key [(.-value (field form "part-id")) (.-value (field form "mesh-key")) (:orientation @current)]]
-                    (when (not= key (:key @settings))
-                      (reset! settings {:key key :enabled false :axis :x :offset ""}))))
+                  (let [next-settings (settings-for-source @settings
+                                                           [(.-value (field form "part-id")) (.-value (field form "mesh-key"))]
+                                                           @current)]
+                    (when (not= next-settings @settings) (reset! settings next-settings))))
         restore! (fn []
                    (when-let [form (form!)]
                      (ensure! form)
