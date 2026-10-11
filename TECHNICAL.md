@@ -2882,7 +2882,10 @@ client store for class, ship, scheme or navigation ownership.
 ### 15.1 Customize and named-ship tables
 
 Customize contains named-ship creation and management, a named-ships table, and the
-detail brush. Both its table and expanded Ship Browser named-ship rows render native
+detail brush. Both Assembly and Schemes create a named-ship draft from the class editor's
+assembly model cell and the selected scheme; the separate named-ship paint preview is
+never the source of this transfer. Both entry points reject unsaved class changes.
+The transfer performs no durable write; Create ship persists the named vessel. Both its table and expanded Ship Browser named-ship rows render native
 Edit and Delete forms. Edit uses `/ships/open` and the shared class/draft admission
 contract; Delete posts the row's ship UUID with confirmation to `/ships/paint/delete`.
 Deleting another ship preserves the active vessel and its brush history. The server

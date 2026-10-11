@@ -257,12 +257,13 @@
                                  :view (if (= "table" (get params "return")) :table :editor) :inspector-tab "paint")
     (ships! deps {:params (cond-> {"poll" "1"} (:error result) (assoc "error" (:error result)))})))
 
-(defn paint-transfer! [{:keys [assembly preview workspace] :as deps} source {:keys [params]}]
+(defn paint-transfer! [{:keys [assembly workspace] :as deps} source {:keys [params]}]
   (workspace/outgoing! deps params)
-  (let [result (if (and (= source :assembly) (loadouts/unsaved? deps))
+  ;; Assembly and Schemes display the class editor. The separate paint preview
+  ;; may still belong to another vessel, or have no class at all.
+  (let [result (if (loadouts/unsaved? deps)
                  {:error :unsaved-class}
-                 (paint-db/transfer! deps (if (= source :assembly) assembly preview)
-                                     (:scheme (workspace/workspace! workspace :ships))))]
+                 (paint-db/transfer! deps assembly (:scheme (workspace/workspace! workspace :ships))))]
     (if (:error result)
       (append (if (= source :assembly)
                 (assembly-handlers/current! deps {:params {"poll" "1"}})

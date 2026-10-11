@@ -128,3 +128,33 @@
       (is (= 200 (:status (handler (mock/request :post "/ships/schemes/presets/add" {:base "#123456" :name "Old blue"})))))
       (is (= "Old blue" (persisted/persisted! facade #(get (d/pull % [:color-preset/name] [:color-preset/hex "#123456"]) :color-preset/name))))
       (finally (fixture/stop! started)))))
+
+(deftest schemes-transfer-the-class-editor-and-block-unsaved-changes
+  (let [started (fixture/start!) sys (:system started) handler (:handler started)
+        assembly (:state (:shipyard.assembly/db sys)) paint (:state (:shipyard.paint/db sys))
+        ship-db (:shipyard.ship/db sys)]
+    (try
+      (swap! assembly assoc :draft lf/draft :root (str (:root started)))
+      (let [id (lf/save-class! sys)]
+        (handler (mock/request :get "/workspace/ships"))
+        (handler (mock/request :get "/ships/tab/schemes"))
+        (handler (mock/request :post "/ships/schemes/create" {:name "Fleet"}))
+        (let [scheme-id (-> (schemes/snapshot! (:shipyard.scheme/db sys)) :schemes keys first)
+              other (random-uuid)]
+          (classes/put! (:shipyard.loadout/db sys) {:loadout/id other :loadout/name "Other class"
+                                                    :loadout/hull (:hull lf/draft) :loadout/slots {}} :create)
+          (doseq [preview [{} {:class-id other}]]
+            (swap! paint assoc :draft preview)
+            (handler (mock/request :post "/ships/paint" {}))
+            (is (= id (get-in @paint [:draft :class-id])))
+            (is (= scheme-id (get-in @paint [:draft :scheme])))
+            (is (nil? (get-in @paint [:draft :ship-id])))
+            (is (empty? (:ships (ships/snapshot! ship-db)))))
+          (handler (mock/request :get "/ships/tab/schemes"))
+          (let [before (:draft @paint)]
+            (swap! assembly assoc-in [:draft :name] "Unsaved class name")
+            (let [response (handler (mock/request :post "/ships/paint" {}))]
+              (is (str/includes? (:body response) "Save a ship class before creating a named ship"))
+              (is (= before (:draft @paint)))
+              (is (empty? (:ships (ships/snapshot! ship-db))))))))
+      (finally (fixture/stop! started)))))

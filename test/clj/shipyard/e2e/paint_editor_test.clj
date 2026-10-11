@@ -4,6 +4,7 @@
             [shipyard.e2e.support :as s]
             [shipyard.e2e.named-ship-test :as named]
             [shipyard.e2e.detail-brush-test :as brush]
+            [shipyard.e2e.workspace-test :as workspace]
             [shipyard.loadout-fixture :as lf]
             [shipyard.loadout.db :as classes]
             [shipyard.ship.db :as ships]
@@ -122,4 +123,91 @@
         (is (= 1 (s/count-els driver "#customize-ships tbody tr")))
         (s/click! driver "#customize-ships button:text-is('Previous')")
         (is (s/wait-until #(= 50 (s/count-els driver "#customize-ships tbody tr")))))
+      (finally (s/quit! driver) (fixture/stop! started)))))
+
+(deftest customize-from-schemes-uses-the-current-class-and-palette
+  (s/assert-bundle!)
+  (let [started (fixture/start! true) sys (:system started) driver (s/make-driver)
+        class-db (:shipyard.loadout/db sys) ship-db (:shipyard.ship/db sys)
+        scheme-db (:shipyard.scheme/db sys)
+        class {:loadout/id (random-uuid) :loadout/name "Cruiser" :loadout/hull (:hull lf/draft) :loadout/slots {}}
+        palette {:scheme/id (random-uuid) :scheme/name "Blue fleet"
+                 :scheme/layers {"Primary" {:base [0 0 1] :metalness 0.7 :roughness 0.3 :glow 0}}}]
+    (try
+      (classes/put! class-db class :create)
+      (schemes/put! scheme-db palette :create)
+      (s/go! driver (s/base-url sys))
+      (s/open-class! driver "Cruiser")
+      (named/tab! driver "Schemes")
+      (s/select-option! driver "#scheme-select select[name=id]" "Blue fleet")
+      (s/wait-visible! driver "#scheme-material")
+      (named/tab! driver "Customize")
+      (s/wait-visible! driver "#paint-create")
+      (is (= "Customize" (s/text driver ".ship-inspector nav button[aria-current=page]")))
+      (is (= (str (:scheme/id palette)) (s/js driver "() => document.querySelector('#paint-create').elements.scheme.value")))
+      (is (empty? (:ships (ships/snapshot! ship-db))) "Navigation alone creates no ship")
+      (named/create! driver "Palette proof")
+      (is (s/wait-until #(= "0000ff" (:color (s/slot driver [])))))
+      (is (= (:scheme/id palette) (:ship/scheme (first (vals (:ships (ships/snapshot! ship-db)))))))
+      (is (= 0.7 (:metalness (s/slot driver []))))
+      (is (= "0.7" (s/js driver "() => document.querySelector('#paint-brush').elements.metalness.value")))
+      (finally (s/quit! driver) (fixture/stop! started)))))
+
+(deftest scheme-customization-uses-the-visible-class-after-assembly-save
+  (s/assert-bundle!)
+  (let [started (fixture/start! true) sys (:system started) driver (s/make-driver)
+        scheme-db (:shipyard.scheme/db sys) ship-db (:shipyard.ship/db sys)
+        palette {:scheme/id (random-uuid) :scheme/name "Blue fleet"
+                 :scheme/layers {"Primary" {:base [0 0 1] :metalness 0.7 :roughness 0.3 :glow 0}}}]
+    (try
+      (swap! (:state (:shipyard.assembly/db sys)) assoc :draft lf/draft :root (str (:root started)))
+      (let [class-id (lf/save-class! sys)]
+        (schemes/put! scheme-db palette :create)
+        (s/go! driver (s/base-url sys))
+        (workspace/switch! driver "assembly") (workspace/await-ship! driver)
+        (named/tab! driver "Schemes")
+        (s/select-option! driver "#scheme-select select[name=id]" "Blue fleet")
+        (s/wait-visible! driver "#scheme-material")
+        (s/click! driver "button:text-is('Create named ship')")
+        (s/wait-visible! driver "#paint-create")
+        (is (= "Customize" (s/text driver ".ship-inspector nav button[aria-current=page]")))
+        (is (= (str class-id) (s/js driver "() => document.querySelector('#paint-create').elements.class.value")))
+        (is (= (str (:scheme/id palette)) (s/js driver "() => document.querySelector('#paint-create').elements.scheme.value")))
+        (is (empty? (:ships (ships/snapshot! ship-db))))
+        (named/create! driver "Assembly palette proof")
+        (workspace/await-ship! driver)
+        (is (s/wait-until #(= "0000ff" (:color (s/slot driver [])))))
+        (is (= class-id (:ship/class (first (vals (:ships (ships/snapshot! ship-db)))))))
+        (is (= (:scheme/id palette) (:ship/scheme (first (vals (:ships (ships/snapshot! ship-db))))))))
+      (finally (s/quit! driver) (fixture/stop! started)))))
+
+(deftest scheme-customization-follows-a-newly-saved-duplicate-class
+  (s/assert-bundle!)
+  (let [started (fixture/start! true) sys (:system started) driver (s/make-driver)
+        class-db (:shipyard.loadout/db sys) ship-db (:shipyard.ship/db sys)
+        original {:loadout/id (random-uuid) :loadout/name "Original cruiser"
+                  :loadout/hull (:hull lf/draft) :loadout/slots {}}
+        palette {:scheme/id (random-uuid) :scheme/name "Blue fleet" :scheme/layers {}}]
+    (try
+      (classes/put! class-db original :create)
+      (schemes/put! (:shipyard.scheme/db sys) palette :create)
+      (s/go! driver (s/base-url sys)) (s/open-class! driver "Original cruiser")
+      (s/ship-table! driver)
+      (s/click! driver ".ship-card:has([aria-label='Open class Original cruiser']) button:text-is('Duplicate')")
+      (s/wait-visible! driver ".assembly__save")
+      (s/fill-and-blur! driver ".assembly__save input[name=name]" "New cruiser")
+      (s/click! driver ".assembly__save button:text-is('Save class')")
+      (is (s/wait-until #(= 2 (count (:loadouts (classes/snapshot! class-db))))))
+      (let [class-id (:loadout/id (first (filter #(= "New cruiser" (:loadout/name %)) (vals (:loadouts (classes/snapshot! class-db))))))]
+        (named/tab! driver "Schemes")
+        (s/select-option! driver "#scheme-select select[name=id]" "Blue fleet")
+        (s/wait-visible! driver "#scheme-material")
+        (s/click! driver "button:text-is('Create named ship')")
+        (s/wait-visible! driver "#paint-create")
+        (is (= (str class-id) (s/js driver "() => document.querySelector('#paint-create').elements.class.value")))
+        (is (= (str (:scheme/id palette)) (s/js driver "() => document.querySelector('#paint-create').elements.scheme.value")))
+        (is (empty? (:ships (ships/snapshot! ship-db))))
+        (named/create! driver "Duplicate palette proof")
+        (is (= class-id (:ship/class (first (vals (:ships (ships/snapshot! ship-db)))))))
+        (is (= original (get-in (classes/snapshot! class-db) [:loadouts (:loadout/id original)]))))
       (finally (s/quit! driver) (fixture/stop! started)))))

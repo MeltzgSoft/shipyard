@@ -785,7 +785,8 @@ never creates a named ship or assigns a scheme to a class. Palette editing also 
 without selecting a class. Turn off **Mount colors** to see paint.
 
 Save any assembly changes, then open **Customize** for the selected class, enter a ship name, choose a fleet scheme and
-click **Create ship**. This creates a named ship beneath that class’s row. A class
+click **Create ship**. Opening **Create named ship** from Schemes uses the displayed
+saved class and preselects the scheme you are previewing. This creates a named ship beneath that class’s row. A class
 may have many named ships, each with its own scheme and custom paint. Select a named
 ship from the expanded row to resume editing. The Ship Browser camera and controls
 are shared across inspector tabs; there is no separate Customize workspace.
