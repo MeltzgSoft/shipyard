@@ -69,7 +69,7 @@
       (s/input! driver "#scheme-material input[name=base]" "#d4af37" "input")
       (s/input! driver "#scheme-material input[name=metalness]" "0.8" "input")
       (s/input! driver "#scheme-material input[name=roughness]" "0.25" "input")
-      (s/click! driver "#scheme-material button")
+      (s/click! driver "#scheme-material button:text-is('Save palette material')")
       (is (s/wait-until #(= 0.8 (-> (schemes/snapshot! scheme-db) :schemes vals first :scheme/layers (get "Secondary") :metalness))))
       (is (= ["rgb(0, 0, 255)" "rgb(212, 175, 55)"]
              (s/js driver "() => [...document.querySelectorAll('.scheme-layer__swatch')].map(s=>getComputedStyle(s).backgroundColor)")))
@@ -78,12 +78,13 @@
       (scheme-layer! driver "Secondary")
       (is (= ["#d4af37" "0.8" "0.25"]
              (s/js driver "() => {const f=document.querySelector('#scheme-material').elements;return [f.base.value,f.metalness.value,f.roughness.value];}")))
-      (s/click! driver "#scheme-presets button:text-is('Save current color')")
-      (s/wait-visible! driver "button[aria-label='Use #d4af37']")
+      (s/fill-and-blur! driver "input[form=color-preset-save][name=name]" "Gold trim")
+      (s/click! driver "button[form=color-preset-save]")
+      (s/wait-visible! driver "button[aria-label='Use Gold trim']")
       ;; The real spectrum updates the same hex field and saves on release.
       (s/click! driver ".color-spectrum")
       (is (s/wait-until #(not= "#d4af37" (s/js driver "() => document.querySelector('#scheme-material').elements.base.value"))))
-      (s/click! driver "button[aria-label='Use #d4af37']")
+      (s/click! driver "button[aria-label='Use Gold trim']")
       (is (s/wait-until #(= "#d4af37" (s/js driver "() => document.querySelector('#scheme-material').elements.base.value"))))
       (is (= ["0.8" "0.25"] (s/js driver "() => {const f=document.querySelector('#scheme-material').elements;return [f.metalness.value,f.roughness.value];}"))
           "A saved color changes color only, retaining the selected layer finish")

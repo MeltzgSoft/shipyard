@@ -3,6 +3,7 @@
             [clojure.string :as str]
             [datalevin.core :as d]
             [shipyard.store.db :as store]
+            [shipyard.http.htmx :as htmx]
             [ring.mock.request :as mock]
             [shipyard.assembly-fixture :as fixture]
             [shipyard.loadout-fixture :as lf]
@@ -67,9 +68,18 @@
         facade (:shipyard.scheme/db sys) post #(handler (mock/request :post %1 %2))]
     (try
       (handler (mock/request :get "/workspace/ships"))
-      (is (= 200 (:status (post "/ships/schemes/presets/add" {:base "#D4AF37"}))))
-      (post "/ships/schemes/presets/add" {:base "#d4af37"})
+      (is (= 200 (:status (post "/ships/schemes/presets/add" {:base "#D4AF37" :name " Gold trim "}))))
+      (post "/ships/schemes/presets/add" {:base "#d4af37" :name "Gold trim"})
       (is (= ["#d4af37"] (presets/colors! facade)))
+      (is (= [{:color-preset/hex "#d4af37" :color-preset/name "Gold trim"}] (presets/records! facade)))
+      (is (= "Gold trim" (persisted/persisted! facade #(:color-preset/name (d/pull % [:color-preset/name] [:color-preset/hex "#d4af37"])))))
+      (doseq [params [{:base "#123456"} {:base "#123456" :name ""} {:base "#123456" :name "   "}
+                      {:base "#123456" :name (apply str (repeat 201 "a"))}]]
+        (is (= 400 (:status (post "/ships/schemes/presets/add" params)))))
+      (is (= ["#d4af37"] (presets/colors! facade)) "Rejected names create no presets")
+      (post "/ships/schemes/presets/add" {:base "#D4AF37" :name "Fleet gold"})
+      (is (= [{:color-preset/hex "#d4af37" :color-preset/name "Fleet gold"}] (presets/records! facade))
+          "Saving the same hex updates its name without duplicating the preset")
       (is (= ["#d4af37"] (persisted/persisted! facade #(sort (d/q '[:find [?hex ...] :where [_ :color-preset/hex ?hex]] %)))))
       (is (= 400 (:status (post "/ships/schemes/presets/add" {:base "invalid"}))))
       (post "/ships/schemes/create" {:name "Other palette"})
@@ -105,4 +115,16 @@
           (is (= before (ships/snapshot! ship-db)) "A failed graph replacement rolls back atomically"))
         (ships/delete! ship-db (:ship/id ship))
         (is (= #{(:ship/id sibling)} (set (keys (:ships (ships/snapshot! ship-db)))))))
+      (finally (fixture/stop! started)))))
+
+(deftest legacy-unnamed-colors-remain-usable
+  (let [started (fixture/start!) sys (:system started) handler (:handler started)
+        facade (:shipyard.scheme/db sys)]
+    (try
+      (store/write! (:store facade) #(d/transact! % [{:color-preset/hex "#123456"}]))
+      (is (= ["#123456"] (presets/colors! facade)))
+      (is (str/includes? (:body (htmx/fragment (presets/panel (presets/records! facade) nil "#123456"))) "Use #123456"))
+      (handler (mock/request :get "/workspace/ships"))
+      (is (= 200 (:status (handler (mock/request :post "/ships/schemes/presets/add" {:base "#123456" :name "Old blue"})))))
+      (is (= "Old blue" (persisted/persisted! facade #(get (d/pull % [:color-preset/name] [:color-preset/hex "#123456"]) :color-preset/name))))
       (finally (fixture/stop! started)))))

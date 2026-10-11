@@ -2837,8 +2837,15 @@ The shared Hiccup color control and delegated gesture handlers also serve the
 Customize detail brush. Scheme gestures preview on input and save on release;
 brush color gestures set the next stroke material without saving a stroke.
 Saved-color controls read the active scheme or brush form.
-Shared presets are unique normalized `:color-preset/hex` entities in Datalevin;
-their add/remove endpoints return only the saved-color grid.
+Shared presets are unique normalized `:color-preset/hex` entities in Datalevin with
+`:color-preset/name`. Add requires a nonblank name of at most 200 characters through
+Malli transport validation; persistence normalizes the hex and trims the name.
+Saving an existing hex updates its name. Legacy entities without names display their
+hex until renamed. Add/remove endpoints replace only the saved-color panel.
+The save controls appear immediately after the picker and use native `form` ownership
+for the separate preset form, avoiding nested forms or material submission. Empty
+preset names do not block palette editing or strokes; name changes do not autosave
+palette material.
 Material `:glow` is an optional finite scalar in `[0,1]`, stored as `:material/glow`
 in Datalevin; absence means zero. The viewport uses linearized base color as
 MeshStandardMaterial emission and glow as its intensity. While visible paint emits,
@@ -2947,9 +2954,11 @@ final UUID acknowledgements are idempotent. Failure or cancellation never persis
 partial stroke. A new drag or workspace transition discards abandoned buffered parts.
 No face-count limits apply to strokes, layers or schemes. Local preview updates only
 new face keys; dirty-key hints avoid rescanning the accumulated layer on pointer moves.
-The existing 20-entry undo bound remains. The brush rail's occlusion hints use actual
-ray intersections; paint eligibility still comes exclusively from the depth-tested
-ID buffer, never the hint ray.
+The existing 20-entry undo bound remains in transient server workspace state.
+The detail brush has no stroke-summary panel or paint/erase mode switch. Pointer
+button selects paint (left) or erase to inherited material (right); status text reports
+save progress. Paint eligibility comes exclusively from the depth-tested ID buffer;
+no summary-only ray intersections are performed.
 
 
 ### 15.3 Reusable part regions and scheme palettes

@@ -12,7 +12,7 @@
                 :library/root :part/id :part/name :part/bundle :part/class
                 :part/name-override :part/bundle-override :part/class-override
                 :part/mesh-key :source/path :mesh/sha :layer/id :layer/name :layer/preview-name
-                :scheme/name :ship/name :loadout/name :fleet/name :vocabulary/value])
+                :color-preset/name :scheme/name :ship/name :loadout/name :fleet/name :vocabulary/value])
    (attributes :db.type/uuid
                [:library/id :part/uid :mount/uid :scheme/id :ship/id :loadout/id :fleet/id])
    (attributes :db.type/long

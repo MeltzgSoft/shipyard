@@ -144,7 +144,7 @@
       (s/fill-and-blur! driver "#scheme-create input[name=name]" "Help Fleet")
       (s/click! driver "#scheme-create button")
       (s/wait-visible! driver "#scheme-material")
-      (help! driver "#scheme-material button" "every named ship")
+      (help! driver "#scheme-material button:text-is('Save palette material')" "every named ship")
       (named/tab! driver "Customize")
       (s/select-option! driver "#paint-create select[name=scheme]" "Help Fleet")
       (named/create! driver "Help Vessel")

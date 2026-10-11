@@ -126,26 +126,14 @@
           {:target (pr-str path) :mesh-key (.. ^js (get-in current [:buffer :ranges path :object]) -userData -meshKey)
            :faces (vec keys)}) (filter (comp seq val) pending)))
 
-(defn- summary! [current]
+(defn- status-count! [current]
   (let [face-count (reduce + 0 (map count (vals (:keys current))))]
-    (status! (str (if (:dragging? current) "Painting — " "Saving — ") face-count " faces"))
-    (when-let [element (.getElementById js/document "paint-stroke-count")]
-      (set! (.-textContent element) (str face-count " faces")))
-    (when-let [element (.getElementById js/document "paint-stroke-list")]
-      (.replaceChildren element)
-      (doseq [path (distinct (concat (keys (:keys current)) (:behind current)))]
-        (let [row (.createElement js/document "div") label (.createElement js/document "span")
-              amount (.createElement js/document "span") behind? (not (seq (get-in current [:keys path])))]
-          (set! (.-className row) (str "paint-stroke-row" (when behind? " is-behind")))
-          (set! (.-textContent label) (or (get-in current [:labels (pr-str path)]) (pr-str path)))
-          (set! (.-textContent amount) (if behind? "behind" (str (count (get-in current [:keys path])))))
-          (.append row label amount)
-          (.append element row))))))
+    (status! (str (if (:dragging? current) "Painting — " "Saving — ") face-count " faces"))))
 
 (def lock-selector
   ".ship-inspector > nav button, .ship-card button, #workspace-navigation button, #paint-create button, #paint-rename button, #mount-colors-toggle, .paint-editor input:not([type=hidden]), .paint-editor select, .paint-editor button, .paint-rail button, .named-ship-actions button")
 
-(defn listen! [{:keys [^js canvas ^js controls ^js camera active mount-colors-enabled] :as sys} apply-material!]
+(defn listen! [{:keys [^js canvas ^js controls active mount-colors-enabled] :as sys} apply-material!]
   (let [stroke (atom nil) last-stroke (atom nil) locked (atom [])
         cursor (.createElement js/document "div")
         form! #(.getElementById js/document "paint-brush")
@@ -218,16 +206,6 @@
                            :chain (.catch task (fn [_]
                                                  (when (live? current)
                                                    (cancel! "Save not confirmed. Retry last stroke, or reopen Customize to restore saved details." true)))))))))
-            (behind! [current x y]
-              (let [ray (three/Raycaster.) position (three/Vector2. (- (* 2 (/ x (:width (:buffer current)))) 1)
-                                                                    (- 1 (* 2 (/ y (:height (:buffer current))))))
-                    objects (mapv :object (vals (:ranges (:buffer current))))]
-                (.setFromCamera ray position camera)
-                (let [hits (array-seq (.intersectObjects ray (to-array objects) false))
-                      front (some-> (first hits) .-object)
-                      behind (set (map #(.-object %) (rest hits)))]
-                  (set (for [[path {:keys [object]}] (get-in current [:buffer :ranges])
-                             :when (and (not (identical? object front)) (contains? behind object))] path)))))
             (sample! [^js e]
               (when-let [{:keys [buffer radius last-point] :as current} @stroke]
                 (when (:dragging? current)
@@ -255,9 +233,8 @@
                             (apply-material! object (.. object -userData -paintMaterial) false)))
                         (swap! stroke #(-> % (assoc :last-point now)
                                            (update :keys (partial merge-with into) deltas)
-                                           (update :pending (partial merge-with into) deltas)
-                                           (update :behind into (behind! current x y))))
-                        (summary! @stroke)))))))
+                                           (update :pending (partial merge-with into) deltas)))
+                        (status-count! @stroke)))))))
             (finish! [^js e]
               (when (:dragging? @stroke)
                 (.preventDefault e) (.stopImmediatePropagation e)
@@ -265,7 +242,7 @@
                 (swap! stroke assoc :dragging? false)
                 (set! (.-enabled controls) @active)
                 (if (some seq (vals (:keys @stroke)))
-                  (do (summary! @stroke) (flush! true))
+                  (do (status-count! @stroke) (flush! true))
                   (cancel! "No visible faces under the brush." false))))]
       (set! (.-className cursor) "paint-brush-cursor")
       (.appendChild (.-body js/document) cursor)
@@ -279,16 +256,15 @@
                                  (let [form (form!) buffer (visible-buffer sys nil)]
                                    (set! (.-enabled controls) false)
                                    (.setPointerCapture canvas (.-pointerId e))
-                                   (reset! stroke {:id (random-uuid) :part 0 :chain (js/Promise.resolve) :pending {} :keys {} :before {} :behind #{}
+                                   (reset! stroke {:id (random-uuid) :part 0 :chain (js/Promise.resolve) :pending {} :keys {} :before {}
                                                    :buffer buffer :form form :dragging? true
                                                    :scheme (value form "id") :headers (js/JSON.parse (.. (.getElementById js/document "workspace-context") -dataset -headers))
-                                                   :labels (edn/read-string (.getAttribute form "data-instance-labels"))
                                                    :stale (set (edn/read-string (.getAttribute form "data-stale-targets")))
                                                    :color {:base (rgb (value form "brush-color"))
                                                            :metalness (js/parseFloat (value form "brush-metalness"))
                                                            :roughness (js/parseFloat (value form "brush-roughness"))
                                                            :glow (js/parseFloat (value form "brush-glow"))} :hex (value form "brush-color")
-                                                   :erase? (or (= 2 (.-button e)) (= "erase" (value form "mode"))) :radius (js/parseFloat (value form "radius"))})
+                                                   :erase? (= 2 (.-button e)) :radius (js/parseFloat (value form "radius"))})
                                    (lock!)
                                    (swap! stroke assoc :timer (js/setInterval #(flush! false) (js/Number (.getAttribute form "data-flush-interval"))))
                                    (sample! e))

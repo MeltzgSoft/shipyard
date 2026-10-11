@@ -579,7 +579,8 @@ works without a preview model. Region layers appear as a named color-swatch list
 selecting a swatch makes that layer the target of the shared color, metalness,
 roughness and glow controls. The active layer is visibly marked. There is no separate Customize workspace.
 The shared color control offers a two-dimensional saturation/brightness spectrum,
-a hue slider and a hex input. Users can save and remove color presets shared across
+a hue slider and a hex input. Save current color sits directly below those controls
+and requires a nonblank color name. Users can save and remove named color presets shared across
 schemes and named ships; choosing a preset changes color without changing metalness, roughness or glow.
 Customize uses the same picker and saved colors for the detail brush. Brush color
 selection affects subsequent strokes.
@@ -602,7 +603,9 @@ the name, class and selected scheme. Scheme changes remain live beneath face det
 
 Resolution is detail face, fleet region layer, Primary fallback, then neutral.
 Customize offers only the detail brush; Select painting and whole-instance/group/custom
-layer material overrides are retired. Its named-ships table and Ship Browser's
+layer material overrides are retired. Left-drag paints visible faces; right-drag erases
+details to the inherited scheme material. Save status accompanies the brush controls.
+Its named-ships table and Ship Browser's
 expanded named-ship rows each offer **Edit** and confirmed **Delete** controls.
 Delete removes only the named ship and its details, preserving classes and schemes.
 An unavailable scheme retains its reference and warns; custom details remain usable.

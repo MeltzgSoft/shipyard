@@ -771,7 +771,9 @@ Click a layer swatch to select it. Choose a hue, then drag in the spectrum to ad
 saturation and brightness, or type a six-digit **Hex color** such as `#d4af37`.
 The spectrum also supports arrow keys (Shift makes larger steps).
 The selected hue stays in place after saving even when the current color is gray or black.
-**Save current color** adds it to **Saved colors**, shared across all schemes.
+Enter a **Color name**, then click **Save current color** directly below the picker.
+This adds the named swatch to **Saved colors**, shared across Schemes and Customize.
+Saving the same color again updates its name. Existing unnamed swatches keep their hex labels.
 Click a saved swatch to reuse it, or its × button to remove it. Presets change only
 color; **Metalness**, **Roughness**, **Glow** and optional **Paint name** remain separate controls.
 Glow runs from 0 (off) to 1 and makes the selected color self-lit with a soft halo
@@ -818,8 +820,7 @@ Fleet ordering and fleet-default assignment are not yet available.
 Turn off **Mount colors**, then open **Customize** to use the detail brush. Pick a detail
 colour with the spectrum, hue slider, **Detail hex color** field or a saved swatch,
 then set metalness, roughness and radius (2–100 screen pixels). One drag can touch
-several parts. The inspector lists touched parts and face counts for the live drag;
-parts identified behind the brush are skipped.
+several parts; occluded surfaces are skipped.
 
 Left-drag to fill whole visible triangles under the circle. Hidden and back-facing
 faces are never painted. Even a small brush fills a whole triangle. Alt+drag permits
@@ -831,8 +832,7 @@ not existing details.
 For gold trim, choose a gold colour, metalness `1` and roughness around `0.2`.
 Lower roughness gives sharper reflections. Right-drag erases details and restores
 the underlying region scheme colour and finish without changing the
-selected mode or paint material. The next left-drag can paint again. **Erase to base**
-is also available for erasing with the left button. **Mount colors** temporarily replaces displayed
+paint material. The next left-drag paints again. **Mount colors** temporarily replaces displayed
 colours while keeping face finishes.
 
 New faces are sent periodically while dragging, but nothing is durably saved until

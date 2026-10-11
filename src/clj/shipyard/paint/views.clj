@@ -87,7 +87,6 @@
       :hx-swap "innerHTML" :hx-sync "this:queue all"
       :hx-disabled-elt (str competing-controls ", #paint-brush input:not([type=hidden]), #paint-brush select, #paint-brush button, button[form=paint-brush]")
       :data-flush-interval flush-interval :data-stale-targets (pr-str (vec stale))
-      :data-instance-labels (pr-str (into {} (for [entry targets :when (contains? entry :path)] [(:key entry) (:label entry)])))
       :hx-on--config-request "var field=this.elements.sequence;field.value=Number(field.value)+1;event.detail.parameters.sequence=field.value;"
       :hx-on--after-request "if(document.contains(this)&&!event.detail.successful){document.getElementById('paint-header-status').textContent='Save not confirmed';}"}
      (for [[name value] {"id" (str (:scheme/id record)) "sequence" (or (:brush-sequence state) 0)
@@ -96,13 +95,11 @@
                          "entries" "[]" "stroke-id" "" "part" "0" "final" "true" "enabled" "true" "operation" "paint"}]
        [:input {:type "hidden" :name name :value value}])
      [:div.paint-form-body
-      [:div.paint-segmented
-       [:label [:input {:type "radio" :name "mode" :value "paint" :checked true}] "Paint"]
-       [:label [:input {:type "radio" :name "mode" :value "erase"}] "Erase to base"]]
       [:label.paint-control [:span "Radius (screen pixels)" [:output "20 px"]]
        [:input {:type "range" :name "radius" :min 2 :max 100 :value 20
                 :oninput "this.parentElement.querySelector('output').value=this.value+' px'"}]]
       (color-control "#ff0000" nil {:name "brush-color" :id "paint-brush-color" :label "Detail hex color"})
+      (presets/save-control)
       (material-control "Detail metalness" "brush-metalness" "range" (:metalness material))
       (material-control "Detail roughness" "brush-roughness" "range" (:roughness material))
       (material-control "Detail glow" "brush-glow" "range" (get material :glow 0))]
@@ -124,10 +121,6 @@
      [:section.paint-rail
       (ship-views/customize-table (:ships records) (:classes records) (:schemes records) (:ship-id draft) (:page records))
       (ship-controls records draft record)
-      (when record
-        [:section.paint-stroke-summary
-         [:h3 "This stroke" [:span#paint-stroke-count "0 faces"]]
-         [:div#paint-stroke-list]])
       (when record [:footer.paint-rail-footer
                     [:span#paint-face-count (str (reduce + 0 (map #(count (:faces %)) (vals (:scheme/details record)))) " painted faces")]])]
      [:section.paint-editor
@@ -142,4 +135,4 @@
         [:p.detail__error (str "Could not load " id ". " (:message status))])
       (when ready?
         (list (brush-panel record targets prepared state flush-interval material)
-              (presets/panel (:preset-db records) nil)))])))
+              (presets/panel (:presets records) nil "#ff0000")))])))

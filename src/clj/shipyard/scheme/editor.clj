@@ -102,6 +102,7 @@
          (controls/color-control (paint/color-hex (:base value))
                                  (when (= [(:scheme state) layer] ((juxt :scheme :layer) (:scheme-picker state)))
                                    (get-in state [:scheme-picker :hsv])))
+         (presets/save-control)
          (controls/material-control "Metalness" "metalness" "range" (:metalness value))
          (controls/material-control "Roughness" "roughness" "range" (:roughness value))
          (controls/material-control "Glow" "glow" "range" (get value :glow 0))
@@ -109,7 +110,7 @@
          [:button (merge
                    (help/attrs "Update every named ship using this fleet scheme, beneath its custom paint.")
                    {:type "submit"}) "Save palette material"]]
-        (presets/panel schemes nil)
+        (presets/panel (presets/records! schemes) nil (paint/color-hex (:base value)))
         [:p#scheme-status {:role "status" :data-sequence (or (:scheme-sequence state) 0)} "Palette saved."]
         [:details [:summary "Manage scheme"]
          [:form#scheme-rename (merge attrs {:method "post" :action "/ships/schemes/rename" :hx-post "/ships/schemes/rename"})

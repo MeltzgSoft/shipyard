@@ -9,6 +9,8 @@
 (def unit-number [:and finite-number [:>= 0] [:<= 1]])
 (def rgb [:vector {:min 3 :max 3} unit-number])
 (def display-name [:and [:string {:min 1 :max 200}] [:fn (complement str/blank?)]])
+(def color-preset
+  [:map {:closed true} [:color-preset/hex [:re "#[0-9a-f]{6}"]] [:color-preset/name display-name]])
 (def part-id [:string {:min 1 :max 2048}])
 (def slot-path [:vector {:min 1 :max 16} [:tuple :keyword [:and integer? [:>= 0] [:<= 255]]]])
 ;; Equality with [] historically also accepts an empty sequential root value.

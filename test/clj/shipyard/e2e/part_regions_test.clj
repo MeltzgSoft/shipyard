@@ -39,7 +39,7 @@
   (s/input! driver "#scheme-material input[name=base]" color "input")
   (s/input! driver "#scheme-material input[name=metalness]" metal "input")
   (let [before (s/js driver "() => document.querySelector('#scheme-status').dataset.sequence")]
-    (s/click! driver "#scheme-material button")
+    (s/click! driver "#scheme-material button:text-is('Save palette material')")
     (is (s/wait-until #(not= before (s/js driver "() => document.querySelector('#scheme-status').dataset.sequence"))))))
 
 (defn face [driver slot key]

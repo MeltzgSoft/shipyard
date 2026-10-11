@@ -10,6 +10,7 @@
             [shipyard.paint.transforms :as transforms]
             [shipyard.paint.views :as views]
             [shipyard.scheme.material :as material]
+            [shipyard.scheme.presets :as presets]
             [shipyard.scheme.db :as schemes]
             [shipyard.ship.db :as ships]
             [shipyard.workspace.db :as workspace]))
@@ -31,7 +32,7 @@
         targets (transforms/targets (:database result) draft)
         state (workspace/workspace! workspace :ships)]
     (htmx/fragment
-     (concat (views/panel {:preset-db schemes :schemes (vals records) :ships (vals (ships/listing! named-ships))
+     (concat (views/panel {:presets (presets/records! schemes) :schemes (vals records) :ships (vals (ships/listing! named-ships))
                            :classes (vals (:loadouts (loadouts/snapshot! loadouts))) :page (:customize-page state)} draft targets record
                           (or (get params "error") (:error checked)
                               (when (and (:scheme draft) (nil? base)) "Scheme unavailable. Choose another scheme; custom paint is preserved.")

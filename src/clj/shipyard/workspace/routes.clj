@@ -1,5 +1,6 @@
 (ns shipyard.workspace.routes
-  (:require [shipyard.http.contracts :as contracts]
+  (:require [shipyard.domain.schemas :as schemas]
+            [shipyard.http.contracts :as contracts]
             [shipyard.assembly.routes :as assembly-routes]
             [shipyard.paint.handlers :as paint]
             [shipyard.loadout.thumbnail :as thumbnail]
@@ -40,7 +41,8 @@
          (for [operation [:add :remove]]
            [(str "/ships/schemes/presets/" (name operation))
             {:post {:handler (partial presets/handle! deps operation)
-                    :parameters {:form [:map [:base [:re "#[0-9a-fA-F]{6}"]]]}
+                    :parameters {:form (cond-> [:map [:base [:re "#[0-9a-fA-F]{6}"]]]
+                                         (= operation :add) (conj [:name schemas/display-name]))}
                     :responses contracts/html-responses}}])
          (for [action [:select :layer :create :rename :delete :material]]
            [(str "/ships/schemes/" (name action)) {:post {:handler (partial handlers/scheme-change! deps action) :responses contracts/html-responses}}])
