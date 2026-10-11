@@ -118,6 +118,7 @@
       (s/go! driver (s/base-url sys))
       (s/choose-path! driver ".import-start" zip)
       (s/wait-visible! driver ".import-review")
+      (s/wait-visible! driver "#bulk-orient-results [data-part-row]")
       (let [id (s/js driver "() => document.querySelector('[data-part-row]').dataset.partRow")
             drawer (str "[data-part-row='" id "']")]
         (edit-drawer! driver drawer)
