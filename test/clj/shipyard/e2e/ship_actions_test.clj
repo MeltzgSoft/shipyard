@@ -107,16 +107,21 @@
         (workspace/switch! driver "assembly")
         (workspace/await-ship! driver)
         (s/fill-and-blur! driver ".assembly__save input[name=name]" "Unsaved rename")
-        (let [draft (assoc (:draft @state) :name "Unsaved rename") slots (get-in (s/stats driver) [:assembly :slots])]
+        (let [draft (assoc (:draft @state) :name "Unsaved rename")
+              ;; The confirmation panel can resize the canvas. Compare source,
+              ;; transforms and material buffers rather than screen coordinates.
+              scene! #(mapv (fn [slot] (dissoc slot :face-centers :paint-preparation))
+                            (get-in (s/stats driver) [:assembly :slots]))
+              slots (scene!)]
           (s/click! driver ".assembly__hull button")
           (s/wait-visible! driver ".assembly-discard")
           (is (= draft (:draft @state)))
-          (is (= slots (get-in (s/stats driver) [:assembly :slots])))
+          (is (= slots (scene!)))
           (s/click! driver ".assembly-discard button:text-is('Cancel')")
           (is (s/wait-until #(zero? (s/count-els driver ".assembly-discard"))))
           (is (= draft (:draft @state)))
           (is (= "Unsaved rename" (s/js driver "() => document.querySelector('.assembly__save input[name=name]').value")))
-          (is (= slots (get-in (s/stats driver) [:assembly :slots])))
+          (is (= slots (scene!)))
           (s/click! driver ".assembly__hull button")
           (s/click! driver ".assembly-discard button:text-is('Discard and start assembly')")
           (is (s/wait-until #(= 1 (count (get-in (s/stats driver) [:assembly :slots]))))))
