@@ -714,13 +714,15 @@ Undo is unavailable until the current drag has finished.
 
 All server-rendered hiccup driven by htmx, except the viewport.
 
-Part Browser, import review, Ship Browser and Assembly hull filters live in
-collapsible sidebars beside their tables or controls. Name search appears first;
+Part Browser, import review and Ship Browser table filters live in
+collapsible sidebars beside their tables. Name search appears first;
 Clear filters appears last where available. Sidebars start collapsed,
 expand on hover and collapse when the cursor leaves. A pin control keeps them open
 until unpinned, preserving the pin through panel updates and workspace navigation
 until the page is reloaded. Filters are also accessible using Tab and Enter/Space.
 Collapsing hides controls without changing active filters, selection or viewport state.
+Floating inspectors have no collapsible filter sidebar. Assembly hull filters remain
+visible above the hull picker in the inspector, retaining their filtering behavior.
 
 - **Part Browser** — a full-width table of library parts, with row thumbnails and
   filters by bundle/faction, class, role, name, saved-orientation status and variant availability. Select

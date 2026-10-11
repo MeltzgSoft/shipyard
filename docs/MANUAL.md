@@ -255,14 +255,16 @@ filtered result, including unloaded rows, while retaining selections hidden by f
 It shows a mixed state when some matches are selected. **Clear filters**, beside
 the filter dropdowns, restores their defaults and empties the name search without
 changing selected rows. Use the header checkbox to deselect the matching rows. These controls also work in import review.
-Part Browser, import review, Ship Browser and the Assembly hull picker show their
+Part Browser, import review and the Ship Browser table show their
 filters in a sidebar, with name search first and **Clear filters** last where available.
 Sidebars start collapsed, expand while the cursor is over them,
 and collapse when it leaves. Choose **Pin filters** to keep a sidebar open, or
 **Unpin filters** to restore hover behavior. Pins survive panel updates and workspace
 navigation until the page is reloaded. You can also focus **Filters** with Tab and
 press Enter or Space to open it, then Tab through its controls. Collapsing preserves
-active filters and selection and gives results more room.
+active filters and selection and gives results more room. Floating inspectors have
+no filter sidebar; the Assembly tab keeps its Bundle and Class filters visible
+above the Hull picker. These filters work as before.
 
 With at least two rows selected, controls appear directly above the Name, Bundle /
 faction, Role and Class columns. Fill the fields you want to set and choose **Update

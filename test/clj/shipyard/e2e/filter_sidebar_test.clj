@@ -1,6 +1,7 @@
 (ns shipyard.e2e.filter-sidebar-test
   (:require [clojure.test :refer [deftest is testing]]
             [shipyard.assembly-fixture :as fixture]
+            [shipyard.catalog.db :as catalog]
             [shipyard.e2e.support :as s]
             [shipyard.import-fixture :as archives]
             [shipyard.loadout.db :as classes])
@@ -58,6 +59,10 @@
         (is (= before @workspace) "Toggling performs no server filtering or selection operation"))
       (s/open-part! driver "prow")
       (s/await-part driver (:prow fixture/ids))
+      (doseq [tab ["part" "mounts" "regions"]]
+        (s/click! driver (str "[data-detail-tab=" tab "]"))
+        (is (zero? (s/count-els driver "#detail [data-filter-sidebar], #detail [data-filter-pin]"))
+            "Individual Part Browser inspector tabs contain no filter sidebar"))
       (s/click! driver "[data-part-back]")
       (s/wait-visible! driver "#bulk-orient-filters input[name=q]")
       (is (= "prow" (s/js driver "() => document.querySelector('#bulk-orient-filters input[name=q]').value")))
@@ -103,12 +108,31 @@
       (s/wait-visible! driver ".import-start")
       (finally (s/quit! driver) (fixture/stop! started)))))
 
-(deftest ship-table-and-hull-picker-use-filter-sidebars
+(defn- assert-inline-hull-filters! [driver]
+  (s/wait-visible! driver ".assembly__filters select[name=bundle]")
+  (s/wait-visible! driver ".assembly__filters select[name=class]")
+  (is (zero? (s/count-els driver "#detail [data-filter-sidebar], #detail [data-filter-pin]")))
+  (is (s/js driver "() => { const filters = document.querySelector('.assembly__filters').getBoundingClientRect(); const hull = document.querySelector('.assembly__hull').getBoundingClientRect(); return filters.bottom <= hull.top + 1 && Math.abs(filters.width - hull.width) < 1; }")
+      "Filters remain visible above the hull picker at the same width")
+  (is (<= (s/width driver ".stage__detail") 390) "The floating inspector retains its original width"))
+
+(defn- filter-hulls! [driver workspace field label value count]
+  (s/select-option! driver (str ".assembly__filters select[name=" field "]") label)
+  (is (s/wait-until #(and (= value (get-in @workspace [:workspaces :ships :assembly-filters field]))
+                          (s/js driver "() => !document.querySelector('.assembly__filters.htmx-request')"))))
+  (is (= value (s/js driver (str "() => document.querySelector('.assembly__filters select[name=" field "]').value"))))
+  (is (= count (s/count-els driver ".assembly__hull select[name=part-id] option[value]:not([value=''])")))
+  (assert-inline-hull-filters! driver))
+
+(deftest ship-table-sidebar-and-inline-inspector-filters
   (let [started (fixture/start! true) driver (s/make-driver) sys (:system started)
         class-db (:shipyard.loadout/db sys)
         workspace (:state (:shipyard.workspace/db sys))
         assembly (:state (:shipyard.assembly/db sys))]
     (try
+      (catalog/save-metadata! (:shipyard.catalog/db sys)
+                              [{:id (:hint fixture/ids) :attribute :part/bundle-override :value "Other Navy"}
+                               {:id (:hint fixture/ids) :attribute :part/class-override :value "Corvette"}])
       (doseq [name ["Cruiser" "Escort"]]
         (classes/put! class-db {:loadout/id (random-uuid) :loadout/name name
                                 :loadout/hull (:hull fixture/ids) :loadout/slots {}} :create))
@@ -122,19 +146,36 @@
         (is (= before @workspace)))
       (.dblclick ^Page (:page driver) ".ship-table__row[aria-label='Open class Cruiser']")
       (s/await-assembly-prepared! driver 1)
-      (s/select-option! driver ".assembly__filters select[name=bundle]" "Synthetic Navy")
-      (s/wait-visible! driver ".assembly__filters select[name=class]")
-      (s/click! driver "#assembly-filter-sidebar [data-filter-pin]")
-      (s/select-option! driver ".assembly__filters select[name=class]" "Cruiser")
-      (is (s/wait-until #(= "Cruiser" (get-in @workspace [:workspaces :ships :assembly-filters "class"]))))
-      (is (s/wait-until #(s/js driver "() => !document.querySelector('.assembly__filters.htmx-request') && !!document.querySelector('#assembly-filter-sidebar [data-filter-pin][aria-pressed=true]')")))
-      (leave-sidebar! driver)
-      (is (open? driver "assembly-filter-sidebar") "Pin survives the hull-filter fragment replacement")
-      (s/click! driver "#assembly-filter-sidebar [data-filter-pin]")
       (let [before (:draft @assembly) parts (:parts (s/stats driver))]
-        (toggle-sidebar! driver "assembly-filter-sidebar" "#assembly-rail .filter-layout__content")
-        (is (= before (:draft @assembly)))
-        (is (= parts (:parts (s/stats driver)))))
+        (testing "Inline filters narrow hull choices without changing the draft or viewport"
+          (assert-inline-hull-filters! driver)
+          (filter-hulls! driver workspace "bundle" "Synthetic Navy" "Synthetic Navy" 1)
+          (filter-hulls! driver workspace "class" "Cruiser" "Cruiser" 1)
+          (filter-hulls! driver workspace "bundle" "Other Navy" "Other Navy" 0)
+          (is (s/js driver "() => document.querySelector('.assembly__hull select[name=part-id]').disabled"))
+          (filter-hulls! driver workspace "bundle" "Synthetic Navy" "Synthetic Navy" 1)
+          (filter-hulls! driver workspace "class" "Corvette" "Corvette" 0)
+          (filter-hulls! driver workspace "class" "Cruiser" "Cruiser" 1)
+          (is (= before (:draft @assembly)))
+          (is (= parts (:parts (s/stats driver))))))
+      (testing "Inline layout fits a smaller window"
+        (s/resize! driver 640 700)
+        (assert-inline-hull-filters! driver)
+        (s/resize! driver 1280 900))
+      (testing "No ship inspector tab contains a filter sidebar"
+        (doseq [tab ["schemes" "paint" "assembly"]]
+          (s/click! driver (str ".ship-inspector > nav button[hx-get='/ships/tab/" tab "']"))
+          (s/wait-visible! driver (str ".ship-inspector[data-ship-inspector-tab=" tab "]"))
+          (is (zero? (s/count-els driver "#detail [data-filter-sidebar], #detail [data-filter-pin]"))))
+        (assert-inline-hull-filters! driver)
+        (is (= "Synthetic Navy" (s/js driver "() => document.querySelector('.assembly__filters select[name=bundle]').value")))
+        (is (= "Cruiser" (s/js driver "() => document.querySelector('.assembly__filters select[name=class]').value"))))
+      (s/click! driver "[data-workspace-mode=browse]")
+      (s/wait-visible! driver "#bulk-orient-results")
+      (s/click! driver "[data-workspace-mode=ships]")
+      (assert-inline-hull-filters! driver)
+      (is (= "Synthetic Navy" (s/js driver "() => document.querySelector('.assembly__filters select[name=bundle]').value")))
+      (is (= "Cruiser" (s/js driver "() => document.querySelector('.assembly__filters select[name=class]').value")))
       (s/click! driver "[data-ship-back]")
       (s/wait-visible! driver "#ship-filters")
       (is (= "Cruiser" (s/js driver "() => document.querySelector('#ship-filters input[name=q]').value")))

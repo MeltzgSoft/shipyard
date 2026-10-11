@@ -2742,7 +2742,9 @@ retain geometry and camera while diffing removals and additions correctly. Activ
 guards reject responses from a previous tab, model or workspace.
 
 The floating editor wraps the existing assembly, scheme and paint forms. Assembly
-controls render inside that inspector; there is no class-list sidebar in the editor.
+controls render inside that inspector, with the unchanged hull-filter form above the
+hull picker. Floating inspectors have no collapsible filter sidebar; that layout
+is reserved for table views.
 The table replaces the workspace width. Back restores table state without clearing
 the editable draft. New class resets the draft only after the existing revision-bound
 discard confirmation. The table renders Resume assembly's enabled state from the
