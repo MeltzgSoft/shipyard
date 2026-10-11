@@ -242,3 +242,42 @@
                              [(.. surface -color -r) (.. surface -color -g) (.. surface -color -b)]))
           "Erasing the final assignment restores the inherited material tint"))
     (.dispose geometry) (.dispose surface)))
+
+(deftest repainting-a-saved-numeric-region-reuses-its-buffers
+  (let [object (prepared-object) geometry (.-geometry object)
+        primary {:base [0.3 0.5 0.7] :metalness 0.2 :roughness 0.8 :glow 0}
+        red {:base [1 0 0] :metalness 1 :roughness 0.1 :glow 0.5}
+        key (render/face-key geometry 0)
+        regions {:mesh-key "hash" :faces {} :triangle-layers (js/Uint32Array. #js [1 1 1])
+                 :layer-table ["Primary" "Secondary"]}
+        layers {"Primary" primary "Secondary" red}]
+    (render/set-regions! object regions layers)
+    (render/apply-details! object primary false)
+    (render/set-regions! object (assoc regions :faces {key "Secondary"}) layers)
+    (render/apply-details! object primary false)
+    (is (= 0 (.. object -userData -paintPreparationStats -triangles))
+        "Painting the saved color again performs no vertex writes")
+    (is (false? (.. object -userData -paintPreparationStats -full)))
+    (render/set-regions! object (assoc regions :faces {key "Primary"}) layers)
+    (render/apply-details! object primary false)
+    (is (= 2 (.. object -userData -paintPreparationStats -triangles)))
+    (is (near? (material/srgb->linear 0.3) (.getX (.getAttribute geometry "color") 0)))
+    (is (near? 0.2 (.getX (.getAttribute geometry "shipyardFinish") 0)))
+    (.dispose geometry) (.dispose (.-material object))))
+
+(deftest repeating-a-small-region-stroke-uploads-no-unchanged-buffers
+  (let [object (prepared-object) geometry (.-geometry object)
+        primary {:base [0.3 0.5 0.7] :metalness 0.2 :roughness 0.8 :glow 0}
+        key (render/face-key geometry 0)
+        regions {:mesh-key "hash" :faces {key "Secondary"}}
+        layers {"Primary" primary "Secondary" (assoc primary :base [1 0 0])}]
+    (js-delete (.-userData geometry) "preparedTopology")
+    (render/set-regions! object regions layers)
+    (render/apply-details! object primary false)
+    (let [color (.getAttribute geometry "color") finish (.getAttribute geometry "shipyardFinish")
+          versions [(.-version color) (.-version finish)]]
+      (set! (.. object -userData -paintDirtyFaces) #{key})
+      (render/apply-details! object primary false)
+      (is (= versions [(.-version color) (.-version finish)]))
+      (is (= 1 (.getX color 0))))
+    (.dispose geometry) (.dispose (.-material object))))

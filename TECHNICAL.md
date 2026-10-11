@@ -995,6 +995,8 @@ remain instance-owned. Initial material preparation and palette/binary-baseline 
 write the complete buffers, yielding after 256 triangles. Once that preparation completes,
 sparse brush edits update only changed face identities, including duplicates and erased
 details, and upload only those vertex ranges to the GPU; metadata-only acknowledgements reuse the buffers without uploading vertices.
+Resolved Float32 colors and finishes are compared with the existing buffers, so repainting
+the same material over a saved numeric region also performs no vertex writes.
 Incremental updates compare against the last completed preparation, so superseded partial
 writes require a full refresh. Scene disposal invalidates the generation. Vertex colors
 contain the resolved base color, so every appearance refresh restores a white material

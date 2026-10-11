@@ -128,11 +128,13 @@
                          (.setAttribute geometry "shipyardFinish" value) value))
             uniform (install-finish! surface)
             signature [inherited mask]
-            [old-inherited old-mask] (.. object -userData -detailSignature)]
+            [old-inherited old-mask] (.. object -userData -detailSignature)
+            changed? (volatile! false)]
         (set! (.-value uniform) true)
         ;; Pointer moves with the same mask need no allocation or buffer upload.
         (when (or (.. object -userData -paintDirtyFaces) (not= signature (.. object -userData -detailSignature)))
           (when (not= inherited old-inherited)
+            (vreset! changed? true)
             (let [[r g b] (mapv material/srgb->linear (:base inherited))]
               (dotimes [vertex (.-count attribute)]
                 (.setXYZ attribute vertex r g b)
@@ -145,12 +147,14 @@
                   {:keys [base metalness roughness glow] :or {glow 0}} (faces/resolve-material inherited (get mask key))
                   [r g b] (mapv material/srgb->linear base)]
               (doseq [triangle (if (number? entry) [entry] (array-seq entry))]
+                (vreset! changed? true)
                 (dotimes [corner 3]
                   (let [vertex (+ (* triangle 3) corner)]
                     (.setXYZ attribute vertex r g b)
                     (.setXYZ finish vertex metalness roughness glow))))))
-          (set! (.-needsUpdate attribute) true)
-          (set! (.-needsUpdate finish) true)
+          (when @changed?
+            (set! (.-needsUpdate attribute) true)
+            (set! (.-needsUpdate finish) true))
           (set! (.. object -userData -detailSignature) signature))
         (when enabled? (.setRGB (.-color surface) 1 1 1))))
     (set! (.. object -userData -paintDirtyFaces) nil)))
@@ -176,6 +180,17 @@
 
 (defn- changed-mask-keys [before after]
   (filter #(not= (get before %) (get after %)) (distinct (concat (keys before) (keys after)))))
+
+(defn- buffered-material? [^js color ^js finish triangle ^js channels]
+  ;; Prepared triangles have one material across all three corners. Compare the
+  ;; stored Float32 channels so repainting a numeric baseline needs no upload.
+  (let [offset (* triangle 9)]
+    (and (= (aget color offset) (aget channels 0))
+         (= (aget color (+ offset 1)) (aget channels 1))
+         (= (aget color (+ offset 2)) (aget channels 2))
+         (= (aget finish offset) (aget channels 3))
+         (= (aget finish (+ offset 1)) (aget channels 4))
+         (= (aget finish (+ offset 2)) (aget channels 5)))))
 
 (defn- apply-prepared-details! [^js object inherited colors?]
   (let [geometry (.-geometry object) surface (.-material object)
@@ -210,7 +225,6 @@
         (cancel! object)
         (set! (.. object -userData -preparedSignature) signature)
         (let [started (js/performance.now)
-              stats #js {:chunks 0 :triangles (clojure.core/count triangles) :full full? :maximumMs 0 :elapsedMs 0}
               generation (.. object -userData -paintGeneration)
               attribute (or (.getAttribute geometry "color") (three/BufferAttribute. (js/Float32Array. (* 9 count)) 3))
               finish (or (.getAttribute geometry "shipyardFinish") (three/BufferAttribute. (js/Float32Array. (* 9 count)) 3))
@@ -224,12 +238,17 @@
                   (.set detail-overrides triangle value))
               _ (doseq [key (:erased details) triangle (topology/triangles (.. geometry -userData -preparedTopology) key)]
                   (.set detail-overrides triangle ::erased))
+              channels! (fn [triangle]
+                          (let [value (triangle-material object inherited region-overrides detail-overrides triangle)]
+                            (or (.get palette value)
+                                (let [channels (js/Float32Array. (clj->js (concat (mapv material/srgb->linear (:base value))
+                                                                                  [(:metalness value) (:roughness value) (get value :glow 0)])))]
+                                  (.set palette value channels) channels))))
+              triangles (if full? triangles
+                            (filterv #(not (buffered-material? (.-array attribute) (.-array finish) % (channels! %))) triangles))
+              stats #js {:chunks 0 :triangles (clojure.core/count triangles) :full full? :maximumMs 0 :elapsedMs 0}
               write! (fn [triangle]
-                       (let [value (triangle-material object inherited region-overrides detail-overrides triangle)
-                             channels (or (.get palette value)
-                                          (let [channels (clj->js (concat (mapv material/srgb->linear (:base value))
-                                                                          [(:metalness value) (:roughness value) (get value :glow 0)]))]
-                                            (.set palette value channels) channels))]
+                       (let [channels (channels! triangle)]
                          (dotimes [corner 3]
                            (let [vertex (+ (* triangle 3) corner)]
                              (.setXYZ attribute vertex (aget channels 0) (aget channels 1) (aget channels 2))

@@ -12,7 +12,10 @@
   (:import [com.microsoft.playwright Page]))
 
 (defn- count-readbacks! [driver]
-  (s/js driver "() => {window.brushReadbacks=0;const p=WebGL2RenderingContext.prototype,read=p.readPixels;p.readPixels=function(...args){window.brushReadbacks++;return read.apply(this,args)}}"))
+  (s/js driver "() => {window.brushReadbacks=0;window.brushBufferUploads=0;const p=WebGL2RenderingContext.prototype,read=p.readPixels,upload=p.bufferSubData;p.readPixels=function(...args){window.brushReadbacks++;return read.apply(this,args)};p.bufferSubData=function(...args){window.brushBufferUploads++;return upload.apply(this,args)}}"))
+
+(defn- buffer-uploads [driver]
+  (s/js driver "() => new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve(window.brushBufferUploads))))"))
 
 (deftest region-refreshes-preserve-brightness-and-picking
   (s/assert-bundle!)
@@ -33,7 +36,17 @@
         (is (= ["ffffff"] (:materials (s/stats driver))))
         (s/click! driver "[data-detail-tab=part]")
         (s/click! driver "[data-detail-tab=regions]")
-        (is (= ["ffffff"] (:materials (s/stats driver))) "Returning to Regions reuses colors without darkening"))
+        (is (= ["ffffff"] (:materials (s/stats driver))) "Returning to Regions reuses colors without darkening")
+        (s/open-part! driver "weapon-alt") (s/await-part driver (:weapon-alt fixture/ids))
+        (s/open-part! driver "weapon") (s/await-part driver (:weapon fixture/ids))
+        (s/click! driver "[data-detail-tab=regions]")
+        (is (s/wait-until #(s/js driver "() => {const p=document.querySelector('#part-regions');return !p.hasAttribute('data-region-projection') || p.getAttribute('data-region-projection-ready')==='true'}")))
+        (s/input! driver "#region-stroke input[name=radius]" "2" "input")
+        (let [uploads (buffer-uploads driver)]
+          (apply brush/stroke! driver (regions/region-point driver 1))
+          (is (s/wait-until #(= "Regions saved." (s/text driver "#region-status"))))
+          (is (= uploads (buffer-uploads driver))
+              "Repainting the saved region uploads no unchanged vertex buffers")))
       (finally (s/quit! driver) (fixture/stop! started)))))
 
 (deftest detail-refreshes-preserve-untouched-parts-and-reuse-picking
