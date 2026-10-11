@@ -81,7 +81,8 @@
       (s/wait-visible! driver ".import-start")
       (s/choose-path! driver ".import-start" zip)
       (s/wait-visible! driver ".import-review")
-      (is (= 1 (s/count-els driver ".bulk-orient__row")))
+      ;; The review shell appears before its table's load request completes.
+      (is (s/wait-until #(= 1 (s/count-els driver ".bulk-orient__row"))))
       (s/click! driver ".part-drawer > summary")
       (s/wait-visible! driver ".part-row-edit")
       (doseq [[field value] [["bundle" "Test Faction"] ["class" "Carrier"] ["role" "sensor-array"]]]
