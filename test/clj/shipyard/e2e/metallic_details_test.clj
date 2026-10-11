@@ -101,9 +101,15 @@
         (s/click! driver "#paint-brush button[value=undo]")
         (is (s/wait-until #(near? 1 (:metalness (finish driver a)))))
         (is (= (durable) (get-in (persisted/records! store :ships) [:ships id :ship/paint :paint/details [] :faces])))
-        (workspace/switch! driver "assembly") (workspace/switch! driver "ships")
+        ;; Leaving Ships preserves Customize. Opening Assembly resumes the
+        ;; class editor, whose scene intentionally omits named custom details.
+        (workspace/switch! driver "browse") (workspace/switch! driver "ships")
         (workspace/await-ship! driver)
-        (is (s/wait-until #(near? 1 (:metalness (finish driver a)))))
+        (is (= "paint" (s/js driver "() => document.querySelector('[data-ship-inspector-tab]').dataset.shipInspectorTab")))
+        (is (= (str id) (s/js driver "() => document.querySelector('#paint-reset').elements.id.value")))
+        (is (s/wait-until #(near? 1 (:metalness (finish driver a))))
+            (pr-str {:saved (get (durable) a) :restored (finish driver a)
+                     :slot (dissoc (s/slot driver []) :face-centers :face-finishes)}))
         (is (near? 0.9 (:roughness (finish driver b))))
         (is (near? 0.8 (:glow (finish driver a))))
         (is (empty? @errors) (pr-str @errors))
