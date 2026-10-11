@@ -991,9 +991,15 @@ canonical face identity words (9 UInt32 values), and source triangle ordinals so
 by that identity (one UInt32). Face picking converts only touched identities to
 strings; sparse durable masks use binary search including duplicate source faces.
 Repeated instances share these immutable source buffers while color/finish buffers
-remain instance-owned. Material preparation yields after 256 triangles and rejects
-superseded updates; scene disposal invalidates its generation. Source caches are
-bounded both on the backend and in the browser.
+remain instance-owned. Initial material preparation and palette/binary-baseline changes
+write the complete buffers, yielding after 256 triangles. Once that preparation completes,
+sparse brush edits update only changed face identities, including duplicates and erased
+details, and upload only those vertex ranges to the GPU; metadata-only acknowledgements reuse the buffers without uploading vertices.
+Incremental updates compare against the last completed preparation, so superseded partial
+writes require a full refresh. Scene disposal invalidates the generation. Vertex colors
+contain the resolved base color, so every appearance refresh restores a white material
+multiplier while they are enabled, including refreshes that reuse unchanged buffers.
+Source caches are bounded both on the backend and in the browser.
 The shared client loader accepts cancellation and a consumer `:current?` predicate
 for workspace, activation, source and settings guards; canceled or stale responses
 never activate scene state.
@@ -3092,7 +3098,7 @@ existing atomic revision/layer guards. Failed saves restore the prior preview.
 Responses remain server-rendered HTML panels, with body-carried region masks;
 layer management and whole-part fill/reset continue to use ordinary form POSTs.
 
-Region brushing reuses one CPU visible-ID buffer until the source objects, their transforms, the camera
+Regions and Customize each reuse one CPU visible-ID buffer until the source objects, their transforms, the camera
 or viewport size changes; radius, layer and mask changes do not affect visibility.
 Stable face keys are cached by source triangle and survive render-only deindexing.
 Each replacement panel carries small EDN metadata plus a JSON face-to-layer map,

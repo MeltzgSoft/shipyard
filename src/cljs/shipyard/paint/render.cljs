@@ -174,68 +174,102 @@
       (some? override) (faces/resolve-material region override)
       :else base)))
 
+(defn- changed-mask-keys [before after]
+  (filter #(not= (get before %) (get after %)) (distinct (concat (keys before) (keys after)))))
+
 (defn- apply-prepared-details! [^js object inherited colors?]
   (let [geometry (.-geometry object) surface (.-material object)
         mask (projected-mask! object inherited)
         regions (.. object -userData -paintRegions) details (.. object -userData -paintDetails)
         layers (.. object -userData -paintLayers)
-        active? (boolean (or (seq mask) (and (seq (.. object -userData -paintLayers)) (:triangle-layers regions)) (:triangle-details details)))
-        signature [inherited mask regions details colors? (.. object -userData -paintLayers)]
+        active? (boolean (or (seq mask) (and (seq layers) (:triangle-layers regions)) (:triangle-details details)))
+        signature [inherited mask regions details colors? layers]
+        [old-inherited old-mask old-regions old-details _ old-layers] (.. object -userData -preparedCompletedSignature)
         count (triangle-count geometry)]
-    ;; Mount colors take effect immediately while finish buffers refresh in chunks.
+    ;; Every caller reinstalls the base material. Vertex colors already contain
+    ;; that base, so restore their white multiplier even when buffers are reused.
+    (when (and (not colors?) (.-vertexColors surface))
+      (.setRGB (.-color surface) 1 1 1))
     (when (and colors? (.-vertexColors surface))
       (set! (.-vertexColors surface) false)
       (set! (.-needsUpdate surface) true))
     (when (not= signature (.. object -userData -preparedSignature))
-      (cancel! object)
-      (set! (.. object -userData -preparedSignature) signature)
-      (let [started (js/performance.now)
-            stats #js {:chunks 0 :maximumMs 0 :elapsedMs 0}
-            generation (.. object -userData -paintGeneration)
-            attribute (or (.getAttribute geometry "color") (three/BufferAttribute. (js/Float32Array. (* 9 count)) 3))
-            finish (or (.getAttribute geometry "shipyardFinish") (three/BufferAttribute. (js/Float32Array. (* 9 count)) 3))
-            palette (js/Map.)
-            region-overrides (js/Map.) detail-overrides (js/Map.)
-            _ (when (seq layers)
-                (doseq [[key name] (:faces regions)
-                        triangle (topology/triangles (.. geometry -userData -preparedTopology) key)]
-                  (.set region-overrides triangle (or (get layers name) inherited))))
-            _ (doseq [[key value] (:faces details) triangle (topology/triangles (.. geometry -userData -preparedTopology) key)]
-                (.set detail-overrides triangle value))
-            _ (doseq [key (:erased details) triangle (topology/triangles (.. geometry -userData -preparedTopology) key)]
-                (.set detail-overrides triangle ::erased))
-            write! (fn [triangle]
-                     (let [value (triangle-material object inherited region-overrides detail-overrides triangle)
-                           channels (or (.get palette value)
-                                        (let [channels (clj->js (concat (mapv material/srgb->linear (:base value))
-                                                                        [(:metalness value) (:roughness value) (get value :glow 0)]))]
-                                          (.set palette value channels) channels))]
-                       (dotimes [corner 3]
-                         (let [vertex (+ (* triangle 3) corner)]
-                           (.setXYZ attribute vertex (aget channels 0) (aget channels 1) (aget channels 2))
-                           (.setXYZ finish vertex (aget channels 3) (aget channels 4) (aget channels 5))))))]
-        (set! (.. object -userData -paintPreparing) true)
-        (set! (.. object -userData -paintPreparationStats) stats)
-        (letfn [(step! [start]
-                  (when (= generation (.. object -userData -paintGeneration))
-                    (let [chunk-start (js/performance.now)
-                          end (min count (+ start 256))]
-                      (doseq [triangle (range start end)] (write! triangle))
-                      (set! (.-chunks stats) (inc (.-chunks stats)))
-                      (set! (.-maximumMs stats) (max (.-maximumMs stats) (- (js/performance.now) chunk-start)))
-                      (if (< end count) (js/setTimeout #(step! end) 0)
-                          (do
-                            (.setAttribute geometry "color" attribute)
-                            (.setAttribute geometry "shipyardFinish" finish)
-                            (set! (.-needsUpdate attribute) true)
-                            (set! (.-needsUpdate finish) true)
-                            (set! (.-vertexColors surface) (and active? (not colors?)))
-                            (set! (.-needsUpdate surface) true)
-                            (set! (.-value (install-finish! surface)) active?)
-                            (when (and active? (not colors?)) (.setRGB (.-color surface) 1 1 1))
-                            (set! (.-elapsedMs stats) (- (js/performance.now) started))
-                            (set! (.. object -userData -paintPreparing) false))))))]
-          (step! 0))))))
+      (let [full? (or (.. object -userData -paintPreparing)
+                      (nil? (.. object -userData -preparedCompletedSignature))
+                      (not= inherited old-inherited) (not= layers old-layers)
+                      (not= (select-keys regions [:triangle-layers :layer-table :projection-reset?])
+                            (select-keys old-regions [:triangle-layers :layer-table :projection-reset?]))
+                      (not= (select-keys details [:triangle-details :detail-table :projection-reset?])
+                            (select-keys old-details [:triangle-details :detail-table :projection-reset?])))
+            changed (when-not full?
+                      (distinct (concat (changed-mask-keys old-mask mask)
+                                        (remove (or (:erased details) #{}) (:erased old-details))
+                                        (remove (or (:erased old-details) #{}) (:erased details)))))
+            triangles (if full? (range count)
+                          (vec (distinct (mapcat #(topology/triangles (.. geometry -userData -preparedTopology) %) changed))))]
+        (cancel! object)
+        (set! (.. object -userData -preparedSignature) signature)
+        (let [started (js/performance.now)
+              stats #js {:chunks 0 :triangles (clojure.core/count triangles) :full full? :maximumMs 0 :elapsedMs 0}
+              generation (.. object -userData -paintGeneration)
+              attribute (or (.getAttribute geometry "color") (three/BufferAttribute. (js/Float32Array. (* 9 count)) 3))
+              finish (or (.getAttribute geometry "shipyardFinish") (three/BufferAttribute. (js/Float32Array. (* 9 count)) 3))
+              palette (js/Map.)
+              region-overrides (js/Map.) detail-overrides (js/Map.)
+              _ (when (seq layers)
+                  (doseq [[key name] (:faces regions)
+                          triangle (topology/triangles (.. geometry -userData -preparedTopology) key)]
+                    (.set region-overrides triangle (or (get layers name) inherited))))
+              _ (doseq [[key value] (:faces details) triangle (topology/triangles (.. geometry -userData -preparedTopology) key)]
+                  (.set detail-overrides triangle value))
+              _ (doseq [key (:erased details) triangle (topology/triangles (.. geometry -userData -preparedTopology) key)]
+                  (.set detail-overrides triangle ::erased))
+              write! (fn [triangle]
+                       (let [value (triangle-material object inherited region-overrides detail-overrides triangle)
+                             channels (or (.get palette value)
+                                          (let [channels (clj->js (concat (mapv material/srgb->linear (:base value))
+                                                                          [(:metalness value) (:roughness value) (get value :glow 0)]))]
+                                            (.set palette value channels) channels))]
+                         (dotimes [corner 3]
+                           (let [vertex (+ (* triangle 3) corner)]
+                             (.setXYZ attribute vertex (aget channels 0) (aget channels 1) (aget channels 2))
+                             (.setXYZ finish vertex (aget channels 3) (aget channels 4) (aget channels 5))))
+                         (when-not full?
+                           (.addUpdateRange attribute (* triangle 9) 9)
+                           (.addUpdateRange finish (* triangle 9) 9))))]
+          (set! (.. object -userData -paintPreparing) true)
+          (set! (.. object -userData -paintPreparationStats) stats)
+          (letfn [(step! [remaining]
+                    (when (= generation (.. object -userData -paintGeneration))
+                      (let [chunk-start (js/performance.now)
+                            chunk (take 256 remaining)
+                            remaining (drop 256 remaining)]
+                        (doseq [triangle chunk] (write! triangle))
+                        (set! (.-chunks stats) (inc (.-chunks stats)))
+                        (set! (.-maximumMs stats) (max (.-maximumMs stats) (- (js/performance.now) chunk-start)))
+                        (if (seq remaining) (js/setTimeout #(step! remaining) 0)
+                            (do
+                              (.setAttribute geometry "color" attribute)
+                              (.setAttribute geometry "shipyardFinish" finish)
+                              (when (pos? (.-triangles stats))
+                                (when full?
+                                  (.clearUpdateRanges attribute)
+                                  (.clearUpdateRanges finish))
+                                (set! (.-needsUpdate attribute) true)
+                                (set! (.-needsUpdate finish) true))
+                              (let [enabled? (and active? (not colors?))]
+                                (when (not= enabled? (.-vertexColors surface))
+                                  (set! (.-vertexColors surface) enabled?)
+                                  (set! (.-needsUpdate surface) true))
+                                (when-not colors?
+                                  (if enabled? (.setRGB (.-color surface) 1 1 1)
+                                      (let [[r g b] (mapv material/srgb->linear (:base inherited))]
+                                        (.setRGB (.-color surface) r g b)))))
+                              (set! (.-value (install-finish! surface)) active?)
+                              (set! (.-elapsedMs stats) (- (js/performance.now) started))
+                              (set! (.. object -userData -preparedCompletedSignature) signature)
+                              (set! (.. object -userData -paintPreparing) false))))))]
+            (step! triangles)))))))
 
 (defn apply-details! [^js object inherited colors?]
   ;; Small authoring previews preserve immediate feedback. Detailed source meshes

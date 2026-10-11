@@ -134,7 +134,7 @@
   ".ship-inspector > nav button, .ship-card button, #workspace-navigation button, #paint-create button, #paint-rename button, #mount-colors-toggle, .paint-editor input:not([type=hidden]), .paint-editor select, .paint-editor button, .paint-rail button, .named-ship-actions button")
 
 (defn listen! [{:keys [^js canvas ^js controls active mount-colors-enabled] :as sys} apply-material!]
-  (let [stroke (atom nil) last-stroke (atom nil) locked (atom [])
+  (let [stroke (atom nil) last-stroke (atom nil) locked (atom []) picking (atom nil)
         cursor (.createElement js/document "div")
         form! #(.getElementById js/document "paint-brush")
         available? (fn [] (when-let [form (form!)]
@@ -253,7 +253,7 @@
                              (if-not (.reportValidity (field (form!) "brush-color"))
                                (status! "Enter a six-digit detail hex color before painting.")
                                (try
-                                 (let [form (form!) buffer (visible-buffer sys nil)]
+                                 (let [form (form!) buffer (cached-visible-buffer! picking sys nil)]
                                    (set! (.-enabled controls) false)
                                    (.setPointerCapture canvas (.-pointerId e))
                                    (reset! stroke {:id (random-uuid) :part 0 :chain (js/Promise.resolve) :pending {} :keys {} :before {}

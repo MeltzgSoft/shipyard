@@ -848,7 +848,9 @@ its pre-stroke appearance; **Retry last stroke** retries the captured stroke. Le
 Customize or canceling the drag discards its uncommitted preview. Face counts are
 informational: strokes and saved layers have no face-count limits. Large meshes prepare their first paint buffers in the background. Camera and
 inspector controls remain available while preparation finishes; later palette edits
-reuse the prepared source geometry.
+reuse the prepared source geometry. Subsequent strokes reuse visible-face picking until
+you move the camera, resize the viewport or change the model. Small brush edits update
+the changed faces while preserving the brightness and finishes of untouched parts.
 
 Replaced parts/source files suppress incompatible details and show a warning in
 Customize. Old masks remain saved until you use **Reset custom paint**.

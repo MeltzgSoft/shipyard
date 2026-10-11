@@ -5,7 +5,8 @@
             [shipyard.paint.render :as render]
             [shipyard.paint.faces :as faces]
             [shipyard.paint.topology :as topology]
-            [shipyard.paint.shader :as shader]))
+            [shipyard.paint.shader :as shader]
+            [shipyard.scheme.material :as material]))
 
 (deftest repeated-source-shares-topology-not-paint
   (let [topology #js {} calls (atom 0) original faces/face-key
@@ -185,3 +186,59 @@
         (render/set-regions! object {:mesh-key "hash" :projection-reset? true :triangle-layers (js/Uint32Array. #js [1 0]) :layer-table ["Primary" "Trim"]} {"Primary" primary "Trim" trim})
         (render/apply-details! object primary false)
         (is (= 0 (.getX (.getAttribute geometry "shipyardFinish") 0)) "Authoritative region replacement discards the old ordinal baseline")))))
+
+(defn- prepared-object []
+  (let [points [[[0 0 0] [1 0 0] [0 1 0]] [[0 0 1] [1 0 1] [0 1 1]] [[0 0 0] [1 0 0] [0 1 0]]]
+        keys (mapv faces/face-key points)
+        source #js {:positions (js/Float32Array. (clj->js (mapcat #(mapcat identity %) points)))
+                    :words (js/Uint32Array. 27) :sorted (js/Uint32Array. (clj->js (sort-by keys (range 3)))) :count 3}
+        geometry (three/BufferGeometry.) object (three/Mesh. geometry (three/MeshStandardMaterial.))]
+    (doseq [[triangle key] (map-indexed vector keys) word (range 9)]
+      (aset (.-words source) (+ (* triangle 9) word) (js/parseInt (subs key (* word 8) (* (inc word) 8)) 16)))
+    (.setAttribute geometry "position" (three/BufferAttribute. (.-positions source) 3))
+    (set! (.. geometry -userData -preparedTopology) source)
+    (set! (.. object -userData -partId) "part") (set! (.. object -userData -meshKey) "hash")
+    object))
+
+(deftest prepared-strokes-update-only-changed-faces-and-preserve-material-state
+  (let [object (prepared-object) geometry (.-geometry object) surface (.-material object)
+        primary {:base [0.3 0.5 0.7] :metalness 0.2 :roughness 0.8 :glow 0}
+        red {:base [1 0 0] :metalness 1 :roughness 0.1 :glow 0.5}
+        key (render/face-key geometry 0)
+        regions {:mesh-key "hash" :revision 0 :faces {}}
+        layers {"Primary" primary "Secondary" red}]
+    (render/set-regions! object regions layers)
+    (render/apply-details! object primary false)
+    (is (= 3 (.. object -userData -paintPreparationStats -triangles)))
+    (let [untouched (.getX (.getAttribute geometry "color") 3)]
+      (render/set-regions! object (assoc regions :faces {key "Secondary"}) layers)
+      (render/apply-details! object primary false)
+      (is (= 2 (.. object -userData -paintPreparationStats -triangles)) "Every duplicate identity updates without a full rewrite")
+      (is (= untouched (.getX (.getAttribute geometry "color") 3)))
+      (is (= 1 (.getX (.getAttribute geometry "color") 6)))
+      (is (= [{:start 0 :count 9} {:start 18 :count 9}]
+             (js->clj (.-updateRanges (.getAttribute geometry "color")) :keywordize-keys true))
+          "Sparse GPU uploads include only changed triangles")
+      (let [version (.-version surface) buffer (.getAttribute geometry "color")]
+        (.setRGB (.-color surface) 0.1 0.2 0.3)
+        (render/apply-details! object primary false)
+        (is (= [1 1 1] [(.. surface -color -r) (.. surface -color -g) (.. surface -color -b)]) "Reused buffers do not multiply colors by Primary twice")
+        (render/set-regions! object (assoc regions :revision 1 :faces {key "Secondary"}) layers)
+        (render/apply-details! object primary false)
+        (is (= 0 (.. object -userData -paintPreparationStats -triangles)) "Acknowledgement metadata alone uploads no faces")
+        (is (identical? buffer (.getAttribute geometry "color")))
+        (is (= version (.-version surface)) "Sparse edits and acknowledgements do not recompile the shader"))
+      (render/apply-details! object primary true)
+      (is (false? (.-vertexColors surface)))
+      (is (= 0 (.. object -userData -paintPreparationStats -triangles)))
+      (render/apply-details! object primary false)
+      (is (true? (.-vertexColors surface)))
+      (render/set-regions! object regions layers)
+      (render/apply-details! object primary false)
+      (is (= 2 (.. object -userData -paintPreparationStats -triangles)))
+      (is (= untouched (.getX (.getAttribute geometry "color") 0)) "Erasing restores the underlying Primary material")
+      (is (false? (.-vertexColors surface)))
+      (is (every? true? (map near? (map material/srgb->linear (:base primary))
+                             [(.. surface -color -r) (.. surface -color -g) (.. surface -color -b)]))
+          "Erasing the final assignment restores the inherited material tint"))
+    (.dispose geometry) (.dispose surface)))
