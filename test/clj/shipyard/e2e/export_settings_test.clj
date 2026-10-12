@@ -9,6 +9,7 @@
             [shipyard.file-picker.swing :as swing]
             [shipyard.library.index :as index]
             [shipyard.settings.db :as settings]
+            [shipyard.settings.export-directory :as directory]
             [shipyard.system :as system]))
 
 (deftest export-directory-and-variant-defaults-in-settings
@@ -17,7 +18,7 @@
                                 (system/read-config! "shipyard/systems/file-picker.edn"))
         sys (:system started) running (atom sys) driver (s/make-driver) db (:shipyard.store/db sys)
         library (:shipyard.library/index sys) before (index/parts! library)
-        destination (str (fs/path (:temp started) "exports"))]
+        destination (str (directory/resolved-path! (fs/path (:temp started) "exports")))]
     (try
       (s/go! driver (s/base-url sys))
       (s/wait-visible! driver "#bulk-orient-filters")

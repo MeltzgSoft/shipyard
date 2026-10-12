@@ -13,7 +13,7 @@
 (deftest export-settings-http-preserves-library-and-workspace
   (let [started (fixture/start!) sys (:system started) handler (:handler started)
         db (:shipyard.store/db sys) library (:shipyard.library/index sys)
-        ws (:shipyard.workspace/db sys) destination (str (fs/path (:temp started) "exports"))
+        ws (:shipyard.workspace/db sys) destination (str (directory/resolved-path! (fs/path (:temp started) "exports")))
         before (index/parts! library) browser (workspace/workspace! ws :browse)]
     (try
       (is (nil? (settings/export-root! db)))
@@ -44,7 +44,7 @@
       (finally (fixture/stop! started)))))
 
 (deftest export-settings-survive-reopening-and-work-without-library
-  (let [temp (fs/create-temp-dir) database (fs/path temp "database") root (str (fs/path temp "export"))]
+  (let [temp (fs/create-temp-dir) database (fs/path temp "database") root (str (directory/resolved-path! (fs/path temp "export")))]
     (try
       (let [db (store/open! database)]
         (try
