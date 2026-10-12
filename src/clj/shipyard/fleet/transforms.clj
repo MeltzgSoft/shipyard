@@ -1,6 +1,7 @@
 (ns shipyard.fleet.transforms
   "Pure fleet-list validation and targeted identity decisions."
-  (:require [malli.core :as m]
+  (:require [clojure.string :as str]
+            [malli.core :as m]
             [shipyard.domain.schemas :as schemas]))
 
 (def default-variant-preference [:unsupported :supported :unsupported-pitted])
@@ -20,3 +21,8 @@
     (not (uuid? id)) {:error :invalid-fleet-id}
     (not exists?) {:error :missing-fleet}
     :else {:deleted id}))
+
+(defn source-path
+  "Project native source separators to portable ZIP/manifest paths."
+  [path separator]
+  (str/replace path (str separator) "/"))

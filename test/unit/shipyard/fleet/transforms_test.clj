@@ -20,3 +20,11 @@
     (is (= {:deleted (:fleet/id record)} (t/delete-record true (:fleet/id record))))
     (is (= :missing-fleet (:error (t/delete-record false (:fleet/id record)))))
     (is (= :invalid-fleet-id (:error (t/delete-record true "Fleet"))))))
+
+(deftest source-path-test
+  (testing "Windows inventory paths become portable archive identities"
+    (is (= "Fleet/Cruiser/Hull/unsupported.stl"
+           (t/source-path "Fleet\\Cruiser\\Hull\\unsupported.stl" \\))))
+  (testing "Unix backslashes remain literal names for path validation to reject"
+    (is (= "Fleet\\Hull/unsupported.stl"
+           (t/source-path "Fleet\\Hull/unsupported.stl" \/)))))

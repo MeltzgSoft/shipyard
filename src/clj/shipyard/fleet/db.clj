@@ -70,6 +70,7 @@
                                                      :part/sources (into {} (map (fn [source]
                                                                                    [(:source/variant source)
                                                                                     (assoc (dissoc source :db/id :source/part)
+                                                                                           :source/path (t/source-path (:source/path source) java.io.File/separatorChar)
                                                                                            :source/content (get-in source [:source/content :mesh/sha]))]))
                                                                          (:part/sources part)))]))
                                    (store/entities db :part/library (:db/id library-entity)

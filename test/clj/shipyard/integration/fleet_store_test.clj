@@ -26,7 +26,10 @@
           (is (= #{id (:fleet/id second)} (set (keys (:fleets (fleet/snapshot! facade))))))
           (is (= populated (get-in (persisted/records! facade :fleets) [:fleets id])))
           (is (= (:loadout/id class) (get-in (fleet/export-snapshot! facade id)
-                                             [:classes (:loadout/id class) :loadout/id]))))
+                                             [:classes (:loadout/id class) :loadout/id])))
+          (is (= (str (:hull fixture/ids) "/unsupported.stl")
+                 (get-in (fleet/export-snapshot! facade id)
+                         [:parts (:hull fixture/ids) :part/sources :unsupported :source/path]))))
         (testing "invalid direct writes preserve both persisted and published lists"
           (doseq [bad [(assoc populated :fleet/entries {(:loadout/id class) 0})
                        (assoc populated :fleet/extras {(:weapon fixture/ids) 1.5})
