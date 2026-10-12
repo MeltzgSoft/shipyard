@@ -325,5 +325,6 @@
           (.unroute ^Page (:page driver) "**/preparation/*/data")
           (release! appearance)
           (is (s/wait-until #(:appearance-prepared (s/slot driver []))))
-          (await-ready! driver)))
+          (await-ready! driver)
+          (is (false? (:paint-preparing (s/slot driver []))) "Feedback lasts through the shared material upload")))
       (finally (s/quit! driver) (fixture/stop! started)))))

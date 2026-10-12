@@ -202,6 +202,10 @@
         signature [inherited mask regions details colors? layers]
         [old-inherited old-mask old-regions old-details _ old-layers] (.. object -userData -preparedCompletedSignature)
         count (triangle-count geometry)]
+    ;; A normal job can adopt an upload started by a stroke. Its feedback lasts
+    ;; until the shared upload finishes, even when the buffers need no restart.
+    (when (and (.. object -userData -paintPreparing) (not loading/*brush-stroke?*))
+      (set! (.. object -userData -paintSpinnerPending) true))
     ;; Every caller reinstalls the base material. Vertex colors already contain
     ;; that base, so restore their white multiplier even when buffers are reused.
     (when (and (not colors?) (.-vertexColors surface))
@@ -258,7 +262,8 @@
                            (.addUpdateRange attribute (* triangle 9) 9)
                            (.addUpdateRange finish (* triangle 9) 9))))]
           (set! (.. object -userData -paintPreparing) true)
-          (set! (.. object -userData -paintSpinnerPending) (not loading/*brush-stroke?*))
+          (set! (.. object -userData -paintSpinnerPending)
+                (or (.. object -userData -paintSpinnerPending) (not loading/*brush-stroke?*)))
           (set! (.. object -userData -paintPreparationStats) stats)
           (letfn [(step! [remaining]
                     (when (= generation (.. object -userData -paintGeneration))
