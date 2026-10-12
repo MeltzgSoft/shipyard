@@ -75,6 +75,18 @@
       (is (empty? (fs/list-dir destination)))
       (finally (fs/delete-tree home)))))
 
+(deftest source-change-during-reference-revalidation-prevents-publication
+  (let [{:keys [home snapshot library source destination]} (fixture!)]
+    (try
+      (let [prior (export/export! snapshot library destination)]
+        (is (thrown-with-msg? clojure.lang.ExceptionInfo #"changed before publication"
+                              (export/export! snapshot library destination
+                                              #(let [stamp (fs/last-modified-time source)]
+                                                 (spit (str source) "modified STL bytes")
+                                                 (fs/set-last-modified-time source stamp)))))
+        (is (= [(:path prior)] (mapv str (fs/list-dir destination)))))
+      (finally (fs/delete-tree home)))))
+
 (deftest concurrent-exports-never-overwrite
   (let [{:keys [home snapshot library destination]} (fixture!)]
     (try

@@ -92,7 +92,11 @@
                        ;; and unlike ATOMIC_MOVE its contract never replaces an existing name.
                        (Files/createLink target temporary)
                        true
-                       (catch FileAlreadyExistsException _ false))]
+                       (catch FileAlreadyExistsException _ false)
+                       (catch Exception _
+                         (fail! :publication-failed
+                                "Could not publish the bundle atomically. Choose a writable export directory on a filesystem that supports hard links."
+                                {:directory (str directory)})))]
       (if published? target (recur)))))
 
 (defn export!
@@ -110,12 +114,12 @@
          (try
            (write-archive! temporary library files identities)
            (validate-archive! temporary files identities)
-           (doseq [[file identity] (map vector files identities)]
-             (when-not (= (:hash identity) (:hash (check-source! library file)))
-               (fail! :changed-source "A selected STL changed before publication." {:path (:path file)})))
            (when revalidate! (revalidate!))
            (when-not (= destination (destination! library export-root))
              (fail! :changed-destination "The export directory changed during export." {}))
+           (doseq [[file identity] (map vector files identities)]
+             (when-not (= (:hash identity) (:hash (check-source! library file)))
+               (fail! :changed-source "A selected STL changed before publication." {:path (:path file)})))
            (let [published (publish! destination temporary)]
              {:path (str published) :filename (str (.getFileName published))})
            (finally (Files/deleteIfExists temporary)))))
