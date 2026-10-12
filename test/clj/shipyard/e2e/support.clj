@@ -12,7 +12,7 @@
             [shipyard.fixtures :as f]
             [shipyard.file-picker.db :as picker])
   (:import [com.microsoft.playwright Browser Browser$NewPageOptions BrowserType$LaunchOptions
-            Dialog Locator$ScreenshotOptions Page Page$WaitForSelectorOptions
+            Dialog Locator$ScreenshotOptions Page Page$ScreenshotOptions Page$WaitForSelectorOptions
             Playwright]
            [com.microsoft.playwright.options BoundingBox SelectOption WaitForSelectorState]
            [java.io File]
@@ -319,8 +319,13 @@
 (defn text [{:keys [^Page page]} sel] (or (.textContent page sel) ""))
 
 (defn screenshot-el! [{:keys [^Page page]} sel ^File target]
-  (.screenshot (.locator page sel)
-               (doto (Locator$ScreenshotOptions.) (.setPath (.toPath target)))))
+  ;; Whole-page diagnostic captures need no element scroll/stability wait.
+  ;; Polling panels can change the body's bounds while the asserted UI is ready.
+  (if (= "body" sel)
+    (.screenshot page (doto (Page$ScreenshotOptions.)
+                        (.setPath (.toPath target)) (.setFullPage true)))
+    (.screenshot (.locator page sel)
+                 (doto (Locator$ScreenshotOptions.) (.setPath (.toPath target))))))
 
 (defn- ->clj
   "Playwright hands back java.util collections; the assertions want Clojure ones

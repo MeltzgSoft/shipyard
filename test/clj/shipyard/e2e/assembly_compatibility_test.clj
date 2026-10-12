@@ -27,6 +27,11 @@
   (is (s/wait-until #(= name (s/text driver (str (slot path) " > summary .assembly__mount-state")))))
   (ready! driver))
 
+(defn- viewport-slots [driver]
+  ;; Shader compilation may finish between snapshots without changing the ship.
+  ;; Keep geometry, instance identity and every appearance value in the comparison.
+  (mapv #(dissoc % :finish-compiled) (get-in (s/stats driver) [:assembly :slots])))
+
 (deftest cross-faction-assembly-saves-reopens-and-retains-universal-parts
   (s/assert-bundle!)
   (let [started (fixture/start! true compatibility/library! compatibility/author!)
@@ -53,12 +58,12 @@
       (assign! driver [[:weapon 0]] "Foreign Universal")
       (assign! driver [[:weapon 0] [:turret 0]] "turret")
       (s/await-assembly-prepared! driver 4)
-      (let [before (:draft @state) viewport (get-in (s/stats driver) [:assembly :slots])]
+      (let [before (:draft @state) viewport (viewport-slots driver)]
         (set-compatibility! driver false)
         (s/wait-visible! driver "[role=alert]:has-text('Clear parts from other factions')")
         (is (= before (:draft @state)))
         (is (s/js driver "() => document.querySelector('.assembly__compatibility input[name=allow-other-factions]').checked"))
-        (is (= viewport (get-in (s/stats driver) [:assembly :slots])))
+        (is (= viewport (viewport-slots driver)))
         (is (empty? (:loadouts (loadouts/snapshot! database)))))
       (s/click! driver ".assembly__save button")
       (s/wait-visible! driver "[role=status]:text-is('Class saved.')")
