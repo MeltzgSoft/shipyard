@@ -21,11 +21,14 @@
    (fn [result id quantity]
      (let [class (get classes id)]
        (if (and class (= (:fleet/library fleet) (:loadout/library class)))
-         (reduce #(update-in %1 [:quantities %2] (fnil + 0) quantity)
+         (reduce #(update-in %1 [:quantities %2] (fnil +' 0) quantity)
                  result (remove nil? (cons (:loadout/hull class) (vals (:loadout/slots class)))))
          (update result :errors conj
                  (problem :missing-class "A saved class is missing from this library." {:class-id id})))))
-   {:quantities (:fleet/extras fleet) :errors []} (:fleet/entries fleet)))
+   {:quantities (:fleet/extras fleet)
+    :errors (if (and (map? fleet) (:fleet/library fleet)) []
+                [(problem :missing-fleet "Choose a saved fleet from the selected library." {})])}
+   (:fleet/entries fleet)))
 
 (defn print-plan
   "Resolve each durable part to the first present, explicitly permitted source."
@@ -43,7 +46,7 @@
                          (not (and part (:part/present? part)
                                    (= (:fleet/library fleet) (:part/library part))))
                          (problem :missing-part "A required part is missing from this library." {:part-id id})
-                         (not (pos-int? quantity))
+                         (not (and (integer? quantity) (pos? quantity)))
                          (problem :invalid-quantity "Part quantities must be positive integers." {:part-id id})
                          (nil? source)
                          (problem :unavailable-variant "No permitted source variant is available; adjust the fleet preference or restore the source." {:part-id id})

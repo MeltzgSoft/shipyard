@@ -24,11 +24,21 @@
 (deftest requirements-test
   (testing "every saved full-path occurrence counts; extras aggregate and incomplete classes still contribute"
     (is (= {:quantities {"hull" 5 "weapon" 10} :errors []} (plan/requirements snapshot))))
+  (testing "valid stored quantities aggregate beyond signed-long precision"
+    (let [large (assoc-in snapshot [:fleet :fleet/entries :a] Long/MAX_VALUE)]
+      (is (= (+' (*' 3 Long/MAX_VALUE) 4)
+             (get-in (plan/requirements large) [:quantities "weapon"])))
+      (is (:ready? (plan/print-plan large)))))
   (testing "missing and cross-library classes block readiness"
     (is (= :missing-class (-> (plan/requirements (assoc snapshot :classes {})) :errors first :code)))
     (is (= :missing-class (-> (plan/requirements (assoc-in snapshot [:classes :a :loadout/library] :other)) :errors first :code)))))
 
 (deftest print-plan-test
+  (testing "missing fleet and invalid empty snapshot never become a ready empty export"
+    (doseq [s [nil {} {:fleet {}}]]
+      (let [result (plan/print-plan s)]
+        (is (false? (:ready? result)))
+        (is (= :missing-fleet (-> result :errors first :code))))))
   (testing "fallback is per-part and includes exact source identity and stamps"
     (let [s (assoc-in snapshot [:parts "hull" :part/sources :supported]
                       {:source/key ["hull" :supported] :source/variant :supported :source/present? true
