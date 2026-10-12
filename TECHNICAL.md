@@ -339,7 +339,7 @@ also runs at the transactional boundary.
 
 | Entity | Identity and relationships |
 |---|---|
-| Application settings | Selected library and export roots |
+| Application settings | Selected library and export roots; default variant preference order |
 | Library | UUID, root, shared-layer revision |
 | Scan entry | Library-scoped part identity, file stamps, mesh key, triangle count, escort analysis |
 | Part | UUID, unique `[library UUID, relative path]`, library ref, present flag, observed source facts, manual role/orientation |
@@ -358,6 +358,11 @@ The Fleet Browser's export projection reads each saved class's hull and full-pat
 assignments, counts every occurrence, multiplies by its fleet-list quantity and adds
 extra part counts. It resolves source entities in preference order against the same
 library snapshot, then produces one manifest row and one copy per selected source file.
+The Settings preference is an ordered value in the shared store. Creating a fleet list
+copies that value into its own durable preference. Settings and export controls both
+move individual variant types up or down one position; export controls write only the
+fleet list. **Use default** copies the current Settings value to the fleet list in one
+transaction. Existing lists do not follow later changes to the Settings default.
 The manifest uses library-relative paths and quantities; ZIP entries preserve those
 paths. Validate all references, source stamps and destination paths before publishing.
 Write the archive in the selected export directory through a temporary file and rename
@@ -1287,6 +1292,8 @@ Both paths have no default and are application settings in the shared database, 
 than `config.edn` tunables. The library root is selected through `POST /settings` and
 restored before scanning (§2.1). The export root is selected in Settings and validated
 separately; changing it does not rescan or relocate the library.
+Settings also owns the default variant preference used to initialize new fleet lists.
+It is independent of the export directory and of each list's saved preference.
 
 Library, export-directory and archive inputs use Swing `JFileChooser`, opened by
 `POST /files/choose/:field`. The field is restricted to library setup/settings

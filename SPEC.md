@@ -574,9 +574,14 @@ time. Named painted ships and fleet palettes are separate from print quantities.
 
 Each list may also request a positive integer quantity of a specific library part,
 independent of its class entries. These extra parts add to the same part's total rather
-than creating duplicate files. The list saves an ordered preference of distinct,
-recognized STL variants. For every required part, export chooses the first variant in
-that order with a present source file; different parts may therefore use different
+than creating duplicate files. Settings saves a default preference order of distinct,
+recognized STL variants. New lists copy that order. Export controls show the list's
+own order and let the user move each variant type up or down one position; changes save
+with that list and never change the Settings default. **Use default** in the export
+controls copies the current Settings order into the list, replacing its saved order.
+Later Settings changes do not change existing lists unless the user chooses **Use
+default**. For every required part, export chooses the first variant in the list's
+order with a present source file; different parts may therefore use different
 variants. The preference order is exhaustive: an unlisted variant is never selected
 implicitly. The browser shows the chosen variant, total quantity and any missing
 source before export.
@@ -1098,6 +1103,9 @@ requires this directory; Shipyard creates it when needed and writes completed ZI
 there. The export directory must be separate from the selected library tree so exports
 cannot be scanned as library content. Invalid or unwritable paths leave the saved
 setting and any existing bundles intact.
+Settings also presents the default variant preference as a list of variant types with
+individual Up and Down controls. Moving a type saves the new default for future fleet
+lists and for explicit **Use default** actions; it does not rewrite existing lists.
 
 Appearance offers Light, Dark and Auto, with Dark as the initial default. The saved
 choice applies across libraries and workspaces and survives application restarts.
