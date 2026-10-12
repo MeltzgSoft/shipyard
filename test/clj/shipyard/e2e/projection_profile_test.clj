@@ -14,7 +14,8 @@
             [shipyard.preparation :as preparation]
             [shipyard.scheme.db :as schemes]
             [shipyard.scheme.material :as material]
-            [shipyard.ship.db :as ships]))
+            [shipyard.ship.db :as ships]
+            [shipyard.thumbnail.cache :as thumbnails]))
 
 (defn- detailed-library! [root]
   (fixture/library! root)
@@ -83,4 +84,14 @@
                           :event-loop-max-gap-ms (s/js driver "() => window.numericMaxGap")}]
               (spit "/tmp/shipyard-projection-profile.edn" (pr-str report))
               (println "Numeric projection profile:" (pr-str report))))))
-      (finally (s/quit! driver) (fixture/stop! started)))))
+      (finally
+        (try
+          (s/quit! driver)
+          (finally
+            ;; Dense PNG jobs can outlive the viewport measurements. Stop browser
+            ;; requests and observe their completion before tearing down the fixture.
+            (try
+              (is (s/wait-until #(= {:running 0 :queued 0}
+                                    (thumbnails/progress! (:shipyard.thumbnail/cache sys))) 90000)
+                  "Background thumbnails finish before fixture shutdown")
+              (finally (fixture/stop! started)))))))))
