@@ -263,6 +263,11 @@ nothing: `clojure -T:build uber` bundles all four classifiers, which is why the 
 above is a plain `java -jar`.
 
 CI prints each JVM and browser test name so a slow or stalled run identifies the active test.
+The E2E CI job runs four independent shards, balanced using measured namespace
+durations from a successful CI run. New test files are included automatically and
+use a test-count estimate until measured. Each shard has its own JVM; the tests
+start isolated browsers, ephemeral servers, and temporary stores as before.
+The local `--focus :e2e` command still runs the complete suite.
 The Linux E2E job uses a verified, 2 GiB tmpfs at `/shipyard-test-tmp` for the test JVM's
 temporary fixtures, databases, mesh caches and native extraction. This avoids container
 overlay I/O delays during browser readiness checks. Integration tests retain disk-backed

@@ -201,6 +201,10 @@ jobs:
     # application behaviour, not platform behaviour, and it is the slowest job
     # here - Windows would buy nothing and cost the §9 ten-minute budget.
     runs-on: linux
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
     # Playwright's own image, pinned to the library version in deps.edn, because
     # `install --with-deps` was costing five minutes a run and almost none of it
     # was the browser. Measured on run 474: 18s resolving the classpath, 4m40s
@@ -274,7 +278,9 @@ jobs:
           cp node_modules/htmx.org/dist/htmx.min.js resources/public/js/
 
       - name: E2E tests
-        run: clojure -J-Djava.io.tmpdir=/shipyard-test-tmp -M:test:natives-linux --focus :e2e --reporter kaocha.report/documentation
+        run: |
+          node .forgejo/scripts/shard-e2e.mjs "${{ matrix.shard }}" 4 target/e2e-shard-tests.edn
+          clojure -J-Djava.io.tmpdir=/shipyard-test-tmp -M:test:natives-linux --config-file target/e2e-shard-tests.edn --focus :e2e --reporter kaocha.report/documentation
 
   package:
     # The release artifact, and the only job that proves one exists. Linux
