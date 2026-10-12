@@ -30,8 +30,10 @@
           (let [denied (fs/create-dir (fs/path (:temp started) "denied"))]
             (try
               (fs/set-posix-file-permissions denied "r-xr-xr-x")
-              (is (= 422 (:status (handler (mock/request :post "/settings/export-root" {"export-root" (str denied)})))))
-              (is (= destination (settings/export-root! db)))
+              ;; Root and privileged CI users can write despite the mode bits.
+              (when-not (java.nio.file.Files/isWritable (fs/path denied))
+                (is (= 422 (:status (handler (mock/request :post "/settings/export-root" {"export-root" (str denied)})))))
+                (is (= destination (settings/export-root! db))))
               (finally (fs/set-posix-file-permissions denied "rwxrwxrwx"))))))
       (is (= "existing bundle" (slurp (fs/file destination "existing.zip"))))
       (is (not (fs/exists? (fs/path (:root started) "nested-export"))))
