@@ -365,8 +365,12 @@ fleet list. **Use default** copies the current Settings value to the fleet list 
 transaction. Existing lists do not follow later changes to the Settings default.
 The manifest uses library-relative paths and quantities; ZIP entries preserve those
 paths. Validate all references, source stamps and destination paths before publishing.
-Write the archive in the selected export directory through a temporary file and rename
-it into a unique final name only after the ZIP is complete. A failed export leaves no
+Write the archive in the selected export directory through a temporary file. After
+closing and validating the complete ZIP, atomically create a hard link to that inode
+under a unique final name, then unlink the temporary name. Hard-link creation never
+replaces an existing bundle; Java atomic moves can replace existing names even without
+REPLACE_EXISTING. Filesystems that cannot create hard links report a recoverable export
+error rather than falling back to unsafe publication. A failed export leaves no
 published partial archive. Keep the export directory outside the library root.
 
 Refs to shared parts, layers, content, schemes and targets are not components. Deleting
