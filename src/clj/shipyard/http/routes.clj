@@ -30,6 +30,8 @@
             [shipyard.http.contracts :as contracts]
             [shipyard.file-picker.routes :as file-picker]
             [shipyard.fleet.routes :as fleet-routes]
+            [shipyard.fleet.export-routes :as fleet-export-routes]
+            [shipyard.fleet.export-handlers :as fleet-export]
             [shipyard.http.htmx :as htmx]
             [shipyard.http.jobs :as jobs]
             [shipyard.http.settings :as settings]
@@ -661,7 +663,8 @@
 (defn router [deps]
   (let [deps (assoc deps :part-handler (partial part! deps)
                     :facets #(facets! (:catalog deps))
-                    :database #(db/snapshot! (:catalog deps)))]
+                    :database #(db/snapshot! (:catalog deps))
+                    :fleet-export-panel fleet-export/panel!)]
     (ring/router
      (into (routes deps)
            (concat (paint-preparation/routes deps)
@@ -675,7 +678,7 @@
                    (when (:workspace deps) (import-routes/routes deps))
                    (when (:assembly deps) (assembly-routes/routes deps))
                    (when (:workspace deps)
-                     (concat (workspace-routes/routes deps) (fleet-routes/routes deps)))))
+                     (concat (workspace-routes/routes deps) (fleet-routes/routes deps) (fleet-export-routes/routes deps)))))
      {:data {:coercion malli-coercion/coercion
              :middleware [params/wrap-params
                           region-transport/wrap-body

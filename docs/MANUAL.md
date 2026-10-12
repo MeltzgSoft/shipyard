@@ -888,53 +888,6 @@ Customize. Old masks remain saved until you use **Reset custom paint**.
 After replacing a source file, reselect your library in Settings to rescan it before
 reopening Customize. Restoring the original source restores its mask after the same rescan.
 
-## Troubleshooting
-
-**"Shipyard will not start, with an error about an unrecognised JVM option."** You are
-on an older JDK. Install Java 25.
-
-**"My library is empty."** Check the path is right, and that your folders match the
-layout in section 2. Shipyard logs the root it is using at startup.
-
-**"Could not save the setting: …"** Shipyard could not commit the folder change to
-its database. The current library remains active and its saved selection is unchanged.
-Check that the database location is writable and has free space, then press
-**Use this folder** again.
-
-**"A part I own is not listed."** Parts that ship only as `supported.stl` are hidden
-from the regular Part Browser. Their files remain in the library and can be previewed
-during import review.
-
-**"A part will not open."** A small number of STL files in circulation are malformed or
-in an unexpected format. Shipyard logs which file and carries on rather than failing
-outright; the rest of your library is unaffected.
-
-**"The 3D view is blank."** Your browser needs WebGL. Any current desktop browser has it,
-but a remote session or a very old graphics driver may not. If Shipyard cannot get a 3D
-context it says so in the browser console and disables the viewport only - browsing,
-filtering and part details keep working, so nothing else on the page is lost.
-
-## Getting help
-
-Report problems at the [issue tracker](https://forgejo.tail943578.ts.net/MeltzgSoft/shipyard/issues).
-Include what you did, what happened, and the log output from the terminal.
-
-### Fleet export settings
-
-In **Settings → Fleet export**, enter an **Export directory** or select it with
-**Browse…**, then press **Save export directory**. Choose a writable directory
-outside your STL library. Shipyard creates missing directories. There is no
-initial export destination; invalid paths preserve your saved destination and
-existing bundles. Canceling Browse preserves the typed path; when desktop dialogs
-are unavailable, enter the path directly.
-
-Use **Up** and **Down** beside each type in **Default variant order** to move it
-one position and save the default for new fleet lists. Existing lists keep their
-own order; **Use default** in a fleet's export controls explicitly copies the
-current default. These settings survive restart and do not rescan the library.
-Unsaved export paths remain available when you leave Settings and return.
-
-
 ## Fleet Browser
 
 Open **Fleet Browser** to view saved print lists for the current library. Enter a
@@ -967,3 +920,70 @@ never selected. **Use default** copies the current Settings order. Later Setting
 changes leave this list's order intact. Fleet names, quantities and preferences
 survive restart. **Delete fleet** asks for confirmation and removes the print list;
 it preserves the saved classes and source library.
+
+### Exporting a print bundle
+
+Choose an **Export directory** in Settings, then open a fleet and review **Required
+source files**. Each row shows its chosen STL variant and total print quantity.
+Class quantities multiply all assigned parts, including repeated weapon and turret
+slots; extra parts add to the same totals. Incomplete classes include their hull and
+assigned parts.
+
+Choose **Export ZIP** to save a uniquely named bundle in the configured directory.
+The completed location appears in the editor. Each chosen STL appears once at its
+library-relative path. `index.csv` lists each path, variant and quantity to print.
+Separate prints use the quantity in the index; the ZIP does not duplicate file bytes
+for multiple copies and does not merge or modify source meshes.
+
+Missing references, unavailable variants or changed source files prevent publication.
+Restore the affected source or adjust the list. After restoring or changing files,
+apply the library folder again in Settings to refresh its recorded sources, then retry. Failed exports preserve
+previous bundles and publish no partial ZIP. Atomic publication requires a destination
+filesystem that supports hard links; unsupported destinations report an error, and
+you can select another export directory in Settings.
+
+### Fleet export settings
+
+In **Settings → Fleet export**, enter an **Export directory** or select it with
+**Browse…**, then press **Save export directory**. Choose a writable directory
+outside your STL library. Shipyard creates missing directories. There is no
+initial export destination; invalid paths preserve your saved destination and
+existing bundles. Canceling Browse preserves the typed path; when desktop dialogs
+are unavailable, enter the path directly.
+
+Use **Up** and **Down** beside each type in **Default variant order** to move it
+one position and save the default for new fleet lists. Existing lists keep their
+own order; **Use default** in a fleet's export controls explicitly copies the
+current default. These settings survive restart and do not rescan the library.
+Unsaved export paths remain available when you leave Settings and return.
+
+## Troubleshooting
+
+**"Shipyard will not start, with an error about an unrecognised JVM option."** You are
+on an older JDK. Install Java 25.
+
+**"My library is empty."** Check the path is right, and that your folders match the
+layout in section 2. Shipyard logs the root it is using at startup.
+
+**"Could not save the setting: …"** Shipyard could not commit the folder change to
+its database. The current library remains active and its saved selection is unchanged.
+Check that the database location is writable and has free space, then press
+**Use this folder** again.
+
+**"A part I own is not listed."** Parts that ship only as `supported.stl` are hidden
+from the regular Part Browser. Their files remain in the library and can be previewed
+during import review.
+
+**"A part will not open."** A small number of STL files in circulation are malformed or
+in an unexpected format. Shipyard logs which file and carries on rather than failing
+outright; the rest of your library is unaffected.
+
+**"The 3D view is blank."** Your browser needs WebGL. Any current desktop browser has it,
+but a remote session or a very old graphics driver may not. If Shipyard cannot get a 3D
+context it says so in the browser console and disables the viewport only - browsing,
+filtering and part details keep working, so nothing else on the page is lost.
+
+## Getting help
+
+Report problems at the [issue tracker](https://forgejo.tail943578.ts.net/MeltzgSoft/shipyard/issues).
+Include what you did, what happened, and the log output from the terminal.
