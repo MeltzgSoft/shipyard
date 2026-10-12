@@ -61,12 +61,93 @@
     [:input {:type "hidden" :name "id"}]]
    (results entries filters)])
 
-(defn editor [fleet error]
+(defn- edit-form [fleet action attrs children]
+  (into [:form (merge {:method "post" :action "/fleets/edit" :hx-post "/fleets/edit"
+                       :hx-target "#detail" :hx-swap "innerHTML settle:0ms"
+                       :hx-sync "#workspace-navigation:drop" :hx-disabled-elt "find button"} attrs)
+         [:input {:type "hidden" :name "id" :value (str (:fleet/id fleet))}]
+         [:input {:type "hidden" :name "action" :value action}]] children))
+
+(defn editor [fleet {:keys [error message plan classes parts selected-class preview export-controls]}]
   (list
    [:section#library.panel {:hx-swap-oob "outerHTML" :data-fleet-view "editor"}]
-   [:section.fleet-editor.ship-inspector {:data-fleet-id (str (:fleet/id fleet))}
+   [:section#fleet-editor.fleet-editor.ship-inspector {:data-fleet-id (str (:fleet/id fleet))}
     [:button (merge workspace/transition-attrs {:type "button" :data-workspace-transition true
                                                 :hx-get "/workspace/fleets?table=1" :hx-target "#detail"}) "← Back to fleets"]
     [:h2 (:fleet/name fleet)]
     (when error [:p.detail__error {:role "alert"} error])
-    [:p "Choose classes and extra parts to prepare a print bundle."]]))
+    (when message [:p {:role "status"} message])
+    (edit-form fleet "rename" {:id "fleet-name"}
+               [[:label "Fleet name" [:input {:name "name" :value (:fleet/name fleet) :required true :maxlength 120}]]
+                [:button {:type "submit"} "Rename"]])
+    [:h3 "Classes"]
+    (edit-form fleet "class-set" {:id "fleet-add-class"}
+               [[:label "Saved class" [:select {:name "class-id" :required true}
+                                       [:option {:value ""} "Choose a class"]
+                                       (for [class (sort-by :loadout/name (vals classes))]
+                                         [:option {:value (str (:loadout/id class))} (:loadout/name class)])]]
+                [:label "Quantity" [:input {:type "number" :name "quantity" :min 1 :step 1 :value 1 :required true}]]
+                [:button {:type "submit" :disabled (empty? classes)} "Add class"]])
+    (for [[id quantity] (sort-by (comp str key) (:fleet/entries fleet))
+          :let [class (get classes id) selected? (= id selected-class)]]
+      [:div {:data-fleet-class (str id)}
+       [:h4 (or (:loadout/name class) (str "Missing class " id))]
+       (edit-form fleet "class-set" {}
+                  [[:input {:type "hidden" :name "class-id" :value (str id)}]
+                   [:label "Quantity" [:input {:type "number" :name "quantity" :min 1 :step 1 :required true :value quantity}]]
+                   [:button {:type "submit"} "Save quantity"]])
+       [:form {:method "post" :action "/fleets/preview" :hx-post "/fleets/preview" :hx-target "#detail"
+               :hx-sync "#workspace-navigation:drop" :hx-disabled-elt "find button"}
+        [:input {:type "hidden" :name "id" :value (str (:fleet/id fleet))}]
+        [:input {:type "hidden" :name "class-id" :value (str id)}]
+        [:button {:type "submit" :disabled (nil? class) :aria-pressed (str (boolean selected?))} (if selected? "Previewing class" "Preview class")]]
+       (edit-form fleet "class-remove" {}
+                  [[:input {:type "hidden" :name "class-id" :value (str id)}]
+                   [:button {:type "submit"} "Remove class"]])])
+    (when (some #(= :running (:state %)) (vals (:prepared preview)))
+      [:div {:data-viewport-pending true
+             :hx-get (str "/fleets?poll=1&id=" (:fleet/id fleet) "&class-id=" selected-class)
+             :hx-trigger "load delay:400ms" :hx-target "#detail" :hx-swap "innerHTML settle:0ms" :hx-sync "#detail:abort"}])
+    (for [[id {:keys [state message]}] (:prepared preview) :when (= state :failed)]
+      [:p.detail__error (str "Preview unavailable for " id ": " message)])
+    [:h3 "Extra parts"]
+    (edit-form fleet "extra-set" {:id "fleet-add-extra"}
+               [[:label "Library part" [:select {:name "part-id" :required true}
+                                        [:option {:value ""} "Choose a part"]
+                                        (for [part (sort-by :part/id (vals parts)) :when (:part/present? part)]
+                                          [:option {:value (:part/id part)} (:part/id part)])]]
+                [:label "Quantity" [:input {:type "number" :name "quantity" :min 1 :step 1 :value 1 :required true}]]
+                [:button {:type "submit"} "Add extra part"]])
+    (for [[id quantity] (sort-by key (:fleet/extras fleet))]
+      [:div {:data-fleet-extra id}
+       [:h4 id]
+       (edit-form fleet "extra-set" {}
+                  [[:input {:type "hidden" :name "part-id" :value id}]
+                   [:label "Quantity" [:input {:type "number" :name "quantity" :min 1 :step 1 :required true :value quantity}]]
+                   [:button {:type "submit"} "Save quantity"]])
+       (edit-form fleet "extra-remove" {}
+                  [[:input {:type "hidden" :name "part-id" :value id}]
+                   [:button {:type "submit"} "Remove extra part"]])])
+    [:h3 "Variant preference"]
+    [:ol#fleet-variants
+     (for [[i variant] (map-indexed vector (:fleet/variant-preference fleet))]
+       [:li {:data-fleet-variant (name variant)}
+        [:span (name variant)]
+        (for [[direction label boundary?] [["up" "Up" (zero? i)] ["down" "Down" (= i (dec (count (:fleet/variant-preference fleet))))]]]
+          (edit-form fleet "variant" {}
+                     [[:input {:type "hidden" :name "variant" :value (name variant)}]
+                      [:input {:type "hidden" :name "direction" :value direction}]
+                      [:button {:type "submit" :disabled boundary? :aria-label (str "Move fleet " (name variant) " " direction)} label]]))])]
+    (edit-form fleet "default" {} [[:button {:type "submit"} "Use default"]])
+    [:h3 "Required source files"]
+    [:p {:data-fleet-ready (str (boolean (:ready? plan)))} (if (:ready? plan) "Ready to export" "Needs attention before export")]
+    (for [{:keys [message part-id class-id]} (:errors plan)]
+      [:p.detail__error {:data-fleet-plan-error true} (str message " " (or part-id class-id))])
+    [:table [:thead [:tr [:th "Source file"] [:th "Variant"] [:th "Total quantity"]]]
+     [:tbody (for [{:keys [part-id path variant quantity]} (:files plan)]
+               [:tr {:data-fleet-file part-id}
+                [:td path] [:td (name variant)] [:td {:data-fleet-quantity "true"} quantity]])]]
+    export-controls
+    (edit-form fleet "delete" {:hx-confirm (str "Delete fleet \"" (:fleet/name fleet) "\"? This removes its print list.")}
+               [[:input {:type "hidden" :name "confirm" :value "yes"}]
+                [:button {:type "submit"} "Delete fleet"]])]))

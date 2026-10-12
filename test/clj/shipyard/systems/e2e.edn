@@ -22,6 +22,7 @@
 
  :shipyard.mount.preview-db/drafts {}
  :shipyard.assembly/db {}
+ :shipyard.fleet.handlers/preview {}
  :shipyard.fleet/db {:store #ig/ref :shipyard.store/db :catalog #ig/ref :shipyard.catalog/db}
  :shipyard.loadout/db {:store #ig/ref :shipyard.store/db :catalog #ig/ref :shipyard.catalog/db}
  :shipyard.scheme/db {:store #ig/ref :shipyard.store/db :catalog #ig/ref :shipyard.catalog/db}
@@ -34,6 +35,7 @@
                           :workspace #ig/ref :shipyard.workspace/db
                           :assembly #ig/ref :shipyard.assembly/db
                           :fleets #ig/ref :shipyard.fleet/db
+                        :fleet-preview #ig/ref :shipyard.fleet.handlers/preview
   :loadouts #ig/ref :shipyard.loadout/db
                           :schemes #ig/ref :shipyard.scheme/db
                           :paint #ig/ref :shipyard.paint/db

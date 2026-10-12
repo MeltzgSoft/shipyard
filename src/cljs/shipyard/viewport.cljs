@@ -122,7 +122,7 @@
      :radius radius}))
 
 (defn- frame! [{:keys [^js camera ^js controls workspace ^js canvas]} bbox-min bbox-max]
-  (let [inspector (when (= workspace :ships) (.querySelector js/document ".ship-inspector"))
+  (let [inspector (when (#{:ships :fleets} workspace) (.querySelector js/document ".ship-inspector"))
         width (max 1 (- (.-clientWidth canvas) (if inspector (+ 42 (.-offsetWidth inspector)) 0)))
         aspect (/ width (max 1 (.-clientHeight canvas)))
         fov (if inspector (* 2 (/ 180 js/Math.PI) (js/Math.atan (* (min 1 aspect) (js/Math.tan (/ (* (.-fov camera) js/Math.PI) 360))))) (.-fov camera))
@@ -1833,7 +1833,7 @@
     (set! (.-aspect camera) (/ w h))
     (.updateProjectionMatrix camera)
     (.setSize renderer w h false)
-    (if-let [inspector (when (= workspace :ships) (.querySelector js/document ".ship-inspector"))]
+    (if-let [inspector (when (#{:ships :fleets} workspace) (.querySelector js/document ".ship-inspector"))]
       (.setViewOffset camera w h (/ (+ 28 (.-offsetWidth inspector)) 2) 0 w h)
       (.clearViewOffset camera))))
 
@@ -1993,7 +1993,7 @@
     (listen-event! body sys "htmx:afterSwap" (fn [_]
                                                ;; Workspace headers arrive before the destination inspector.
                                                ;; Restore its view offset once the new panel is in the DOM.
-                                               (when (= :ships (:workspace sys)) (resize! sys))
+                                               (when (#{:ships :fleets} (:workspace sys)) (resize! sys))
                                                (sync-viewport-events!)
                                                (sync-assembly-from-dom! sys)
                                                (sync-scheme-from-dom! sys)

@@ -945,3 +945,25 @@ shows class count, total ship quantity, extra-part count and export readiness.
 Filter by fleet name. **Back to fleets** restores the table filter, page and scroll
 position. Switching workspaces retains the fleet view and selection independently
 of Part Browser and Ship Browser. Fleet lists survive application restarts.
+
+### Editing a fleet print list
+
+Open a list in **Fleet Browser**, or enter a name and press **New fleet**. Use
+**Rename** to save its name. Choose a saved class, enter a positive whole quantity,
+and press **Add class**. Each class appears once; adding it again updates its
+quantity. **Save quantity** and **Remove class** change the print list without
+changing the saved class. **Preview class** shows one existing assembly at a time;
+your Ship Browser assembly and Part Browser selection retain their own state.
+
+Use **Extra parts** to add specific library parts with positive whole quantities.
+Extra quantities combine with all class requirements. **Required source files**
+shows each selected STL, variant and total print quantity. Missing classes, parts
+or permitted variants appear as errors to resolve before export. A source file
+appears once even when several classes or extra entries require it.
+
+**Up** and **Down** move a variant one position in this list's saved preference.
+Each part uses its first available variant in that order; an unlisted variant is
+never selected. **Use default** copies the current Settings order. Later Settings
+changes leave this list's order intact. Fleet names, quantities and preferences
+survive restart. **Delete fleet** asks for confirmation and removes the print list;
+it preserves the saved classes and source library.
