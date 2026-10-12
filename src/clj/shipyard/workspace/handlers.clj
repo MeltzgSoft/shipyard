@@ -9,6 +9,7 @@
             [shipyard.bulk-orientation.handlers :as orient]
             [shipyard.bulk-orientation.views :as orient-views]
             [shipyard.http.htmx :as htmx]
+            [shipyard.fleet.handlers :as fleets]
             [shipyard.http.pagination :as pagination]
             [shipyard.http.views :as views]
             [shipyard.library.index :as index]
@@ -196,6 +197,8 @@
       (workspace/update-workspace! workspace :ships assoc :view :editor :inspector-tab "assembly"))
     (when (and (= mode :ships) (= "1" (get params "table")))
       (workspace/update-workspace! workspace :ships assoc :view :table))
+    (when (and (= mode :fleets) (= "1" (get params "table")))
+      (workspace/update-workspace! workspace mode assoc :view :table))
     (when (and (= mode :browse) (= "1" (get params "table")))
       (workspace/update-workspace! workspace mode assoc :view :table))
     (when (and (= mode :browse) (not (importer/session! deps)) (get params "part-id"))
@@ -215,6 +218,7 @@
               :settings (-> (htmx/fragment (views/detail-empty))
                             (append [:section#library.panel {:hx-swap-oob "outerHTML" :data-settings-view "true"}
                                      (html/raw (:body (settings/current! deps {})))]))
+              :fleets (fleets/current! deps {})
               :ships (ships! deps {:params (cond-> (select-keys params ["error" "part-id"]) same-ships? (assoc "poll" "1"))})
               :browse
               (if (#{:part :variant} view)

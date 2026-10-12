@@ -4,7 +4,7 @@
             [clojure.data.json :as json]))
 
 (def navigation-include
-  "#filters, #bulk-orient-filters, #part-table-position, .assembly__filters, #ship-filters, #ship-table-position, .assembly__save input[name=name], #settings, #export-settings, #cut-defaults")
+  "#filters, #bulk-orient-filters, #part-table-position, .assembly__filters, #ship-filters, #ship-table-position, #fleet-filters, #fleet-table-position, .assembly__save input[name=name], #settings, #export-settings, #cut-defaults")
 
 (def transition-attrs
   ;; Keep an accepted transition in flight until its server context is displayed.
@@ -37,7 +37,7 @@
 
 (defn navigation [active]
   [:nav#workspace-navigation.masthead__modes {:aria-label "Workspace modes" :hx-swap-oob "outerHTML"}
-   (for [[mode label] [[:browse "Part Browser"] [:ships "Ship Browser"] [:settings "Settings"]]]
+   (for [[mode label] [[:browse "Part Browser"] [:ships "Ship Browser"] [:fleets "Fleet Browser"] [:settings "Settings"]]]
      [:button.masthead__mode (merge transition-attrs {:type "button" :hx-get (str "/workspace/" (name mode))
                                                       :hx-target "#detail" :hx-swap "innerHTML settle:0ms"
                                                       :hx-include navigation-include

@@ -1226,3 +1226,18 @@ body:has(#workspace-context[data-workspace="settings"]) .stage { display: none; 
 /* Keep help implementation and descriptions while tooltip presentation is off. */
 html[data-tooltips-enabled="false"] .control-tooltip,
 html[data-tooltips-enabled="false"] .control-help { display: none; }
+
+/* Fleet Browser follows the table and floating editor workspace layout. */
+body:has(#workspace-context[data-workspace="fleets"]) .layout { grid-template-columns: 1fr; }
+body:has(#workspace-context[data-workspace="fleets"]) #library[data-fleet-view="editor"] { display: none; }
+.layout:has(#library[data-fleet-view="table"]) > #library { grid-column: 1; grid-row: 1; z-index: 4; }
+.layout:has(#library[data-fleet-view="table"]) > .stage { grid-column: 1; grid-row: 1; visibility: hidden; }
+#library.fleet-table { display: flex; flex-direction: column; min-height: 0; }
+.fleet-table__results { flex: 1; min-height: 0; overflow: auto; }
+.fleet-table__table { width: 100%; border-collapse: collapse; }
+.fleet-table__table th, .fleet-table__table td { padding: 12px; text-align: left; border-bottom: 1px solid var(--line); }
+.fleet-table__table th { position: sticky; top: 0; background: var(--panel); }
+.fleet-table__table tbody tr { cursor: pointer; }
+.fleet-table__table tbody tr:hover { background: var(--panel-2); }
+.fleet-table__table tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.fleet-table header form { display: flex; align-items: end; gap: 8px; padding-top: 8px; }

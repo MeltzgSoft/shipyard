@@ -29,6 +29,7 @@
             [shipyard.regions.transport :as region-transport]
             [shipyard.http.contracts :as contracts]
             [shipyard.file-picker.routes :as file-picker]
+            [shipyard.fleet.routes :as fleet-routes]
             [shipyard.http.htmx :as htmx]
             [shipyard.http.jobs :as jobs]
             [shipyard.http.settings :as settings]
@@ -674,7 +675,7 @@
                    (when (:workspace deps) (import-routes/routes deps))
                    (when (:assembly deps) (assembly-routes/routes deps))
                    (when (:workspace deps)
-                     (workspace-routes/routes deps))))
+                     (concat (workspace-routes/routes deps) (fleet-routes/routes deps)))))
      {:data {:coercion malli-coercion/coercion
              :middleware [params/wrap-params
                           region-transport/wrap-body

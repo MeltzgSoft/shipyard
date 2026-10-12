@@ -5,7 +5,7 @@
             [shipyard.http.pagination :as pagination]
             [shipyard.workspace.transforms :as transforms]))
 
-(def modes #{:browse :ships :settings})
+(def modes #{:browse :ships :fleets :settings})
 (def ^:dynamic *context* nil)
 (def ^:dynamic *scene-sequence* nil)
 
@@ -13,7 +13,8 @@
   {:state (atom {:active :browse :activation 0
                  :workspaces (-> (zipmap modes (repeat {:filters {} :colors true}))
                                  (assoc-in [:ships :colors] false)
-                                 (assoc-in [:settings :colors] false))})})
+                                 (assoc-in [:settings :colors] false)
+                                 (assoc-in [:fleets :colors] false))})})
 
 (defn workspace! [{:keys [state]} mode] (get-in @state [:workspaces mode]))
 (defn update-workspace! [{:keys [state]} mode f & args]
@@ -24,6 +25,7 @@
     (or (= uri "/settings") (str/starts-with? uri "/settings/")
         (#{"/files/choose/settings-root" "/files/choose/settings-export-root"} uri)) :settings
     (or (str/starts-with? uri "/orient") (str/starts-with? uri "/imports") (= uri "/classifications")) :browse
+    (str/starts-with? uri "/fleets") :fleets
     (str/starts-with? uri "/assembly") :ships
     (str/starts-with? uri "/ships") :ships
     (or (= uri "/library") (str/starts-with? uri "/part/")
@@ -85,7 +87,7 @@
     (when (= mode :settings)
       (update-workspace! workspace mode update :draft merge
                          (select-keys params ["root" "export-root" "pit-depth" "pit-diameter" "recess-depth" "recess-border"])))
-    (when-not (or (= mode :settings) (and (= mode :ships) (= :editor (:view (workspace! workspace :ships)))))
+    (when-not (or (= mode :settings) (and (#{:ships :fleets} mode) (= :editor (:view (workspace! workspace mode)))))
       (remember! workspace mode params))
     (when (and (= mode :ships) (= "assembly" (:inspector-tab (workspace! workspace :ships))) (contains? params "name"))
       (swap! (:state assembly) assoc-in [:draft :name] (get params "name")))))

@@ -933,3 +933,15 @@ one position and save the default for new fleet lists. Existing lists keep their
 own order; **Use default** in a fleet's export controls explicitly copies the
 current default. These settings survive restart and do not rescan the library.
 Unsaved export paths remain available when you leave Settings and return.
+
+
+## Fleet Browser
+
+Open **Fleet Browser** to view saved print lists for the current library. Enter a
+fleet name and choose **New fleet** to create a list and open its editor. Open an
+existing row by double-clicking it or focusing it and pressing **Enter**. The table
+shows class count, total ship quantity, extra-part count and export readiness.
+
+Filter by fleet name. **Back to fleets** restores the table filter, page and scroll
+position. Switching workspaces retains the fleet view and selection independently
+of Part Browser and Ship Browser. Fleet lists survive application restarts.

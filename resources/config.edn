@@ -57,6 +57,7 @@
  :shipyard.mount.preview-db/drafts {}
  :shipyard.assembly/db {}
 
+ :shipyard.fleet/db {:store #ig/ref :shipyard.store/db :catalog #ig/ref :shipyard.catalog/db}
  :shipyard.loadout/db {:store #ig/ref :shipyard.store/db :catalog #ig/ref :shipyard.catalog/db}
  :shipyard.scheme/db {:store #ig/ref :shipyard.store/db :catalog #ig/ref :shipyard.catalog/db}
  :shipyard.ship/db {:store #ig/ref :shipyard.store/db :catalog #ig/ref :shipyard.catalog/db}
@@ -74,6 +75,7 @@
   :cache   #ig/ref :shipyard.mesh/cache
   :jobs    #ig/ref :shipyard.http/jobs
   :assembly #ig/ref :shipyard.assembly/db
+  :fleets #ig/ref :shipyard.fleet/db
   :loadouts #ig/ref :shipyard.loadout/db
   :schemes #ig/ref :shipyard.scheme/db
   :named-ships #ig/ref :shipyard.ship/db

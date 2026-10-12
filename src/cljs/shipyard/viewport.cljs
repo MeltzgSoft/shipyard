@@ -2139,7 +2139,7 @@
     (let [browse (runtime! canvas renderer :browse nil)
           environment (.-environment ^js (:scene browse))
           runtimes (into {:browse browse} (map (fn [mode] [mode (runtime! canvas renderer mode environment)]))
-                         [:ships :settings])
+                         [:ships :fleets :settings])
           app {:runtimes runtimes :active-workspace (atom :browse)}]
       (set! (.-outputColorSpace renderer) three/SRGBColorSpace)
       (.setPixelRatio renderer (min 2 (.-devicePixelRatio js/window)))
