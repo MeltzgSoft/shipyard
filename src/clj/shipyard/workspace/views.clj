@@ -4,7 +4,7 @@
             [clojure.data.json :as json]))
 
 (def navigation-include
-  "#filters, #bulk-orient-filters, #part-table-position, .assembly__filters, #ship-filters, #ship-table-position, .assembly__save input[name=name], #settings, #cut-defaults")
+  "#filters, #bulk-orient-filters, #part-table-position, .assembly__filters, #ship-filters, #ship-table-position, .assembly__save input[name=name], #settings, #export-settings, #cut-defaults")
 
 (def transition-attrs
   ;; Keep an accepted transition in flight until its server context is displayed.

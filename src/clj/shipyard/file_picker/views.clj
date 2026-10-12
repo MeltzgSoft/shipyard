@@ -2,7 +2,8 @@
   "Desktop chooser buttons beside ordinary path fields; no browser filesystem UI.")
 
 (def fields
-  {"settings-root" {:id "settings-root" :name "root" :label "Library folder" :kind "directory"}
+  {"settings-export-root" {:id "settings-export-root" :name "export-root" :label "Export directory" :kind "directory"}
+   "settings-root" {:id "settings-root" :name "root" :label "Library folder" :kind "directory"}
    "setup-root" {:id "setup-root" :name "root" :label "Library folder" :kind "directory"}})
 
 (defn path-input [{:keys [id name kind]} value]

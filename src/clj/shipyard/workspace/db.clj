@@ -22,7 +22,7 @@
 (defn owner [uri]
   (cond
     (or (= uri "/settings") (str/starts-with? uri "/settings/")
-        (= uri "/files/choose/settings-root")) :settings
+        (#{"/files/choose/settings-root" "/files/choose/settings-export-root"} uri)) :settings
     (or (str/starts-with? uri "/orient") (str/starts-with? uri "/imports") (= uri "/classifications")) :browse
     (str/starts-with? uri "/assembly") :ships
     (str/starts-with? uri "/ships") :ships
@@ -84,7 +84,7 @@
   (let [mode (:workspace (active-context! workspace))]
     (when (= mode :settings)
       (update-workspace! workspace mode update :draft merge
-                         (select-keys params ["root" "pit-depth" "pit-diameter" "recess-depth" "recess-border"])))
+                         (select-keys params ["root" "export-root" "pit-depth" "pit-diameter" "recess-depth" "recess-border"])))
     (when-not (or (= mode :settings) (and (= mode :ships) (= :editor (:view (workspace! workspace :ships)))))
       (remember! workspace mode params))
     (when (and (= mode :ships) (= "assembly" (:inspector-tab (workspace! workspace :ships))) (contains? params "name"))

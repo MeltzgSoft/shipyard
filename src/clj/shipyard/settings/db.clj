@@ -72,3 +72,31 @@
       (some-> (or (legacy-root! (get-in config [:shipyard.library/index :config-dir]))
                   (get-in config [:shipyard.library/index :root]))
               (#(system/expand-home (System/getProperty "user.home") %)))))
+
+(defn export-root! [database]
+  (store/read! database
+               #(:settings/export-root (d/pull % [:settings/export-root] [:store/key "shipyard"]))))
+
+(defn save-export-root! [database root]
+  (when-not (and (string? root) (not (str/blank? root)))
+    (throw (ex-info "Export directory must be a nonblank path" {:root root})))
+  (store/write! database #(d/transact! % [{:store/key "shipyard" :settings/export-root root}]))
+  root)
+
+(defn variant-preference! [database]
+  (or (store/read! database
+                   #(:settings/variant-preference (d/pull % [:settings/variant-preference] [:store/key "shipyard"])))
+      transforms/default-variant-preference))
+
+(defn save-variant-preference! [database preference]
+  (when-not (transforms/variant-preference? preference)
+    (throw (ex-info "Choose distinct recognized source variants." {:preference preference})))
+  (store/write! database #(d/transact! % [{:store/key "shipyard" :settings/variant-preference preference}]))
+  preference)
+
+(defn move-variant! [database variant direction]
+  (store/write! database
+                (fn [conn]
+                  (let [transaction (assoc database :conn conn)
+                        preference (transforms/move-variant (variant-preference! transaction) variant direction)]
+                    (save-variant-preference! transaction preference)))))

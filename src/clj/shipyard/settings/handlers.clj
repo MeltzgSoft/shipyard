@@ -3,6 +3,7 @@
             [shipyard.importer.db :as importer]
             [shipyard.library.index :as index]
             [shipyard.settings.db :as db]
+            [shipyard.settings.export-directory :as export-directory]
             [shipyard.settings.appearance-views :as appearance]
             [shipyard.settings.transforms :as transforms]
             [shipyard.settings.views :as views]
@@ -14,6 +15,8 @@
     (htmx/fragment (list (views/panel (merge {:draft (when workspace (:draft (workspace/workspace! workspace :settings)))
                                               :theme theme
                                               :root (index/root! library)
+                                              :export-root (db/export-root! (:store catalog))
+                                              :variant-preference (db/variant-preference! (:store catalog))
                                               :entries (vocabulary/entries! (:store catalog))
                                               :defaults (db/cut-defaults! (:store catalog))
                                               :blocked? (boolean (when workspace (importer/session! deps)))} options))
@@ -28,6 +31,7 @@
     (catch Exception e (current! deps {:error (str "Could not save appearance. " (ex-message e)) :status 422}))))
 
 (defn cuts! [{:keys [catalog workspace] :as deps} {:keys [params]}]
+  (when workspace (workspace/outgoing! deps params))
   (let [{:keys [error values]} (transforms/cut-settings params)]
     (if error (current! deps {:error error :status 422 :draft params})
         (try (db/save-cut-defaults! (:store catalog) values)
@@ -36,6 +40,7 @@
              (catch Exception e (current! deps {:error (str "Could not save defaults. " (ex-message e)) :status 422}))))))
 
 (defn classification! [{:keys [catalog workspace] :as deps} action {:keys [params]}]
+  (when workspace (workspace/outgoing! deps params))
   (if (and workspace (importer/session! deps))
     (current! deps {:error "Finish or cancel the import before changing classification values." :status 409})
     (try
@@ -49,3 +54,19 @@
                                                #(cond-> % (= old (get % (name field))) (assoc (name field) new)))))
               (current! deps {:message (case action :add "Added value." :rename "Renamed value and all uses." :delete "Deleted unused value.")}))))
       (catch Exception e (current! deps {:error (str "Could not update classification. " (ex-message e)) :status 422})))))
+
+(defn export-root! [{:keys [catalog library workspace] :as deps} {:keys [params]}]
+  (when workspace (workspace/outgoing! deps params))
+  (try
+    (let [root (export-directory/prepare! (get params "export-root") (index/root! library))]
+      (db/save-export-root! (:store catalog) root)
+      (when workspace (workspace/update-workspace! workspace :settings update :draft dissoc "export-root"))
+      (current! deps {:message "Saved export directory."}))
+    (catch Exception e (current! deps {:error (ex-message e) :status 422 :draft params}))))
+
+(defn variant! [{:keys [catalog workspace] :as deps} {:keys [params]}]
+  (when workspace (workspace/outgoing! deps params))
+  (try
+    (db/move-variant! (:store catalog) (keyword (get params "variant")) (keyword (get params "direction")))
+    (current! deps {:message "Saved default variant order."})
+    (catch Exception e (current! deps {:error (ex-message e) :status 422}))))

@@ -1,5 +1,16 @@
 (ns shipyard.settings.transforms
-  "Pure mount-cut defaults and form validation.")
+  "Pure settings defaults and form validation."
+  (:require [shipyard.fleet.transforms :as fleet]))
+
+(def default-variant-preference fleet/default-variant-preference)
+(def variant-preference? fleet/variant-preference?)
+
+(defn move-variant [preference variant direction]
+  (let [i (.indexOf ^java.util.List preference variant)
+        j (+ i (case direction :up -1 :down 1 0))]
+    (if (and (<= 0 i) (< -1 j (count preference)))
+      (assoc preference i (nth preference j) j variant)
+      preference)))
 
 (def cut-defaults {:pit {:depth 1.0 :diameter 2.0}
                    :recess {:depth 1.0 :border 0.5}})

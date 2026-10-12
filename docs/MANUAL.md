@@ -918,3 +918,18 @@ filtering and part details keep working, so nothing else on the page is lost.
 
 Report problems at the [issue tracker](https://forgejo.tail943578.ts.net/MeltzgSoft/shipyard/issues).
 Include what you did, what happened, and the log output from the terminal.
+
+### Fleet export settings
+
+In **Settings → Fleet export**, enter an **Export directory** or select it with
+**Browse…**, then press **Save export directory**. Choose a writable directory
+outside your STL library. Shipyard creates missing directories. There is no
+initial export destination; invalid paths preserve your saved destination and
+existing bundles. Canceling Browse preserves the typed path; when desktop dialogs
+are unavailable, enter the path directly.
+
+Use **Up** and **Down** beside each type in **Default variant order** to move it
+one position and save the default for new fleet lists. Existing lists keep their
+own order; **Use default** in a fleet's export controls explicitly copies the
+current default. These settings survive restart and do not rescan the library.
+Unsaved export paths remain available when you leave Settings and return.

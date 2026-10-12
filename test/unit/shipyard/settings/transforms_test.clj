@@ -1,5 +1,5 @@
 (ns shipyard.settings.transforms-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [clojure.test :refer [deftest is testing]]
             [shipyard.settings.transforms :as settings]
             [shipyard.vocabulary.management :as management]))
 
@@ -26,3 +26,13 @@
     (is (:error (management/plan parts [] :rename "role" "weapon" "cannon")))
     (is (:error (management/plan parts [] :delete "role" "engine" nil)))
     (is (:error (management/plan parts [] :rename "role" "sensor" "engine")))))
+
+(deftest move-variant-test
+  (testing "moves one step and preserves boundaries and unknown types"
+    (let [order [:unsupported :supported :unsupported-pitted]]
+      (is (= [:supported :unsupported :unsupported-pitted] (settings/move-variant order :supported :up)))
+      (is (= [:unsupported :unsupported-pitted :supported] (settings/move-variant order :supported :down)))
+      (is (= order (settings/move-variant order :unsupported :up)))
+      (is (= order (settings/move-variant order :unsupported-pitted :down)))
+      (is (= order (settings/move-variant order :missing :down)))
+      (is (= [] (settings/move-variant [] :supported :up))))))

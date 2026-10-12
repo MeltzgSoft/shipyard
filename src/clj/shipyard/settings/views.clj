@@ -1,12 +1,13 @@
 (ns shipyard.settings.views
   "Settings forms; decisions and storage stay outside the rendered projection."
   (:require [shipyard.help.views :as help]
-            [shipyard.http.views :as views]))
+            [shipyard.http.views :as views]
+            [shipyard.file-picker.views :as picker]))
 
 (defn- classification-section [field label rows blocked?]
   [:section.settings-workspace__section
    [:h3 label]
-   [:form.settings-workspace__add {:method "post" :action "/settings/classifications/add" :hx-post "/settings/classifications/add" :hx-target "#settings-workspace" :hx-swap "outerHTML"}
+   [:form.settings-workspace__add {:method "post" :action "/settings/classifications/add" :hx-post "/settings/classifications/add" :hx-target "#settings-workspace" :hx-swap "outerHTML" :hx-include "#settings, #export-settings, #cut-defaults"}
     [:input {:type "hidden" :name "field" :value (name field)}]
     [:label "New value" [:input {:name "value" :required true :maxlength "120" :disabled blocked?}]]
     [:button {:type "submit" :disabled blocked?} "Add"]]
@@ -18,7 +19,7 @@
         [:td (if builtin? (if (= field :class)
                             [:span value (help/button "Universal class" "Universal parts fit every hull class. Other factions still require Allow parts from other factions in Assembly.")]
                             value)
-                 [:form.settings-workspace__rename {:method "post" :action "/settings/classifications/rename" :hx-post "/settings/classifications/rename" :hx-target "#settings-workspace" :hx-swap "outerHTML"}
+                 [:form.settings-workspace__rename {:method "post" :action "/settings/classifications/rename" :hx-post "/settings/classifications/rename" :hx-target "#settings-workspace" :hx-swap "outerHTML" :hx-include "#settings, #export-settings, #cut-defaults"}
                   [:input {:type "hidden" :name "field" :value (name field)}]
                   [:input {:type "hidden" :name "value" :value value}]
                   [:input {:name "new-value" :value value :required true :maxlength "120" :aria-label (str "Rename " label " " value) :disabled blocked?}]
@@ -27,13 +28,13 @@
                             {:type "submit" :disabled blocked?}) "Save"]])]
         [:td (str parts " parts" (when (pos? sockets) (str " · " sockets " sockets")))]
         [:td (if builtin? [:span.muted "Built-in"]
-                 [:form {:method "post" :action "/settings/classifications/delete" :hx-post "/settings/classifications/delete" :hx-target "#settings-workspace" :hx-swap "outerHTML"}
+                 [:form {:method "post" :action "/settings/classifications/delete" :hx-post "/settings/classifications/delete" :hx-target "#settings-workspace" :hx-swap "outerHTML" :hx-include "#settings, #export-settings, #cut-defaults"}
                   [:input {:type "hidden" :name "field" :value (name field)}]
                   [:input {:type "hidden" :name "value" :value value}]
                   [:button {:type "submit" :disabled (or blocked? (pos? (+ parts sockets)))
                             :title (when (pos? (+ parts sockets)) "Only unused values can be deleted.")} "Delete"]])]])]]])
 
-(defn panel [{:keys [root entries defaults blocked? error message draft theme]}]
+(defn panel [{:keys [root entries defaults blocked? error message draft theme export-root variant-preference]}]
   [:div#settings-workspace.settings-workspace {:data-workspace-filters "true"}
    [:h2 "Settings"]
    (when error [:p.detail__error {:role "alert"} error])
@@ -43,7 +44,7 @@
     [:h3 "Appearance"]
     [:form#appearance-settings.settings-workspace__appearance
      {:method "post" :action "/settings/theme" :hx-post "/settings/theme" :hx-target "#settings-workspace" :hx-swap "outerHTML"
-      :hx-include "#settings, #cut-defaults" :hx-sync "#workspace-navigation:drop" :hx-disabled-elt "find button"}
+      :hx-include "#settings, #export-settings, #cut-defaults" :hx-sync "#workspace-navigation:drop" :hx-disabled-elt "find button"}
      [:label {:for "appearance-theme"} "Theme"
       [:select#appearance-theme (merge (help/attrs "Auto follows your system's light or dark theme, including changes while the app is open.") {:name "theme"})
        (for [[mode label] [[:light "Light"] [:dark "Dark"] [:auto "Auto"]]]
@@ -54,8 +55,30 @@
     [:p.settings__current (if root [:code root] [:span.muted "Not set"])]
     [:fieldset {:disabled blocked?} (views/settings-form {:id "settings" :root (get draft "root" root)})]]
    [:section.settings-workspace__section
+    [:h3 "Fleet export"]
+    [:p "Choose a directory outside your library for completed ZIP bundles."]
+    [:p {:data-export-current true} (if export-root [:code export-root] [:span.muted "Not set"])]
+    [:form#export-settings {:method "post" :action "/settings/export-root" :hx-post "/settings/export-root"
+                            :hx-target "#settings-workspace" :hx-swap "outerHTML"
+                            :hx-include "#settings, #cut-defaults"}
+     (picker/field {:id "settings-export-root" :value (get draft "export-root" export-root)})
+     [:button {:type "submit"} "Save export directory"]]
+    [:h4 "Default variant order"]
+    [:p "New fleets copy this order. Existing fleets keep their saved order until you choose Use default."]
+    [:ol {:data-default-variants true}
+     (for [[i variant] (map-indexed vector variant-preference)]
+       [:li {:data-variant (name variant)}
+        [:span (name variant)]
+        (for [[direction label boundary?] [[:up "Up" (zero? i)] [:down "Down" (= i (dec (count variant-preference)))]]]
+          [:form {:method "post" :action "/settings/variants" :hx-post "/settings/variants"
+                  :hx-target "#settings-workspace" :hx-swap "outerHTML"
+                  :hx-include "#settings, #export-settings, #cut-defaults"}
+           [:input {:type "hidden" :name "variant" :value (name variant)}]
+           [:input {:type "hidden" :name "direction" :value (name direction)}]
+           [:button {:type "submit" :disabled boundary? :aria-label (str "Move " (name variant) " " (name direction))} label]])])]]
+   [:section.settings-workspace__section
     [:h3 "Pit and recess defaults"]
-    [:form#cut-defaults.settings-workspace__cuts {:method "post" :action "/settings/cuts" :hx-post "/settings/cuts" :hx-target "#settings-workspace" :hx-swap "outerHTML"}
+    [:form#cut-defaults.settings-workspace__cuts {:method "post" :action "/settings/cuts" :hx-post "/settings/cuts" :hx-target "#settings-workspace" :hx-swap "outerHTML" :hx-include "#settings, #export-settings, #cut-defaults"}
      (for [[kind label dimensions] [[:pit "Pit" [[:depth "Depth"] [:diameter "Diameter"]]]
                                     [:recess "Recess" [[:depth "Depth"] [:border "Border"]]]]]
        [:fieldset [:legend label]

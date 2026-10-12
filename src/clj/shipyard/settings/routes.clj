@@ -3,7 +3,14 @@
             [shipyard.settings.handlers :as handlers]))
 
 (defn routes [deps]
-  (into [["/settings/theme" {:post {:handler (partial handlers/theme! deps)
+  (into [["/settings/export-root" {:post {:handler (partial handlers/export-root! deps)
+                                          :parameters {:form [:map [:export-root string?]]}
+                                          :responses contracts/html-responses}}]
+         ["/settings/variants" {:post {:handler (partial handlers/variant! deps)
+                                       :parameters {:form [:map [:variant [:enum "unsupported" "supported" "unsupported-pitted"]]
+                                                           [:direction [:enum "up" "down"]]]}
+                                       :responses contracts/html-responses}}]
+         ["/settings/theme" {:post {:handler (partial handlers/theme! deps)
                                     :parameters {:form [:map [:theme [:enum "light" "dark" "auto"]]]}
                                     :responses contracts/html-responses}}]
          ["/settings/cuts" {:post {:handler (partial handlers/cuts! deps)
