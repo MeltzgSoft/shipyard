@@ -74,4 +74,7 @@
                                                                                            :source/content (get-in source [:source/content :mesh/sha]))]))
                                                                          (:part/sources part)))]))
                                    (store/entities db :part/library (:db/id library-entity)
-                                                   '[* {:part/sources [* {:source/content [:mesh/sha]}]}]))})))))
+                                                   '[:part/id :part/present? :part/name :part/variants
+                                                     {:part/sources [:source/key :source/variant :source/path
+                                                                     :source/present? :source/size :source/mtime
+                                                                     {:source/content [:mesh/sha]}]}]))})))))
