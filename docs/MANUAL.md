@@ -346,8 +346,11 @@ A **Preparing preview…** spinner appears over the viewport while a model, asse
 saved appearance or mount preview is being prepared. It remains until the current
 preview is ready, and clears if the request fails or you leave that preview.
 You can still navigate, orbit and use inspector controls. Background thumbnails
-do not show this overlay. Regions, Customize detail painting and mount-face trimming
-keep their own brush preparation and save feedback without covering the viewport.
+do not show this overlay. Loading schemes, saved regions, connected surfaces and
+mount previews shows the spinner even while a brush tool is open. Painting, erasing
+and mount-face trimming strokes keep their own save feedback without covering the
+viewport; their resulting appearance updates also stay uncovered. Other jobs,
+including Undo/Redo, still show preparation feedback when work is pending.
 The spinner stops rotating when your system requests reduced motion.
 
 Meshes with identical source contents share cached preprocessing, even when they

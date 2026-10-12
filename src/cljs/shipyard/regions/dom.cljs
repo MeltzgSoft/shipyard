@@ -2,7 +2,8 @@
   "Revision-checked region patches over a preserved source-bound DOM snapshot."
   (:require [cljs.reader :as edn]
             [shipyard.paint.projection :as projection]
-            [shipyard.preparation :as preparation]))
+            [shipyard.preparation :as preparation]
+            [shipyard.viewport-loading :as loading]))
 
 (defn- recover! [^js panel part-id]
   (when-not (.-shipyardRecoveryPending panel)
@@ -30,22 +31,25 @@
   (when-not (.-shipyardProjectionPending panel)
     (set! (.-shipyardProjectionPending panel) true)
     (.dispatchEvent panel (js/CustomEvent. "shipyard:region-projection-pending" #js {:bubbles true}))
-    (preparation/load!
-     (.getAttribute panel "data-region-projection")
-     {:current? #(and (identical? panel (.getElementById js/document "part-regions"))
-                      (= mesh-key (.getAttribute panel "data-mesh-key")))
-      :decode! #(-> (.arrayBuffer %) (.then projection/decode))
-      :ready! (fn [value]
-                (if (and (= mesh-key (:mesh-key value))
-                         (= (:revision-token metadata) (:region-revision value)))
-                  (let [regions (merge metadata (select-keys value [:triangle-layers :layer-table]) {:faces {}})]
-                    (set! (.-shipyardProjectionPending panel) false)
-                    (set! (.-shipyardRegions snapshot) regions)
-                    (set! (.-shipyardRegions panel) regions)
-                    (.setAttribute panel "data-region-projection-ready" "true")
-                    (.dispatchEvent panel (js/CustomEvent. "shipyard:region-projection" #js {:bubbles true})))
-                  (recover! panel part-id)))
-      :failed! #(recover! panel part-id)})))
+    (loading/with-feedback!
+      (= "true" (.getAttribute panel "data-viewport-brush-stroke"))
+      #(preparation/load!
+        (.getAttribute panel "data-region-projection")
+        {:viewport? true
+         :current? (fn [] (and (identical? panel (.getElementById js/document "part-regions"))
+                               (= mesh-key (.getAttribute panel "data-mesh-key"))))
+         :decode! (fn [response] (-> (.arrayBuffer response) (.then projection/decode)))
+         :ready! (fn [value]
+                   (if (and (= mesh-key (:mesh-key value))
+                            (= (:revision-token metadata) (:region-revision value)))
+                     (let [regions (merge metadata (select-keys value [:triangle-layers :layer-table]) {:faces {}})]
+                       (set! (.-shipyardProjectionPending panel) false)
+                       (set! (.-shipyardRegions snapshot) regions)
+                       (set! (.-shipyardRegions panel) regions)
+                       (.setAttribute panel "data-region-projection-ready" "true")
+                       (.dispatchEvent panel (js/CustomEvent. "shipyard:region-projection" #js {:bubbles true})))
+                     (recover! panel part-id)))
+         :failed! (fn [_] (recover! panel part-id))}))))
 
 (defn regions! [part-id mesh-key]
   (when-let [panel (.getElementById js/document "part-regions")]

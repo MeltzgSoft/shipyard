@@ -42,7 +42,7 @@
                 (when-let [controller (:controller @state)] (preparation/cancel! controller))
                 (swap! state assoc :controller
                        (preparation/load! (str "/parts/regions/surfaces?" query)
-                                          {:current? #(valid? key)
+                                          {:current? #(valid? key) :viewport? true
                                            :ready! (fn [buffer]
                                                      (swap! state assoc :state :ready :groups (decode buffer))
                                                      (status! key :ready))

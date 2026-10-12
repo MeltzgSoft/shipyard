@@ -65,7 +65,7 @@
   ([part-id mesh-key saved selected error] (panel part-id mesh-key saved selected error registry/empty-registry))
   ([part-id mesh-key saved selected error shared]
    (panel part-id mesh-key saved selected error shared {}))
-  ([part-id mesh-key saved selected error shared {:keys [mode angle face-delta] :or {mode "facets" angle 1}}]
+  ([part-id mesh-key saved selected error shared {:keys [mode angle face-delta brush-stroke?] :or {mode "facets" angle 1}}]
    (let [available (registry/ids shared)
          face-delta (when (<= (+ (count (get-in face-delta [:patch :replace]))
                                  (count (get-in face-delta [:patch :set]))
@@ -80,6 +80,7 @@
      [:section#part-regions (cond-> {:hx-sync "this:queue last"
                                      :data-regions (pr-str (dissoc preview :faces))
                                      :data-mesh-key mesh-key :data-part-id part-id}
+                              brush-stroke? (assoc :data-viewport-brush-stroke "true")
                               face-delta (assoc :data-region-delta (pr-str (assoc face-delta :from-token (str (:from face-delta)))))
                               (and (nil? face-delta) (empty? (:faces preview))) (assoc :data-region-empty "true")
                               (nil? face-delta) (assoc :data-region-projection

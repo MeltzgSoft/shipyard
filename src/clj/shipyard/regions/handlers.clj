@@ -52,7 +52,8 @@
                                                              (and (not (:error result)) (= (parse-long revision) (or (:revision before) 0)))
                                                              (assoc :face-delta {:from (or (:revision before) 0)
                                                                                  :mesh-key (or (:mesh-key saved) mesh-key)
-                                                                                 :patch (delta/between (:faces before) (:faces saved))})))
+                                                                                 :patch (delta/between (:faces before) (:faces saved))})
+                                                             region-selection (assoc :brush-stroke? true)))
            (when filled?
              (list (workspace-views/colors-toggle false :browse)
                    (workspace-views/context (workspace/active-context! workspace) false))))

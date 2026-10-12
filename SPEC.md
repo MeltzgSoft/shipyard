@@ -351,6 +351,12 @@ A three.js canvas is a long-lived stateful object holding GPU buffers. If htmx s
 the WebGL context is destroyed and hundreds of megabytes of geometry must be re-uploaded.
 The canvas is therefore marked `hx-preserve` and never targeted by a swap.
 
+Pending viewport work shows an accessible spinner until the current preview is ready,
+including scheme and model loading while a brush tool is open. Only brush strokes
+and their resulting appearance updates use brush save feedback instead. Other work
+remains visible when it overlaps a stroke; failed or obsolete work clears its feedback.
+The spinner preserves canvas interaction and respects reduced motion.
+
 The server communicates with it through `HX-Trigger` response headers: a request updates
 server-side state, returns the normal hiccup fragment for the UI panel, and carries a
 JSON event that the viewport listens for.

@@ -4,12 +4,24 @@
 
 (defonce ^:private work (js/Set.))
 
+(def ^:dynamic *brush-stroke?* false)
+
+(defn with-feedback! [brush-stroke? f]
+  (binding [*brush-stroke?* brush-stroke?] (f)))
+
+(defn capture-feedback
+  "Carry the initiating operation's presentation policy into an async callback."
+  [f]
+  (let [brush-stroke? *brush-stroke?*]
+    (fn [& args] (with-feedback! brush-stroke? #(apply f args)))))
+
 (defn begin!
   "Track one operation until it settles or its consumer becomes stale."
   [current?]
-  (let [entry #js {:current current?}]
-    (.add work entry)
-    #(.delete work entry)))
+  (if *brush-stroke?* (fn [])
+      (let [entry #js {:current current?}]
+        (.add work entry)
+        #(.delete work entry))))
 
 (defn track! [^js promise current?]
   (let [finish! (begin! current?)]
@@ -25,8 +37,11 @@
     (.addEventListener
      body "htmx:beforeRequest"
      (fn [^js event]
-       (let [^js detail (.-detail event) target (.-target detail) xhr (.-xhr detail)]
-         (when (and xhr (some-> target (.closest "#detail, #bulk-orient")))
+       (let [^js detail (.-detail event) target (.-target detail) xhr (.-xhr detail)
+             parameters (.. detail -requestConfig -parameters)
+             stroke? (rules/stroke-request? (.. detail -pathInfo -requestPath)
+                                            (aget parameters "history") (aget parameters "operation"))]
+         (when (and xhr (not stroke?) (some-> target (.closest "#detail, #bulk-orient")))
            (let [owner (context!)
                  transition? (some-> (.-elt detail) (.closest "[data-workspace-transition]"))]
              (.set requests xhr (begin! #(or transition? (= owner (context!))))))))))
@@ -45,17 +60,12 @@
 
 (defn sync!
   "Project current work onto the overlay; obsolete work never holds it open."
-  [^js canvas workspace preparing?]
+  [^js canvas preparing?]
   (when-let [overlay (.getElementById js/document "viewport-loading")]
     (.forEach work (fn [^js entry] (when-not ((.-current entry)) (.delete work entry))))
-    (let [tab (some-> (.querySelector js/document "[data-detail-tab][aria-selected=true]")
-                      (.-dataset) (.-detailTab))
-          brush? (rules/brush-workflow? workspace tab
-                                        (boolean (.querySelector js/document ".paint-editor"))
-                                        (boolean (some-> (.querySelector js/document "[data-mount-face-edit]") .-checked)))
-          pending? (or preparing? (pos? (.-size work))
+    (let [pending? (or preparing? (pos? (.-size work))
                        (.querySelector js/document "#detail [data-viewport-pending], #bulk-orient [data-viewport-pending]"))
-          visible? (and (not brush?) (boolean pending?))]
+          visible? (boolean pending?)]
       (when (not= visible? (not (.-hidden overlay)))
         (set! (.-hidden overlay) (not visible?))
         (.setAttribute canvas "aria-busy" (str visible?))))))

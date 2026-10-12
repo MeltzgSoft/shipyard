@@ -2,14 +2,16 @@
   (:require [#?(:clj clojure.test :cljs cljs.test) :refer [deftest is testing]]
             [shipyard.viewport-loading.rules :as rules]))
 
-(deftest brush-workflow-test
-  (testing "each brush workflow keeps its existing pending feedback"
-    (is (rules/brush-workflow? :browse "regions" false false))
-    (is (rules/brush-workflow? :browse "mounts" false true))
-    (is (rules/brush-workflow? :ships nil true false)))
-  (testing "ordinary mount picking, assembly and other workspaces show loading feedback"
-    (is (not (rules/brush-workflow? :browse "mounts" false false)))
-    (is (not (rules/brush-workflow? :browse "part" false false)))
-    (is (not (rules/brush-workflow? :browse "part" false true)))
-    (is (not (rules/brush-workflow? :ships nil false false)))
-    (is (not (rules/brush-workflow? :settings "regions" true true)))))
+(deftest stroke-request-test
+  (testing "painting and erasing strokes retain their own save feedback"
+    (is (rules/stroke-request? "/parts/regions/stroke" nil nil))
+    (is (rules/stroke-request? "/ships/paint/stroke" nil "paint"))
+    (is (rules/stroke-request? "/ships/paint/stroke" nil "erase")))
+  (testing "other jobs show loading feedback even in brush tools"
+    (doseq [path ["/ships/paint/select" "/ships/tab/paint" "/ships/tab/schemes"
+                  "/parts/regions" "/parts/regions/surfaces" "/mounts/preview"]]
+      (is (not (rules/stroke-request? path nil nil))))
+    (is (not (rules/stroke-request? "/ships/paint/stroke" "undo" "paint")))
+    (is (not (rules/stroke-request? "/ships/paint/stroke" "redo" "paint")))
+    (is (not (rules/stroke-request? "/ships/paint/stroke" nil "undo")))
+    (is (not (rules/stroke-request? "/ships/paint/stroke" nil "redo")))))

@@ -4,7 +4,8 @@
             [shipyard.paint.faces :as faces]
             [shipyard.paint.shader :as shader]
             [shipyard.paint.topology :as topology]
-            [shipyard.scheme.material :as material]))
+            [shipyard.scheme.material :as material]
+            [shipyard.viewport-loading :as loading]))
 
 (defn triangle-count [^js geometry]
   (/ (if-let [index (.-index geometry)] (.-count index)
@@ -257,6 +258,7 @@
                            (.addUpdateRange attribute (* triangle 9) 9)
                            (.addUpdateRange finish (* triangle 9) 9))))]
           (set! (.. object -userData -paintPreparing) true)
+          (set! (.. object -userData -paintSpinnerPending) (not loading/*brush-stroke?*))
           (set! (.. object -userData -paintPreparationStats) stats)
           (letfn [(step! [remaining]
                     (when (= generation (.. object -userData -paintGeneration))
@@ -287,6 +289,7 @@
                               (set! (.-value (install-finish! surface)) active?)
                               (set! (.-elapsedMs stats) (- (js/performance.now) started))
                               (set! (.. object -userData -preparedCompletedSignature) signature)
+                              (set! (.. object -userData -paintSpinnerPending) false)
                               (set! (.. object -userData -paintPreparing) false))))))]
             (step! triangles)))))))
 

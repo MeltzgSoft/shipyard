@@ -839,6 +839,7 @@
 (defn- prepare-preview! [{:keys [preview current active activation cut-request cut-controller cut-timer cut-owner]}]
   (when-let [{:keys [part-id mesh-key frame facet-indices mirror revision object]} @preview]
     (let [generation @activation
+          brush-stroke? loading/*brush-stroke?*
           form (mount-face-brush/form!)
           mount (cut-preview-mount frame)
           border (when (mount-face-brush/enabled?) (mount-face-brush/border-indices))
@@ -869,7 +870,7 @@
                                     (and mount mirror) (assoc :mirror {:plane (:plane-keyword mirror) :offset (:offset mirror)}))]
                          (reset! cut-controller
                                  (preparation/load! "/mounts/preview"
-                                                    {:method "POST" :body body :current? current? :viewport? true
+                                                    {:method "POST" :body body :current? current? :viewport? (not brush-stroke?)
                                                      :decode! #(-> (.arrayBuffer %) (.then preview-wire/decode))
                                                      :ready! (fn [projection]
                                                                (doseq [group [:cuts :mirror-cuts :border]]
@@ -1182,9 +1183,12 @@
   (when (= :browse (:workspace sys))
     (doseq [[_ ^js object] @(:parts sys)]
       (when-let [regions (region-dom/regions! (.. object -userData -partId) (.. object -userData -meshKey))]
-        (let [palette (regions/preview-materials regions)]
+        (let [palette (regions/preview-materials regions)
+              panel (.getElementById js/document "part-regions")
+              stroke? (= "true" (.getAttribute panel "data-viewport-brush-stroke"))]
           (paint-render/set-regions! object regions palette)
-          (apply-material! object (get palette "Primary") @(:mount-colors-enabled sys)))))))
+          (loading/with-feedback! stroke? #(apply-material! object (get palette "Primary") @(:mount-colors-enabled sys)))
+          (.removeAttribute panel "data-viewport-brush-stroke"))))))
 
 (defn- load-mesh!
   "Fetch, decode, upload, and optionally reframe. Errors are reported and
@@ -1310,27 +1314,27 @@
       (set! (.. object -userData -appearancePending) true)
       (-> (projection-promise! appearance-cache resource)
           (.then
-           (fn [value]
-             (when (and (identical? object (get @parts slot))
-                        (= resource (get-in @assembly [:slots slot :payload :appearance-ref :resource])))
-               (let [payload (get-in @assembly [:slots slot :payload])
-                     regions (:regions payload)
-                     details (:details payload)]
-                 (when (or (not= (:mesh-key value) (:mesh-key payload))
-                           (not= (:triangle-count value) (paint-render/triangle-count (.-geometry object)))
-                           (and regions (not= (or (:revision-token regions) (str (:revision regions))) (:region-revision value))))
-                   (throw (js/Error. "Appearance source/revision mismatch.")))
-                 (let [regions (merge {:mesh-key (:mesh-key payload) :faces {}} regions
-                                      (when (> (count (:layer-table value)) 1)
-                                        (select-keys value [:triangle-layers :layer-table])))
-                       details (merge {:part-id (:part-id payload) :mesh-key (:mesh-key payload) :faces {}} details
-                                      (when (> (count (:detail-table value)) 1)
-                                        (select-keys value [:triangle-details :detail-table])))]
-                   (swap! assembly update-in [:slots slot :payload] merge {:regions regions :details details :appearance-installed? true})
-                   (paint-render/set-regions! object regions (:layers payload))
-                   (paint-render/set-details! object details)
-                   (apply-material! object (:material payload) @mount-colors-enabled)
-                   (set! (.. object -userData -appearancePending) false))))))
+           (loading/capture-feedback (fn [value]
+                                       (when (and (identical? object (get @parts slot))
+                                                  (= resource (get-in @assembly [:slots slot :payload :appearance-ref :resource])))
+                                         (let [payload (get-in @assembly [:slots slot :payload])
+                                               regions (:regions payload)
+                                               details (:details payload)]
+                                           (when (or (not= (:mesh-key value) (:mesh-key payload))
+                                                     (not= (:triangle-count value) (paint-render/triangle-count (.-geometry object)))
+                                                     (and regions (not= (or (:revision-token regions) (str (:revision regions))) (:region-revision value))))
+                                             (throw (js/Error. "Appearance source/revision mismatch.")))
+                                           (let [regions (merge {:mesh-key (:mesh-key payload) :faces {}} regions
+                                                                (when (> (count (:layer-table value)) 1)
+                                                                  (select-keys value [:triangle-layers :layer-table])))
+                                                 details (merge {:part-id (:part-id payload) :mesh-key (:mesh-key payload) :faces {}} details
+                                                                (when (> (count (:detail-table value)) 1)
+                                                                  (select-keys value [:triangle-details :detail-table])))]
+                                             (swap! assembly update-in [:slots slot :payload] merge {:regions regions :details details :appearance-installed? true})
+                                             (paint-render/set-regions! object regions (:layers payload))
+                                             (paint-render/set-details! object details)
+                                             (apply-material! object (:material payload) @mount-colors-enabled)
+                                             (set! (.. object -userData -appearancePending) false)))))))
           (.catch (fn [error]
                     (when (and (identical? object (get @parts slot))
                                (= resource (.. object -userData -appearanceResource)))
@@ -1420,13 +1424,14 @@
 
 (defn- sync-assembly-from-dom! [sys]
   (doseq [element (array-seq (.querySelectorAll js/document "#detail [data-assembly-event]"))]
-    (let [event (edn/read-string (.getAttribute element "data-assembly-event"))]
+    (let [event (edn/read-string (.getAttribute element "data-assembly-event"))
+          stroke? (= "true" (.getAttribute element "data-viewport-brush-stroke"))]
       ;; Remove before applying: unrelated swaps must not replay this response.
       ;; apply-assembly! retains its sequence/token checks for stale responses.
       (.remove element)
       (when (and (or (nil? (:workspace event)) (= (:workspace sys) (:workspace event)))
                  (or (nil? (:activation event)) (= @(:activation sys) (:activation event))))
-        (apply-assembly! sys event)))))
+        (loading/with-feedback! stroke? #(apply-assembly! sys event))))))
 
 (defn- sync-scheme-from-dom! [{:keys [assembly parts mount-colors-enabled] :as sys}]
   (doseq [element (array-seq (.querySelectorAll js/document "#detail [data-scheme-palette]"))]
@@ -1889,8 +1894,8 @@
 (defn- render-frame!
   [{:keys [^js renderer ^js scene ^js camera ^js controls ^js canvas
            ^js orientation-scene ^js orientation-camera orientation-guide bulk] :as sys}]
-  (loading/sync! canvas (:workspace sys)
-                 (some (fn [^js object] (true? (.. object -userData -paintPreparing))) (vals @(:parts sys))))
+  (loading/sync! canvas
+                 (some (fn [^js object] (true? (.. object -userData -paintSpinnerPending))) (vals @(:parts sys))))
   (let [w (max 1 (.-clientWidth canvas))
         h (max 1 (.-clientHeight canvas))]
     (when (= :browse (:workspace sys)) (mirror-guide/update! sys axis-colors))
@@ -2089,9 +2094,10 @@
     (when (= mode :browse) (region-brush/install! sys apply-material!))
     (when (= mode :browse)
       (mount-face-brush/install! sys
-                                 (fn [indices]
+                                 (fn [indices stroke?]
                                    (when-let [preview @(:preview sys)]
-                                     (install-preview! sys (assoc (preview-data preview) :facet-indices indices))))))
+                                     (loading/with-feedback! stroke?
+                                       #(install-preview! sys (assoc (preview-data preview) :facet-indices indices)))))))
     sys))
 
 (defn- active-runtime [{:keys [runtimes active-workspace]}]

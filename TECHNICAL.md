@@ -1199,8 +1199,16 @@ and stale consumer guards release work independently, so overlapping operations 
 not clear each other. Pending material uploads keep the overlay until the prepared
 preview is usable. This registry holds transient presentation lifetimes only; it
 does not own workspace/model state or count unrelated thumbnail and list requests.
-Regions, Customize and active mount-face trimming suppress the overlay and retain
-their existing brush feedback. The overlay allows pointer events through to the
+Only brush-stroke operations and their derived appearance/material work omit the
+overlay. HTMX request classification excludes region/detail strokes but includes
+Undo/Redo. Stroke responses mark their region panel or assembly event with
+`data-viewport-brush-stroke`; the browser consumes that policy when installing the
+saved appearance. A scoped presentation binding is captured by asynchronous
+callbacks, so a stroke's resources and material-upload chunks stay uncovered without
+silencing unrelated jobs. Mount trimming passes the stroke origin into its delayed
+preview request. Opening tools, loading schemes/region projections, changing surface
+tolerance or mirror settings and enabling trimming use ordinary preparation
+lifetimes. The overlay allows pointer events through to the
 canvas, announces its status and respects reduced motion.
 
 **The map holds several parts; browsing shows one.** `put-part!` is the primitive - it

@@ -28,9 +28,9 @@
                 (doseq [button (array-seq (.querySelectorAll form ".mount-wizard__actions button[type=submit]"))]
                   (set! (.-disabled button) (empty? selected)))
                 (set! (.-disabled (.querySelector form "[data-mount-faces-undo]")) (empty? (:history (draft! form))))))
-            (write! [^js form selected]
+            (write! [^js form selected stroke?]
               (set! (.-value (.querySelector form "input[name=facet-indices]")) (pr-str selected))
-              (status! form) (refresh! selected))
+              (status! form) (refresh! selected stroke?))
             (sample! [^js e]
               (when-let [{:keys [form buffer radius previous]} @stroke]
                 (let [[x y] (point e) [lx ly] (or previous [x y])
@@ -40,13 +40,13 @@
                                                                           (+ ly (* (/ i steps) (- y ly))) radius)))
                       before (indices form) after (into [] (remove touched) before)]
                   (swap! stroke assoc :previous [x y])
-                  (when (not= before after) (write! form after)))))
+                  (when (not= before after) (write! form after true)))))
             (end! [cancel?]
               (when-let [{:keys [^js form before]} @stroke]
                 (reset! stroke nil)
                 (set! (.-enabled controls) @active)
                 (when (.-isConnected form)
-                  (if cancel? (write! form before)
+                  (if cancel? (write! form before true)
                       (when (not= before (indices form))
                         (set! (.-mountFaceDraft form) (update (draft! form) :history #(vec (take-last 30 (conj % before)))))
                         (status! form))))))]
@@ -80,12 +80,12 @@
                              (when (and form (.closest target "[data-mount-faces-undo], [data-mount-faces-reset]"))
                                (let [{:keys [initial history] :as draft} (draft! form)]
                                  (if (.closest target "[data-mount-faces-reset]")
-                                   (do (set! (.-mountFaceDraft form) (assoc draft :history [])) (write! form initial))
+                                   (do (set! (.-mountFaceDraft form) (assoc draft :history [])) (write! form initial false))
                                    (when-let [before (peek history)]
-                                     (set! (.-mountFaceDraft form) (assoc draft :history (pop history))) (write! form before))))))))
+                                     (set! (.-mountFaceDraft form) (assoc draft :history (pop history))) (write! form before false))))))))
       (.addEventListener js/document "change"
                          (fn [^js e]
                            (when (some-> (.-target e) (.closest "[data-mount-face-edit]"))
                              (doseq [el (array-seq (.querySelectorAll (form!) "[data-mount-face-controls]"))]
                                (set! (.-hidden el) (not (enabled?))))
-                             (draft! (form!)) (refresh! (indices (form!))) (hide!)))))))
+                             (draft! (form!)) (refresh! (indices (form!)) false) (hide!)))))))

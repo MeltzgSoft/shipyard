@@ -6,6 +6,7 @@
             [shipyard.e2e.detail-brush-test :as brush]
             [shipyard.e2e.named-ship-test :as named]
             [shipyard.e2e.part-regions-test :as regions]
+            [shipyard.e2e.paint-preparation-test :as preparation]
             [shipyard.e2e.support :as s]
             [shipyard.e2e.workspace-test :as workspace]
             [shipyard.http.urls :as urls]
@@ -177,7 +178,7 @@
       (await-ready! driver)
       (finally (s/quit! driver) (fixture/stop! started)))))
 
-(deftest brush-workflows-retain-their-own-pending-feedback
+(deftest brush-strokes-retain-their-own-pending-feedback
   (s/assert-bundle!)
   (let [started (fixture/start! true) sys (:system started) driver (s/make-driver)]
     (try
@@ -193,16 +194,22 @@
           (release! held)
           (.unroute ^Page (:page driver) "**/parts/regions/stroke")
           (is (s/wait-until #(= "false" (s/js driver "() => String(document.querySelector('#region-stroke').elements.radius.disabled)"))))))
-      (testing "mount trimming stays uncovered during backend boundary preparation"
+      (testing "enabling mount trimming shows preparation feedback; strokes stay uncovered"
         (s/click! driver "[data-detail-tab=mounts]")
         (apply s/click-point! driver (regions/region-point driver 0))
         (s/wait-visible! driver ".mount-wizard__form")
         (let [held (hold! driver "**/mounts/preview" (constantly true))]
           (s/check! driver "[data-mount-face-edit]")
           (is (held? driver held))
+          (s/wait-visible! driver "#viewport-loading")
+          (release! held)
+          (await-ready! driver)
+          (apply brush/stroke! driver (regions/region-point driver 0))
+          (is (held? driver held))
           (assert-brush-uncovered! driver)
           (release! held)
-          (.unroute ^Page (:page driver) "**/mounts/preview")))
+          (.unroute ^Page (:page driver) "**/mounts/preview")
+          (await-ready! driver)))
       (testing "Customize stays uncovered while saving detail paint"
         (loadouts/put! (:shipyard.loadout/db sys)
                        {:loadout/id (random-uuid) :loadout/name "Brush cruiser"
@@ -218,4 +225,105 @@
           (release! held)
           (.unroute ^Page (:page driver) "**/ships/paint/stroke")
           (brush/await-saved! driver)))
+      (finally (s/quit! driver) (fixture/stop! started)))))
+
+(deftest region-loading-and-angle-preparation-show-feedback
+  (s/assert-bundle!)
+  (let [started (fixture/start! true) sys (:system started) driver (s/make-driver)
+        mask (lf/detail-layer! sys (:weapon fixture/ids) material/neutral)
+        projection (hold! driver "**/parts/regions/projection**" (constantly true))
+        surfaces (hold! driver "**/parts/regions/surfaces**" (constantly true))]
+    (try
+      (catalog/save-regions! (:shipyard.catalog/db sys) (:weapon fixture/ids)
+                             {:version 2 :mesh-key (:mesh-key mask) :revision 1
+                              :layers ["Primary" "Secondary"] :layer-definitions {}
+                              :faces (zipmap (keys (:faces mask)) (repeat "Secondary"))})
+      (s/go! driver (s/base-url sys))
+      (s/open-part! driver "weapon")
+      (s/await-part driver (:weapon fixture/ids))
+      (s/click! driver "[data-detail-tab=regions]")
+      (is (held? driver projection))
+      (s/wait-visible! driver "#viewport-loading")
+      (.unroute ^Page (:page driver) "**/parts/regions/projection**")
+      (release! projection)
+      (is (s/wait-until #(= "true" (s/js driver "() => document.querySelector('#part-regions').dataset.regionProjectionReady"))))
+      (await-ready! driver)
+      (s/click! driver "[data-region-mode=faces]")
+      (is (held? driver surfaces))
+      (s/wait-visible! driver "#viewport-loading")
+      (release! surfaces)
+      (is (s/wait-until #(= "ready" (s/js driver "() => document.querySelector('#region-stroke').dataset.surfaceState"))))
+      (await-ready! driver)
+      (s/input! driver "#region-stroke input[name=angle]" "20" "input")
+      (is (held? driver surfaces))
+      (s/wait-visible! driver "#viewport-loading")
+      (.unroute ^Page (:page driver) "**/parts/regions/surfaces**")
+      (release! surfaces)
+      (is (s/wait-until #(= "ready" (s/js driver "() => document.querySelector('#region-stroke').dataset.surfaceState"))))
+      (await-ready! driver)
+      (finally (s/quit! driver) (fixture/stop! started)))))
+
+(deftest customize-scheme-loading-is-visible-but-stroke-appearance-is-not
+  (s/assert-bundle!)
+  (let [started (fixture/start! true preparation/detailed-library!) sys (:system started) driver (s/make-driver)
+        scheme-db (:shipyard.scheme/db sys)
+        red (random-uuid) green (random-uuid)
+        mask (lf/detail-layer! sys (:hull fixture/ids) material/neutral)]
+    (try
+      (catalog/save-regions! (:shipyard.catalog/db sys) (:hull fixture/ids)
+                             {:version 2 :mesh-key (:mesh-key mask) :revision 1
+                              :layers ["Primary" "Secondary"] :layer-definitions {}
+                              :faces (zipmap (take 1 (keys (:faces mask))) (repeat "Secondary"))})
+      (doseq [[id name base] [[red "Red fleet" [1 0 0]] [green "Green fleet" [0 1 0]]]]
+        (schemes/put! scheme-db {:scheme/id id :scheme/name name
+                                 :scheme/layers {"Primary" material/neutral "Secondary" (assoc material/neutral :base base)}} :create))
+      (loadouts/put! (:shipyard.loadout/db sys)
+                     {:loadout/id (random-uuid) :loadout/name "Scheme cruiser"
+                      :loadout/hull (:hull fixture/ids) :loadout/slots {}} :create)
+      (s/go! driver (s/base-url sys))
+      (s/open-class! driver "Scheme cruiser")
+      (named/tab! driver "Customize")
+      (named/create! driver "Scheme ship")
+      (s/await-assembly-prepared! driver 1)
+      (await-ready! driver)
+      (let [select (hold! driver "**/ships/paint/select" (constantly true))
+            appearance (hold! driver "**/preparation/*/data"
+                              #(= "application/vnd.shipyard.appearance" (get (.headers ^APIResponse %) "content-type")))]
+        (s/select-option! driver "#paint-scheme select" "Red fleet")
+        (is (held? driver select))
+        (s/wait-visible! driver "#viewport-loading")
+        (is (pos? (s/count-els driver ".paint-editor")) "Customize is still open during the scheme request")
+        (.unroute ^Page (:page driver) "**/ships/paint/select")
+        (release! select)
+        (is (held? driver appearance))
+        (s/wait-visible! driver "#viewport-loading")
+        (release! appearance)
+        (is (s/wait-until #(:appearance-prepared (s/slot driver []))))
+        (await-ready! driver)
+        (let [stroke (hold! driver "**/ships/paint/stroke" (constantly true))]
+          (s/input! driver "#paint-brush input[name=brush-color]" "#0000ff" "input")
+          (s/input! driver "#paint-brush input[name=radius]" "100" "input")
+          (let [center (s/js driver "() => {const r=document.querySelector('#viewport').getBoundingClientRect(),i=document.querySelector('.ship-inspector');return [r.x+(r.width-28-i.offsetWidth)/2,r.y+r.height/2]}")]
+            (apply brush/stroke! driver center))
+          (is (held? driver stroke))
+          (is (> (count (:details (s/slot driver []))) 256) "The large stroke requires a binary saved appearance")
+          (assert-brush-uncovered! driver)
+          (.unroute ^Page (:page driver) "**/ships/paint/stroke")
+          (release! stroke)
+          (is (held? driver appearance))
+          (assert-brush-uncovered! driver)
+          (brush/await-saved! driver)
+          ;; A distinct scheme job remains visible while the stroke's resource is held.
+          (let [select (hold! driver "**/ships/paint/select" (constantly true))]
+            (s/select-option! driver "#paint-scheme select" "Green fleet")
+            (is (held? driver select))
+            (s/wait-visible! driver "#viewport-loading")
+            (.unroute ^Page (:page driver) "**/ships/paint/select")
+            (release! select)
+            (s/wait-visible! driver "#viewport-loading")
+            (is (= 1 (count @appearance)) "The scheme load reuses the stroke's pending appearance resource"))
+          (.unroute ^Page (:page driver) "**/preparation/*/data")
+          (release! appearance)
+          (is (s/wait-until #(:appearance-prepared (s/slot driver []))))
+          (await-ready! driver)))
       (finally (s/quit! driver) (fixture/stop! started)))))

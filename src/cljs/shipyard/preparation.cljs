@@ -10,7 +10,8 @@
   while current? is true. Returns an AbortController; callbacks never activate stale work.
   :decode! receives Response and defaults to .arrayBuffer; :ready! receives decoded data."
   [url {:keys [method body current? decode! ready! failed! poll-url viewport? viewport-current?] :or {method "GET" current? (constantly true)}}]
-  (let [controller (js/AbortController.) signal (.-signal controller)
+  (let [ready! (when ready! (loading/capture-feedback ready!))
+        controller (js/AbortController.) signal (.-signal controller)
         options #js {:method method :signal signal :headers #js {"content-type" "application/edn"}}
         active? #(and (not (.-aborted signal)) (current?))
         finish! (if viewport? (loading/begin! #(and (active?) (or (nil? viewport-current?) (viewport-current?)))) (fn []))

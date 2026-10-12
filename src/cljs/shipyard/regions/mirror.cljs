@@ -78,7 +78,7 @@
                                                           :axis (name axis) :quaternion (pr-str orientation)})
                           controller (preparation/load!
                                       (str "/parts/regions/mirror?" query)
-                                      {:current? current? :decode! #(-> (.text %) (.then reader/read-string))
+                                      {:current? current? :viewport? true :decode! #(-> (.text %) (.then reader/read-string))
                                        :ready! (fn [value]
                                                  (swap! request assoc :state :ready)
                                                  (set! (.. object -userData -regionMirrorPrepared)

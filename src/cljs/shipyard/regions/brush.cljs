@@ -7,7 +7,8 @@
             [shipyard.paint.brush :as brush]
             [shipyard.paint.render :as render]
             [shipyard.regions.model :as model]
-            [shipyard.regions.surface-preparation :as surfaces]))
+            [shipyard.regions.surface-preparation :as surfaces]
+            [shipyard.viewport-loading :as loading]))
 
 (defn- select-layer! [layer]
   (when-let [form (.getElementById js/document "region-stroke")]
@@ -40,7 +41,7 @@
     (letfn [(paint! [object regions]
               (let [palette (model/preview-materials regions)]
                 (render/set-regions! object regions palette)
-                (apply-material! object (get palette "Primary") @mount-colors-enabled)))
+                (loading/with-feedback! true #(apply-material! object (get palette "Primary") @mount-colors-enabled))))
             (unlock! [current]
               (doseq [[el disabled] (:locked current) :when (.-isConnected el)] (set! (.-disabled el) disabled))
               (set! (.-enabled controls) @active))

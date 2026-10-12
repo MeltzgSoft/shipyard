@@ -1,9 +1,9 @@
 (ns shipyard.viewport-loading.rules)
 
-(defn brush-workflow?
-  "Brush workflows retain their own pending feedback without a viewport overlay."
-  [workspace tab customize? trimming?]
-  (case workspace
-    :browse (or (= tab "regions") (and (= tab "mounts") trimming?))
-    :ships customize?
-    false))
+(defn stroke-request?
+  "Only painting/erasing strokes use their own save feedback. History is a job."
+  [path history operation]
+  (or (= path "/parts/regions/stroke")
+      (and (= path "/ships/paint/stroke")
+           (not (or (= history "undo") (= history "redo")
+                    (= operation "undo") (= operation "redo"))))))

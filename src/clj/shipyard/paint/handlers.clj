@@ -109,7 +109,8 @@
          (list [:span {:data-brush-result "saved"} "Details saved."]
                [:span#paint-header-status {:hx-swap-oob "outerHTML" :role "status"} "Details saved."]
                [:span#paint-face-count {:hx-swap-oob "outerHTML"} (str (reduce + 0 (map #(count (:faces %)) (vals (:scheme/details record)))) " painted faces")]
-               [:input {:type "hidden" :data-assembly-event (pr-str (:event scene))}]))))))
+               [:input {:type "hidden" :data-assembly-event (pr-str (:event scene))
+                        :data-viewport-brush-stroke (when-not (#{"undo" "redo"} (or (get params "history") (get params "operation"))) "true")}]))))))
 
 (defn delete! [{:keys [named-ships paint]} {:strs [id confirmed]}]
   (if-not (= confirmed "true")

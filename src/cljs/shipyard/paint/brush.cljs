@@ -6,7 +6,8 @@
             [shipyard.http.forms :as forms]
             [shipyard.paint.faces :as faces]
             [shipyard.paint.picking :as picking]
-            [shipyard.paint.render :as render]))
+            [shipyard.paint.render :as render]
+            [shipyard.viewport-loading :as loading]))
 
 (defn- field [^js form name] (.namedItem (.-elements form) name))
 (defn- value [form name] (.-value (field form name)))
@@ -151,7 +152,7 @@
               (doseq [[path before] (:before current)]
                 (when-let [^js object (get-in current [:buffer :ranges path :object])]
                   (render/set-details! object before)
-                  (apply-material! object (.. object -userData -paintMaterial) @mount-colors-enabled))))
+                  (loading/with-feedback! true #(apply-material! object (.. object -userData -paintMaterial) @mount-colors-enabled)))))
             (cancel! [message retry?]
               (when-let [current @stroke]
                 (js/clearInterval (:timer current))
@@ -231,7 +232,7 @@
                                                    (:erase? current) (update :erased (fnil into #{}) added)
                                                    (not (:erase? current)) (update :erased #(apply disj (or % #{}) added))))
                             (set! (.. object -userData -paintDirtyFaces) added)
-                            (apply-material! object (.. object -userData -paintMaterial) false)))
+                            (loading/with-feedback! true #(apply-material! object (.. object -userData -paintMaterial) false))))
                         (swap! stroke #(-> % (assoc :last-point now)
                                            (update :keys (partial merge-with into) deltas)
                                            (update :pending (partial merge-with into) deltas)))
