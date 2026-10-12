@@ -843,8 +843,6 @@ details for a changed mesh remain saved but do not render until the original sou
 is restored or those details are cleared. Deleting a class retains its named ships’
 paint, but restore that class before continuing to paint them.
 
-Fleet ordering and fleet-default assignment are not yet available.
-
 ### Painting details
 
 Turn off **Mount colors**, then open **Customize** to use the detail brush. Pick a detail

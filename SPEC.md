@@ -3,7 +3,7 @@
 A desktop application for previewing Battlefleet Gothic miniatures assembled from
 existing STL part libraries - choose a hull, prow, bridge and weapon loadout, see the
 result rendered as a complete ship, orbit and zoom it, design a paint scheme for it,
-and keep the result as a named loadout in a fleet roster.
+and add saved ship classes to printable fleet lists.
 
 This document defines the intended product behavior and design.
 
@@ -28,7 +28,8 @@ Shipyard closes that loop. Pick parts, see the assembled ship, decide before pri
 - Assemble a ship from compatible parts and render it as one model.
 - Orbit, pan and zoom with detail preserved on high-density meshes.
 - Design a paint scheme against the assembled model.
-- Save named loadouts and organise them into a fleet roster.
+- Save reusable ship classes, assign quantities to fleet lists, and export the
+  required source STLs as a print bundle.
 - Define how parts mate by picking faces in the viewport, and persist those mounts as
   durable data that accumulates across sessions.
 - Ship a user manual that describes what Shipyard can actually do today, kept current
@@ -433,7 +434,7 @@ Stages, all server-side:
 Preprocessing the whole 118M-triangle library up front is an hours-long job with no
 payoff. Lazy generation means the cache only ever holds what has actually been looked at.
 
-**LOD tiers are not needed on day one.** The fleet roster is a list rendering one ship at
+**LOD tiers are not needed on day one.** The Fleet Browser is a list rendering one ship at
 a time (§8.4), so the working budget is a single ship - 270k to 600k triangles, which any
 GPU handles without help. The pipeline generates the tiers regardless, because doing so
 costs almost nothing once meshoptimizer is already in the path, and it means thumbnails
@@ -563,11 +564,32 @@ assignments can be saved, previewed, edited and duplicated. Unassigned mounts ar
 allowed. Assigned parts must still exist, be available and be compatible with their
 mounts; stale assignment paths and malformed catalog data remain errors.
 
-### 8.4 Fleet
+### 8.4 Fleet lists and print bundles
 
-An ordered list of named ships with a default scheme. **Rendered as a list, one ship
-displayed at a time** - selecting an entry loads it into the viewport. Not a simultaneous
-scene. Thumbnails per entry are desirable but lower priority (M6).
+A fleet list has a name and entries referencing saved ship classes, each with a positive
+integer quantity. A class may appear once per list; changing its quantity changes the
+number of copies to print. The Fleet Browser shows the class assembly and its required
+parts, and selecting a class loads its existing preview into the viewport one ship at a
+time. Named painted ships and fleet palettes are separate from print quantities.
+
+Each list may also request a positive integer quantity of a specific library part,
+independent of its class entries. These extra parts add to the same part's total rather
+than creating duplicate files. The list saves an ordered preference of distinct,
+recognized STL variants. For every required part, export chooses the first variant in
+that order with a present source file; different parts may therefore use different
+variants. The preference order is exhaustive: an unlisted variant is never selected
+implicitly. The browser shows the chosen variant, total quantity and any missing
+source before export.
+
+Export expands each class's saved hull and assigned slots, counting repeated slot
+assignments separately, multiplies those counts by the class quantity, then adds extra
+part quantities. It copies each chosen source STL once into a ZIP at its library-relative
+path, preserving the library's bundle/class/part directory structure and canonical
+variant filename. The ZIP contains `index.csv` with one row per chosen source file:
+library-relative path, variant and total quantity to print. The index and files reflect
+one consistent snapshot of the list, classes and library. A missing class, part, usable
+variant or changed source prevents publication and gives an actionable error. Export
+never produces a partial ZIP or overwrites an earlier bundle.
 
 ### 8.5 Paint scheme
 
@@ -623,7 +645,8 @@ expanded named-ship rows each offer **Edit** and confirmed **Delete** controls.
 Delete removes only the named ship and its details, preserving classes and schemes.
 An unavailable scheme retains its reference and warns; custom details remain usable.
 
-Fleet ordering and fleet-default assignment remain M6 work.
+Fleet lists use saved classes for print planning; named-ship palette assignment remains
+part of Customize and does not affect exported files.
 
 Material controls preview locally on input, and commit on change/release. A failed
 commit reports an error and retains the last durable value; controls remain available
@@ -1070,6 +1093,11 @@ and mount-cut default fields and preserves both model workspaces on a round trip
 Library selection appears only here, with direct path entry and the desktop chooser.
 A successful folder change rescans the library and clears obsolete Part Browser
 selection and filters; a failed change preserves the active library and allows retry.
+Settings also saves an export directory beside the library directory. Fleet export
+requires this directory; Shipyard creates it when needed and writes completed ZIPs
+there. The export directory must be separate from the selected library tree so exports
+cannot be scanned as library content. Invalid or unwritable paths leave the saved
+setting and any existing bundles intact.
 
 Appearance offers Light, Dark and Auto, with Dark as the initial default. The saved
 choice applies across libraries and workspaces and survives application restarts.

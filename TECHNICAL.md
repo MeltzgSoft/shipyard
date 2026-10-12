@@ -339,7 +339,7 @@ also runs at the transactional boundary.
 
 | Entity | Identity and relationships |
 |---|---|
-| Application settings | Selected library root |
+| Application settings | Selected library and export roots |
 | Library | UUID, root, shared-layer revision |
 | Scan entry | Library-scoped part identity, file stamps, mesh key, triangle count, escort analysis |
 | Part | UUID, unique `[library UUID, relative path]`, library ref, present flag, observed source facts, manual role/orientation |
@@ -352,7 +352,17 @@ also runs at the transactional boundary.
 | Scheme | UUID, name, library ref; owned shared region-layer material bindings |
 | Target | Scheme-owned, full instance path and part ref; optional material and source-bound detail mask |
 | Group membership | Group-owned, explicit order and target ref |
-| Fleet | Schema reserved for later fleet workflows; no fleet authoring UI yet |
+| Fleet | List identity, library ref, ordered variant preference; owned class/quantity entries and extra part/quantity entries |
+
+The Fleet Browser's export projection reads each saved class's hull and full-path slot
+assignments, counts every occurrence, multiplies by its fleet-list quantity and adds
+extra part counts. It resolves source entities in preference order against the same
+library snapshot, then produces one manifest row and one copy per selected source file.
+The manifest uses library-relative paths and quantities; ZIP entries preserve those
+paths. Validate all references, source stamps and destination paths before publishing.
+Write the archive in the selected export directory through a temporary file and rename
+it into a unique final name only after the ZIP is complete. A failed export leaves no
+published partial archive. Keep the export directory outside the library root.
 
 Refs to shared parts, layers, content, schemes and targets are not components. Deleting
 owned children must not delete their shared references. Deleted schemes/layers remain
@@ -825,8 +835,8 @@ Attributes still restrain shading damage, but they are fed smooth per-vertex nor
 computed on the welded mesh - no split, so no topology lock. **The weighting tapers off
 below `aggressive-below` (default 0.10).** At weight 0.5 the Cruiser Hull's 5% target
 stops at 11.8%; at zero it reaches 4.9%. A 5% tier is a distant placeholder where size
-matters more than shading fidelity, so it drops the weighting; the 25% tier, which M6
-thumbnails may use, keeps it.
+matters more than shading fidelity, so it drops the weighting; the 25% tier, which
+on-demand thumbnails may use, keeps it.
 
 Cost of the reorder: crease-splitting runs once per tier instead of once. Measured at
 416 ms for all three tiers of the Cruiser Hull, against a §11 budget of 2 s.
@@ -845,10 +855,10 @@ uses, and the measured saving is large: the 5% tier needs 8,030 of 78,413 vertic
 **Resolved:** one self-contained file per LOD tier, each compacted with
 `meshopt_optimizeVertexFetch`. Not one shared vertex buffer with N index buffers.
 
-Sharing a vertex buffer only pays if tiers are switched at runtime, and SPEC's fleet view
+Sharing a vertex buffer only pays if tiers are switched at runtime, and SPEC's Fleet Browser
 is a list rendering one ship at a time - so a viewer holds exactly one tier. Compaction
-then shrinks the 5% tier's vertex buffer roughly tenfold (§6.3), which is what M6
-thumbnails download. Independent files also cache and evict independently over plain HTTP.
+then shrinks the 5% tier's vertex buffer roughly tenfold (§6.3), useful for
+on-demand thumbnails. Independent files also cache and evict independently over plain HTTP.
 
 Path: `mesh/<sha256>.<tier>.symesh`, tier ∈ {0,1,2}.
 
@@ -1270,16 +1280,17 @@ scene that failed to build is indistinguishable from a machine with no GPU. Only
 environment renders as a flat silhouette, and an HDR file would put a megabyte of asset in
 the jar. `RoomEnvironment` through `PMREMGenerator` costs nothing at build time.
 
-### 7.3 The library root, as a setting
+### 7.3 Library and export roots, as settings
 
-Shipyard has exactly one thing it cannot infer: where the STL library is. Everything else
-in `config.edn` is a measured tunable with a defensible default; this is a fact about the
-user's machine. So it has no default, `POST /settings` sets it, and the shared database
-remembers it. Startup restores that selection before scanning (§2.1).
+Shipyard cannot infer the user's STL library or where completed fleet bundles should go.
+Both paths have no default and are application settings in the shared database, rather
+than `config.edn` tunables. The library root is selected through `POST /settings` and
+restored before scanning (§2.1). The export root is selected in Settings and validated
+separately; changing it does not rescan or relocate the library.
 
-Library and archive inputs use Swing `JFileChooser`, opened by
+Library, export-directory and archive inputs use Swing `JFileChooser`, opened by
 `POST /files/choose/:field`. The field is restricted to library setup/settings
-inputs and the ZIP archive input. The Integrant-owned `:shipyard.file-picker/db`
+inputs, the export-directory input and the ZIP archive input. The Integrant-owned `:shipyard.file-picker/db`
 serializes desktop access; concurrent requests are refused instead of queued.
 Swing classes load on demand. Choosers are constructed, displayed and disposed on
 Swing's event dispatch thread; the request waits for the result without releasing
@@ -1374,7 +1385,7 @@ that matters:
 - **Failure isolation.** htmx drives every panel in the application; the CLJS bundle drives
   one canvas. Bundling them means a broken or slow viewport build takes the entire UI down
   with it. Kept separate, a viewport failure costs you the 3D preview and nothing else -
-  browsing, loadouts and the fleet roster keep working. The dependency direction should
+  browsing, loadouts and fleet-list editing keep working. The dependency direction should
   match the importance: the UI must not depend on the island.
 - **Initialization timing.** htmx scans the DOM for `hx-*` attributes on load. A plain
   `<script>` tag makes that ordering explicit and independent of module graph evaluation.
