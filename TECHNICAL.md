@@ -2241,7 +2241,7 @@ server replaces that visible subset and retains selected parts hidden by filters
 Server-rendered table rows, selection counts and Render controls reflect this state.
 An accepted workspace transition disables native selection checkboxes, row actions and
 enabled inputs/selects in `data-workspace-filters` forms until the response arrives.
-Part Browser, Ship Browser and assembly filter forms share this admission guard, so
+Part Browser, Ship Browser, Fleet Browser and assembly filter forms share this admission guard, so
 late responses cannot overwrite edits to outgoing filters. Already-disabled filter
 controls are excluded from the temporary guard and retain their disabled state.
 Selection responses replace count/Render controls, grouping visibility, column-editor
@@ -2576,7 +2576,7 @@ M3 draft and viewport protocol in §13. Product requirements are in SPEC §9.2�
 ### 14.1 State ownership
 
 `workspace.views/filter-sidebar` shares the filter layout across part tables, import
-review, ship tables and the Assembly hull picker. Native `details` and `summary`
+review, ship tables, fleet tables and the Assembly hull picker. Native `details` and `summary`
 provide keyboard behavior; `filter-sidebars.js` opens on pointer entry, closes on
 pointer exit, and keeps an in-memory set of pinned sidebar IDs across fragment
 replacements. Pinning affects presentation only and resets on page reload. Existing
@@ -2607,7 +2607,7 @@ Derived part and ship PNG previews have transparent backgrounds so their CSS sur
 follow either palette. Thumbnail renderer version 2 invalidates older opaque previews.
 
 Model transient application state by workspace identity. Each workspace owns its
-selected part or loadout, filters, working state and mount-color setting. In particular,
+selection, filters, working state and applicable viewport settings. In particular,
 Ship Browser owns its class table and Assemble editor. The assembly draft and named-ship paint
 projection remain distinct model cells within this workspace, so palette preview cannot overwrite
 class edits or custom paint. Table filters are separate from assembly hull filters. Part Browser owns a `:view` (`:table`, `:part`, `:variant`, or `:grid`), an
@@ -2624,6 +2624,14 @@ the workspace activation and late responses obey the existing admission guard.
 Its table filters and scroll
 position survive opening an individual part and returning. `/orient/*` routes are
 owned by `:browse`, whose entry point is `/workspace/browse`.
+Fleet Browser is owned by a separate `:fleets` workspace, entered through
+`/workspace/fleets`. It owns a `:table` or `:editor` view, fleet-list selection, table
+filters and scroll position, and the editor's selected class preview. Its table lists
+durable fleet lists with class and quantity summaries and export readiness; opening a
+row shows that list's classes, extras, variant order and export controls. Back to table
+restores the list position and filters. Fleet selection and preview never replace Ship
+Browser's class editor state or Part Browser's part selection. Fleet routes use the
+same workspace activation and late-response guard as the existing browsers.
 Settings is owned by `:settings`, with `/workspace/settings` as its entry point and
 `/settings/*` mutations guarded by the same workspace activation boundary. It owns
 folder/default form drafts on the server and an empty client runtime sharing the

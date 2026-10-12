@@ -568,9 +568,11 @@ mounts; stale assignment paths and malformed catalog data remain errors.
 
 A fleet list has a name and entries referencing saved ship classes, each with a positive
 integer quantity. A class may appear once per list; changing its quantity changes the
-number of copies to print. The Fleet Browser shows the class assembly and its required
-parts, and selecting a class loads its existing preview into the viewport one ship at a
-time. Named painted ships and fleet palettes are separate from print quantities.
+number of copies to print. Fleet Browser is its own workspace, with a table of fleet
+lists and an individual editor for one list. The editor shows class entries, required
+parts, extra parts, variant preference and export controls. Selecting a class in the
+editor loads its existing assembly preview into the viewport one ship at a time. Named
+painted ships and fleet palettes are separate from print quantities.
 
 Each list may also request a positive integer quantity of a specific library part,
 independent of its class entries. These extra parts add to the same part's total rather
@@ -768,7 +770,7 @@ Undo is unavailable until the current drag has finished.
 
 All server-rendered hiccup driven by htmx, except the viewport.
 
-Part Browser, import review and Ship Browser table filters live in
+Part Browser, import review, Ship Browser and Fleet Browser table filters live in
 collapsible sidebars beside their tables. Name search appears first;
 Clear filters appears last where available. Sidebars start collapsed,
 expand on hover and collapse when the cursor leaves. A pin control keeps them open
@@ -795,7 +797,11 @@ visible above the hull picker in the inspector, retaining their filtering behavi
   adjust roll, name it, save. Offers symmetry mirroring on hulls. Surfaces
   `:mount/origin` so mirrored and seeded mounts can be confirmed.
 - **Customize inspector tab** - named-ships table with Edit/Delete, ship management and visible-face detail brushing in Ship Browser.
-- **Fleet roster** - list of loadouts, select to load into the viewport.
+- **Fleet Browser** - a separate workspace whose table lists each fleet's name,
+  class count, total ship quantity, extra-part count and export readiness. Name search
+  filters the table. Double-click a row (or press Enter on it) to open that fleet's
+  individual editor; create opens a new fleet editor. **Back to table** restores table
+  filters and scroll position. The editor has no listing sidebar. See §8.4.
 - **Settings** - library folder selection, shared classification management and defaults for new pit/recess cuts. See §9.6.
 - **Ship Browser** - a table of saved classes and named ships that opens the Assemble editor. See §9.3.
 
@@ -848,7 +854,7 @@ before discarding staging data and leaves the common pool available to other job
 
 ### 9.2 Independent workspace state
 
-Each workspace, Part Browser, Ship Browser and Settings, owns its
+Each workspace, Part Browser, Ship Browser, Fleet Browser and Settings, owns its
 own selection, transient working state, filters and viewport display settings.
 Switching workspaces restores the destination's state on both the server and in the
 viewport. A workspace with no selection shows its own empty state. Returning to a
@@ -1093,8 +1099,8 @@ their reviewed labels. Group submission waits for pending checkbox selection upd
 
 ### 9.6 Settings
 
-Settings is a third workspace with no model selection. It owns unsaved library-folder
-and mount-cut default fields and preserves both model workspaces on a round trip.
+Settings is a separate workspace with no model selection. It owns unsaved library-folder
+and mount-cut default fields and preserves the browser workspaces on a round trip.
 Library selection appears only here, with direct path entry and the desktop chooser.
 A successful folder change rescans the library and clears obsolete Part Browser
 selection and filters; a failed change preserves the active library and allows retry.
