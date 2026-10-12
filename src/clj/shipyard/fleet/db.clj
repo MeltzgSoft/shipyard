@@ -33,8 +33,10 @@
                 :fleet/variant-preference t/default-variant-preference} :create))
 
 (defn delete! [{:keys [store] :as facade} id]
-  (if (record! facade id) (store/delete-record! store :fleets id)
-      {:error :missing-fleet}))
+  (let [lock (:lock store)]
+    (locking lock
+      (if (record! facade id) (store/delete-record! store :fleets id)
+          {:error :missing-fleet}))))
 
 (defn use-default! [{:keys [store catalog]} id]
   (try
@@ -56,7 +58,7 @@
                  (let [library (:library @(:state catalog))
                        fleet (store/record-value db :fleets id)
                        library-entity (d/pull db '[*] [:library/id library])]
-                   (when (= library (:fleet/library fleet))
+                   (when (and library fleet (= library (:fleet/library fleet)))
                      {:fleet fleet :library (select-keys library-entity [:library/id :library/root])
                       :classes (into {} (keep (fn [class]
                                                 (when-let [value (store/record-value db :loadouts class)] [class (assoc value :loadout/library (get-in (d/pull db [{:loadout/library [:library/id]}] [:loadout/id class]) [:loadout/library :library/id]))])))
