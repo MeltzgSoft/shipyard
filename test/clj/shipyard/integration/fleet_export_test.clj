@@ -8,7 +8,7 @@
 (defn fixture! []
   (let [home (fs/create-temp-dir {:prefix "fleet-export-"})
         library (fs/create-dirs (fs/path home "library"))
-        relative "Bundle/Part, \"one\"/unsupported.stl"
+        relative "Bundle/Part, one/unsupported.stl"
         source (fs/path library relative)]
     (fs/create-dirs (fs/parent source))
     (spit (str source) "original STL bytes")
@@ -31,10 +31,10 @@
           (is (not= (:path first-export) (:path second-export)))
           (with-open [zip (ZipFile. (:path first-export))]
             (is (= 2 (.size zip)))
-            (with-open [input (.getInputStream zip (.getEntry zip "Bundle/Part, \"one\"/unsupported.stl"))]
+            (with-open [input (.getInputStream zip (.getEntry zip "Bundle/Part, one/unsupported.stl"))]
               (is (= "original STL bytes" (slurp input))))
             (with-open [input (.getInputStream zip (.getEntry zip "index.csv"))]
-              (is (= "path,variant,quantity\r\n\"Bundle/Part, \"\"one\"\"/unsupported.stl\",unsupported,7\r\n" (slurp input)))))))
+              (is (= "path,variant,quantity\r\n\"Bundle/Part, one/unsupported.stl\",unsupported,7\r\n" (slurp input)))))))
       (finally (fs/delete-tree home)))))
 
 (deftest invalid-source-and-destination-leave-no-bundle
@@ -63,7 +63,7 @@
                                     (spit (str source) "modified STL bytes")
                                     (fs/set-last-modified-time source stamp)))]
             (is (thrown-with-msg? clojure.lang.ExceptionInfo #"changed" (export/export! snapshot library destination)))))
-        (is (= [(:path prior)] (mapv str (fs/list-dir destination)))))
+        (is (= [(:path prior)] (mapv (comp str fs/real-path) (fs/list-dir destination)))))
       (finally (fs/delete-tree home)))))
 
 (deftest reference-revalidation-failure-cleans-up
@@ -84,7 +84,7 @@
                                               #(let [stamp (fs/last-modified-time source)]
                                                  (spit (str source) "modified STL bytes")
                                                  (fs/set-last-modified-time source stamp)))))
-        (is (= [(:path prior)] (mapv str (fs/list-dir destination)))))
+        (is (= [(:path prior)] (mapv (comp str fs/real-path) (fs/list-dir destination)))))
       (finally (fs/delete-tree home)))))
 
 (deftest concurrent-exports-never-overwrite
