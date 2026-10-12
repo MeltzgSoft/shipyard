@@ -114,3 +114,12 @@
            :ship/class (get-in entity [:ship/class :loadout/id])
            :ship/paint (paint-value (:ship/paint entity))}
     (:ship/scheme entity) (assoc :ship/scheme (get-in entity [:ship/scheme :scheme/id]))))
+
+(defn fleet-value [entity]
+  {:fleet/id (:fleet/id entity) :fleet/name (:fleet/name entity)
+   :fleet/library (get-in entity [:fleet/library :library/id])
+   :fleet/variant-preference (:fleet/variant-preference entity)
+   :fleet/entries (into {} (map (fn [entry] [(get-in entry [:fleet-entry/loadout :loadout/id])
+                                             (:fleet-entry/quantity entry)])) (:fleet/entries entity))
+   :fleet/extras (into {} (map (fn [entry] [(get-in entry [:fleet-extra/part :part/id])
+                                            (:fleet-extra/quantity entry)])) (:fleet/extras entity))})

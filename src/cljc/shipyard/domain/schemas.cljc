@@ -42,6 +42,13 @@
   [:map {:closed true} [:loadout/id :uuid] [:loadout/name display-name] [:loadout/hull part-id]
    [:loadout/slots [:map-of {:max 4096} slot-path part-id]]
    [:loadout/allow-other-factions? {:optional true} :boolean]])
+(def variant-preference
+  [:and [:vector [:enum :unsupported :supported :unsupported-pitted]] [:fn distinct-values?]])
+(def quantity [:and integer? [:> 0] [:<= 9223372036854775807]])
+(def fleet
+  [:map {:closed true} [:fleet/id :uuid] [:fleet/name display-name] [:fleet/library :uuid]
+   [:fleet/entries [:map-of :uuid quantity]] [:fleet/extras [:map-of part-id quantity]]
+   [:fleet/variant-preference variant-preference]])
 (def ship
   [:map {:closed true} [:ship/id :uuid] [:ship/name display-name] [:ship/class :uuid]
    [:ship/scheme {:optional true} :uuid] [:ship/paint paint-job]])

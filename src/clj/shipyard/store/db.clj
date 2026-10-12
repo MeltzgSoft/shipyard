@@ -8,6 +8,7 @@
             [shipyard.store.transforms :as t]
             [shipyard.regions.registry :as registry]
             [shipyard.loadout.transforms :as loadout]
+            [shipyard.fleet.transforms :as fleet]
             [shipyard.scheme.transforms :as scheme]
             [shipyard.ship.transforms :as ship]
             [shipyard.system :as system]))
@@ -25,6 +26,10 @@
 (def loadout-pattern
   '[* {:loadout/hull [:part/id]
        :loadout/slots [* {:slot/part [:part/id]}]}])
+(def fleet-pattern
+  '[* {:fleet/library [:library/id]
+       :fleet/entries [* {:fleet-entry/loadout [:loadout/id]}]
+       :fleet/extras [* {:fleet-extra/part [:part/id]}]}])
 (def ship-pattern
   ['* {:ship/class [:loadout/id] :ship/scheme [:scheme/id] :ship/paint paint-pattern}])
 
@@ -177,6 +182,7 @@
   (case kind
     :schemes [:scheme/id :scheme/deleted? scheme-pattern t/scheme-value]
     :loadouts [:loadout/id :loadout/deleted? loadout-pattern t/loadout-value]
+    :fleets [:fleet/id :fleet/deleted? fleet-pattern t/fleet-value]
     :ships [:ship/id :ship/deleted? ship-pattern t/ship-value]))
 
 (defn record-value [db kind id]
@@ -269,6 +275,42 @@
                                 :ship/paint (t/paint-tx parts id (:ship/paint record))}
                          (:ship/scheme record) (assoc :ship/scheme [:scheme/id (:ship/scheme record)]))])))
 
+(defn put-fleet! [conn library record]
+  (when-not (fleet/fleet? record)
+    (throw (ex-info "Fleet values are invalid." {:type :invalid-fleet})))
+  (let [id (:fleet/id record)
+        old (d/pull @conn '[* {:fleet/library [:library/id]}] [:fleet/id id])
+        previous (when (:fleet/id old) (t/fleet-value (d/pull @conn fleet-pattern [:fleet/id id])))
+        library-ref (d/pull @conn [:db/id] [:library/id library])]
+    (when-not (and library-ref (= library (:fleet/library record))
+                   (or (nil? previous) (= library (:fleet/library previous))))
+      (throw (ex-info "Fleet must belong to the selected library." {:type :wrong-library})))
+    (doseq [class (keys (:fleet/entries record))]
+      (let [entity (d/pull @conn '[* {:loadout/library [:library/id]}] [:loadout/id class])
+            retained? (contains? (:fleet/entries previous) class)]
+        (when-not (and (= library (get-in entity [:loadout/library :library/id]))
+                       (or retained? (not (:loadout/deleted? entity))))
+          (throw (ex-info "Choose a saved class from this library." {:type :missing-class :class-id class})))))
+    (doseq [path (keys (:fleet/extras record))]
+      (let [part (d/pull @conn [:part/uid :part/present?] [:part/key [library path]])]
+        (when-not (and part (or (:part/present? part) (contains? (:fleet/extras previous) path)))
+          (throw (ex-info "Choose an available part from this library." {:type :missing-part :part-id path})))))
+    (d/transact! conn (retract-children @conn [:fleet/id id] [:fleet/entries :fleet/extras]))
+    (d/transact! conn [{:fleet/id id :fleet/name (:fleet/name record) :fleet/deleted? false
+                        :fleet/library [:library/id library]
+                        :fleet/revision (inc (or (:fleet/revision old) 0))
+                        :fleet/variant-preference (:fleet/variant-preference record)
+                        :fleet/entries (mapv (fn [[class quantity]]
+                                               {:fleet-entry/loadout [:loadout/id class]
+                                                :fleet-entry/quantity quantity}) (:fleet/entries record))
+                        :fleet/extras (mapv (fn [[path quantity]]
+                                              {:fleet-extra/part [:part/key [library path]]
+                                               :fleet-extra/quantity quantity}) (:fleet/extras record))}])))
+
+(defn default-variant-preference [db]
+  (or (:settings/variant-preference (d/pull db [:settings/variant-preference] [:store/key "shipyard"]))
+      fleet/default-variant-preference))
+
 (defn- record-exists?
   "Read only one identity and tombstone; never materialize its owned payload."
   [db kind id]
@@ -283,24 +325,29 @@
             (fn [conn]
               (let [[key] (record-spec kind)
                     exists? (record-exists? @conn kind (get record key))
-                    operation (case kind :schemes scheme/put-record :loadouts loadout/put-record :ships ship/put-record)
+                    operation (case kind :schemes scheme/put-record :loadouts loadout/put-record :ships ship/put-record :fleets fleet/put-record)
                     result (operation exists? record mode)]
                 (if (:error result) result
                     (do
                       (when (and (nil? library)
                                  (or (#{:loadouts :ships} kind) (seq (:scheme/layers record))))
                         (throw (ex-info "Select a library before saving part or layer references" {})))
-                      ((case kind :schemes put-scheme! :loadouts put-loadout! :ships put-ship!) conn library record)
-                      result)))))
+                      (let [record (if (and (= kind :fleets) (= mode :create))
+                                     (assoc record :fleet/variant-preference (default-variant-preference @conn)) record)]
+                        ((case kind :schemes put-scheme! :loadouts put-loadout! :ships put-ship! :fleets put-fleet!) conn library record)
+                        (assoc result (case kind :schemes :scheme :loadouts :loadout :ships :ship :fleets :fleet) record)))))))
     (catch Exception e {:error :store-write-failed :message (str "Could not save metadata. " (ex-message e))})))
 
 (defn delete-record! [store kind id]
   (try
     (write! store
             (fn [conn]
-              (let [result ((case kind :schemes scheme/delete-record :loadouts loadout/delete-record :ships ship/delete-record)
+              (let [result ((case kind :schemes scheme/delete-record :loadouts loadout/delete-record :ships ship/delete-record :fleets fleet/delete-record)
                             (record-exists? @conn kind id) id)
                     [key deleted] (record-spec kind)]
                 (if (:error result) result
-                    (do (d/transact! conn [{key id deleted true}]) result)))))
+                    (do
+                      (when (= kind :fleets)
+                        (d/transact! conn (retract-children @conn [key id] [:fleet/entries :fleet/extras])))
+                      (d/transact! conn [{key id deleted true}]) result)))))
     (catch Exception e {:error :store-write-failed :message (str "Could not delete metadata. " (ex-message e))})))

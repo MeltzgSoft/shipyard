@@ -8,7 +8,7 @@
 (def schema
   (merge
    (attributes :db.type/string
-               [:store/key :settings/library-root :scan/root :scan/part-id :scan/mesh-key
+               [:store/key :settings/library-root :settings/export-root :scan/root :scan/part-id :scan/mesh-key
                 :library/root :part/id :part/name :part/bundle :part/class
                 :part/name-override :part/bundle-override :part/class-override
                 :part/mesh-key :source/path :mesh/sha :layer/id :layer/name :layer/preview-name
@@ -18,23 +18,23 @@
    (attributes :db.type/long
                [:store/version :scan/mtime :scan/size :scan/tris :library/revision :part/revision :part/tris :source/size
                 :source/mtime :mesh/tris :region/revision :chunk/index :chunk/version
-                :scheme/revision :ship/revision :loadout/revision :fleet-entry/order :mount/capacity :mount/order])
+                :scheme/revision :ship/revision :loadout/revision :fleet-entry/quantity :fleet-extra/quantity :fleet/revision :mount/capacity :mount/order])
    (attributes :db.type/boolean
                [:source/present? :part/present? :part/renderable :part/weapons? :part/turrets?
                 :part/accepts-turrets? :layer/deleted? :scheme/deleted? :loadout/deleted? :loadout/allow-other-factions?
-                :ship/deleted? :layer/builtin?])
+                :ship/deleted? :fleet/deleted? :layer/builtin?])
    (attributes :db.type/keyword
                [:settings/theme :part/source :part/role-hint :part/role-source :part/role-override :mount/id :mount/kind
                 :mount/origin :mount/mirror-id :mount/alignment-axis :source/variant :vocabulary/field])
    (attributes :db.type/data
-               [:settings/mount-cut-defaults :scan/escort-analysis :part/orientation :mount/pos :mount/axis :mount/roll :mount/magnet
+               [:settings/mount-cut-defaults :settings/variant-preference :fleet/variant-preference :scan/escort-analysis :part/orientation :mount/pos :mount/axis :mount/roll :mount/magnet
                 :mount/facet :mount/split :mount/cut :mount/outline :mount/mirror-plane :mount/mirror-offset :chunk/payload
                 :slot/path :target/path :layer/preview-color :material/base :material/metalness
                 :material/roughness :material/glow :material/paint :paint/fields])
    (attributes :db.type/ref
                [:part/library :source/part :source/origin-part :source/content :layer/library :mask/layer
                 :region/content :slot/part :ship/class :ship/scheme :ship/library :loadout/hull :loadout/library :scheme/library
-                :binding/layer :target/part :detail/content :fleet/default-scheme
+                :binding/layer :target/part :detail/content :fleet/library :fleet-extra/part
                 :fleet-entry/loadout :mount/mirror])
    (into {} (map (fn [attr] [attr {:db/valueType :db.type/ref :db/isComponent true}]))
          [:part/regions :target/details :ship/paint])
@@ -43,7 +43,7 @@
          [:part/mounts :part/sources :region/masks :mask/chunks :detail/chunks
           :scheme/layers :loadout/slots
           :paint/targets
-          :fleet/entries])
+          :fleet/entries :fleet/extras])
    {:mount/accepts {:db/valueType :db.type/keyword :db/cardinality :db.cardinality/many}
     :part/variants {:db/valueType :db.type/keyword :db/cardinality :db.cardinality/many}}
    (into {} (map (fn [attr] [attr {:db/valueType :db.type/uuid :db/unique :db.unique/identity}]))
