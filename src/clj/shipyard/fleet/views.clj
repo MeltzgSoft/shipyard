@@ -31,7 +31,7 @@
                         :hx-on:keydown (str "if(event.key==='Enter'&&event.target===this){event.preventDefault();" (open-row id) "}")}
                    [:td (:fleet/name fleet)]
                    [:td (count (:fleet/entries fleet))]
-                   [:td (reduce + 0 (vals (:fleet/entries fleet)))]
+                   [:td (reduce +' 0 (vals (:fleet/entries fleet)))]
                    [:td (count (:fleet/extras fleet))]
                    [:td (if (:ready? plan) "Ready" "Needs attention")]])]]
        [:p "No fleets match."])]))

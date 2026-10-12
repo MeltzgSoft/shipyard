@@ -3,7 +3,8 @@
             [clojure.string :as str]
             [ring.mock.request :as mock]
             [shipyard.assembly-fixture :as fixture]
-            [shipyard.fleet.db :as fleet]))
+            [shipyard.fleet.db :as fleet]
+            [shipyard.loadout.db :as loadouts]))
 
 (deftest fleet-navigation-and-admission
   (let [started (fixture/start!) sys (:system started) handler (:handler started)
@@ -35,4 +36,14 @@
           (is (= 200 (:status (request :post "/fleets/create" "fleets" 4 {:name "Second"}))))
           (is (= 2 (count (:fleets (fleet/snapshot! facade)))))
           (is (= :editor (get-in @workspace [:workspaces :fleets :view])))))
+      (testing "table totals aggregate large quantities without overflow"
+        (let [class-id (random-uuid) other-class-id (random-uuid)
+              db (:shipyard.loadout/db sys)]
+          (doseq [id [class-id other-class-id]]
+            (loadouts/put! db {:loadout/id id :loadout/name "Large class"
+                               :loadout/hull (:hull fixture/ids) :loadout/slots {}} :create))
+          (let [record (:fleet (fleet/create! facade "Reserve large"))]
+            (fleet/put! facade (assoc record :fleet/entries {class-id Long/MAX_VALUE other-class-id Long/MAX_VALUE}) :update)
+            (is (str/includes? (:body (request :get "/workspace/fleets?table=1" "fleets" 4 {}))
+                               "18446744073709551614")))))
       (finally (fixture/stop! started)))))

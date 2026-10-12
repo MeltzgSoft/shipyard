@@ -30,7 +30,7 @@
       (do (when (= view :editor) (workspace/update-workspace! workspace :fleets assoc :view :table :selection nil))
           (htmx/fragment (list (shell/detail-empty)
                                (views/table (entries! deps) filters (or (get params "error")
-                                                                        (when selection "This fleet is unavailable in the selected library."))))
+                                                                        (when (and selection (nil? record)) "This fleet is unavailable in the selected library."))))
                          {:events {:clear nil}})))))
 
 (defn open! [{:keys [workspace] :as deps} {:keys [params]}]
