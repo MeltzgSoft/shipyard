@@ -174,6 +174,24 @@ for ten seconds, runs the whole-library canary with four threads, and writes `be
 bundle first (`npx shadow-cljs compile viewport`). Use `--viewport-mode swiftshader` only
 for a CPU-renderer comparison; it does not measure the hardware viewport budget.
 
+The supported-variant alignment spike is an on-demand, read-only probe over original
+`unsupported.stl` / `supported.stl` pairs. It samples distinctive surviving triangles
+to propose a rigid transform despite added supports, and reports insufficient evidence
+or conflicting correspondence rather than silently choosing a pose. Its `:candidate`
+result is experimental evidence, not permission to publish a supported-pitted model.
+The probe writes only the explicit EDN report; it does not write source files, generated
+variants or application metadata. It is not wired into mount saving or export.
+
+```bash
+clojure -J-Xmx2g -M:dev -m shipyard.supported-spike /tmp/supported-alignment.edn "/path/to/part" "/path/to/another-part"
+clojure -J-Xmx2g -M:dev -e '(load-file "test/clj/shipyard/fixtures.clj") (load-file "test/spike/shipyard/supported_spike/alignment_test.clj") (let [r (clojure.test/run-tests (quote shipyard.supported-spike.alignment-test))] (System/exit (if (zero? (+ (:fail r) (:error r))) 0 1)))'
+```
+
+The separate spike tests cover arbitrary three-axis rotation/translation, extra support
+faces, rejection of inadequate/repeated correspondence, and pit/recess transfer with
+preserved support volume. They are explicitly invoked above and are not part of the
+ordinary product test suites. Results and implementation gaps are tracked in #241.
+
 The paint preparation responsiveness probe uses a deterministic 36,480-triangle hull
 with repeated assembly parts and records cold/warm buffer preparation time and the
 longest measured CPU chunk to `/tmp/shipyard-paint-profile.edn`. Build the dev viewport
