@@ -339,7 +339,7 @@ also runs at the transactional boundary.
 
 | Entity | Identity and relationships |
 |---|---|
-| Application settings | Selected library and export roots; default variant preference order |
+| Application settings | Selected library root, appearance and mount-cut defaults |
 | Library | UUID, root, shared-layer revision |
 | Scan entry | Library-scoped part identity, file stamps, mesh key, triangle count, escort analysis |
 | Part | UUID, unique `[library UUID, relative path]`, library ref, present flag, observed source facts, manual role/orientation |
@@ -348,26 +348,42 @@ also runs at the transactional boundary.
 | Layer | Unique `[library UUID, layer ID]`, label, stable preview label, builtin/deleted flags |
 | Region set | Part-owned, content ref, revision; owned masks referring to shared layers |
 | Mask/detail chunk | Owned, ordered, versioned face payload; Primary is implicit |
-| Loadout | UUID, name, library and hull refs, optional scheme ref; owned full-path slot assignments |
+| Loadout | UUID, name, library and hull refs; owned full-path slot assignments and inventory extras with part refs and quantities |
 | Scheme | UUID, name, library ref; owned shared region-layer material bindings |
 | Target | Scheme-owned, full instance path and part ref; optional material and source-bound detail mask |
 | Group membership | Group-owned, explicit order and target ref |
-| Fleet | List identity, library ref, ordered variant preference; owned class/quantity entries and extra part/quantity entries |
 
-The Fleet Browser's export projection reads each saved class's hull and full-path slot
-assignments, counts every occurrence, multiplies by its fleet-list quantity and adds
-extra part counts. It resolves source entities in preference order against the same
-library snapshot, then produces one manifest row and one copy per selected source file.
-The Settings preference is an ordered value in the shared store. Creating a fleet list
-copies that value into its own durable preference. Settings and export controls both
-move individual variant types up or down one position; export controls write only the
-fleet list. **Use default** copies the current Settings value to the fleet list in one
-transaction. Existing lists do not follow later changes to the Settings default.
-The manifest uses library-relative paths and quantities; ZIP entries preserve those
-paths. Validate all references, source stamps and destination paths before publishing.
-Write the archive in the selected export directory through a temporary file and rename
-it into a unique final name only after the ZIP is complete. A failed export leaves no
-published partial archive. Keep the export directory outside the library root.
+Ship Browser export state is transient and workspace-owned: selected class identities,
+ordered source preference, optional stand diameter, output directory and completed path.
+`export.transforms` expands hulls, every assigned full-path slot and per-class extras,
+combines quantities by part identity, chooses each part's first available source and
+prefixes each archive filename with `<quantity>x-`. No fleet list is involved.
+Inventory extras are normalized owned `:loadout/extras` component entities, with
+`:extra/part` shared refs and `:extra/quantity` positive longs. Updates replace owned
+entries without deleting referenced parts. Draft extras are independent of assignments
+and never enter placements, appearance or mount compatibility calculations.
+
+`export.db` captures classes, attachment metadata and canonical source records under
+library and shared-store locks. The same lock order guards source validation, copying
+and publication. It rejects root escapes and changed stamps, writes one complete
+same-directory temporary ZIP and publishes with `Files/createLink` to a unique final
+name before removing the temporary link. This supplies atomic no-overwrite publication;
+the destination filesystem must support hard links. Failures clean up temporary work.
+
+`:shipyard.export.service/jobs` owns a scope on the shared bounded worker pool and one
+transient result. Geometry and ZIP work run off the request thread, with status polling
+subject to the Ship Browser activation guard. Preview preparation writes temporary STL
+bytes, uses the existing mesh cache, computes backend paint topology and deletes the
+temporary source. The viewport receives its own topology URL for this read-only mesh;
+no preview source is registered in the durable library or scan index.
+
+Stand mounts use `:mount/kind :stand` and `:mount/stand-depth`, plus the existing
+source-space orthonormal frame. Their position is the socket opening and their positive
+axis points outward. Export subtracts a circular cutter inward by the authored depth
+with the existing solid geometry pipeline. The
+optional diameter is in mm. Preview and archive generation call `export.geometry/bytes!`
+with the same variant and dimensions. An unset diameter copies source bytes unchanged.
+No assembly slot is generated for a stand mount.
 
 Refs to shared parts, layers, content, schemes and targets are not components. Deleting
 owned children must not delete their shared references. Deleted schemes/layers remain
@@ -860,7 +876,7 @@ uses, and the measured saving is large: the 5% tier needs 8,030 of 78,413 vertic
 **Resolved:** one self-contained file per LOD tier, each compacted with
 `meshopt_optimizeVertexFetch`. Not one shared vertex buffer with N index buffers.
 
-Sharing a vertex buffer only pays if tiers are switched at runtime, and SPEC's Fleet Browser
+Sharing a vertex buffer only pays if tiers are switched at runtime, and SPEC's Ship Browser
 is a list rendering one ship at a time - so a viewer holds exactly one tier. Compaction
 then shrinks the 5% tier's vertex buffer roughly tenfold (§6.3), useful for
 on-demand thumbnails. Independent files also cache and evict independently over plain HTTP.
@@ -1285,19 +1301,17 @@ scene that failed to build is indistinguishable from a machine with no GPU. Only
 environment renders as a flat silhouette, and an HDR file would put a megabyte of asset in
 the jar. `RoomEnvironment` through `PMREMGenerator` costs nothing at build time.
 
-### 7.3 Library and export roots, as settings
+### 7.3 Library selection and export destination
 
-Shipyard cannot infer the user's STL library or where completed fleet bundles should go.
-Both paths have no default and are application settings in the shared database, rather
-than `config.edn` tunables. The library root is selected through `POST /settings` and
-restored before scanning (§2.1). The export root is selected in Settings and validated
-separately; changing it does not rescan or relocate the library.
-Settings also owns the default variant preference used to initialize new fleet lists.
-It is independent of the export directory and of each list's saved preference.
+The library root is an application setting in the shared database, selected through
+`POST /settings` and restored before scanning (§2.1). The export destination is entered
+in Ship Browser export controls and retained in that workspace's transient export state.
+It has no default and must be outside the library tree. Changing export options does
+not rescan or relocate the library.
 
-Library, export-directory and archive inputs use Swing `JFileChooser`, opened by
+Library and archive inputs use Swing `JFileChooser`, opened by
 `POST /files/choose/:field`. The field is restricted to library setup/settings
-inputs, the export-directory input and the ZIP archive input. The Integrant-owned `:shipyard.file-picker/db`
+inputs and the ZIP archive input. The Integrant-owned `:shipyard.file-picker/db`
 serializes desktop access; concurrent requests are refused instead of queued.
 Swing classes load on demand. Choosers are constructed, displayed and disposed on
 Swing's event dispatch thread; the request waits for the result without releasing
@@ -1392,7 +1406,7 @@ that matters:
 - **Failure isolation.** htmx drives every panel in the application; the CLJS bundle drives
   one canvas. Bundling them means a broken or slow viewport build takes the entire UI down
   with it. Kept separate, a viewport failure costs you the 3D preview and nothing else -
-  browsing, loadouts and fleet-list editing keep working. The dependency direction should
+  browsing, loadouts and export selection keep working. The dependency direction should
   match the importance: the UI must not depend on the island.
 - **Initialization timing.** htmx scans the DOM for `hx-*` attributes on load. A plain
   `<script>` tag makes that ordering explicit and independent of module graph evaluation.
@@ -2310,7 +2324,7 @@ server replaces that visible subset and retains selected parts hidden by filters
 Server-rendered table rows, selection counts and Render controls reflect this state.
 An accepted workspace transition disables native selection checkboxes, row actions and
 enabled inputs/selects in `data-workspace-filters` forms until the response arrives.
-Part Browser, Ship Browser, Fleet Browser and assembly filter forms share this admission guard, so
+Part Browser, Ship Browser and assembly filter forms share this admission guard, so
 late responses cannot overwrite edits to outgoing filters. Already-disabled filter
 controls are excluded from the temporary guard and retain their disabled state.
 Selection responses replace count/Render controls, grouping visibility, column-editor
@@ -2645,7 +2659,7 @@ M3 draft and viewport protocol in §13. Product requirements are in SPEC §9.2�
 ### 14.1 State ownership
 
 `workspace.views/filter-sidebar` shares the filter layout across part tables, import
-review, ship tables, fleet tables and the Assembly hull picker. Native `details` and `summary`
+review, ship tables and the Assembly hull picker. Native `details` and `summary`
 provide keyboard behavior; `filter-sidebars.js` opens on pointer entry, closes on
 pointer exit, and keeps an in-memory set of pinned sidebar IDs across fragment
 replacements. Pinning affects presentation only and resets on page reload. Existing
@@ -2693,14 +2707,11 @@ the workspace activation and late responses obey the existing admission guard.
 Its table filters and scroll
 position survive opening an individual part and returning. `/orient/*` routes are
 owned by `:browse`, whose entry point is `/workspace/browse`.
-Fleet Browser is owned by a separate `:fleets` workspace, entered through
-`/workspace/fleets`. It owns a `:table` or `:editor` view, fleet-list selection, table
-filters and scroll position, and the editor's selected class preview. Its table lists
-durable fleet lists with class and quantity summaries and export readiness; opening a
-row shows that list's classes, extras, variant order and export controls. Back to table
-restores the list position and filters. Fleet selection and preview never replace Ship
-Browser's class editor state or Part Browser's part selection. Fleet routes use the
-same workspace activation and late-response guard as the existing browsers.
+Ship Browser owns export selection and options separately from its assembly draft.
+Opening export controls does not transfer a class into Assemble. A read-only export
+preview uses the Ship Browser viewport; opening or resuming the assembly reconstructs
+its own scene through the existing transition contract. Export routes use `/ships/export`
+and the existing Ship Browser activation guard.
 Settings is owned by `:settings`, with `/workspace/settings` as its entry point and
 `/settings/*` mutations guarded by the same workspace activation boundary. It owns
 folder/default form drafts on the server and an empty client runtime sharing the

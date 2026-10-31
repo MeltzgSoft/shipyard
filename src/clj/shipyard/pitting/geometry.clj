@@ -44,6 +44,12 @@
 
 (defn profiles [mount]
   (case (get-in mount [:mount/cut :kind])
+    :cylinder [{:frame mount
+                :rings [(mapv (fn [i]
+                                (let [angle (* 2.0 Math/PI (/ i 96.0))
+                                      radius (/ (get-in mount [:mount/cut :diameter]) 2.0)]
+                                  [(* radius (Math/cos angle)) (* radius (Math/sin angle))]))
+                              (range 96))]}]
     :pit (cut/pit-rings mount)
     :recess (let [shape (inset mount)]
               [{:frame mount

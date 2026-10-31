@@ -114,3 +114,15 @@
       (is (nil? (:material payload)))
       (is (= details (:details payload)))
       (is (= [{:op :snapshot :slots []}] (transforms/snapshot-commands after {}))))))
+
+(deftest inventory-only-parts
+  (let [draft (:draft (apply-op transforms/empty-draft {:op :hull :part-id "hull"}))
+        with-extra (:draft (apply-op draft {:op :extra :part-id "weapon" :quantity 3}))]
+    (is (= {"weapon" 3} (:extras with-extra)))
+    (is (= (:assignments draft) (:assignments with-extra)))
+    (is (= (transforms/placements fixture/database draft)
+           (transforms/placements fixture/database with-extra)))
+    (is (= {} (:extras (:draft (apply-op with-extra {:op :extra :part-id "weapon" :quantity 0})))))
+    (is (= {} (:extras (:draft (apply-op (assoc draft :extras {"missing" 1})
+                                         {:op :extra :part-id "missing" :quantity 0})))))
+    (is (:error (apply-op draft {:op :extra :part-id "weapon" :quantity -1})))))

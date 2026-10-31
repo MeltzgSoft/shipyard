@@ -20,7 +20,11 @@
           (catch Exception _ false)))))
 
 (defn routes [deps]
-  [["/assembly/drawer" {:post {:handler (partial handlers/drawer! deps)
+  [["/assembly/extras" {:post {:handler (partial handlers/mutate! deps :extra)
+                               :parameters {:form [:map [:revision revision-schema] [:part-id id-schema]
+                                                   [:quantity [:and string? [:re #"[0-9]{1,7}"]]]]}
+                               :responses contracts/html-responses}}]
+   ["/assembly/drawer" {:post {:handler (partial handlers/drawer! deps)
                                :parameters {:form [:map [:revision revision-schema] [:slot [:fn slot-string?]]
                                                    [:open [:enum "true" "false"]]]}
                                :responses contracts/html-responses}}]

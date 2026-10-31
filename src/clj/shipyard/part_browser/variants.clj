@@ -35,10 +35,10 @@
         referenced (store/read! (:store catalog)
                                 #(set (d/q '[:find [?id ...] :in $ ?library :where
                                              [?lib :library/id ?library] [?p :part/library ?lib]
-                                             (or [?e :slot/part ?p] [?e :loadout/hull ?p] [?e :target/part ?p])
+                                             (or [?e :extra/part ?p] [?e :slot/part ?p] [?e :loadout/hull ?p] [?e :target/part ?p])
                                              [?p :part/id ?id]] % (:library @(:state catalog)))))]
     (update-vals parts #(assoc % :protected? (boolean (or (referenced (:part/id %))
-                                                          (:part/has-regions? %) (seq (get-in % [:part/mount-summary :sockets]))
+                                                          (:part/has-regions? %) (pos? (or (get-in % [:part/mount-summary :stands]) 0)) (seq (get-in % [:part/mount-summary :sockets]))
                                                           (pos? (or (get-in % [:part/mount-summary :plugs]) 0))))))))
 
 (defn- safe-path! [root path]

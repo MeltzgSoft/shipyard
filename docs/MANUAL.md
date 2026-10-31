@@ -923,6 +923,44 @@ Customize. Old masks remain saved until you use **Reset custom paint**.
 After replacing a source file, reselect your library in Settings to rescan it before
 reopening Customize. Restoring the original source restores its mask after the same rescan.
 
+## Exporting ship classes
+
+In **Ship Browser**, tick the export checkbox beside each saved class you want to
+print, then open **Export selected ships**. Each selected class contributes one ship.
+Named painted ships are not selected for export. Shared and repeated parts combine
+into a single total quantity. **Clear selection** unticks all classes, including any
+that were deleted or hidden by filters.
+
+Choose an **Export directory** outside your model library. Use **Up** and **Down** to
+set source variant priority. Each part uses the first available variant in that order;
+the table shows the selected variant and total quantity. **Export ZIP** writes a uniquely
+named archive and offers a download link. ZIP folders preserve library-relative paths;
+filenames start with their required count, such as `4x-unsupported.stl`. The archive
+also includes `index.csv`. Existing archives and source STLs are preserved.
+
+To include loose parts, open a class's **Assembly** tab and expand **Additional
+inventory parts**. Choose a library part and quantity, then **Add inventory part**.
+These parts do not appear on the assembly model and need no plug or socket. Use
+**Update quantity** to change the count, or zero to remove it. **Save changes** saves
+the inventory with the class. Duplicating a class retains its inventory extras.
+
+For adjustable stand sockets, open the part's mount wizard, pick the opening face,
+choose kind **stand**, and enter **Stand socket depth (mm)** inward from that face. The mount's axis points outward. Save the mount.
+Stand mounts are cutting locations and do not add assembly slots.
+
+In export controls, enter **Stand socket diameter (mm)** and choose **Preview model**
+for a part to inspect the actual selected variant with the cylindrical hole cut into
+it. The preview and exported STL use the same dimensions. Leave the diameter blank to
+keep original sockets. The cut removes material; it can widen an existing hole but
+cannot shrink one. Depth and diameter each support 0.1–100 mm. Cutting requires a
+closed, consistently wound source mesh; repair invalid source STLs before retrying.
+**Review choices** refreshes the inventory after correcting an error.
+
+Export selection and options remain available during filtering and workspace round
+trips, and reset when the application restarts. Export work runs in the background.
+Errors preserve previous completed bundles. The output filesystem must support hard
+links for atomic publication; choose another output directory if it does not.
+
 ## Troubleshooting
 
 **"Shipyard will not start, with an error about an unrecognised JVM option."** You are

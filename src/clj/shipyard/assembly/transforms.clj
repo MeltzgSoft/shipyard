@@ -11,7 +11,7 @@
 
 (defn transition
   "Validate each mutation against one catalog value and an explicit set of available sources."
-  [database draft {:keys [op revision slot part-id allow-other-factions?]} available]
+  [database draft {:keys [op revision slot part-id allow-other-factions? quantity]} available]
   (let [root (when (:hull draft) (catalog/part database (:hull draft)))
         derived (when root (model/slots database (:hull draft) (:assignments draft) draft))
         target (first (filter #(= slot (:id %)) (:slots derived)))
@@ -22,6 +22,9 @@
                 (= op :hull) (or (model/root-error candidate)
                                  (when-not (available part-id) :unavailable-mesh))
                 (nil? (:hull draft)) :no-draft
+                (= op :extra) (cond
+                                (and (nil? candidate) (not= 0 quantity)) :missing-part
+                                (not (and (integer? quantity) (<= 0 quantity 1000000))) :invalid-quantity)
                 (= op :compatibility) (when-not (boolean? allow-other-factions?) :invalid-compatibility)
                 (= op :clear) (when-not (contains? (:assignments draft) slot) :stale-slot)
                 (not= op :assign) :unknown-operation
@@ -33,6 +36,9 @@
                      (case op
                        :reset (assoc empty-draft :revision (inc revision))
                        :hull {:revision (inc revision) :hull part-id :assignments {}}
+                       :extra (cond-> (update draft :revision inc)
+                                (pos? quantity) (assoc-in [:extras part-id] quantity)
+                                (zero? quantity) (update :extras dissoc part-id))
                        :compatibility (-> draft (update :revision inc)
                                           (assoc :allow-other-factions? allow-other-factions?))
                        :clear (-> draft

@@ -41,7 +41,8 @@
 (def loadout
   [:map {:closed true} [:loadout/id :uuid] [:loadout/name display-name] [:loadout/hull part-id]
    [:loadout/slots [:map-of {:max 4096} slot-path part-id]]
-   [:loadout/allow-other-factions? {:optional true} :boolean]])
+   [:loadout/allow-other-factions? {:optional true} :boolean]
+   [:loadout/extras {:optional true} [:map-of {:max 4096} part-id pos-int?]]])
 (def ship
   [:map {:closed true} [:ship/id :uuid] [:ship/name display-name] [:ship/class :uuid]
    [:ship/scheme {:optional true} :uuid] [:ship/paint paint-job]])

@@ -77,6 +77,9 @@
            :loadout/hull (get-in entity [:loadout/hull :part/id])
            :loadout/slots (into {} (map (fn [slot] [(:slot/path slot) (get-in slot [:slot/part :part/id])]))
                                 (:loadout/slots entity))}
+    (seq (:loadout/extras entity))
+    (assoc :loadout/extras (into {} (map (fn [extra] [(get-in extra [:extra/part :part/id]) (:extra/quantity extra)]))
+                                 (:loadout/extras entity)))
     (contains? entity :loadout/allow-other-factions?)
     (assoc :loadout/allow-other-factions? (:loadout/allow-other-factions? entity))))
 

@@ -4,7 +4,7 @@
             [clojure.data.json :as json]))
 
 (def navigation-include
-  "#filters, #bulk-orient-filters, #part-table-position, .assembly__filters, #ship-filters, #ship-table-position, .assembly__save input[name=name], #settings, #cut-defaults, #face-selection-settings")
+  "#filters, #bulk-orient-filters, #part-table-position, .assembly__filters, #ship-filters, #ship-table-position, .assembly__save input[name=name], #settings, #cut-defaults, #face-selection-settings, #export-controls input")
 
 (def transition-attrs
   ;; Keep an accepted transition in flight until its server context is displayed.
@@ -13,7 +13,7 @@
   ;; Freeze outgoing filter edits, preserving controls already disabled by the view.
   {:hx-swap "innerHTML settle:0ms"
    :hx-sync "#workspace-navigation:drop"
-   :hx-disabled-elt "[data-workspace-mode], [data-workspace-transition], [data-bulk-select], [data-select-all], [data-workspace-filters] input:enabled, [data-workspace-filters] select:enabled, [data-workspace-filters] button:enabled"})
+   :hx-disabled-elt "[data-workspace-mode], [data-workspace-transition], [data-bulk-select], [data-select-all], [data-export-id], [data-workspace-filters] input:enabled, [data-workspace-filters] select:enabled, [data-workspace-filters] button:enabled"})
 
 (def transport-attrs
   ;; HTMX reads the current server-rendered context when sending a request.

@@ -36,7 +36,7 @@
 
 (defn mutate! [{{state :state} :assembly :as deps} op {:keys [parameters]}]
   (locking state
-    (let [{:keys [revision slot part-id bundle class discard-revision] :as form} (:form parameters)
+    (let [{:keys [revision slot part-id quantity bundle class discard-revision] :as form} (:form parameters)
           current-revision (get-in @state [:draft :revision])
           current? (= (parse-long revision) current-revision)]
       ;; Panel mutations include the working name to preserve an unsaved rename.
@@ -50,6 +50,7 @@
                                                                                 "/assembly?poll=1" form current-revision false)))
         (let [result (db/request! (assoc deps :paint-profile nil)
                                   (cond-> {:op op :revision (parse-long revision) :part-id part-id}
+                                    quantity (assoc :quantity (parse-long quantity))
                                     slot (assoc :slot (edn/read-string slot))
                                     (= op :compatibility) (assoc :allow-other-factions? (= "true" (:allow-other-factions form)))) {})]
           (when (and (:workspace deps) (#{:hull :reset} op) (not (:error result)))

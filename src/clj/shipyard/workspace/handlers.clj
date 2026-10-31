@@ -31,10 +31,7 @@
 (defn- append [response node]
   (update response :body str (:body (htmx/fragment node))))
 
-(defn- class-entries! [{:keys [named-ships] :as deps}]
-  (let [ships (group-by :ship/class (vals (named-ships/listing! named-ships)))]
-    (mapv #(assoc % :ships (get ships (get-in % [:loadout :loadout/id]) []))
-          (loadouts/list! deps {}))))
+(defn- class-entries! [deps] (loadouts/list-entries! deps))
 
 (defn- ship-preview! [{:keys [workspace assembly] :as deps} {:keys [params]}]
   (let [tab (or (:inspector-tab (workspace/workspace! workspace :ships)) "assembly")]
@@ -61,27 +58,31 @@
     (workspace/update-workspace! workspace :ships update :filters dissoc "hull-pages"))
   (workspace/remember! workspace :ships params))
 
+(defn- ship-filters! [workspace]
+  (let [state (workspace/workspace! workspace :ships)]
+    (assoc (:filters state) "export-selection" (get-in state [:export :selection]))))
+
 (defn ships! [{:keys [workspace assembly] :as deps} {:keys [headers params] :as request}]
   (let [table? (not= :editor (:view (workspace/workspace! workspace :ships)))]
     (cond
       (= "1" (get params "chunk"))
-      (if (pagination/same-filters? params (:filters (workspace/workspace! workspace :ships)))
+      (if (pagination/same-filters? params (ship-filters! workspace))
         (do (remember-ship-filters! workspace params)
-            (htmx/fragment (ship-views/results (class-entries! deps) (:filters (workspace/workspace! workspace :ships)) nil nil true)))
+            (htmx/fragment (ship-views/results (class-entries! deps) (ship-filters! workspace) nil nil true)))
         {:status 204 :headers {} :body ""})
       (= "ship-results" (get headers "hx-target"))
       (do (remember-ship-filters! workspace params)
-          (htmx/fragment (ship-views/results (class-entries! deps) (:filters (workspace/workspace! workspace :ships)))))
+          (htmx/fragment (ship-views/results (class-entries! deps) (ship-filters! workspace))))
       table?
       (do (remember-ship-filters! workspace params)
-          (htmx/fragment (cond-> (ship-views/cards (class-entries! deps) (:filters (workspace/workspace! workspace :ships))
+          (htmx/fragment (cond-> (ship-views/cards (class-entries! deps) (ship-filters! workspace)
                                                    (:draft @(:state assembly)))
                            (get params "error") (conj [:p.detail__error {:role "alert"} (get params "error")]))))
       :else (ship-preview! deps request))))
 
 (defn named-rows! [{:keys [workspace] :as deps} {:keys [parameters params]}]
   (let [id (parse-uuid (get-in parameters [:path :id]))
-        filters (:filters (workspace/workspace! workspace :ships))
+        filters (ship-filters! workspace)
         entry (some #(when (= id (get-in % [:loadout :loadout/id])) %) (class-entries! deps))
         page (or (get params "page") (get-in filters ["hull-pages" (str id)]) "1")]
     (cond

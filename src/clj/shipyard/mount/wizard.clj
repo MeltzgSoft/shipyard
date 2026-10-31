@@ -14,7 +14,7 @@
 
 (def role-options vocabulary/roles)
 
-(def kind-options [:plug :socket])
+(def kind-options [:plug :socket :stand])
 (def symmetry-plane-options [:x :y :z])
 
 (def ^:private id-re #"[A-Za-z][A-Za-z0-9_-]*")
@@ -221,6 +221,7 @@
      (cond-> {}
        mount-id (assoc :mount-id (name mount-id))
        kind (assoc :kind kind)
+       (get params "stand-depth") (assoc :stand-depth (get params "stand-depth"))
        capacity (assoc :capacity capacity)
        (get params "split-direction") (assoc :split-direction (keyword (get params "split-direction")))
        twist-deg (assoc :twist-deg twist-deg)
@@ -238,6 +239,7 @@
 (defn mount-values [mount]
   (cond-> {:mount-id (some-> (:mount/id mount) (name))
            :kind (:mount/kind mount)}
+    (:mount/stand-depth mount) (assoc :stand-depth (:mount/stand-depth mount))
     (:mount/cut mount) (assoc :cut-kind (get-in mount [:mount/cut :kind])
                               :cut-depth (get-in mount [:mount/cut :depth])
                               :cut-diameter (get-in mount [:mount/cut :diameter])
@@ -307,7 +309,7 @@
          original-mount-id (parse-mount-id (get params "original-mount-id"))
          kind (parse-keyword (get params "kind") kind-options)
          action (parse-keyword (get params "action") [:create :replace :update])
-         cutting (cut/request params kind)
+         cutting (if (= :stand kind) {} (cut/request params kind))
          accepts (accepted-roles params part-role)
          capacity (or (parse-positive-long (get params "capacity")) 1)
          twist-deg (or (math/parse-finite-double (or (get params "twist-deg")
@@ -339,13 +341,18 @@
        {:error "Mount ids must start with a letter and contain only letters, numbers, dashes and underscores."}
 
        (nil? kind)
-       {:error "Choose whether this mount is a plug or a socket."}
+       {:error "Choose plug, socket or stand."}
 
        (nil? action)
        {:error "Choose whether to save, replace, or update this mount."}
 
        (nil? frame)
        {:error "The selected face no longer has a valid frame. Pick it again."}
+
+       (and (= :stand kind)
+            (not (let [depth (math/parse-finite-double (get params "stand-depth"))]
+                   (and depth (<= 0.1 depth 100)))))
+       {:error "Stand socket depth must be between 0.1 and 100 mm."}
 
        (:error cutting) cutting
 
@@ -411,7 +418,8 @@
                      (:mount/facet existing-base) (assoc :mount/facet (:mount/facet existing-base))
                      (or (:mount/outline source-frame) (:mount/outline existing-base))
                      (assoc :mount/outline (or (:mount/outline source-frame) (:mount/outline existing-base)))
-                     (:cut cutting) (assoc :mount/cut (:cut cutting))
+                     (and (not= :stand kind) (:cut cutting)) (assoc :mount/cut (:cut cutting))
+                     (= :stand kind) (assoc :mount/stand-depth (math/parse-finite-double (get params "stand-depth")))
                      (= :socket kind) (assoc :mount/accepts accepts
                                              :mount/capacity capacity)
                      (and (= :socket kind) (> capacity 1)) (assoc :mount/split split-data)

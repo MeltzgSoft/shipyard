@@ -344,7 +344,7 @@
         selected-profile (or (:id (wizard/acceptance-profile (:part/role-hint part) accepts))
                              (some #(when (contains? accepts (:id %)) (:id %)) profiles)
                              (:id (first profiles)))
-        id-prefix (if (= :plug kind) :plug selected-profile)
+        id-prefix (case kind :plug :plug :stand :stand selected-profile)
         capacity (or (:capacity values) 1)
         mount-id (or (:mount-id values)
                      (some-> (wizard/suggest-mount-id id-prefix (:part/mounts part)) (name)))
@@ -409,6 +409,10 @@
       (when kind-hint
         [:span.mount-wizard__hint
          "Suggested: " (name kind-hint)])]
+     [:label.mount-wizard__field {:data-stand-only true :hidden (not= :stand kind)} "Stand socket depth (mm)"
+      [:input {:type "number" :name "stand-depth" :min "0.1" :max "100" :step "0.1"
+               :value (or (:stand-depth values) 3)}]
+      [:span.mount-wizard__hint "For stand mounts, pick the opening face. Depth cuts inward from that face, opposite its outward normal."]]
      [:label.mount-wizard__roles (socket-only-attrs kind) "Accepts"
       [:select {:name "accepts" :disabled (= :plug kind)}
        (for [{:keys [id label]} sorted-profiles]

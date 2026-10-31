@@ -2,6 +2,7 @@
   "Class table, expandable named hulls and server-rendered navigation forms."
   (:require [clojure.string :as str]
             [shipyard.workspace.views :as workspace-views]
+            [shipyard.export.views :as export-views]
             [shipyard.http.pagination :as pagination]
             [shipyard.thumbnail.views :as thumbnails]))
 
@@ -105,7 +106,7 @@
                     [:div.ship-table__row {:tabindex 0 :role "button" :aria-label (str "Open class " name)
                                            :hx-on:dblclick (open-row "class" id)
                                            :hx-on:keydown (str "if(event.key==='Enter' && event.target===this){event.preventDefault();" (open-row "class" id) "}")}
-                     (thumbnail "class" id)
+                     [:span (export-views/checkbox :class id name (get filters "export-selection")) (thumbnail "class" id)]
                      [:strong.ship-table__name name] [:span bundle] [:span class]
                      [:span (cond missing? [:span.detail__error "Hull missing"]
                                   (pos? (or empty-mounts 0)) [:span.ship-card__empty-mounts (str empty-mounts " empty mount" (when (not= 1 empty-mounts) "s"))]
@@ -141,6 +142,7 @@
                                        :hx-on--load "if(event.target===this){var r=this.querySelector('#ship-results');r.scrollTop=Number(r.dataset.scrollTop||0)}"}
     [:header.bulk-orient__head
      [:h2 "Ship Browser"]
+     [:button {:type "button" :hx-get "/ships/export" :hx-target "#detail"} "Export selected ships"]
      [:form.ship-table__new (merge workspace-views/transition-attrs
                                    {:method "post" :action "/ships/new" :hx-post "/ships/new" :hx-target "#detail"
                                     :hx-include "#ship-filters, #ship-table-position, [data-ship-page]"})

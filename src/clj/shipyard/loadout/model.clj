@@ -26,13 +26,15 @@
   (cond-> {:revision revision :hull (:loadout/hull record) :assignments (:loadout/slots record)
            :name (str (:loadout/name record) (when (= :duplicate mode) " - Copy"))}
     (not= :duplicate mode) (assoc :loadout-id (:loadout/id record))
-    (:loadout/allow-other-factions? record) (assoc :allow-other-factions? true)))
+    (:loadout/allow-other-factions? record) (assoc :allow-other-factions? true)
+    (seq (:loadout/extras record)) (assoc :extras (:loadout/extras record))))
 
 (defn to-record [draft id name]
   (when (store/name? name)
     (cond-> {:loadout/id id :loadout/name name :loadout/hull (:hull draft)
              :loadout/slots (:assignments draft)}
-      (:allow-other-factions? draft) (assoc :loadout/allow-other-factions? true))))
+      (:allow-other-factions? draft) (assoc :loadout/allow-other-factions? true)
+      (seq (:extras draft)) (assoc :loadout/extras (:extras draft)))))
 
 (defn empty-mount-count
   "Count reachable, unassigned mounts; invalid trees have no reliable count."

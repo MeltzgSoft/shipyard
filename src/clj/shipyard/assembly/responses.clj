@@ -2,7 +2,8 @@
   "Pure, recoverable draft errors for HTML and integration clients.")
 
 (def messages
-  {:invalid-name "Enter a ship name between 1 and 200 characters."
+  {:invalid-quantity "Use a whole number from 0 to 1000000; zero removes the extra part."
+   :invalid-name "Enter a ship name between 1 and 200 characters."
    :missing-scheme "This scheme is unavailable. Choose another scheme or clear the override."
    :missing-loadout "This saved ship is unavailable. Refresh Ship Browser and choose another."
    :store-write-failed "The ship could not be saved. Check the data folder permissions and retry."

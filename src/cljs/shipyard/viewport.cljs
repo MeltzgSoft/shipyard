@@ -1030,6 +1030,13 @@
           (set! (.-hidden field) (not (and active? enabled?)))
           (doseq [^js control (array-seq (.querySelectorAll field "input"))]
             (set! (.-disabled control) (not (and active? enabled?)))))))
+    (doseq [^js field (array-seq (.querySelectorAll form "[data-stand-only]"))]
+      (set! (.-hidden field) (not= "stand" kind))
+      (doseq [^js control (array-seq (.querySelectorAll field "input"))]
+        (set! (.-disabled control) (not= "stand" kind))))
+    (when-let [^js checkbox (.querySelector form "[name=create-pitted]")]
+      (set! (.-disabled checkbox) (= "stand" kind))
+      (when (= "stand" kind) (set! (.-checked checkbox) false)))
     (doseq [^js field (array-seq (.querySelectorAll form "[data-socket-only]"))]
       (set! (.-hidden field) (not socket?))
       (set! (.-disabled field) (not socket?))
@@ -1062,8 +1069,9 @@
     (catch :default _ #{})))
 
 (defn- selected-mount-prefix [^js form]
-  (if (= "plug" (input-value form "select[name=kind]"))
-    "plug"
+  (case (input-value form "select[name=kind]")
+    "plug" "plug"
+    "stand" "stand"
     (input-value form "select[name=accepts]")))
 
 (defn- update-mount-id-prefix! [^js form]
@@ -1210,7 +1218,7 @@
   "Fetch, decode, upload, and optionally reframe. Errors are reported and
   swallowed: a part that fails to load must not take the session with it."
   [{:keys [^js scene ^js canvas authoring current] :as sys}
-   {:keys [url part-id mesh-key frame mounts] :as payload}]
+   {:keys [url part-id mesh-key frame mounts topology-url] :as payload}]
   (clear! sys)
   (let [generation @(:browse-generation sys)
         regions (region-dom/regions! part-id mesh-key)]
@@ -1220,7 +1228,13 @@
                    (.arrayBuffer res)
                    (throw (js/Error. (str "mesh request failed: " (.-status res)))))))
         (.then (fn [buffer]
-                 (-> (paint-topology/fetch! part-id mesh-key)
+                 (-> (if topology-url
+                       (-> (js/fetch topology-url)
+                           (.then (fn [res]
+                                    (if (.-ok res) (.arrayBuffer res)
+                                        (throw (js/Error. "Export preview expired.")))))
+                           (.then paint-topology/decode))
+                       (paint-topology/fetch! part-id mesh-key))
                      (.then (fn [topology] {:mesh (wire/decode buffer) :topology topology})))))
         (.then (fn [{:keys [mesh topology]}]
                  (when (= generation @(:browse-generation sys))

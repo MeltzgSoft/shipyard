@@ -14,6 +14,7 @@
             [reitit.ring.coercion :as coercion]
             [ring.middleware.params :as params]
             [shipyard.assembly.routes :as assembly-routes]
+            [shipyard.export.routes :as export-routes]
             [shipyard.workspace.db :as workspace]
             [shipyard.workspace.routes :as workspace-routes]
             [shipyard.bulk-orientation.routes :as bulk-routes]
@@ -694,6 +695,7 @@
                    (bulk-routes/routes deps)
                    (when (:workspace deps) (import-routes/routes deps))
                    (when (:assembly deps) (assembly-routes/routes deps))
+                   (when (:loadouts deps) (export-routes/routes deps))
                    (when (:workspace deps)
                      (workspace-routes/routes deps))))
      {:data {:coercion malli-coercion/coercion

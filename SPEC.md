@@ -3,7 +3,7 @@
 A desktop application for previewing Battlefleet Gothic miniatures assembled from
 existing STL part libraries - choose a hull, prow, bridge and weapon loadout, see the
 result rendered as a complete ship, orbit and zoom it, design a paint scheme for it,
-and add saved ship classes to printable fleet lists.
+and export selected saved ship classes as printable part bundles.
 
 This document defines the intended product behavior and design.
 
@@ -28,8 +28,8 @@ Shipyard closes that loop. Pick parts, see the assembled ship, decide before pri
 - Assemble a ship from compatible parts and render it as one model.
 - Orbit, pan and zoom with detail preserved on high-density meshes.
 - Design a paint scheme against the assembled model.
-- Save reusable ship classes, assign quantities to fleet lists, and export the
-  required source STLs as a print bundle.
+- Save reusable ship classes and export selected classes as a print bundle, including
+  inventory-only parts and adjustable stand sockets.
 - Define how parts mate by picking faces in the viewport, and persist those mounts as
   durable data that accumulates across sessions.
 - Ship a user manual that describes what Shipyard can actually do today, kept current
@@ -351,7 +351,7 @@ client-side island.
 ```
 Clojure JVM (single process)
 ├─ Ring / Jetty + reitit
-├─ hiccup → catalog, loadouts, fleet, paint UI
+├─ hiccup → catalog, loadouts, export, paint UI
 ├─ catalog store: parts, mounts, loadouts, schemes
 ├─ mesh pipeline: STL parse → weld/index → meshopt simplify → glTF cache
 ├─ facet grouping + frame derivation for the mount wizard
@@ -405,7 +405,7 @@ The outer object is JSON because htmx parses this header itself and dispatches o
 per key; the payload inside is EDN. TECHNICAL.md §7.1 has the details and the client
 side.
 
-The server stays authoritative over loadouts, fleets and schemes - which is what we want,
+The server stays authoritative over loadouts, export inventory and schemes - which is what we want,
 since all three are persisted anyway.
 
 ### 6.2 What stays in JavaScript
@@ -460,7 +460,7 @@ Stages, all server-side:
 Preprocessing the whole 118M-triangle library up front is an hours-long job with no
 payoff. Lazy generation means the cache only ever holds what has actually been looked at.
 
-**LOD tiers are not needed on day one.** The Fleet Browser is a list rendering one ship at
+**LOD tiers are not needed on day one.** The Ship Browser is a list rendering one ship at
 a time (§8.4), so the working budget is a single ship - 270k to 600k triangles, which any
 GPU handles without help. The pipeline generates the tiers regardless, because doing so
 costs almost nothing once meshoptimizer is already in the path, and it means thumbnails
@@ -522,7 +522,7 @@ compatibility.
 
 ```clojure
 {:mount/id      :port-1
- :mount/kind    :socket                  ; :socket on hulls, :plug on modules
+ :mount/kind    :socket                  ; :socket, :plug, or :stand for export cuts
  :mount/accepts #{:weapon}               ; sockets only
  :mount/pos     [-19.06 4.2 52.0]
  :mount/axis    [-1.0 0.0 0.0]           ; frame +Z, outward from the seat
@@ -582,6 +582,12 @@ A reusable ship class: a named hull and slot configuration. Named painted ships 
                    [[:port-1 1]] "human-navy/cruiser/weapon-battery"}}
 ```
 
+An assembly may also have inventory-only additional parts with positive integer
+quantities. These accept any present library part without requiring a plug or matching
+mount compatibility. They persist with the class, survive Edit and Duplicate, and
+contribute only to print inventory. They never create viewport instances or slots.
+Zero quantity removes an extra from the draft; Save persists the revised inventory.
+
 Class and named-ship thumbnails are generated on demand from their current assembly
 and paint; thumbnail paths are not part of the durable class record.
 
@@ -590,39 +596,38 @@ assignments can be saved, previewed, edited and duplicated. Unassigned mounts ar
 allowed. Assigned parts must still exist, be available and be compatible with their
 mounts; stale assignment paths and malformed catalog data remain errors.
 
-### 8.4 Fleet lists and print bundles
+### 8.4 Ship Browser print bundles
 
-A fleet list has a name and entries referencing saved ship classes, each with a positive
-integer quantity. A class may appear once per list; changing its quantity changes the
-number of copies to print. Fleet Browser is its own workspace, with a table of fleet
-lists and an individual editor for one list. The editor shows class entries, required
-parts, extra parts, variant preference and export controls. Selecting a class in the
-editor loads its existing assembly preview into the viewport one ship at a time. Named
-painted ships and fleet palettes are separate from print quantities.
+Ship Browser provides export checkboxes on saved class rows. Each selected class
+contributes one hull, every assigned full-path slot occurrence (including nested and
+repeated parts), and its inventory-only extra quantities. Named painted ships do not
+have export checkboxes. Counts combine by durable part identity across all selected
+classes. Filtering and workspace round trips preserve the export selection.
 
-Each list may also request a positive integer quantity of a specific library part,
-independent of its class entries. These extra parts add to the same part's total rather
-than creating duplicate files. Settings saves a default preference order of distinct,
-recognized STL variants. New lists copy that order. Export controls show the list's
-own order and let the user move each variant type up or down one position; changes save
-with that list and never change the Settings default. **Use default** in the export
-controls copies the current Settings order into the list, replacing its saved order.
-Later Settings changes do not change existing lists unless the user chooses **Use
-default**. For every required part, export chooses the first variant in the list's
-order with a present source file; different parts may therefore use different
-variants. The preference order is exhaustive: an unlisted variant is never selected
-implicitly. The browser shows the chosen variant, total quantity and any missing
-source before export.
+The export control lists source variant types in preference order with individual
+Up/Down buttons. For each required part, choose the highest-priority variant available;
+different parts may use different variants. The initial order is unsupported-pitted,
+unsupported, supported. Selection, order, stand diameter and output directory belong
+to the Ship Browser's transient export state. They do not create fleet entities or
+change saved classes. The control shows each selected source variant and total count.
 
-Export expands each class's saved hull and assigned slots, counting repeated slot
-assignments separately, multiplies those counts by the class quantity, then adds extra
-part quantities. It copies each chosen source STL once into a ZIP at its library-relative
-path, preserving the library's bundle/class/part directory structure and canonical
-variant filename. The ZIP contains `index.csv` with one row per chosen source file:
-library-relative path, variant and total quantity to print. The index and files reflect
-one consistent snapshot of the list, classes and library. A missing class, part, usable
-variant or changed source prevents publication and gives an actionable error. Export
-never produces a partial ZIP or overwrites an earlier bundle.
+Choose an output directory outside the model library. Each required part appears
+once in the ZIP at its library-relative path, with its filename prefixed by the total
+quantity, for example `4x-unsupported.stl`. `index.csv` records archive paths, selected
+variants and quantities. Missing references or sources prevent export. Complete ZIPs
+publish atomically under unique filenames; failures leave no partial published ZIP.
+
+Stand mounts define a cylindrical socket opening, an outward axis,
+and positive inward depth in millimetres. They do not create assembly
+slots or require a stand model. An optional export diameter (0.1–100 mm) subtracts
+that cylinder from every required part with a stand mount. The cut preserves material
+beyond the authored depth; the depth is authored separately (0.1–100 mm). A blank export
+diameter preserves original geometry. Cylinder subtraction widens an existing hole
+but never fills material to shrink one. Preview model displays the actual chosen
+variant after the same subtraction used by export, one part at a time. The source
+STLs are never modified; unsupported, pitted and supported variants use their original
+source coordinates. Cutting requires a consistently wound closed mesh; invalid sources
+produce a recoverable error. Paint and assembly orientation do not alter exported STLs.
 
 ### 8.5 Paint scheme
 
@@ -678,7 +683,7 @@ expanded named-ship rows each offer **Edit** and confirmed **Delete** controls.
 Delete removes only the named ship and its details, preserving classes and schemes.
 An unavailable scheme retains its reference and warns; custom details remain usable.
 
-Fleet lists use saved classes for print planning; named-ship palette assignment remains
+Export uses selected saved classes for print planning; named-ship palette assignment remains
 part of Customize and does not affect exported files.
 
 Material controls preview locally on input, and commit on change/release. A failed
@@ -796,7 +801,7 @@ Undo is unavailable until the current drag has finished.
 
 All server-rendered hiccup driven by htmx, except the viewport.
 
-Part Browser, import review, Ship Browser and Fleet Browser table filters live in
+Part Browser, import review and Ship Browser table filters live in
 collapsible sidebars beside their tables. Name search appears first;
 Clear filters appears last where available. Sidebars start collapsed,
 expand on hover and collapse when the cursor leaves. A pin control keeps them open
@@ -823,11 +828,6 @@ visible above the hull picker in the inspector, retaining their filtering behavi
   adjust roll, name it, save. Offers symmetry mirroring on hulls. Surfaces
   `:mount/origin` so mirrored and seeded mounts can be confirmed.
 - **Customize inspector tab** - named-ships table with Edit/Delete, ship management and visible-face detail brushing in Ship Browser.
-- **Fleet Browser** - a separate workspace whose table lists each fleet's name,
-  class count, total ship quantity, extra-part count and export readiness. Name search
-  filters the table. Double-click a row (or press Enter on it) to open that fleet's
-  individual editor; create opens a new fleet editor. **Back to table** restores table
-  filters and scroll position. The editor has no listing sidebar. See §8.4.
 - **Settings** - library folder selection, shared classification management and defaults for new pit/recess cuts. See §9.6.
 - **Ship Browser** - a table of saved classes and named ships that opens the Assemble editor. See §9.3.
 
@@ -880,7 +880,7 @@ before discarding staging data and leaves the common pool available to other job
 
 ### 9.2 Independent workspace state
 
-Each workspace, Part Browser, Ship Browser, Fleet Browser and Settings, owns its
+Each workspace, Part Browser, Ship Browser and Settings, owns its
 own selection, transient working state, filters and viewport display settings.
 Switching workspaces restores the destination's state on both the server and in the
 viewport. A workspace with no selection shows its own empty state. Returning to a
@@ -1130,14 +1130,6 @@ and mount-cut default fields and preserves the browser workspaces on a round tri
 Library selection appears only here, with direct path entry and the desktop chooser.
 A successful folder change rescans the library and clears obsolete Part Browser
 selection and filters; a failed change preserves the active library and allows retry.
-Settings also saves an export directory beside the library directory. Fleet export
-requires this directory; Shipyard creates it when needed and writes completed ZIPs
-there. The export directory must be separate from the selected library tree so exports
-cannot be scanned as library content. Invalid or unwritable paths leave the saved
-setting and any existing bundles intact.
-Settings also presents the default variant preference as a list of variant types with
-individual Up and Down controls. Moving a type saves the new default for future fleet
-lists and for explicit **Use default** actions; it does not rewrite existing lists.
 
 Appearance offers Light, Dark and Auto, with Dark as the initial default. The saved
 choice applies across libraries and workspaces and survives application restarts.

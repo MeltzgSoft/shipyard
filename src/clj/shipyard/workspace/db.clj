@@ -82,6 +82,11 @@
 
 (defn outgoing! [{:keys [workspace assembly]} params]
   (let [mode (:workspace (active-context! workspace))]
+    (when (= mode :ships)
+      (let [options (cond-> {}
+                      (contains? params "directory") (assoc :directory (get params "directory"))
+                      (contains? params "diameter") (assoc :diameter (get params "diameter")))]
+        (when (seq options) (update-workspace! workspace mode update :export merge options))))
     (when (= mode :settings)
       (update-workspace! workspace mode update :draft merge
                          (select-keys params ["root" "seam-tolerance-mm" "pit-depth" "pit-diameter" "recess-depth" "recess-border"])))

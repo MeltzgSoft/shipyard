@@ -373,3 +373,13 @@
         saved-mount (:mount (wizard/save-request (assoc request "frame" (pr-str saved-source)) []))]
     (is (= :horizontal (get-in new-mount [:mount/split :direction])))
     (is (= :vertical (get-in saved-mount [:mount/split :direction])))))
+
+(deftest stand-mounts
+  (let [request (params {"mount-id" "stand" "kind" "stand" "stand-depth" "3.5"})
+        result (wizard/save-request request [])]
+    (is (= :stand (get-in result [:mount :mount/kind])))
+    (is (= 3.5 (get-in result [:mount :mount/stand-depth])))
+    (is (not (contains? (:mount result) :mount/accepts)))
+    (is (= 3.5 (:stand-depth (wizard/mount-values (:mount result)))))
+    (doseq [depth [nil "0" "-1" "NaN" "101"]]
+      (is (:error (wizard/save-request (assoc request "stand-depth" depth) []))))))

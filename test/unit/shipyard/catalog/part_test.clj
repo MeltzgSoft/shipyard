@@ -15,3 +15,7 @@
                               {:mount/kind :socket :mount/accepts #{:weapon} :mount/capacity 2}
                               {:mount/kind :socket :mount/accepts #{:weapon} :mount/capacity 3}
                               {:mount/kind :socket :mount/accepts #{:prow :hull-section}}]))))
+
+(deftest stand-summary
+  (is (= {:plugs 0 :sockets {} :stands 1}
+         (part/mount-summary [{:mount/kind :stand}]))))

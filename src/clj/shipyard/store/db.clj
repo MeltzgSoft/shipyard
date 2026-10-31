@@ -24,7 +24,8 @@
                           :target/details [* {:detail/content [:mesh/sha] :detail/chunks [*]}]}]}])
 (def loadout-pattern
   '[* {:loadout/hull [:part/id]
-       :loadout/slots [* {:slot/part [:part/id]}]}])
+       :loadout/slots [* {:slot/part [:part/id]}]
+       :loadout/extras [* {:extra/part [:part/id]}]}])
 (def ship-pattern
   ['* {:ship/class [:loadout/id] :ship/scheme [:scheme/id] :ship/paint paint-pattern}])
 
@@ -223,12 +224,12 @@
 
 (defn put-loadout! [conn library record]
   (let [library (or (get-in (d/pull @conn [{:loadout/library [:library/id]}] [:loadout/id (:loadout/id record)]) [:loadout/library :library/id]) library)
-        paths (cons (:loadout/hull record) (vals (:loadout/slots record)))
+        paths (concat [(:loadout/hull record)] (vals (:loadout/slots record)) (keys (:loadout/extras record)))
         parts (into {} (map (fn [path] [path (part-ref! conn library path)])) paths)
         id (:loadout/id record)
         old (d/pull @conn '[*] [:loadout/id id])]
     (d/transact! conn
-                 (concat (retract-children @conn [:loadout/id id] [:loadout/slots])
+                 (concat (retract-children @conn [:loadout/id id] [:loadout/slots :loadout/extras])
                          (when (and (contains? old :loadout/allow-other-factions?)
                                     (not (contains? record :loadout/allow-other-factions?)))
                            [[:db/retract [:loadout/id id] :loadout/allow-other-factions? (:loadout/allow-other-factions? old)]])
@@ -236,6 +237,8 @@
                                    :loadout/deleted? false :loadout/revision (inc (or (:loadout/revision old) 0))
                                    :loadout/library [:library/id library]
                                    :loadout/hull (get parts (:loadout/hull record))
+                                   :loadout/extras (mapv (fn [[part quantity]] {:extra/part (get parts part) :extra/quantity quantity})
+                                                         (:loadout/extras record))
                                    :loadout/slots (mapv (fn [[path part]] {:slot/path path :slot/part (get parts part)})
                                                         (:loadout/slots record))}
                             (contains? record :loadout/allow-other-factions?)

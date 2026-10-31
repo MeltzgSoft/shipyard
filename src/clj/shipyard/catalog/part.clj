@@ -10,6 +10,7 @@
   (reduce (fn [summary mount]
             (case (:mount/kind mount)
               :plug (update summary :plugs inc)
+              :stand (update summary :stands (fnil inc 0))
               :socket (update-in summary [:sockets (set (:mount/accepts mount))]
                                  (fnil + 0) (or (:mount/capacity mount) 1))
               summary))

@@ -18,7 +18,7 @@
    (attributes :db.type/long
                [:store/version :scan/mtime :scan/size :scan/tris :library/revision :part/revision :part/tris :source/size
                 :source/mtime :mesh/tris :region/revision :chunk/index :chunk/version
-                :scheme/revision :ship/revision :loadout/revision :fleet-entry/order :mount/capacity :mount/order])
+                :scheme/revision :ship/revision :loadout/revision :fleet-entry/order :extra/quantity :mount/capacity :mount/order])
    (attributes :db.type/double [:settings/mount-seam-tolerance-mm])
    (attributes :db.type/boolean
                [:source/present? :part/present? :part/renderable :part/weapons? :part/turrets?
@@ -29,12 +29,12 @@
                 :mount/origin :mount/mirror-id :mount/alignment-axis :source/variant :vocabulary/field])
    (attributes :db.type/data
                [:settings/mount-cut-defaults :scan/escort-analysis :part/orientation :mount/pos :mount/axis :mount/roll :mount/magnet
-                :mount/facet :mount/split :mount/cut :mount/outline :mount/mirror-plane :mount/mirror-offset :chunk/payload
+                :mount/stand-depth :mount/facet :mount/split :mount/cut :mount/outline :mount/mirror-plane :mount/mirror-offset :chunk/payload
                 :slot/path :target/path :layer/preview-color :material/base :material/metalness
                 :material/roughness :material/glow :material/paint :paint/fields])
    (attributes :db.type/ref
                [:part/library :source/part :source/origin-part :source/content :layer/library :mask/layer
-                :region/content :slot/part :ship/class :ship/scheme :ship/library :loadout/hull :loadout/library :scheme/library
+                :region/content :extra/part :slot/part :ship/class :ship/scheme :ship/library :loadout/hull :loadout/library :scheme/library
                 :binding/layer :target/part :detail/content :fleet/default-scheme
                 :fleet-entry/loadout :mount/mirror])
    (into {} (map (fn [attr] [attr {:db/valueType :db.type/ref :db/isComponent true}]))
@@ -42,7 +42,7 @@
    (into {} (map (fn [attr] [attr {:db/valueType :db.type/ref :db/cardinality :db.cardinality/many
                                    :db/isComponent true}]))
          [:part/mounts :part/sources :region/masks :mask/chunks :detail/chunks
-          :scheme/layers :loadout/slots
+          :scheme/layers :loadout/slots :loadout/extras
           :paint/targets
           :fleet/entries])
    {:mount/accepts {:db/valueType :db.type/keyword :db/cardinality :db.cardinality/many}

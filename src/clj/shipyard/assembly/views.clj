@@ -94,6 +94,24 @@
                     [:option {:value ""} "All classes"]
                     (for [value (catalog/classes database)] [:option {:value value :selected (= value selected-class)} value])]]])
 
+(defn- inventory-extras [database draft revision]
+  [:details.assembly__extras {:open true}
+   [:summary "Additional inventory parts"]
+   [:p "These parts are counted for printing and are not placed on the model. Set quantity to zero to remove a part."]
+   (for [[id quantity] (sort-by key (:extras draft))]
+     [:form (form-attrs "/assembly/extras")
+      (hidden "revision" revision) (hidden "part-id" id)
+      [:label (or (:part/name (catalog/part database id)) id)
+       [:input {:type "number" :name "quantity" :min 0 :max 1000000 :value quantity :required true}]]
+      [:button {:type "submit"} "Update quantity"]])
+   [:form (form-attrs "/assembly/extras")
+    (hidden "revision" revision)
+    [:label "Additional part" [:select {:name "part-id" :required true}
+                               (for [part (catalog/browse database {})]
+                                 [:option {:value (:part/id part)} (:part/id part)])]]
+    [:label "Quantity" [:input {:type "number" :name "quantity" :min 1 :max 1000000 :value 1 :required true}]]
+    [:button {:type "submit"} "Add inventory part"]]])
+
 (defn- assembly-rail [{:keys [database hulls selected-bundle selected-class revision hull selected-hull root slots available draft error saved? drawers]}]
   [:div#assembly-rail
    (assembly-filters database selected-bundle selected-class)
@@ -121,6 +139,7 @@
       (hidden "revision" revision)
       [:label "Class name" [:input {:name "name" :value (or (:name draft) "") :required true :maxlength 200}]]
       [:button {:type "submit"} (if (:loadout-id draft) "Save changes" "Save class")]])
+   (when hull (inventory-extras database draft revision))
    (when saved? [:p {:role "status"} "Class saved."])
    (when (:loadout-id draft) (paint/transfer-button "assembly" "Create named ship"))
    (when error [:p.detail__error {:role "alert"} (get responses/messages error (name error))])

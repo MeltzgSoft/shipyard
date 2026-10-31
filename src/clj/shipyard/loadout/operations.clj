@@ -1,6 +1,7 @@
 (ns shipyard.loadout.operations
   "Authoritative operations; explicit preview and edit state never share a draft cell."
   (:require [integrant.core :as ig]
+            [shipyard.ship.db :as named-ships]
             [shipyard.assembly.transforms :as assembly]
             [shipyard.catalog.db :as catalog]
             [shipyard.library.index :as index]
@@ -62,3 +63,8 @@
 
 (defn unsaved? [{:keys [loadouts assembly]}]
   (model/unsaved? (:draft @(:state assembly)) (:loadouts (store/snapshot! loadouts))))
+
+(defn list-entries! [{:keys [named-ships] :as deps}]
+  (let [ships (group-by :ship/class (vals (named-ships/listing! named-ships)))]
+    (mapv #(assoc % :ships (get ships (get-in % [:loadout :loadout/id]) []))
+          (list! deps {}))))
