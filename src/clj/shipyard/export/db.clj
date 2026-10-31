@@ -26,7 +26,11 @@
     (when (empty? records) (throw (ex-info "Select at least one ship to export." {})))
     (let [database (catalog/assembly-snapshot! catalog)]
       {:classes records :database database
-       :files (transforms/plan records (:parts database) (variants/files! catalog) priority)})))
+       ;; Store source paths use the host separator; ZIP and manifest paths use '/'.
+       ;; Convert only that separator so literal backslashes on Unix remain invalid.
+       :files (transforms/plan records (:parts database)
+                               (mapv #(update % :path str/replace java.io.File/separator "/")
+                                     (variants/files! catalog)) priority)})))
 
 (defn snapshot! [{:keys [catalog library] :as deps} selection priority]
   (let [library-lock (:state library) store-lock (:lock (:store catalog))]

@@ -31,6 +31,9 @@
       (is (:loadout (loadouts/put! store record :create)))
       (is (:loadout (loadouts/put! store (assoc record :loadout/id id2 :loadout/name "Second" :loadout/extras {}) :create)))
       (is (= record (get-in (persisted/records! store :loadouts) [:loadouts id])))
+      (is (= #{(str hull "/unsupported.stl") (str gun "/unsupported.stl")
+               (str (:supported fixture/ids) "/supported.stl")}
+             (set (map :path (:files (export/snapshot! deps selection t/default-priority))))))
       (let [path (write! nil)]
         (with-open [zip (ZipFile. path)]
           (is (.getEntry zip (str gun "/7x-unsupported.stl")))

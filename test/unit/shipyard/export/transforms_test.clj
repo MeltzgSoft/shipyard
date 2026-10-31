@@ -23,7 +23,7 @@
 
 (deftest archive-path
   (is (= "Bundle/Hull/4x-supported.stl" (t/archive-path "Bundle/Hull/supported.stl" 4)))
-  (doseq [path ["../x.stl" "/x.stl" "a//x.stl" "a/./x.stl" "C:/x.stl" "a\\x.stl"]]
+  (doseq [path ["../x.stl" "/x.stl" "a//x.stl" "a/./x.stl" "C:/x.stl" "a\\x.stl" "//server/share/x.stl"]]
     (is (thrown? clojure.lang.ExceptionInfo (t/archive-path path 1)))))
 
 (deftest priority-and-move
