@@ -1,6 +1,7 @@
 (ns shipyard.mount.facet-input-test
   (:require [clojure.test :refer [deftest is testing]]
-            [shipyard.mount.facet-input :as input]))
+            [shipyard.mount.facet-input :as input]
+            [shipyard.mount-angle-fixture :as curved]))
 
 (deftest parse-indices-test
   (testing "only bounded, non-negative index vectors cross the transport boundary"
@@ -22,3 +23,23 @@
     (is (not (input/in-facet? mesh [0 2] nil)))
     (is (not (input/in-facet? mesh [] nil)))
     (is (not (input/in-facet? mesh [3] nil)))))
+
+(deftest angular-selection-options
+  (is (= {:facet-angle-deg 1} (input/selection-options {:facet-angle-deg 1} {})))
+  (is (= {:selection-angle-deg 25.5 :selection-seed 7}
+         (input/selection-options {} {"face-angle" "25.5" "face-seed" "7"})))
+  (is (= {:selection-angle-deg 0.0 :selection-seed 0}
+         (input/selection-options {} {:face-angle 0 :face-seed 0})))
+  (doseq [value ["NaN" "Infinity" "-1" "91" "bad"]]
+    (is (false? (input/valid-angle? value))))
+  (doseq [value ["0" "25.5" "90"]]
+    (is (true? (input/valid-angle? value)))))
+
+(deftest curved-trimming-keeps-the-original-seed
+  (let [positions (float-array (apply concat (apply concat curved/triangles)))
+        n (* 3 (count curved/triangles))
+        mesh {:positions positions :indices (int-array (range n)) :index-count n}
+        opts {:selection-angle-deg 25 :selection-seed 0}]
+    (is (input/in-facet? mesh [2 3] opts))
+    (is (not (input/in-facet? mesh [4 5] opts)))
+    (is (not (input/in-facet? mesh [0 11] opts)))))

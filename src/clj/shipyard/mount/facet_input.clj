@@ -2,7 +2,8 @@
   "Bounded parsing and validation for durable facet selections."
   (:require [clojure.edn :as edn]
             [malli.core :as m]
-            [shipyard.mesh.facet :as facet]))
+            [shipyard.mesh.facet :as facet]
+            [shipyard.math :as math]))
 
 (def ^:private valid-indices?
   (m/validator [:vector {:min 1 :max 4096} [:and integer? [:>= 0] [:<= 2147483647]]]))
@@ -20,11 +21,22 @@
 (defn in-mesh? [mesh indices]
   (every? #(< % (quot (:index-count mesh) 3)) indices))
 
+(defn valid-angle? [value]
+  (let [angle (math/parse-finite-double value)]
+    (boolean (and angle (<= 0 angle 90)))))
+
+(defn selection-options [base params]
+  (let [angle (or (:face-angle params) (get params "face-angle"))
+        seed (or (:face-seed params) (get params "face-seed"))]
+    (cond-> base
+      (some? angle) (assoc :selection-angle-deg (math/parse-finite-double angle))
+      (some? seed) (assoc :selection-seed (if (integer? seed) seed (parse-long seed))))))
+
 (defn in-facet?
-  "Accept a nonempty subset of one authoritative connected planar facet."
+  "Accept a nonempty subset of one authoritative connected selection, retaining its original angular seed."
   [mesh indices opts]
   (try
     (and (seq indices) (in-mesh? mesh indices)
-         (let [allowed (set (:facet-indices (facet/select mesh (first indices) opts)))]
+         (let [allowed (set (:facet-indices (facet/select mesh (or (:selection-seed opts) (first indices)) opts)))]
            (every? allowed indices)))
     (catch clojure.lang.ExceptionInfo _ false)))

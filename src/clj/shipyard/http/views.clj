@@ -336,7 +336,7 @@
   (cond-> {:data-socket-only "true"}
     (= :plug kind) (assoc :hidden true :disabled true)))
 
-(defn- mount-form [{:keys [part frame mesh-key draft? facet-indices kind-hint mode original-mount-id values roles cut-defaults mirror-offsets]}]
+(defn- mount-form [{:keys [part frame mesh-key draft? facet-indices face-angle face-seed kind-hint mode original-mount-id values roles cut-defaults mirror-offsets]}]
   (let [kind (or (:kind values) (default-kind part))
         accepts (or (:accepts values) #{:weapon})
         profiles (wizard/acceptance-profiles (:part/role-hint part) (or roles wizard/role-options))
@@ -373,6 +373,13 @@
        [:input {:type "hidden" :name "mesh-key" :value mesh-key}])
      (when edit?
        [:input {:type "hidden" :name "original-mount-id" :value (name original-mount-id)}])
+     (when (some? face-seed)
+       [:input {:type "hidden" :name "face-seed" :value face-seed}])
+     (when (seq facet-indices)
+       [:label.mount-wizard__field "Face angle tolerance (°)"
+        [:input {:type "number" :name "face-angle" :min 0 :max 90 :step "any"
+                 :value (or face-angle 1) :data-mount-face-angle true}]
+        [:span.mount-wizard__hint "Maximum normal deviation from the clicked triangle. Increase to select a curved ball-joint surface; changing this resets face trimming."]])
      (when (and mesh-key facet-indices)
        [:fieldset.mount-wizard__faces
         [:legend "Mount faces" (help/button "Mount face brush" "Left-drag erases whole visible triangles when Trim faces is on. Alt+drag orbits. Save commits the selection.")]

@@ -865,6 +865,8 @@
                                            :indices (vec facet-indices)
                                            :capacity (or (:mount/capacity mount) 1)
                                            :direction (keyword (or (input-value form "[name=split-direction]") "horizontal"))}
+                                    (input-value form "[name=face-angle]") (assoc :face-angle (js/Number (input-value form "[name=face-angle]")))
+                                    (input-value form "[name=face-seed]") (assoc :face-seed (js/parseInt (input-value form "[name=face-seed]") 10))
                                     mount (assoc :cut (:mount/cut mount))
                                     border (assoc :border-indices (vec border))
                                     (and mount mirror) (assoc :mirror {:plane (:plane-keyword mirror) :offset (:offset mirror)}))]
@@ -933,32 +935,41 @@
                                          #js {:bubbles true
                                               :detail  #js {:value (aget events event)}}))))))
 
-(defn- dom-edit-values []
+(defn- dom-edit-values [reselect?]
   (when-let [form (.querySelector js/document ".mount-wizard__form")]
-    (when-let [original-mount-id (input-value form "input[name=original-mount-id]")]
-      {"original-mount-id" original-mount-id
-       "mount-id" (input-value form "input[name=mount-id]")
-       "accepts" (input-value form "select[name=accepts]")
-       "capacity" (input-value form "input[name=capacity]")
-       "split-direction" (input-value form "select[name=split-direction]")
-       "alignment-axis" (input-value form "select[name=alignment-axis]")
-       "twist-deg" (input-value form "input[name=twist-deg]")})))
+    (let [fields (into {} (map (fn [entry] [(aget entry 0) (aget entry 1)]))
+                       (array-seq (js/Array.from (.entries (js/FormData. form)))))]
+      (if (or reselect? (get fields "original-mount-id"))
+        (cond-> fields
+          (not (checked? form "[name=create-pitted]")) (assoc "cut-kind" "none"))
+        (select-keys fields ["face-angle"])))))
 
-(declare sync-viewport-events!)
+(defn- restore-pending-mount-edits! [sent latest]
+  (when-let [form (.querySelector js/document ".mount-wizard__form")]
+    (doseq [field (set (concat (keys sent) (keys latest)))
+            :when (and (not (contains? #{"part-id" "mesh-key" "frame" "facet-indices" "face-seed" "face-angle"} field))
+                       (not= (get sent field) (get latest field)))
+            control (array-seq (.querySelectorAll form (str "[name='" field "']")))]
+      (if (= "checkbox" (.-type control))
+        (set! (.-checked control) (contains? latest field))
+        (set! (.-value control) (or (get latest field) ""))))))
 
-(defn- post-facet! [{:keys [authoring active activation facet-request]} triangle-index]
+(declare sync-viewport-events! sync-socket-fields-from-dom!)
+
+(defn- post-facet! [{:keys [authoring active activation facet-request]} triangle-index reselect?]
   (let [target (.getElementById js/document "facet-preview")
         {:keys [part-id mesh-key] :as selection} @authoring
         generation @activation]
     (when (and @active target part-id mesh-key)
-      (let [request (swap! facet-request inc)]
+      (let [request (swap! facet-request inc) values (dom-edit-values reselect?)]
         (-> (js/fetch "/facet"
                       #js {:method "POST"
                            :headers #js {"Content-Type" "application/x-www-form-urlencoded"}
-                           :body (form-body (merge (dom-edit-values)
+                           :body (form-body (merge values
                                                    {"part-id" part-id
                                                     "mesh-key" mesh-key
-                                                    "triangle-index" (str triangle-index)}))})
+                                                    "triangle-index" (str triangle-index)}
+                                                   (when reselect? {"reselect" "true"})))})
             (.then (fn [^js res]
                      (let [trigger (.get (.-headers res) "HX-Trigger")]
                        (-> (.text res)
@@ -970,8 +981,11 @@
                                                (= request @facet-request) (= selection @authoring)
                                                (.-isConnected target)
                                                (identical? target (.getElementById js/document "facet-preview")))
-                                      (set! (.-innerHTML target) html)
+                                      (let [latest (when reselect? (dom-edit-values true))]
+                                        (set! (.-innerHTML target) html)
+                                        (when reselect? (restore-pending-mount-edits! values latest)))
                                       (some-> js/window .-htmx (.process target))
+                                      (sync-socket-fields-from-dom!)
                                       (trigger-header! trigger)
                                       (sync-viewport-events! target))))))))
             (.catch (fn [e]
@@ -1177,7 +1191,7 @@
                   face-index (.-faceIndex hit)]
               (when (some? face-index)
                 (activate-detail-tab! "mounts")
-                (post-facet! sys face-index)))))))))
+                (post-facet! sys face-index false)))))))))
 
 (defn- sync-regions-from-dom! [sys]
   (when (= :browse (:workspace sys))
@@ -2015,6 +2029,11 @@
                                       (refresh-preview-from-form! sys e)
                                       (refresh-orientation-from-form! sys e)))
     (listen-event! body sys "change" (fn [e]
+                                       (when-let [input (some-> (.-target e) (.closest "[data-mount-face-angle]"))]
+                                         (when (.reportValidity input)
+                                           (when-let [form (.closest input ".mount-wizard__form")]
+                                             (when-let [seed (input-value form "[name=face-seed]")]
+                                               (post-facet! sys (js/parseInt seed 10) true)))))
                                        (when-let [form (event-form e)]
                                          (sync-socket-fields! form)
                                          (when (= "accepts" (.-name (.-target e)))

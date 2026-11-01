@@ -2,6 +2,7 @@
   (:require [shipyard.catalog.db :as catalog]
             [shipyard.math :as math]
             [shipyard.mount.preview :as preview]
+            [shipyard.mount.facet-input :as facet-input]
             [shipyard.mount.preview-db :as drafts]
             [shipyard.mount.preview-wire :as wire]
             [shipyard.mount.wizard :as wizard]
@@ -20,6 +21,8 @@
    [:part-id string?] [:mesh-key [:re #"[0-9a-f]{64}"]]
    [:owner [:string {:min 1 :max 80}]] [:sequence [:int {:min 0 :max 2147483647}]]
    [:frame [:map {:closed true} [:mount/pos vec3] [:mount/axis vec3] [:mount/roll vec3]]]
+   [:face-angle {:optional true} [:and finite [:>= 0] [:<= 90]]]
+   [:face-seed {:optional true} [:int {:min 0 :max 2147483647}]]
    [:indices {:optional true} indices] [:border-indices {:optional true} indices]
    [:mount-id {:optional true} string?]
    [:cut {:optional true} cut-schema]
@@ -67,7 +70,7 @@
                                      :retained-bytes (* 64 (+ (count (:indices value)) (count (:border-indices value))))
                                      :valid?! current?!
                                      :run! prepare-draft! :args [preparation mesh-key value
-                                                                 (select-keys cache [:facet-angle-deg :facet-plane-epsilon-mm]) current?!]}))))
+                                                                 (facet-input/selection-options (select-keys cache [:facet-angle-deg :facet-plane-epsilon-mm]) value) current?!]}))))
 
 (defn cancel! [{:keys [mount-previews]} {{:keys [body]} :parameters}]
   (drafts/advance! mount-previews (:owner body) (:sequence body) true)

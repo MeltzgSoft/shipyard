@@ -121,15 +121,15 @@
   (<= (Math/abs (double (math/dot normal (math/subtract p (first points))))) epsilon))
 
 (defn- facet-neighbour? [start candidate cos-angle epsilon]
-  (and (>= (math/dot (:normal candidate) (:normal start)) cos-angle)
-       (every? #(point-on-plane? start epsilon %) (:points candidate))))
+  (and (>= (+ (math/dot (:normal candidate) (:normal start)) 1.0e-12) cos-angle)
+       (or (nil? epsilon) (every? #(point-on-plane? start epsilon %) (:points candidate)))))
 
-(defn- facet-indices [mesh triangle-index {:keys [facet-angle-deg facet-plane-epsilon-mm]}]
+(defn- facet-indices [mesh triangle-index {:keys [facet-angle-deg facet-plane-epsilon-mm selection-angle-deg]}]
   (let [start (require-triangle mesh triangle-index)
         edges (edge-triangles mesh (range (triangle-count mesh)))
         neighbours #(into #{} (mapcat edges) (triangle-edge-keys mesh %))
         initial (disj (neighbours triangle-index) triangle-index)
-        cos-angle (Math/cos (Math/toRadians (double facet-angle-deg)))]
+        cos-angle (Math/cos (Math/toRadians (double (or selection-angle-deg facet-angle-deg))))]
     ;; Every triangle sharing an edge is a candidate, including at mirrored
     ;; seams with internal caps. The seed's plane and oriented normal decide
     ;; membership, rather than the edge's total incident-triangle count.
@@ -139,7 +139,7 @@
       (if-let [candidate-index (first queue)]
         (let [candidate (triangle-geometry mesh candidate-index)]
           (if (and candidate
-                   (facet-neighbour? start candidate cos-angle facet-plane-epsilon-mm))
+                   (facet-neighbour? start candidate cos-angle (when-not (some? selection-angle-deg) facet-plane-epsilon-mm)))
             (let [unseen (remove seen (neighbours candidate-index))]
               (recur (concat (next queue) (sort unseen))
                      (into seen unseen)
@@ -330,6 +330,10 @@
   ([mesh triangle-index] (select mesh triangle-index nil))
   ([mesh triangle-index opts]
    (let [opts (merge default-options opts)
+         _ (when (and (some? (:selection-angle-deg opts))
+                      (not (and (math/finite-number? (:selection-angle-deg opts))
+                                (<= 0 (:selection-angle-deg opts) 90))))
+             (throw (ex-info "Face angle tolerance must be between 0 and 90 degrees." {:code :invalid-angle})))
          indices (facet-indices mesh triangle-index opts)
          frame-data (frame mesh indices opts)]
      (merge {:triangle-index triangle-index

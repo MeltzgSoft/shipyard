@@ -1,6 +1,9 @@
 (ns shipyard.mesh.facet-test
   (:require [clojure.test :refer [deftest is testing]]
             [shipyard.math :as math]
+            [shipyard.mount-angle-fixture :as curved]
+            [shipyard.fixtures :as fixtures]
+            [shipyard.geom :as geom]
             [shipyard.mount.cut :as cut]
             [shipyard.mount-seam-fixture :as seam]
             [shipyard.mesh.facet :as facet]))
@@ -236,3 +239,21 @@
         frame (:frame (facet/select m 0))]
     (is (or (vec-close? [0 1 0] (:mount/roll frame))
             (vec-close? [1 0 0] (:mount/roll frame))))))
+
+(deftest curved-face-selection
+  (let [surface (mesh curved/triangles)]
+    (is (= 2 (count (:facet-indices (facet/select surface 0)))))
+    (is (= 4 (count (:facet-indices (facet/select surface 0 {:selection-angle-deg 25})))))
+    (is (= 8 (count (:facet-indices (facet/select surface 0 {:selection-angle-deg 50})))))
+    (is (= :invalid-angle (code-of #(facet/select surface 0 {:selection-angle-deg 91}))))
+    (is (true? (geom/valid-frame? (:frame (facet/select surface 0 {:selection-angle-deg 50})))))))
+
+(deftest spherical-cap-stays-bounded-by-the-clicked-normal
+  (let [surface (mesh (fixtures/uv-sphere 5.0 12 24))
+        result (facet/select surface 0 {:selection-angle-deg 50})]
+    (is (> (count (:facet-indices result)) 2))
+    (is (< (count (:facet-indices result)) (/ (:index-count surface) 6)))
+    (is (geom/valid-frame? (:frame result))))
+  (let [copy (mapv #(mapv (partial math/add [100.0 0.0 0.0]) %) curved/triangles)
+        surface (mesh (into curved/triangles copy))]
+    (is (= 8 (count (:facet-indices (facet/select surface 0 {:selection-angle-deg 50})))))))

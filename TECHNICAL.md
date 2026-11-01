@@ -1889,7 +1889,7 @@ the retained subset. History is capped at 30 strokes and supports Undo/Reset. Al
 retains orbit control, and interrupted strokes restore their preceding selection.
 
 Save accepts a bounded, distinct, nonempty vector (at most 4096 indices) from one
-connected authoritative facet. It checks current mesh key, source stamps, cache
+connected authoritative planar or angular selection. It checks current mesh key, source stamps, cache
 presence, bounds and facet membership before storing anything. Invalid selections
 return feedback into the form status without replacing the erase draft. Trimmed
 boundaries are reconstructed from tier-0 triangles and unsupported loops are rejected.
@@ -1947,6 +1947,23 @@ against the **starting triangle**, not against the most recently visited triangl
    (`dot(candidate, start) >= cos(1 degree)`); and
 2. every candidate vertex is within **0.01 mm** of the starting triangle's plane
    (`abs(dot(start-normal, vertex - start-point)) <= 0.01`).
+
+For mount authoring with an explicit `face-angle` (finite 0–90 degrees), replace
+these two membership tests with the requested seed-normal angle bound and edge
+connectivity. Do not apply the plane-distance bound to that angular patch. Existing
+callers without the override retain both planar tests. The mesh-scoped `face-seed`
+is the original clicked tier-0 triangle even after trimming removes it from the
+selection. Preview and Save validate retained indices against that seed and angle,
+not the first remaining triangle. Persist them as optional `:seed` and `:angle-deg`
+entries in `:mount/facet`, alongside its existing mesh key and retained indices.
+They are ignored with the other facet data after a source identity change.
+
+The form's tolerance field reissues `/facet` for its original seed. Re-selection
+resets trimmed membership and recomputes the frame; other unsaved mount controls
+survive. The client supplies the seed/tolerance to the existing bounded asynchronous
+`/mounts/preview` descriptor too, so border/cut preparation shares Save's admission
+rules. Membership and geometry remain server-computed; client code only posts values
+and consumes the admitted response under the existing request/activation guard.
 
 Comparing every candidate with the seed prevents a long, gently curved strip from
 entering one facet by tolerance creep. The angle admits exporter noise without joining a

@@ -249,7 +249,7 @@
                 (let [mesh (wire/decode (Files/readAllBytes (fs/path tier0)))
                       {:keys [facet-indices frame points kind-hint roll-ambiguous? roll-source]}
                       (facet/select mesh triangle-index
-                                    (select-keys cache [:facet-angle-deg :facet-plane-epsilon-mm]))
+                                    (facet-input/selection-options (select-keys cache [:facet-angle-deg :facet-plane-epsilon-mm]) params))
                       outline (cut/outline (pitting-geometry/mesh-triangles mesh facet-indices))
                       frame (assoc frame
                                    :face-points points :mount/outline outline)
@@ -266,12 +266,15 @@
                                        :frame frame
                                        :mesh-key mesh-key
                                        :facet-indices facet-indices
+                                       :face-seed triangle-index
+                                       :face-angle (or (get params "face-angle") (:facet-angle-deg cache) 1)
                                        :kind-hint kind-hint
                                        :mirror-offsets (orientation/mirror-offsets (partition 3 (:positions mesh)) (:part/orientation part))
                                        :draft? true
                                        :values (assoc (merge (:values edit)
                                                              (wizard/preview-values params))
-                                                      :kind kind-hint)}
+                                                      :kind (if (= "true" (get params "reselect"))
+                                                              (or (:kind (wizard/preview-values params)) kind-hint) kind-hint))}
                                 (:mount edit)
                                 (assoc :mode :edit
                                        :original-mount-id (:original-mount-id edit)))]
@@ -334,14 +337,16 @@
              (facet-input/valid-input? (get params "facet-indices")))
     (let [indices (facet-input/parse-indices (get params "facet-indices"))
           mesh (wire/decode (Files/readAllBytes (fs/path (cache/tier-file cache mesh-key 0))))]
-      (when (facet-input/in-facet? mesh indices (select-keys cache [:facet-angle-deg :facet-plane-epsilon-mm]))
+      (when (facet-input/in-facet? mesh indices (facet-input/selection-options (select-keys cache [:facet-angle-deg :facet-plane-epsilon-mm]) params))
         indices))))
 
-(defn- attach-selected-facet [result mesh-key facet-indices]
+(defn- attach-selected-facet [result mesh-key facet-indices params]
   (if-not facet-indices
     result
     (let [mount-id (get-in result [:mount :mount/id])
-          face {:mesh-key mesh-key :indices facet-indices}]
+          face (cond-> {:mesh-key mesh-key :indices facet-indices}
+                 (get params "face-angle") (assoc :angle-deg (Double/parseDouble (get params "face-angle")))
+                 (get params "face-seed") (assoc :seed (parse-long (get params "face-seed"))))]
       (update result :mounts
               (fn [mounts]
                 (mapv #(if (= mount-id (:mount/id %))
@@ -399,7 +404,7 @@
                                                 (catalog-part/durable-mounts (:part/mounts part))
                                                 (:part/orientation part)
                                                 (:part/role-hint part))
-                           (attach-selected-facet mesh-key facet-indices)
+                           (attach-selected-facet mesh-key facet-indices params)
                            (attach-cut-outline! part cache mesh-key facet-indices params))]
             (if-let [error (:error result)]
               (if (:invalid-selection? result)
@@ -459,6 +464,8 @@
                         :frame frame
                         :mesh-key mesh-key
                         :facet-indices indices
+                        :face-seed (when indices (or (:seed selected) (first indices)))
+                        :face-angle (when indices (or (:angle-deg selected) (get-in deps [:cache :facet-angle-deg]) 1))
                         :mode :edit
                         :original-mount-id (:original-mount-id result)
                         :values (:values result)}})))))))

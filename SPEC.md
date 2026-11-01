@@ -299,6 +299,18 @@ one script into another. Shipyard therefore stores only the **derived frame**, w
 stable geometry independent of traversal order. A facet index is a transient handle valid
 within a single request, never a stored reference.
 
+Mount-face authoring offers **Face angle tolerance (°)** from 0–90° after the first
+pick. An explicit angular selection grows by geometric edge connectivity, comparing
+every candidate normal to the original clicked triangle; it does not require the
+candidate to share the seed plane and does not accumulate neighboring angle changes.
+This supports curved ball-joint patches. The initial form value is 1°; requests with
+no angular override retain planar face selection. Changing tolerance reselects the
+full patch and recomputes its frame while preserving other draft fields and resetting
+trim history. Saving retains the mesh-scoped clicked seed, angle and selected indices;
+editing restores them, including when trimming removed the seed triangle itself.
+Selection and save/preview validation use the same backend rules. The feature changes
+surface selection, not assembly joint movement or physical cut primitives.
+
 ### 5.5 Mount records are the durable artefact
 
 The existing `/stl-modify` workflow discards its working data - its instructions delete

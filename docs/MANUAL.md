@@ -374,13 +374,25 @@ Saved mounts retain the selected faces. **Edit** reopens that exact selection; a
 mirrored mount shows the reflected original selection, as it did before Save. Legacy
 mounts recover the surface nearest their position.
 
-Shipyard highlights the selected flat facet and draws its complete orientation frame:
+Shipyard highlights the selected surface and draws its complete orientation frame:
 the outward normal (`+Z`), in-plane twist reference (`+X`), and derived up direction (`+Y`).
 Picking another face immediately replaces that preview, including densely triangulated
 faces; no Save or panel refresh is needed to see the new selection.
 Coplanar faces joined along a mirrored hull's center seam are picked together even
 when hidden internal faces share that seam. The mount is centered on the complete
 selected surface. Disconnected coplanar areas remain separate selections.
+For a curved connection such as a ball joint, first pick a triangle, then adjust
+**Face angle tolerance (°)** in the mount form. Values from 0 to 90 degrees select
+connected triangles whose normals differ from the original clicked triangle by no
+more than that angle. A larger value expands around the curved surface; the reference
+does not drift from triangle to triangle. The initial value is 1°. The first pick uses the usual planar selection.
+
+Changing tolerance updates the highlight and derived frame while keeping the other
+mount fields. It starts a fresh full selection at that tolerance, so it resets face
+trimming. Saved mounts retain their clicked triangle and tolerance; **Edit** restores
+them along with the exact retained faces. This controls face selection only; it does
+not add a moving ball-joint assembly or change the physical cut shape.
+
 Configured interfaces are always colored in the viewer when the part is loaded; the
 detail panel shows a legend for the plug and socket types present on that part.
 
@@ -450,7 +462,7 @@ in **Mount faces**. White triangle borders show the selection you opened. Left-d
 removes whole visible triangles under the circle; adjust **Brush radius** in screen
 pixels. Alt+drag still orbits. **Undo erase** restores the previous stroke (up to 30),
 and **Reset faces** restores the selection from when the form opened. Re-pick a face
-to start over from its full planar surface.
+to start over from its full selected surface.
 
 Mount fields adapt to the inspector's available width. Mount faces, acceptance,
 mirror and pitted-version sections line up at the same width when you resize the window.
