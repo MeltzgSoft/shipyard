@@ -29,3 +29,20 @@
     (with-open [out (io/output-stream file)]
       (.write out ^bytes (fixture/->binary-stl triangles))))
   root)
+
+(def split-triangles
+  ;; Only the left surface has a vertex at the seam midpoint. The right
+  ;; surface and internal caps retain the original unsplit seam edge.
+  (vec (concat (subvec left-triangles 0 2)
+               [[[0 0 -12.5] [-2.5 0 4.2] [0 0 0]]
+                [[0 0 0] [-2.5 0 4.2] [0 0 12.5]]]
+               (subvec left-triangles 3)
+               (subvec face-triangles 4)
+               internal-triangles island-triangles)))
+
+(defn build-split! [root]
+  (let [file (io/file (str root) id "unsupported.stl")]
+    (fs/create-dirs (.getParentFile file))
+    (with-open [out (io/output-stream file)]
+      (.write out ^bytes (fixture/->binary-stl split-triangles))))
+  root)

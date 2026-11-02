@@ -1929,16 +1929,26 @@ cache and disposes every rendered line/highlight geometry.
 Crease splitting deliberately gives one geometric point several vertex ids (§6.2), so
 adjacency cannot use index-buffer ids. A geometric point is keyed by the three exact
 float32 position bits, with `-0.0` folded onto `0.0`, exactly as the position weld does.
-A geometric edge is the unordered pair of those point keys. This is sufficient because
-the measured source collection welds on exact bits; adding an M2-only spatial snap would
-make authoring disagree with the mesh pipeline it is meant to describe.
+A geometric edge is the unordered pair of those point keys. Source positions and
+triangle indices are never rewritten or snapped.
 
-Build an edge-to-triangles table from the decoded tier-0 mesh. Every other triangle
-sharing a geometric edge is a candidate for face picking, regardless of the total
-incident-triangle count. Mirrored closed hull halves can retain internal caps at their
-shared seam; those caps must not divide the coplanar exterior mounting surface.
-Boundary edges provide no other candidate. Edge direction and crease-split vertex ids
-do not affect the lookup, but triangle winding still matters to the tests below.
+For explicit face picking, first admit triangles against the seed's normal and
+(optional) plane bound below. Split their directed edges at existing interior
+vertices before building the edge-to-triangles lookup. Thus an unsplit edge A–B
+connects to A–M and M–B at a T-junction, and wholly contained overlapping edges
+also connect. A positive-length common segment is required: point contacts,
+crossing edges and disconnected coplanar islands are not connections. A JTS
+STRtree over the two widest coordinate axes limits vertex candidates; final
+segment-line distance is checked in all three dimensions within 1e-6 mm.
+Endpoints are never welded. This small line-test tolerance only accommodates
+arithmetic noise when locating existing subdivision vertices.
+
+Every triangle sharing a resulting geometric segment is a candidate regardless
+of incident-triangle count. Mirrored closed hull halves can retain internal caps
+at their seam; those caps must not divide the exterior mounting surface. Winding
+and the seed's angle/plane tests still govern admission. Server-derived outlines
+use the same edge splitting before internal edge cancellation, so the seam does
+not become an outline, influence the roll default, or block preview/Save.
 
 Starting at the selected triangle, flood through neighbours that satisfy both tests
 against the **starting triangle**, not against the most recently visited triangle:

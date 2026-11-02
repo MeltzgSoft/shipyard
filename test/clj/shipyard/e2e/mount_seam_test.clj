@@ -64,3 +64,46 @@
       (is (java.util.Arrays/equals ^bytes before ^bytes (Files/readAllBytes source)))
       (s/screenshot-el! driver "#viewport" (io/file "/tmp/shipyard-centered-seam-mount.png"))
       (finally (s/quit! driver) (fixture/stop! started)))))
+
+(deftest split-seam-selects-previews-saves-and-reloads-the-whole-face
+  (s/assert-bundle!)
+  (let [started (fixture/start! true parts/build-split! #(catalog/save-part-role! % parts/id :hull))
+        sys (:system started) cat (:shipyard.catalog/db sys) driver (s/make-driver)
+        mounts #(-> (catalog/part-context! cat parts/id) :part :part/mounts)]
+    (try
+      (s/go! driver (s/base-url sys))
+      (s/open-part! driver "Mirrored Hull") (s/await-part driver parts/id)
+      (s/click! driver "[data-detail-tab=mounts]")
+      (pick/trace-completions! driver)
+      (testing "either half highlights all nine triangles across the T-junction"
+        (pick/pick! driver parts/left-point) (pick/reads! driver 1)
+        (s/wait-visible! driver ".mount-wizard__form")
+        (is (s/wait-until #(= 9 (get-in (s/stats driver) [:preview :triangles]))))
+        (let [selected (get-in (s/stats driver) [:preview :facet-indices])]
+          (pick/pick! driver parts/right-point) (pick/reads! driver 2)
+          (is (s/wait-until #(= selected (get-in (s/stats driver) [:preview :facet-indices]))))))
+      (testing "zero angle still crosses the split seam"
+        (s/fill-and-blur! driver "input[name=face-angle]" "0")
+        (pick/reads! driver 3)
+        (is (= 0 (s/js driver "() => Number(document.querySelector('input[name=face-angle]').value)")))
+        (is (= 9 (get-in (s/stats driver) [:preview :triangles]))))
+      (s/fill-and-blur! driver ".mount-wizard__form input[name=mount-id]" "split-seat")
+      (s/select-option! driver ".mount-wizard__form select[name=kind]" "socket")
+      (s/select-option! driver ".mount-wizard__form select[name=accepts]" "Turret or antenna hardpoint")
+      (s/screenshot-el! driver "#viewport" (io/file "/tmp/shipyard-split-seam.png"))
+      (s/click! driver ".mount-wizard__actions button[value=create]")
+      (is (s/wait-until #(= 1 (count (mounts)))))
+      (let [saved (first (mounts)) selected (get-in saved [:mount/facet :indices])]
+        (is (= 9 (count selected)))
+        (is (= 0.0 (get-in saved [:mount/facet :angle-deg])))
+        (is (= [0.0 0.0 0.0] (:mount/pos saved)))
+        (is (= 1 (count (:mount/outline saved))))
+        (is (not-any? #{[0.0 0.0 0.0]} (first (:mount/outline saved))))
+        (s/go! driver (s/base-url sys))
+        (s/open-part! driver "Mirrored Hull") (s/await-part driver parts/id)
+        (is (s/wait-until #(= selected (get-in (s/stats driver) [:interfaces :items 0 :facet-indices]))))
+        (s/click! driver "[data-detail-tab=mounts]")
+        (s/click! driver "form:has(input[name=mount-id][value='split-seat']) button:text-is('Edit')")
+        (s/wait-visible! driver ".mount-wizard__form")
+        (is (s/wait-until #(= selected (get-in (s/stats driver) [:preview :facet-indices])))))
+      (finally (s/quit! driver) (fixture/stop! started)))))

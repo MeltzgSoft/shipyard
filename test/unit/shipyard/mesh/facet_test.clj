@@ -4,7 +4,7 @@
             [shipyard.mount-angle-fixture :as curved]
             [shipyard.fixtures :as fixtures]
             [shipyard.geom :as geom]
-            [shipyard.mount.cut :as cut]
+            [shipyard.mesh.edges :as mesh-edges]
             [shipyard.mount-seam-fixture :as seam]
             [shipyard.mesh.facet :as facet]))
 
@@ -124,7 +124,7 @@
 (deftest roll-fallback-test
   (testing "an unavailable boundary still yields a selectable fallback frame"
     (let [{:keys [frame roll-ambiguous? roll-source]}
-          (with-redefs-fn {#'cut/outline (constantly nil)}
+          (with-redefs-fn {#'mesh-edges/outline (constantly nil)}
             #(facet/select contract-mesh 0))]
       (is (vec-close? [2.0 1.0 0.0] (:mount/pos frame)))
       (is (vec-close? [0.0 0.0 1.0] (:mount/axis frame)))
@@ -257,3 +257,18 @@
   (let [copy (mapv #(mapv (partial math/add [100.0 0.0 0.0]) %) curved/triangles)
         surface (mesh (into curved/triangles copy))]
     (is (= 8 (count (:facet-indices (facet/select surface 0 {:selection-angle-deg 50})))))))
+
+(deftest split-seam-selection-test
+  (let [surface (mesh seam/split-triangles)
+        expected (vec (range 9))]
+    (testing "both sides of a split seam select the complete face at zero angle"
+      (doseq [seed [2 5] opts [nil {:selection-angle-deg 0} {:selection-angle-deg 50}]]
+        (let [result (facet/select surface seed opts)]
+          (is (= expected (:facet-indices result)))
+          (is (vec-close? [0 0 0] (get-in result [:frame :mount/pos]))))))
+    (testing "point contact, non-collinear crossings, and tiny gaps do not join islands"
+      (doseq [other [[[[0 0 12.5] [-2 0 13.5] [2 0 13.5]]]
+                     [[[0 0 12.5001] [0 0 14] [2 0 12.5001]]]
+                     [[[-1 0 -13] [-1 0 13] [1 0 0]]]]]
+        (is (= expected (:facet-indices (facet/select (mesh (into seam/split-triangles other)) 2
+                                                      {:selection-angle-deg 0}))))))))

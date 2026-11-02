@@ -303,7 +303,9 @@ Mount-face authoring offers **Face angle tolerance (°)** from 0–90° after th
 pick. An explicit angular selection grows by geometric edge connectivity, comparing
 every candidate normal to the original clicked triangle; it does not require the
 candidate to share the seed plane and does not accumulate neighboring angle changes.
-This supports curved ball-joint patches. The initial form value is 1°; requests with
+Connectivity includes overlapping collinear edge segments, so a triangulation
+T-junction does not split an otherwise connected face. Point contacts alone do
+not connect faces. This supports curved ball-joint patches. The initial form value is 1°; requests with
 no angular override retain planar face selection. Changing tolerance reselects the
 full patch and recomputes its frame while preserving other draft fields and resetting
 trim history. Saving retains the mesh-scoped clicked seed, angle and selected indices;

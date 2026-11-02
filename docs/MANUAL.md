@@ -380,7 +380,9 @@ Picking another face immediately replaces that preview, including densely triang
 faces; no Save or panel refresh is needed to see the new selection.
 Coplanar faces joined along a mirrored hull's center seam are picked together even
 when hidden internal faces share that seam. The mount is centered on the complete
-selected surface. Disconnected coplanar areas remain separate selections.
+selected surface. Disconnected coplanar areas remain separate selections. A face can cross a
+triangulation seam where one side has an extra vertex; both halves are selected
+even at 0° tolerance. Surfaces touching only at a point remain separate.
 For a curved connection such as a ball joint, first pick a triangle, then adjust
 **Face angle tolerance (°)** in the mount form. Values from 0 to 90 degrees select
 connected triangles whose normals differ from the original clicked triangle by no

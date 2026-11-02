@@ -4,7 +4,7 @@
   Input is the tier-0 `.symesh` decoded by `shipyard.wire/decode`: positions,
   indices, and counts in the exact triangle order the browser clicked."
   (:require [shipyard.math :as math]
-            [shipyard.mount.cut :as cut]
+            [shipyard.mesh.edges :as mesh-edges]
             [shipyard.triangle :as triangle]
             [shipyard.mesh.float :as mesh-float]))
 
@@ -126,25 +126,35 @@
 
 (defn- facet-indices [mesh triangle-index {:keys [facet-angle-deg facet-plane-epsilon-mm selection-angle-deg]}]
   (let [start (require-triangle mesh triangle-index)
-        edges (edge-triangles mesh (range (triangle-count mesh)))
-        neighbours #(into #{} (mapcat edges) (triangle-edge-keys mesh %))
-        initial (disj (neighbours triangle-index) triangle-index)
-        cos-angle (Math/cos (Math/toRadians (double (or selection-angle-deg facet-angle-deg))))]
-    ;; Every triangle sharing an edge is a candidate, including at mirrored
-    ;; seams with internal caps. The seed's plane and oriented normal decide
-    ;; membership, rather than the edge's total incident-triangle count.
+        cos-angle (Math/cos (Math/toRadians (double (or selection-angle-deg facet-angle-deg))))
+        candidates (into #{} (filter (fn [i]
+                                       (when-let [candidate (triangle-geometry mesh i)]
+                                         (facet-neighbour? start candidate cos-angle
+                                                           (when-not (some? selection-angle-deg) facet-plane-epsilon-mm)))))
+                         (range (triangle-count mesh)))
+        directed (vec (for [i (sort candidates)
+                            :let [[a b c] (triangle-points mesh i)]
+                            edge [[a b] [b c] [c a]]]
+                        [i edge]))
+        edges (reduce (fn [result [[i _] segments]]
+                        (reduce (fn [result [a b]] (update result (edge-key a b) (fnil conj #{}) i))
+                                result segments))
+                      {} (map vector directed (mesh-edges/split-edges (mapv second directed))))
+        adjacent (reduce (fn [result tris]
+                           (reduce (fn [result i] (update result i (fnil into #{}) (disj tris i))) result tris))
+                         {} (vals edges))
+        neighbours #(get adjacent % #{})
+        initial (neighbours triangle-index)]
+    ;; Split collinear overlapping edges before lookup: A--B must connect to
+    ;; A--M and M--B at a T-junction. Membership remains bounded by the seed.
     (loop [queue (seq (sort initial))
            seen (conj initial triangle-index)
            selected #{triangle-index}]
       (if-let [candidate-index (first queue)]
-        (let [candidate (triangle-geometry mesh candidate-index)]
-          (if (and candidate
-                   (facet-neighbour? start candidate cos-angle (when-not (some? selection-angle-deg) facet-plane-epsilon-mm)))
-            (let [unseen (remove seen (neighbours candidate-index))]
-              (recur (concat (next queue) (sort unseen))
-                     (into seen unseen)
-                     (conj selected candidate-index)))
-            (recur (next queue) seen selected)))
+        (let [unseen (remove seen (neighbours candidate-index))]
+          (recur (concat (next queue) (sort unseen))
+                 (into seen unseen)
+                 (conj selected candidate-index)))
         (vec (sort selected))))))
 
 (defn- distance-squared [a b]
@@ -253,7 +263,7 @@
               (let [delta (math/subtract b a)]
                 {:length (math/length delta) :direction (math/normalize delta)}))
             corners (concat (rest corners) [(first corners)]))))
-   (cut/outline triangles)))
+   (mesh-edges/outline triangles)))
 
 (defn- distinct-directions? [directions cos-angle]
   (let [dirs (vec directions)]

@@ -1,6 +1,7 @@
 (ns shipyard.mount.preview
   "Pure draft geometry. Previews and durable subtraction share JTS profiles."
-  (:require [shipyard.mount.cut :as cut]
+  (:require [shipyard.mesh.edges :as mesh-edges]
+            [shipyard.mount.cut :as cut]
             [shipyard.mount.facet-input :as facet-input]
             [shipyard.mount.split :as split]
             [shipyard.mount.wizard :as wizard]
@@ -25,7 +26,7 @@
   (when-not (and (or (nil? indices) (facet-input/in-facet? mesh indices opts))
                  (or (nil? border-indices) (facet-input/in-facet? mesh border-indices opts)))
     (throw (ex-info "Choose a nonempty selection from one current mount face." {})))
-  {:outline (when indices (cut/outline (geometry/mesh-triangles mesh indices)))
+  {:outline (when indices (mesh-edges/outline (geometry/mesh-triangles mesh indices)))
    :border (if border-indices (border-lines mesh border-indices) [])})
 
 (defn from-selection

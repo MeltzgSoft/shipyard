@@ -27,12 +27,11 @@
                     (= :pit kind) (assoc :diameter diameter)
                     (= :recess kind) (assoc :border border))})))
 
-(defn outline
-  "Recover oriented boundary loops from wound source-space facet triangles.
+(defn outline-edges
+  "Recover oriented boundary loops from directed edges.
   Internal edges cancel; open/non-manifold boundaries are rejected."
-  [triangles]
-  (let [edges (for [[a b c] triangles [p q] [[a b] [b c] [c a]]] [p q])
-        grouped (group-by #(vec (sort %)) edges)
+  [edges]
+  (let [grouped (group-by #(vec (sort %)) edges)
         boundary (mapv first (filter #(= 1 (count %)) (vals grouped)))
         nexts (into {} boundary)]
     (when (and (seq boundary) (= (count nexts) (count boundary)))
@@ -47,6 +46,11 @@
                          :else (recur (nexts p) (conj seen p) (conj points p))))]
             (when (and ring (>= (count ring) 3))
               (recur (reduce disj remaining ring) (conj loops ring)))))))))
+
+(defn outline
+  "Recover oriented boundary loops from wound source-space facet triangles."
+  [triangles]
+  (outline-edges (for [[a b c] triangles [p q] [[a b] [b c] [c a]]] [p q])))
 
 (defn project [{:mount/keys [pos axis roll]} points]
   (let [up (math/cross axis roll)]

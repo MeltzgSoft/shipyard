@@ -5,7 +5,8 @@
   at router build time. `deps` is the component map integrant assembled, so the
   handler tree is a pure function of its dependencies and can be exercised
   without a socket."
-  (:require [babashka.fs :as fs]
+  (:require [shipyard.mesh.edges :as mesh-edges]
+            [babashka.fs :as fs]
             [clojure.string :as str]
             [integrant.core :as ig]
             [reitit.coercion.malli :as malli-coercion]
@@ -51,7 +52,6 @@
             [shipyard.mount.facet-recovery :as facet-recovery]
             [shipyard.mount.wizard :as wizard]
             [shipyard.mount.split :as split]
-            [shipyard.mount.cut :as cut]
             [shipyard.pitting.geometry :as pitting-geometry]
             [shipyard.pitting.db :as pitting]
             [shipyard.part.orientation :as orientation]
@@ -250,7 +250,7 @@
                       {:keys [facet-indices frame points kind-hint roll-ambiguous? roll-source]}
                       (facet/select mesh triangle-index
                                     (facet-input/selection-options (select-keys cache [:facet-angle-deg :facet-plane-epsilon-mm]) params))
-                      outline (cut/outline (pitting-geometry/mesh-triangles mesh facet-indices))
+                      outline (mesh-edges/outline (pitting-geometry/mesh-triangles mesh facet-indices))
                       frame (assoc frame
                                    :face-points points :mount/outline outline)
                       frame (assoc frame :mount/split (split/metadata-for frame frame :horizontal))
@@ -368,8 +368,8 @@
           indices (or facet-indices (when (and cut? (= mesh-key (get-in previous [:mount/facet :mesh-key])))
                                       (get-in previous [:mount/facet :indices])))
           outline (if indices
-                    (cut/outline (pitting-geometry/mesh-triangles
-                                  (wire/decode (Files/readAllBytes (fs/path (cache/tier-file cache mesh-key 0)))) indices))
+                    (mesh-edges/outline (pitting-geometry/mesh-triangles
+                                         (wire/decode (Files/readAllBytes (fs/path (cache/tier-file cache mesh-key 0)))) indices))
                     (or (:mount/outline previous) (get-in result [:mount :mount/outline])))
           mounts (mapv (fn [mount]
                          (if (= id (:mount/id mount))
