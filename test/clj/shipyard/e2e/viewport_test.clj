@@ -702,7 +702,7 @@
       "part role should be edited outside the mount wizard")
   (is (= "plug" (s/js *driver* "() => document.querySelector('.mount-wizard__form select[name=kind]').value")))
   (is (= "Suggested: plug"
-         (s/text *driver* ".mount-wizard__hint")))
+         (s/text *driver* ".mount-wizard__field:has(select[name=kind]) .mount-wizard__hint")))
   (is (= true
          (s/js *driver* "() => document.querySelector('.mount-wizard__roles').hidden"))
       "plug authoring must not show a socket acceptance profile")
