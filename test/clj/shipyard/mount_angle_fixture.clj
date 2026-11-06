@@ -17,6 +17,9 @@
                        c (point (+ angle 0.5) 2) d (point angle 2)]
                    [[a b c] [a c d]])) (map #(* 0.5 %) (range 6)))))
 
+(defn hemisphere []
+  (filterv #(every? (fn [[_ y _]] (>= y 0)) %) (fixtures/uv-sphere 5.0 96 128)))
+
 (defn build-library!
   ([root] (build-library! root triangles))
   ([root triangles]

@@ -6,8 +6,10 @@
             [shipyard.math :as math]
             [shipyard.settings.transforms :as settings]))
 
-(def ^:private valid-indices?
-  (m/validator [:vector {:min 1 :max 4096} [:and integer? [:>= 0] [:<= 2147483647]]]))
+(def indices-schema
+  [:vector {:min 1} [:and integer? [:>= 0] [:<= 2147483647]]])
+
+(def ^:private valid-indices? (m/validator indices-schema))
 
 (defn parse-indices [value]
   (try

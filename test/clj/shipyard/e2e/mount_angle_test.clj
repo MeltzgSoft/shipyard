@@ -3,6 +3,7 @@
             [shipyard.assembly-fixture :as fixture]
             [shipyard.mount-angle-fixture :as curved]
             [shipyard.catalog.db :as catalog]
+            [shipyard.e2e.picked-face-test :as pick]
             [shipyard.e2e.support :as s]
             [shipyard.paint.faces :as faces])
   (:import [java.io File]
@@ -57,4 +58,37 @@
       (s/click! driver ".mount-wizard__actions button[value=update]")
       (is (s/wait-until #(nil? (:preview (s/stats driver)))))
       (is (= 2 (count (get-in (first (:part/mounts (:part (catalog/part-context! cat curved/id)))) [:mount/facet :indices]))))
+      (finally (s/quit! driver) (fixture/stop! started)))))
+
+(deftest dense-hemisphere-can-preview-save-and-reload
+  (s/assert-bundle!)
+  (let [triangles (curved/hemisphere)
+        started (fixture/start! true #(curved/build-library! % triangles) (fn [_]))
+        sys (:system started) cat (:shipyard.catalog/db sys) driver (s/make-driver)]
+    (try
+      (s/go! driver (s/base-url sys))
+      (s/open-part! driver "Ball joint") (s/await-part driver curved/id)
+      (s/click! driver "[data-detail-tab=mounts]")
+      (pick/pick! driver [0 5 0])
+      (s/wait-visible! driver ".mount-wizard__form")
+      (s/fill-and-blur! driver "input[name=face-angle]" "45")
+      (is (> (count triangles) 12000))
+      (is (s/wait-until #(= (count triangles) (get-in (s/stats driver) [:preview :triangles]))))
+      (is (s/wait-until #(s/js driver "() => document.querySelector('#viewport-loading').hidden")))
+      (s/fill-and-blur! driver "input[name=mount-id]" "hemisphere")
+      (s/select-option! driver "select[name=kind]" "plug")
+      (s/click! driver "input[name=face-edit]")
+      (is (s/wait-until #(= "ready" (get-in (s/stats driver) [:preview :preparation]))))
+      (is (s/wait-until #(s/js driver "() => document.querySelector('#viewport-loading').hidden")))
+      (s/click! driver ".mount-wizard__actions button[value=create]")
+      (is (s/wait-until #(nil? (:preview (s/stats driver)))))
+      (let [saved (first (:part/mounts (:part (catalog/part-context! cat curved/id))))]
+        (is (= (count triangles) (count (get-in saved [:mount/facet :indices])))))
+      (s/go! driver (s/base-url sys))
+      (s/open-part! driver "Ball joint") (s/await-part driver curved/id)
+      (s/click! driver "[data-detail-tab=mounts]")
+      (s/click! driver "form:has(input[name=mount-id][value=hemisphere]) button:text-is('Edit')")
+      (is (s/wait-until #(= (count triangles) (get-in (s/stats driver) [:preview :triangles]))))
+      (is (= "45.0" (s/js driver "() => document.querySelector('input[name=face-angle]').value")))
+      (is (s/wait-until #(s/js driver "() => document.querySelector('#viewport-loading').hidden")))
       (finally (s/quit! driver) (fixture/stop! started)))))

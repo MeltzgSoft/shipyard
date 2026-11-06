@@ -1888,7 +1888,7 @@ wireframes for the selection opened by the form, while preview highlighting foll
 the retained subset. History is capped at 30 strokes and supports Undo/Reset. Alt-drag
 retains orbit control, and interrupted strokes restore their preceding selection.
 
-Save accepts a bounded, distinct, nonempty vector (at most 4096 indices) from one
+Save accepts a distinct, nonempty vector with no triangle-count cap from one
 connected authoritative planar or angular selection. It checks current mesh key, source stamps, cache
 presence, bounds and facet membership before storing anything. Invalid selections
 return feedback into the form status without replacing the erase draft. Trimmed
@@ -1907,7 +1907,7 @@ same `shipyard.pitting.geometry/profiles` JTS inset rules used for physical cuts
 The browser performs highlighting, picking and guide transforms only; it does not
 run `cut/outline`, Clipper offsets or `WireframeGeometry` for trimming.
 `POST /mounts/preview` accepts a bounded Malli-validated EDN descriptor containing
-the current part/mesh, frame, up to 4096 selected triangle ordinals, optional opening
+the current part/mesh, frame, selected triangle ordinals, optional opening
 selection, dimensions, capacity and mirror settings. It returns a small resource
 envelope immediately. `GET /mounts/previews` prepares the saved cuts independently
 of the draft. Neither endpoint writes mounts or STL outputs.

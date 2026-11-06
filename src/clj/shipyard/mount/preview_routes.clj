@@ -13,7 +13,7 @@
 (def finite [:and number? [:fn math/finite-number?]])
 (def positive [:and finite [:> 0]])
 (def vec3 [:vector {:min 3 :max 3} finite])
-(def indices [:vector {:min 1 :max 4096} [:int {:min 0 :max 2147483647}]])
+(def indices facet-input/indices-schema)
 (def cut-schema
   [:or [:map {:closed true} [:kind [:= :pit]] [:depth positive] [:diameter positive]]
    [:map {:closed true} [:kind [:= :recess]] [:depth positive] [:border [:and finite [:>= 0]]]]])

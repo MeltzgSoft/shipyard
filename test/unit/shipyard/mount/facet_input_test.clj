@@ -15,6 +15,12 @@
     (is (input/in-mesh? {:index-count 6} [0 1]))
     (is (not (input/in-mesh? {:index-count 6} [2])))))
 
+(deftest dense-selection-input-is-bounded-by-the-current-mesh
+  (let [indices (vec (range 12012))]
+    (is (= indices (input/parse-indices (pr-str indices))))
+    (is (input/in-mesh? {:index-count (* 3 12012)} indices))
+    (is (not (input/in-mesh? {:index-count (* 3 12011)} indices)))))
+
 (deftest in-facet-test
   (let [mesh {:positions (float-array [0 0 0 4 0 0 0 2 0 4 2 0 6 0 0 8 0 0 6 1 0])
               :indices (int-array [0 1 2 1 3 2 4 5 6]) :index-count 9}]

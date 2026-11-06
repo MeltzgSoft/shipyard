@@ -406,7 +406,8 @@ Selection follows gradual curves and stops at larger bends. The initial value is
 Changing tolerance updates the highlight and derived frame while keeping the other
 mount fields. It starts a fresh full selection at that tolerance, so it resets face
 trimming. Saved mounts retain their clicked triangle and tolerance; **Edit** restores
-them along with the exact retained faces. Older mounts keep their previous
+them along with the exact retained faces. There is no triangle-count limit on saved
+mount faces, including dense curved selections. Older mounts keep their previous
 selection until you pick again or change the angle; re-selection uses the new
 neighboring-angle rule. This controls face selection only; it does
 not add a moving ball-joint assembly or change the physical cut shape.

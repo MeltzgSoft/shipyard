@@ -1659,6 +1659,7 @@
     (clj->js {:revision revision
               :part-id part-id
               :mesh-key mesh-key
+              :preparation (some-> (:preparation @preview) name)
               :facet-indices facet-indices
               :triangles (count facet-indices)
               :cuts (cut-stats object)
