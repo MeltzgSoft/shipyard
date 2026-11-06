@@ -336,7 +336,7 @@
   (cond-> {:data-socket-only "true"}
     (= :plug kind) (assoc :hidden true :disabled true)))
 
-(defn- mount-form [{:keys [part frame mesh-key draft? facet-indices face-angle face-seed kind-hint mode original-mount-id values roles cut-defaults mirror-offsets]}]
+(defn- mount-form [{:keys [part frame mesh-key draft? facet-indices face-angle face-seed face-seam kind-hint mode original-mount-id values roles cut-defaults mirror-offsets]}]
   (let [kind (or (:kind values) (default-kind part))
         accepts (or (:accepts values) #{:weapon})
         profiles (wizard/acceptance-profiles (:part/role-hint part) (or roles wizard/role-options))
@@ -373,6 +373,8 @@
        [:input {:type "hidden" :name "mesh-key" :value mesh-key}])
      (when edit?
        [:input {:type "hidden" :name "original-mount-id" :value (name original-mount-id)}])
+     (when (some? face-seam)
+       [:input {:type "hidden" :name "face-seam" :value face-seam}])
      (when (some? face-seed)
        [:input {:type "hidden" :name "face-seed" :value face-seed}])
      (when (seq facet-indices)

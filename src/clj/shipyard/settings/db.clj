@@ -72,3 +72,20 @@
       (some-> (or (legacy-root! (get-in config [:shipyard.library/index :config-dir]))
                   (get-in config [:shipyard.library/index :root]))
               (#(system/expand-home (System/getProperty "user.home") %)))))
+
+(defn seam-tolerance! [database]
+  (or (store/read! database
+                   #(:settings/mount-seam-tolerance-mm
+                     (d/pull % [:settings/mount-seam-tolerance-mm] [:store/key "shipyard"])))
+      transforms/seam-default))
+
+(defn save-seam-tolerance! [database value]
+  (when-not (transforms/valid-seam? value)
+    (throw (ex-info "Mount face seam tolerance must be between 0 and 0.1 mm." {})))
+  (store/write! database
+                #(d/transact! % [{:store/key "shipyard" :settings/mount-seam-tolerance-mm value}]))
+  value)
+
+(defn face-options! [database cache]
+  (assoc (select-keys cache [:facet-angle-deg :facet-plane-epsilon-mm])
+         :seam-tolerance-mm (seam-tolerance! database)))

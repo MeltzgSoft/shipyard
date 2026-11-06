@@ -26,3 +26,17 @@
   (testing "non-manifold duplicate faces still reject an outline"
     (is (nil? (edges/outline (concat (subvec seam/split-triangles 0 9)
                                      (subvec seam/split-triangles 0 9)))))))
+
+(deftest seam-distance-topology-test
+  (testing "nearby endpoints close a tiny seam only in derived geometry"
+    (is (= 2 (count (edges/outline seam/gap-triangles 0.0))))
+    (is (= 1 (count (edges/outline seam/gap-triangles 0.005)))))
+  (testing "fixed representatives prevent chains of near points extending the tolerance"
+    (let [input [[[0 0 0] [0 2 0]] [[0.004 0 0] [0.004 2 0]] [[0.008 0 0] [0.008 2 0]]]
+          result (edges/split-edges input 0.005)]
+      (is (= (first result) (second result)))
+      (is (not= (first result) (last result)))))
+  (testing "a long seam subdivided on one side can also close a tiny gap"
+    (let [a [0 0 0] b [0 2 0] c [0.002 0 0] m [0.002 1 0] d [0.002 2 0]
+          result (edges/split-edges [[a b] [c m] [m d]] 0.005)]
+      (is (= (set (first result)) (set (mapcat identity (rest result))))))))

@@ -4,13 +4,15 @@
   Input is the tier-0 `.symesh` decoded by `shipyard.wire/decode`: positions,
   indices, and counts in the exact triangle order the browser clicked."
   (:require [shipyard.math :as math]
+            [shipyard.settings.transforms :as settings]
             [shipyard.mesh.edges :as mesh-edges]
             [shipyard.triangle :as triangle]
             [shipyard.mesh.float :as mesh-float]))
 
 (def default-options
   {:facet-angle-deg 1.0
-   :facet-plane-epsilon-mm 0.01})
+   :facet-plane-epsilon-mm 0.01
+   :seam-tolerance-mm settings/seam-default})
 
 (def interface-match-options
   "The tolerance used to recover a legacy mount's selected face from its
@@ -124,7 +126,7 @@
   (and (>= (+ (math/dot (:normal candidate) (:normal start)) 1.0e-12) cos-angle)
        (or (nil? epsilon) (every? #(point-on-plane? start epsilon %) (:points candidate)))))
 
-(defn- facet-indices [mesh triangle-index {:keys [facet-angle-deg facet-plane-epsilon-mm selection-angle-deg]}]
+(defn- facet-indices [mesh triangle-index {:keys [facet-angle-deg facet-plane-epsilon-mm selection-angle-deg seam-tolerance-mm]}]
   (let [start (require-triangle mesh triangle-index)
         cos-angle (Math/cos (Math/toRadians (double (or selection-angle-deg facet-angle-deg))))
         candidates (into #{} (filter (fn [i]
@@ -139,7 +141,7 @@
         edges (reduce (fn [result [[i _] segments]]
                         (reduce (fn [result [a b]] (update result (edge-key a b) (fnil conj #{}) i))
                                 result segments))
-                      {} (map vector directed (mesh-edges/split-edges (mapv second directed))))
+                      {} (map vector directed (mesh-edges/split-edges (mapv second directed) seam-tolerance-mm)))
         adjacent (reduce (fn [result tris]
                            (reduce (fn [result i] (update result i (fnil into #{}) (disj tris i))) result tris))
                          {} (vals edges))
@@ -244,7 +246,7 @@
       (throw (ex-info "could not derive a roll axis"
                       {:code :degenerate-facet}))))
 
-(defn- boundary-edges [triangles]
+(defn- boundary-edges [triangles seam-tolerance-mm]
   (mapcat
    (fn [ring]
      ;; Ignore triangulation vertices on a straight boundary: they do not
@@ -263,7 +265,7 @@
               (let [delta (math/subtract b a)]
                 {:length (math/length delta) :direction (math/normalize delta)}))
             corners (concat (rest corners) [(first corners)]))))
-   (mesh-edges/outline triangles)))
+   (mesh-edges/outline triangles seam-tolerance-mm)))
 
 (defn- distinct-directions? [directions cos-angle]
   (let [dirs (vec directions)]
@@ -278,9 +280,9 @@
    :roll-ambiguous? true
    :roll-source :world-axis})
 
-(defn- roll-from-boundary [axis triangles facet-angle-deg]
+(defn- roll-from-boundary [axis triangles facet-angle-deg seam-tolerance-mm]
   (let [edges (remove #(or (nil? (:direction %)) (<= (:length %) component-epsilon))
-                      (boundary-edges triangles))
+                      (boundary-edges triangles seam-tolerance-mm))
         max-length (reduce max 0.0 (map :length edges))
         longest (filter #(>= (:length %) (* 0.99 max-length)) edges)
         cos-angle (Math/cos (Math/toRadians (double facet-angle-deg)))
@@ -298,7 +300,7 @@
 (defn- frame [mesh indices opts]
   (let [points (vec (unique-points mesh indices))
         axis (facet-axis mesh indices)
-        {:keys [roll roll-ambiguous? roll-source]} (roll-from-boundary axis (mapv #(triangle-points mesh %) indices) (:facet-angle-deg opts))]
+        {:keys [roll roll-ambiguous? roll-source]} (roll-from-boundary axis (mapv #(triangle-points mesh %) indices) (:facet-angle-deg opts) (:seam-tolerance-mm opts))]
     {:frame {:mount/pos (bbox-midpoint points)
              :mount/axis axis
              :mount/roll roll}
@@ -344,6 +346,9 @@
                       (not (and (math/finite-number? (:selection-angle-deg opts))
                                 (<= 0 (:selection-angle-deg opts) 90))))
              (throw (ex-info "Face angle tolerance must be between 0 and 90 degrees." {:code :invalid-angle})))
+         _ (when-not (and (math/finite-number? (:seam-tolerance-mm opts))
+                          (<= 0 (:seam-tolerance-mm opts) 0.1))
+             (throw (ex-info "Mount face seam tolerance must be between 0 and 0.1 mm." {:code :invalid-seam-tolerance})))
          indices (facet-indices mesh triangle-index opts)
          frame-data (frame mesh indices opts)]
      (merge {:triangle-index triangle-index

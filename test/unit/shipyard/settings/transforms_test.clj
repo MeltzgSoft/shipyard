@@ -1,5 +1,5 @@
 (ns shipyard.settings.transforms-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [clojure.test :refer [deftest is testing]]
             [shipyard.settings.transforms :as settings]
             [shipyard.vocabulary.management :as management]))
 
@@ -26,3 +26,11 @@
     (is (:error (management/plan parts [] :rename "role" "weapon" "cannon")))
     (is (:error (management/plan parts [] :delete "role" "engine" nil)))
     (is (:error (management/plan parts [] :rename "role" "sensor" "engine")))))
+
+(deftest seam-settings-test
+  (testing "finite distances in the supported range, including strict zero"
+    (doseq [value ["0" "0.005" "0.1"]]
+      (is (= {:value (Double/parseDouble value)} (settings/seam-settings {"seam-tolerance-mm" value})))))
+  (testing "negative, oversized, non-finite and missing values are rejected"
+    (doseq [value [nil "" "-0.001" "0.101" "NaN" "Infinity" "bad"]]
+      (is (:error (settings/seam-settings {"seam-tolerance-mm" value}))))))

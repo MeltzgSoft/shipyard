@@ -15,6 +15,7 @@
                                               :theme theme
                                               :root (index/root! library)
                                               :entries (vocabulary/entries! (:store catalog))
+                                              :seam-tolerance-mm (db/seam-tolerance! (:store catalog))
                                               :defaults (db/cut-defaults! (:store catalog))
                                               :blocked? (boolean (when workspace (importer/session! deps)))} options))
                          (appearance/state theme true))
@@ -28,6 +29,7 @@
     (catch Exception e (current! deps {:error (str "Could not save appearance. " (ex-message e)) :status 422}))))
 
 (defn cuts! [{:keys [catalog workspace] :as deps} {:keys [params]}]
+  (when workspace (workspace/outgoing! deps params))
   (let [{:keys [error values]} (transforms/cut-settings params)]
     (if error (current! deps {:error error :status 422 :draft params})
         (try (db/save-cut-defaults! (:store catalog) values)
@@ -49,3 +51,16 @@
                                                #(cond-> % (= old (get % (name field))) (assoc (name field) new)))))
               (current! deps {:message (case action :add "Added value." :rename "Renamed value and all uses." :delete "Deleted unused value.")}))))
       (catch Exception e (current! deps {:error (str "Could not update classification. " (ex-message e)) :status 422})))))
+
+(defn seams! [{:keys [catalog workspace] :as deps} {:keys [params]}]
+  (when workspace (workspace/outgoing! deps params))
+  (let [{:keys [error value]} (transforms/seam-settings params)]
+    (if error
+      (current! deps {:error error :status 422 :draft params})
+      (try
+        (db/save-seam-tolerance! (:store catalog) value)
+        (when workspace
+          (workspace/update-workspace! workspace :settings update :draft dissoc "seam-tolerance-mm"))
+        (current! deps {:message "Saved mount face selection settings."})
+        (catch Exception e
+          (current! deps {:error (str "Could not save face selection settings. " (ex-message e)) :status 422 :draft params}))))))

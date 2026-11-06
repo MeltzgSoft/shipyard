@@ -84,7 +84,7 @@
   (let [mode (:workspace (active-context! workspace))]
     (when (= mode :settings)
       (update-workspace! workspace mode update :draft merge
-                         (select-keys params ["root" "pit-depth" "pit-diameter" "recess-depth" "recess-border"])))
+                         (select-keys params ["root" "seam-tolerance-mm" "pit-depth" "pit-diameter" "recess-depth" "recess-border"])))
     (when-not (or (= mode :settings) (and (= mode :ships) (= :editor (:view (workspace! workspace :ships)))))
       (remember! workspace mode params))
     (when (and (= mode :ships) (= "assembly" (:inspector-tab (workspace! workspace :ships))) (contains? params "name"))

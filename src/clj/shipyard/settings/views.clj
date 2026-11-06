@@ -33,7 +33,7 @@
                   [:button {:type "submit" :disabled (or blocked? (pos? (+ parts sockets)))
                             :title (when (pos? (+ parts sockets)) "Only unused values can be deleted.")} "Delete"]])]])]]])
 
-(defn panel [{:keys [root entries defaults blocked? error message draft theme]}]
+(defn panel [{:keys [root entries defaults blocked? error message draft theme seam-tolerance-mm]}]
   [:div#settings-workspace.settings-workspace {:data-workspace-filters "true"}
    [:h2 "Settings"]
    (when error [:p.detail__error {:role "alert"} error])
@@ -43,7 +43,7 @@
     [:h3 "Appearance"]
     [:form#appearance-settings.settings-workspace__appearance
      {:method "post" :action "/settings/theme" :hx-post "/settings/theme" :hx-target "#settings-workspace" :hx-swap "outerHTML"
-      :hx-include "#settings, #cut-defaults" :hx-sync "#workspace-navigation:drop" :hx-disabled-elt "find button"}
+      :hx-include "#settings, #cut-defaults, #face-selection-settings" :hx-sync "#workspace-navigation:drop" :hx-disabled-elt "find button"}
      [:label {:for "appearance-theme"} "Theme"
       [:select#appearance-theme (merge (help/attrs "Auto follows your system's light or dark theme, including changes while the app is open.") {:name "theme"})
        (for [[mode label] [[:light "Light"] [:dark "Dark"] [:auto "Auto"]]]
@@ -55,7 +55,7 @@
     [:fieldset {:disabled blocked?} (views/settings-form {:id "settings" :root (get draft "root" root)})]]
    [:section.settings-workspace__section
     [:h3 "Pit and recess defaults"]
-    [:form#cut-defaults.settings-workspace__cuts {:method "post" :action "/settings/cuts" :hx-post "/settings/cuts" :hx-target "#settings-workspace" :hx-swap "outerHTML"}
+    [:form#cut-defaults.settings-workspace__cuts {:method "post" :action "/settings/cuts" :hx-post "/settings/cuts" :hx-include "#settings, #face-selection-settings" :hx-target "#settings-workspace" :hx-swap "outerHTML"}
      (for [[kind label dimensions] [[:pit "Pit" [[:depth "Depth"] [:diameter "Diameter"]]]
                                     [:recess "Recess" [[:depth "Depth"] [:border "Border"]]]]]
        [:fieldset [:legend label]
@@ -66,5 +66,14 @@
      [:button (merge
                (help/attrs "Use these millimeter dimensions for new mount cuts. Existing cuts keep their saved dimensions.")
                {:type "submit"}) "Save defaults"]]]
+   [:section.settings-workspace__section
+    [:h3 "Mount face selection"]
+    [:form#face-selection-settings {:method "post" :action "/settings/seams" :hx-post "/settings/seams"
+                                    :hx-target "#settings-workspace" :hx-swap "outerHTML" :hx-include "#settings, #cut-defaults"}
+     [:label "Seam tolerance (mm)"
+      [:input {:type "number" :name "seam-tolerance-mm" :min "0" :max "0.1" :step "any" :required true
+               :value (get draft "seam-tolerance-mm" seam-tolerance-mm)}]]
+     [:p "Bridge tiny gaps between adjoining mount faces. Default: 0.005 mm; 0 requires touching edges. Applies to new face selections; saved mounts retain their selected faces."]
+     [:button {:type "submit"} "Save face selection"]]]
    (for [[field label] [[:bundle "Faction"] [:class "Class"] [:role "Role"]]]
      (classification-section field label (get entries field) blocked?))])

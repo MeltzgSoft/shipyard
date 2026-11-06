@@ -1939,9 +1939,21 @@ connects to A–M and M–B at a T-junction, and wholly contained overlapping ed
 also connect. A positive-length common segment is required: point contacts,
 crossing edges and disconnected coplanar islands are not connections. A JTS
 STRtree over the two widest coordinate axes limits vertex candidates; final
-segment-line distance is checked in all three dimensions within 1e-6 mm.
-Endpoints are never welded. This small line-test tolerance only accommodates
-arithmetic noise when locating existing subdivision vertices.
+segment-line distance is checked in all three dimensions. The global Settings
+seam tolerance defaults to **0.005 mm**, validates finite values in **[0, 0.1] mm**,
+and persists as `:settings/mount-seam-tolerance-mm` in the shared store. No saved
+value means the default; reading it does not write settings.
+
+For picked topology and outline derivation only, deterministically map nearby
+vertices to fixed representatives within that tolerance, then split edges at
+existing vertices within `max(1e-6 mm, seam tolerance)` of the segment line.
+Representatives are selected in coordinate order, nearest first with coordinate
+tie-breaking; only representatives can absorb later points, preventing transitive
+tolerance creep. Collapsed edges are ignored. Zero disables endpoint clustering
+and retains strict connectivity with the arithmetic line-test epsilon. The same
+rule handles seams with differing edge subdivisions. Source mesh buffers and
+triangle ordinals stay unchanged. A shared positive-length segment remains
+required after normalization; point-only and crossing contacts are not adjacency.
 
 Every triangle sharing a resulting geometric segment is a candidate regardless
 of incident-triangle count. Mirrored closed hull halves can retain internal caps
@@ -1966,6 +1978,12 @@ is the original clicked tier-0 triangle even after trimming removes it from the
 selection. Preview and Save validate retained indices against that seed and angle,
 not the first remaining triangle. Persist them as optional `:seed` and `:angle-deg`
 entries in `:mount/facet`, alongside its existing mesh key and retained indices.
+The global seam default is captured once per pick and transported as hidden
+`face-seam` metadata (not an authoring control), validated at the same bounds in
+HTML and preview requests, and persisted as `:seam-mm`. Changing Settings applies
+to fresh picks/re-selections; editing, trimming, preview and Save use the retained
+value. Legacy retained faces without `:seam-mm` edit with zero seam tolerance.
+Asynchronous preparation keys include the captured tolerance.
 They are ignored with the other facet data after a source identity change.
 
 The form's tolerance field reissues `/facet` for its original seed. Re-selection

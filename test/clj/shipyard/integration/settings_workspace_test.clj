@@ -127,3 +127,23 @@
       (let [database (store/open! directory)]
         (try (is (= :auto (settings/theme! database))) (finally (store/close! database))))
       (finally (fs/delete-tree directory)))))
+
+(deftest seam-tolerance-http-validation-and-persistence
+  (let [started (fixture/start!) handler (:handler started) database (:shipyard.store/db (:system started))]
+    (try
+      (is (= 0.005 (settings/seam-tolerance! database)))
+      (doseq [value ["0" "0.003" "0.1"]]
+        (is (= 200 (:status (handler (mock/request :post "/settings/seams" {"seam-tolerance-mm" value}))))))
+      (doseq [value ["-0.1" "0.101" "NaN" "Infinity" "bad" ""]]
+        (is (= 422 (:status (handler (mock/request :post "/settings/seams" {"seam-tolerance-mm" value}))))))
+      (is (= 0.1 (settings/seam-tolerance! database)))
+      (finally (fixture/stop! started))))
+  (let [directory (fs/create-temp-dir)]
+    (try
+      (let [database (store/open! directory)]
+        (try (settings/save-seam-tolerance! database 0.0025)
+             (finally (store/close! database))))
+      (let [database (store/open! directory)]
+        (try (is (= 0.0025 (settings/seam-tolerance! database)))
+             (finally (store/close! database))))
+      (finally (fs/delete-tree directory)))))

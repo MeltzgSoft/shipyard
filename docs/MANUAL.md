@@ -88,6 +88,19 @@ When upgrading, Shipyard preserves a selection from the old
 After that, use **Settings → Library folder** to change it; editing the old file does not change
 the database selection. Shipyard leaves your system `config.edn` untouched.
 
+### Mount face seam tolerance
+
+In **Settings → Mount face selection**, set **Seam tolerance (mm)** and press
+**Save face selection**. The default is **0.005 mm** (five microns), enough to
+bridge tiny STL gaps such as the Mech Cruiser Hull's 0.002 mm cap seam. Set it
+to **0** to require touching edges; values from 0 to 0.1 mm are supported.
+Larger values may connect nearby features that you intended to keep separate.
+
+This is a global default for new face picks and angle re-selections. Existing
+mounts retain their selected triangles and the tolerance used to author them.
+Repick an incomplete face to apply the new default. Preview, trimming and Save
+use the picked face's tolerance. Source STL files remain unchanged.
+
 ### Classification values and mount-cut defaults
 
 In **Settings**, add, rename or delete **Faction**, **Class**, and **Role** values.

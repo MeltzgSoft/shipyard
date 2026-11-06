@@ -3,7 +3,10 @@
             [shipyard.settings.handlers :as handlers]))
 
 (defn routes [deps]
-  (into [["/settings/theme" {:post {:handler (partial handlers/theme! deps)
+  (into [["/settings/seams" {:post {:handler (partial handlers/seams! deps)
+                                    :parameters {:form [:map [:seam-tolerance-mm string?]]}
+                                    :responses contracts/html-responses}}]
+         ["/settings/theme" {:post {:handler (partial handlers/theme! deps)
                                     :parameters {:form [:map [:theme [:enum "light" "dark" "auto"]]]}
                                     :responses contracts/html-responses}}]
          ["/settings/cuts" {:post {:handler (partial handlers/cuts! deps)

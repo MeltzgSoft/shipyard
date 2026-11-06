@@ -30,6 +30,8 @@
     (try
       (doseq [angle ["-1" "91" "NaN" "Infinity" "bad"]]
         (is (= 400 (:status (post! "/facet" (assoc pick :face-angle angle))))))
+      (doseq [seam ["-1" "0.101" "NaN" "Infinity" "bad"]]
+        (is (= 400 (:status (post! "/facet" (assoc pick :face-seam seam))))))
       (let [response (post! "/facet" pick)
             event (edn/read-string (get (json/read-str (get-in response [:headers "HX-Trigger"])) "shipyard:facet-preview"))
             indices (:facet-indices event)
@@ -58,6 +60,6 @@
         (is (= 422 (:status (post! "/mounts" (assoc form :face-angle "1")))))
         (is (= 200 (:status (post! "/mounts" form))))
         (let [saved (first (:part/mounts (:part (catalog/part-context! cat curved/id))))]
-          (is (= {:mesh-key key :indices indices :seed seed :angle-deg 50.0} (:mount/facet saved)))))
+          (is (= {:mesh-key key :indices indices :seed seed :angle-deg 50.0 :seam-mm 0.005} (:mount/facet saved)))))
       (is (= 409 (:status (post! "/facet" (assoc pick :mesh-key (apply str (repeat 64 "0")))))))
       (finally (fixture/stop! started)))))

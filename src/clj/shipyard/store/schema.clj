@@ -19,6 +19,7 @@
                [:store/version :scan/mtime :scan/size :scan/tris :library/revision :part/revision :part/tris :source/size
                 :source/mtime :mesh/tris :region/revision :chunk/index :chunk/version
                 :scheme/revision :ship/revision :loadout/revision :fleet-entry/order :mount/capacity :mount/order])
+   (attributes :db.type/double [:settings/mount-seam-tolerance-mm])
    (attributes :db.type/boolean
                [:source/present? :part/present? :part/renderable :part/weapons? :part/turrets?
                 :part/accepts-turrets? :layer/deleted? :scheme/deleted? :loadout/deleted? :loadout/allow-other-factions?

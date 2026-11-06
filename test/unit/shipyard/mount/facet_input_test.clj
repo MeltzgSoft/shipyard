@@ -43,3 +43,6 @@
     (is (input/in-facet? mesh [2 3] opts))
     (is (not (input/in-facet? mesh [4 5] opts)))
     (is (not (input/in-facet? mesh [0 11] opts)))))
+
+(deftest seam-selection-options
+  (is (= {:seam-tolerance-mm 0.002} (input/selection-options {:seam-tolerance-mm 0.005} {"face-seam" "0.002"}))))

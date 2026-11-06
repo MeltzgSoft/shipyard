@@ -68,6 +68,7 @@
    [:triangle-index [:fn #(boolean (and (string? %)
                                         (re-matches #"[0-9]+" %)))]]
    [:original-mount-id {:optional true} string?]
+   [:face-seam {:optional true} [:and string? [:fn facet-input/valid-seam?]]]
    [:face-angle {:optional true} [:and string? [:fn facet-input/valid-angle?]]]
    [:face-seed {:optional true} [:re #"[0-9]{1,10}"]]])
 
@@ -78,6 +79,7 @@
    [:kind string?]
    [:alignment-axis {:optional true} string?]
    [:facet-indices {:optional true} [:fn facet-input/valid-input?]]
+   [:face-seam {:optional true} [:and string? [:fn facet-input/valid-seam?]]]
    [:face-angle {:optional true} [:and string? [:fn facet-input/valid-angle?]]]
    [:face-seed {:optional true} [:re #"[0-9]{1,10}"]]])
 

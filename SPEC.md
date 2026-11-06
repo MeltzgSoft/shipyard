@@ -304,7 +304,12 @@ pick. An explicit angular selection grows by geometric edge connectivity, compar
 every candidate normal to the original clicked triangle; it does not require the
 candidate to share the seed plane and does not accumulate neighboring angle changes.
 Connectivity includes overlapping collinear edge segments, so a triangulation
-T-junction does not split an otherwise connected face. Point contacts alone do
+T-junction does not split an otherwise connected face. A global seam-distance
+tolerance in Settings defaults to 0.005 mm and can be set from 0 to 0.1 mm
+(0 requires touching edges). It bridges tiny source gaps in derived topology
+without changing source STLs. Picks retain their seam tolerance for preview,
+trimming, saving and later editing; changing Settings affects new picks and
+angle re-selections. There is no per-mount seam control. Point contacts alone do
 not connect faces. This supports curved ball-joint patches. The initial form value is 1°; requests with
 no angular override retain planar face selection. Changing tolerance reselects the
 full patch and recomputes its frame while preserving other draft fields and resetting

@@ -292,7 +292,7 @@
              :error error
              :mesh-key (get params "mesh-key")
              :facet-indices (facet-input/parse-indices (get params "facet-indices"))
-             :face-angle (get params "face-angle") :face-seed (some-> (get params "face-seed") (parse-long))}
+             :face-seam (get params "face-seam") :face-angle (get params "face-angle") :face-seed (some-> (get params "face-seed") (parse-long))}
       frame (assoc :frame frame)
       original-mount-id (assoc :mode :edit
                                :original-mount-id original-mount-id))))

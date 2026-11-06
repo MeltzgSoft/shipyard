@@ -247,10 +247,12 @@
               :else
               (try
                 (let [mesh (wire/decode (Files/readAllBytes (fs/path tier0)))
+                      face-options (settings-db/face-options! (:store catalog) cache)
                       {:keys [facet-indices frame points kind-hint roll-ambiguous? roll-source]}
                       (facet/select mesh triangle-index
-                                    (facet-input/selection-options (select-keys cache [:facet-angle-deg :facet-plane-epsilon-mm]) params))
-                      outline (mesh-edges/outline (pitting-geometry/mesh-triangles mesh facet-indices))
+                                    (facet-input/selection-options face-options (dissoc params "face-seam")))
+                      outline (mesh-edges/outline (pitting-geometry/mesh-triangles mesh facet-indices)
+                                                  (:seam-tolerance-mm face-options))
                       frame (assoc frame
                                    :face-points points :mount/outline outline)
                       frame (assoc frame :mount/split (split/metadata-for frame frame :horizontal))
@@ -266,6 +268,7 @@
                                        :frame frame
                                        :mesh-key mesh-key
                                        :facet-indices facet-indices
+                                       :face-seam (:seam-tolerance-mm face-options)
                                        :face-seed triangle-index
                                        :face-angle (or (get params "face-angle") (:facet-angle-deg cache) 1)
                                        :kind-hint kind-hint
@@ -337,7 +340,7 @@
              (facet-input/valid-input? (get params "facet-indices")))
     (let [indices (facet-input/parse-indices (get params "facet-indices"))
           mesh (wire/decode (Files/readAllBytes (fs/path (cache/tier-file cache mesh-key 0))))]
-      (when (facet-input/in-facet? mesh indices (facet-input/selection-options (select-keys cache [:facet-angle-deg :facet-plane-epsilon-mm]) params))
+      (when (facet-input/in-facet? mesh indices (facet-input/selection-options (select-keys cache [:facet-angle-deg :facet-plane-epsilon-mm :seam-tolerance-mm]) params))
         indices))))
 
 (defn- attach-selected-facet [result mesh-key facet-indices params]
@@ -345,6 +348,7 @@
     result
     (let [mount-id (get-in result [:mount :mount/id])
           face (cond-> {:mesh-key mesh-key :indices facet-indices}
+                 (get params "face-seam") (assoc :seam-mm (Double/parseDouble (get params "face-seam")))
                  (get params "face-angle") (assoc :angle-deg (Double/parseDouble (get params "face-angle")))
                  (get params "face-seed") (assoc :seed (parse-long (get params "face-seed"))))]
       (update result :mounts
@@ -369,7 +373,8 @@
                                       (get-in previous [:mount/facet :indices])))
           outline (if indices
                     (mesh-edges/outline (pitting-geometry/mesh-triangles
-                                         (wire/decode (Files/readAllBytes (fs/path (cache/tier-file cache mesh-key 0)))) indices))
+                                         (wire/decode (Files/readAllBytes (fs/path (cache/tier-file cache mesh-key 0)))) indices)
+                                        (:seam-tolerance-mm (facet-input/selection-options cache params)))
                     (or (:mount/outline previous) (get-in result [:mount :mount/outline])))
           mounts (mapv (fn [mount]
                          (if (= id (:mount/id mount))
@@ -391,7 +396,10 @@
   [{:keys [catalog library cache] :as deps} {:keys [params]}]
   (let [part-id (get params "part-id")
         part (:part (db/part-context! catalog part-id))
-        mesh-key (index/mesh-key! library part-id)]
+        mesh-key (index/mesh-key! library part-id)
+        cache (merge cache (settings-db/face-options! (:store catalog) cache))
+        params (if (contains? params "face-seam") params
+                   (assoc params "face-seam" (str (:seam-tolerance-mm cache))))]
     (cond
       (nil? (:part/id part))
       (facet-error :part-not-found "That part is no longer in the library." part-id 404)
@@ -464,6 +472,7 @@
                         :frame frame
                         :mesh-key mesh-key
                         :facet-indices indices
+                        :face-seam (when indices (or (:seam-mm selected) 0.0))
                         :face-seed (when indices (or (:seed selected) (first indices)))
                         :face-angle (when indices (or (:angle-deg selected) (get-in deps [:cache :facet-angle-deg]) 1))
                         :mode :edit

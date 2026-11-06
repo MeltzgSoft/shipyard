@@ -3,7 +3,8 @@
   (:require [clojure.edn :as edn]
             [malli.core :as m]
             [shipyard.mesh.facet :as facet]
-            [shipyard.math :as math]))
+            [shipyard.math :as math]
+            [shipyard.settings.transforms :as settings]))
 
 (def ^:private valid-indices?
   (m/validator [:vector {:min 1 :max 4096} [:and integer? [:>= 0] [:<= 2147483647]]]))
@@ -25,10 +26,15 @@
   (let [angle (math/parse-finite-double value)]
     (boolean (and angle (<= 0 angle 90)))))
 
+(defn valid-seam? [value]
+  (settings/valid-seam? (math/parse-finite-double value)))
+
 (defn selection-options [base params]
   (let [angle (or (:face-angle params) (get params "face-angle"))
+        seam (or (:face-seam params) (get params "face-seam"))
         seed (or (:face-seed params) (get params "face-seed"))]
     (cond-> base
+      (some? seam) (assoc :seam-tolerance-mm (math/parse-finite-double seam))
       (some? angle) (assoc :selection-angle-deg (math/parse-finite-double angle))
       (some? seed) (assoc :selection-seed (if (integer? seed) seed (parse-long seed))))))
 

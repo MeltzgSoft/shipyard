@@ -266,9 +266,21 @@
         (let [result (facet/select surface seed opts)]
           (is (= expected (:facet-indices result)))
           (is (vec-close? [0 0 0] (get-in result [:frame :mount/pos]))))))
-    (testing "point contact, non-collinear crossings, and tiny gaps do not join islands"
+    (testing "strict selection keeps point contacts, crossings and tiny gaps separate"
       (doseq [other [[[[0 0 12.5] [-2 0 13.5] [2 0 13.5]]]
                      [[[0 0 12.5001] [0 0 14] [2 0 12.5001]]]
                      [[[-1 0 -13] [-1 0 13] [1 0 0]]]]]
         (is (= expected (:facet-indices (facet/select (mesh (into seam/split-triangles other)) 2
-                                                      {:selection-angle-deg 0}))))))))
+                                                      {:selection-angle-deg 0 :seam-tolerance-mm 0}))))))))
+
+(deftest seam-distance-selection-test
+  (let [surface (mesh seam/gap-triangles)]
+    (testing "the default crosses the Mech Cruiser's 0.002 mm gap at zero angle"
+      (doseq [seed [2 6]]
+        (is (= (vec (range 8)) (:facet-indices (facet/select surface seed {:selection-angle-deg 0}))))))
+    (testing "zero and smaller-than-gap settings keep halves separate"
+      (doseq [distance [0.0 0.001]]
+        (is (= (vec (range 4)) (:facet-indices (facet/select surface 2 {:seam-tolerance-mm distance}))))))
+    (testing "invalid distances are rejected"
+      (doseq [distance [-1 0.101 Double/NaN Double/POSITIVE_INFINITY]]
+        (is (= :invalid-seam-tolerance (code-of #(facet/select surface 2 {:seam-tolerance-mm distance}))))))))

@@ -46,3 +46,16 @@
     (with-open [out (io/output-stream file)]
       (.write out ^bytes (fixture/->binary-stl split-triangles))))
   root)
+
+(def gap-triangles
+  ;; The Mech Cruiser cap has a 0.002 mm separation between coplanar halves.
+  (mapv (fn [i triangle]
+          (mapv (fn [[x y z]] [(if (< i 4) (- x 0.002) x) y z]) triangle))
+        (range) face-triangles))
+
+(defn build-gap! [root]
+  (let [file (io/file (str root) id "unsupported.stl")]
+    (fs/create-dirs (.getParentFile file))
+    (with-open [out (io/output-stream file)]
+      (.write out ^bytes (fixture/->binary-stl gap-triangles))))
+  root)
