@@ -1,7 +1,8 @@
 (ns shipyard.mesh.edges-test
   (:require [clojure.test :refer [deftest is testing]]
             [shipyard.mesh.edges :as edges]
-            [shipyard.mount-seam-fixture :as seam]))
+            [shipyard.mount-seam-fixture :as seam]
+            [shipyard.mount-boundary-fixture :as boundary]))
 
 (deftest split-edges-test
   (testing "a long edge is split at existing vertices, retaining winding"
@@ -40,3 +41,12 @@
     (let [a [0 0 0] b [0 2 0] c [0.002 0 0] m [0.002 1 0] d [0.002 2 0]
           result (edges/split-edges [[a b] [c m] [m d]] 0.005)]
       (is (= (set (first result)) (set (mapcat identity (rest result))))))))
+
+(deftest connected-thin-triangulation-keeps-its-boundary
+  (testing "a near-edge interior vertex does not break an existing complete outline"
+    (let [strict (edges/outline boundary/triangles 0)]
+      (is (= 1 (count strict)))
+      (is (= strict (edges/outline boundary/triangles 0.005)))
+      (is (= 4 (count (first strict))))))
+  (testing "duplicate source faces can still lack an unambiguous cut boundary"
+    (is (nil? (edges/outline boundary/duplicate-triangles 0.005)))))

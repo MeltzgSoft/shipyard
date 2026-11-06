@@ -1892,7 +1892,11 @@ Save accepts a bounded, distinct, nonempty vector (at most 4096 indices) from on
 connected authoritative planar or angular selection. It checks current mesh key, source stamps, cache
 presence, bounds and facet membership before storing anything. Invalid selections
 return feedback into the form status without replacing the erase draft. Trimmed
-boundaries are reconstructed from tier-0 triangles and unsupported loops are rejected.
+boundaries are reconstructed from tier-0 triangles. A valid retained selection can
+save an ordinary mount even when it has no usable closed outline: keep its frame
+and exact triangle membership, omit the outline, and retain direct highlighting.
+Require a supported closed outline only when a generated physical cut is requested;
+feedback must offer saving without a cut rather than assuming the user trimmed.
 Mount position/axes/roll and assembly capacity bounds stay fixed; membership and the cut
 outline change, and pit centers derive from the retained outline bounds. Linked mirrors reflect the original subset. Definitions and cut
 exports retain the existing atomic publication contract.
@@ -1961,6 +1965,13 @@ at their seam; those caps must not divide the exterior mounting surface. Winding
 and the seed's angle/plane tests still govern admission. Server-derived outlines
 use the same edge splitting before internal edge cancellation, so the seam does
 not become an outline, influence the roll default, or block preview/Save.
+After endpoint normalization, outline reconstruction first subdivides using the
+arithmetic line epsilon alone. Preserve a complete single loop rather than
+inserting merely nearby vertices into an already-connected face: thin source
+triangulation can put intentional vertices within the seam tolerance of an edge.
+Only try approximate line subdivision when needed; if that fails, retain any
+valid strict loops. Never discard a valid strict boundary because an approximate
+reconstruction fails.
 
 Starting at the selected triangle, flood through neighbours that satisfy both tests
 against the **starting triangle**, not against the most recently visited triangle:
@@ -2010,7 +2021,8 @@ payloads, although they remain transient.
 Each candidate is queued at most once, including rejected internal faces. All connected
 triangles meeting the seed's plane/normal tests are included, even if the source has
 duplicated same-facing coplanar triangles. Picking does not repair or deduplicate source
-geometry; unsupported outlines retain the existing frame fallback and cut/trim validation.
+geometry; unsupported outlines retain the frame fallback and selected faces for
+ordinary mounts. Cut requests retain their boundary validation.
 Disconnected coplanar islands are never joined by plane alone. The manifold-only adjacency
 used for boundary kind hints and legacy frame recovery retains its existing behavior;
 the expanded candidate rule belongs to explicit face picking.

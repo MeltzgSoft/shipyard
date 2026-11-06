@@ -29,7 +29,9 @@
         (let [held (atom nil) ^Page page (:page driver)]
           (.route page "**/facet" (reify Consumer (accept [_ route] (reset! held route))))
           (s/fill-and-blur! driver "input[name=face-angle]" "50")
-          (is (s/wait-until #(some? @held)))
+          ;; Playwright dispatches Java route callbacks during API calls.
+          ;; Pump the page while waiting so this does not depend on .blur timing.
+          (is (s/wait-until #(do (s/js driver "() => true") (some? @held))))
           (s/fill-and-blur! driver "input[name=mount-id]" "ball-seat-late")
           (.resume ^Route @held)
           (.unroute page "**/facet"))

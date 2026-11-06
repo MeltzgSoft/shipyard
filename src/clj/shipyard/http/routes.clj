@@ -387,8 +387,8 @@
                      (wizard/mirror-mount base (:mount/mirror-plane base) (:mount/mirror-offset base)
                                           (:mount/mirror-id base) (:part/orientation part)))]
       (cond
-        (and indices (nil? outline)) {:error "The selected triangles do not have a supported boundary. Undo the erase or pick the face again."
-                                      :invalid-selection? true}
+        (and cut? indices (nil? outline)) {:error "The selected face cannot form a closed cut outline. Turn off Create pitted version to save the mount without a cut, or select a surface with a closed boundary."
+                                           :invalid-selection? true}
         (and cut? (nil? indices)) {:error "The source mesh changed. Pick the mount face again before generating cuts."}
         :else (assoc result :mounts (if mirrored (wizard/replace-mount mounts mirrored) mounts))))))
 

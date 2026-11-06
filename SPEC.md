@@ -315,7 +315,10 @@ no angular override retain planar face selection. Changing tolerance reselects t
 full patch and recomputes its frame while preserving other draft fields and resetting
 trim history. Saving retains the mesh-scoped clicked seed, angle and selected indices;
 editing restores them, including when trimming removed the seed triangle itself.
-Selection and save/preview validation use the same backend rules. The feature changes
+Selection and save/preview validation use the same backend rules. A valid face
+selection can be saved as a mount without a generated cut even if no usable closed
+outline can be reconstructed; retain its frame and selected triangles. Physical
+cut generation requires a supported closed boundary. The feature changes
 surface selection, not assembly joint movement or physical cut primitives.
 
 ### 5.5 Mount records are the durable artefact

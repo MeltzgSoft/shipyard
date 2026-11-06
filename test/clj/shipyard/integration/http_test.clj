@@ -946,7 +946,7 @@
       (is (= 422 (:status (mount-post h (assoc params :action "replace")))))
       (is (= before (:part/mounts (:part (catalog-db/part-context! (:catalog sys) hull-id))))))))
 
-(deftest trimmed-boundary-errors-preserve-the-form-and-undo-history
+(deftest trimmed-cut-boundary-errors-preserve-the-form-and-undo-history
   (let [sys (system (library-tree)) h (handler sys)
         mesh (authoring-mesh (mapcat (fn [[x y]]
                                        [[[x y 0] [(inc x) y 0] [x (inc y) 0]]
@@ -957,11 +957,12 @@
         ;; These triangles touch at only one vertex, making the selected
         ;; boundary ambiguous, although both belong to the original facet.
         response (mount-post h {:part-id hull-id :mesh-key key :mount-id "trimmed" :kind "socket" :accepts "weapon"
-                                :capacity "1" :frame (pr-str (:frame preview)) :facet-indices "[1 6]" :action "create"})]
+                                :capacity "1" :frame (pr-str (:frame preview)) :facet-indices "[1 6]" :action "create"
+                                :create-pitted "on" :cut-kind "recess" :cut-depth "0.1" :cut-border "0"})]
     (is (= 422 (:status response)))
     (is (= "find [data-mount-face-status]" (get-in response [:headers "HX-Retarget"])))
     (is (= "innerHTML" (get-in response [:headers "HX-Reswap"])))
-    (is (str/includes? (:body response) "Undo the erase"))
+    (is (str/includes? (:body response) "save the mount without a cut"))
     (is (empty? (:part/mounts (:part (catalog-db/part-context! (:catalog sys) hull-id)))))))
 
 (deftest translated-oriented-mirror-defaults-are-saved-and-retained

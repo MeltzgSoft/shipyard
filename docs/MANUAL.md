@@ -487,7 +487,10 @@ one triangle. The mount frame and assembly capacity positions remain fixed; pits
 recenter in the retained face bounds, and recess outlines follow the retained triangles.
 Mirrored highlights and cuts reflect the
 trimmed original selection. Cancel discards the edits and source STL bytes stay intact.
-A stale source or an invalid boundary must be corrected before saving.
+A stale source must be reopened before saving. A selected face can be saved as a
+mount without generating a cut, even if its boundary is too complex to reconstruct.
+Physical cuts require a supported closed outline. If that outline is unavailable,
+turn off **Create pitted version** to save the mount and selected face without a cut.
 
 To make a printable variant, enable **Create pitted version** in the last section
 of the mount form, just above its save buttons.

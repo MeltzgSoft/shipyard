@@ -42,46 +42,50 @@
                     {} points)]
         (mapv #(mapv representatives %) edges)))))
 
+(defn- subdivide-edges [edges line-tolerance]
+  (if (empty? edges)
+    []
+    (let [points (vec (distinct (mapcat identity edges)))
+          axes (projection-axes points)
+          tree (STRtree.)]
+      (doseq [point points] (.insert tree (envelope axes point point) point))
+      (.build tree)
+      (mapv (fn [[a b]]
+              (let [delta (math/subtract b a)
+                    length2 (math/dot delta delta)
+                    interior (when (pos? length2)
+                               (keep (fn [point]
+                                       (let [offset (math/subtract point a)
+                                             t (/ (math/dot offset delta) length2)
+                                             residual (math/subtract offset (math/scale t delta))]
+                                         (when (and (< 0.0 t 1.0)
+                                                    (<= (math/dot residual residual)
+                                                        (* line-tolerance line-tolerance)))
+                                           [t point])))
+                                     (.query tree (doto (envelope axes a b) (.expandBy (double line-tolerance))))))
+                    path (into [a] (concat (map second (sort-by first interior)) [b]))]
+                (if (= a b) [] (mapv vector path (rest path)))))
+            edges))))
+
 (defn split-edges
   "Return directed subedges per input edge, split at existing interior vertices.
-  A spatial index limits candidates; the final test is in all three dimensions.
   An optional tolerance clusters nearby endpoints in derived topology only,
   bounded by distance to a fixed representative (no transitive tolerance creep).
-  Subdivision vertices must lie within the larger of tolerance and 1e-6 mm
-  of the segment line.
   Point contact alone creates no shared segment; source buffers are untouched."
   ([edges] (split-edges edges 0.0))
   ([edges tolerance]
-   (let [edges (close-vertices edges tolerance)
-         line-tolerance (max line-epsilon-mm tolerance)]
-     (if (empty? edges)
-       []
-       (let [points (vec (distinct (mapcat identity edges)))
-             axes (projection-axes points)
-             tree (STRtree.)]
-         (doseq [point points] (.insert tree (envelope axes point point) point))
-         (.build tree)
-         (mapv (fn [[a b]]
-                 (let [delta (math/subtract b a)
-                       length2 (math/dot delta delta)
-                       interior (when (pos? length2)
-                                  (keep (fn [point]
-                                          (let [offset (math/subtract point a)
-                                                t (/ (math/dot offset delta) length2)
-                                                residual (math/subtract offset (math/scale t delta))]
-                                            (when (and (< 0.0 t 1.0)
-                                                       (<= (math/dot residual residual)
-                                                           (* line-tolerance line-tolerance)))
-                                              [t point])))
-                                        (.query tree (doto (envelope axes a b) (.expandBy (double tolerance))))))
-                       path (into [a] (concat (map second (sort-by first interior)) [b]))]
-                   (if (= a b) [] (mapv vector path (rest path)))))
-               edges))))))
+   (subdivide-edges (close-vertices edges tolerance) (max line-epsilon-mm tolerance))))
 
 (defn outline
   "Recover a facet outline after cancelling internal edges, including split seams."
   ([triangles] (outline triangles 0.0))
   ([triangles tolerance]
-   (cut/outline-edges
-    (mapcat identity
-            (split-edges (vec (for [[a b c] triangles [p q] [[a b] [b c] [c a]]] [p q])) tolerance)))))
+   (let [directed (vec (for [[a b c] triangles [p q] [[a b] [b c] [c a]]] [p q]))
+         normalized (close-vertices directed tolerance)
+         strict (cut/outline-edges (mapcat identity (subdivide-edges normalized line-epsilon-mm)))]
+     ;; A near-edge vertex can be intentional thin triangulation, not a seam.
+     ;; Preserve a complete loop before considering approximate subdivisions.
+     (if (= 1 (count strict))
+       strict
+       (or (cut/outline-edges (mapcat identity (subdivide-edges normalized (max line-epsilon-mm tolerance))))
+           strict)))))
