@@ -865,6 +865,7 @@
                                            :indices (vec facet-indices)
                                            :capacity (or (:mount/capacity mount) 1)
                                            :direction (keyword (or (input-value form "[name=split-direction]") "horizontal"))}
+                                    (input-value form "[name=face-rule]") (assoc :face-rule (keyword (input-value form "[name=face-rule]")))
                                     (input-value form "[name=face-seam]") (assoc :face-seam (js/Number (input-value form "[name=face-seam]")))
                                     (input-value form "[name=face-angle]") (assoc :face-angle (js/Number (input-value form "[name=face-angle]")))
                                     (input-value form "[name=face-seed]") (assoc :face-seed (js/parseInt (input-value form "[name=face-seed]") 10))
@@ -948,7 +949,7 @@
 (defn- restore-pending-mount-edits! [sent latest]
   (when-let [form (.querySelector js/document ".mount-wizard__form")]
     (doseq [field (set (concat (keys sent) (keys latest)))
-            :when (and (not (contains? #{"part-id" "mesh-key" "frame" "facet-indices" "face-seed" "face-angle" "face-seam"} field))
+            :when (and (not (contains? #{"part-id" "mesh-key" "frame" "facet-indices" "face-seed" "face-angle" "face-seam" "face-rule"} field))
                        (not= (get sent field) (get latest field)))
             control (array-seq (.querySelectorAll form (str "[name='" field "']")))]
       (if (= "checkbox" (.-type control))

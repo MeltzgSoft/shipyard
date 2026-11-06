@@ -398,14 +398,17 @@ triangulation seam where one side has an extra vertex; both halves are selected
 even at 0° tolerance. Surfaces touching only at a point remain separate.
 For a curved connection such as a ball joint, first pick a triangle, then adjust
 **Face angle tolerance (°)** in the mount form. Values from 0 to 90 degrees select
-connected triangles whose normals differ from the original clicked triangle by no
-more than that angle. A larger value expands around the curved surface; the reference
-does not drift from triangle to triangle. The initial value is 1°. The first pick uses the usual planar selection.
+connected triangles using the same rule as the region painter's **Faces** mode:
+the angle between each pair of neighboring triangles must be within the tolerance.
+Selection follows gradual curves and stops at larger bends. The initial value is
+1°, and the first pick uses that same neighboring-angle rule.
 
 Changing tolerance updates the highlight and derived frame while keeping the other
 mount fields. It starts a fresh full selection at that tolerance, so it resets face
 trimming. Saved mounts retain their clicked triangle and tolerance; **Edit** restores
-them along with the exact retained faces. This controls face selection only; it does
+them along with the exact retained faces. Older mounts keep their previous
+selection until you pick again or change the angle; re-selection uses the new
+neighboring-angle rule. This controls face selection only; it does
 not add a moving ball-joint assembly or change the physical cut shape.
 
 Configured interfaces are always colored in the viewer when the part is loaded; the

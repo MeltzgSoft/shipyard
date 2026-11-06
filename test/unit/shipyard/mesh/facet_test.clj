@@ -6,7 +6,9 @@
             [shipyard.geom :as geom]
             [shipyard.mesh.edges :as mesh-edges]
             [shipyard.mount-seam-fixture :as seam]
-            [shipyard.mesh.facet :as facet]))
+            [shipyard.mesh.facet :as facet]
+            [shipyard.regions.surfaces :as surfaces]
+            [shipyard.pitting.geometry :as geometry]))
 
 (defn- mesh
   "Build an indexed mesh with one fresh vertex id per triangle corner.
@@ -243,20 +245,32 @@
 (deftest curved-face-selection
   (let [surface (mesh curved/triangles)]
     (is (= 2 (count (:facet-indices (facet/select surface 0)))))
-    (is (= 4 (count (:facet-indices (facet/select surface 0 {:selection-angle-deg 25})))))
-    (is (= 8 (count (:facet-indices (facet/select surface 0 {:selection-angle-deg 50})))))
+    (is (= 2 (count (:facet-indices (facet/select surface 0 {:selection-angle-deg 10})))))
+    (is (= 12 (count (:facet-indices (facet/select surface 0 {:selection-angle-deg 20})))))
     (is (= :invalid-angle (code-of #(facet/select surface 0 {:selection-angle-deg 91}))))
     (is (true? (geom/valid-frame? (:frame (facet/select surface 0 {:selection-angle-deg 50})))))))
 
-(deftest spherical-cap-stays-bounded-by-the-clicked-normal
-  (let [surface (mesh (fixtures/uv-sphere 5.0 12 24))
-        result (facet/select surface 0 {:selection-angle-deg 50})]
-    (is (> (count (:facet-indices result)) 2))
-    (is (< (count (:facet-indices result)) (/ (:index-count surface) 6)))
-    (is (geom/valid-frame? (:frame result))))
-  (let [copy (mapv #(mapv (partial math/add [100.0 0.0 0.0]) %) curved/triangles)
-        surface (mesh (into curved/triangles copy))]
-    (is (= 8 (count (:facet-indices (facet/select surface 0 {:selection-angle-deg 50})))))))
+(deftest angular-selection-matches-region-painter-components
+  (testing "neighboring bends can carry selection beyond the clicked normal"
+    (doseq [triangles [curved/triangles curved/gentle-triangles (fixtures/uv-sphere 5.0 12 24) (fixtures/cube 2)]
+            angle [0 1 10 20 50 90]
+            :let [surface (mesh triangles)
+                  canonical (geometry/mesh-triangles surface)
+                  expected (vec (sort (first (surfaces/groups canonical angle))))
+                  result (facet/select surface 0 {:selection-angle-deg angle :seam-tolerance-mm 0})]]
+      (is (= expected (:facet-indices result)))
+      (is (geom/valid-frame? (:frame result)))))
+  (testing "closed-surface normal cancellation falls back to the clicked face normal"
+    (is (vec-close? [0 0 1]
+                    (get-in (facet/select (mesh (fixtures/cube 2)) 0 {:selection-angle-deg 90})
+                            [:frame :mount/axis]))))
+  (testing "disconnected copies remain separate"
+    (let [copy (mapv #(mapv (partial math/add [100.0 0.0 0.0]) %) curved/triangles)
+          surface (mesh (into curved/triangles copy))]
+      (is (= 12 (count (:facet-indices (facet/select surface 0 {:selection-angle-deg 20})))))))
+  (testing "legacy seed-bound selections keep their old membership when edited"
+    (is (= 4 (count (:facet-indices (facet/select (mesh curved/triangles) 0
+                                                  {:selection-angle-deg 25 :selection-rule :seed})))))))
 
 (deftest split-seam-selection-test
   (let [surface (mesh seam/split-triangles)

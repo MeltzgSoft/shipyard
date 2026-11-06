@@ -4,6 +4,7 @@
   Input is the tier-0 `.symesh` decoded by `shipyard.wire/decode`: positions,
   indices, and counts in the exact triangle order the browser clicked."
   (:require [shipyard.math :as math]
+            [shipyard.regions.surfaces :as surfaces]
             [shipyard.settings.transforms :as settings]
             [shipyard.mesh.edges :as mesh-edges]
             [shipyard.triangle :as triangle]
@@ -126,38 +127,80 @@
   (and (>= (+ (math/dot (:normal candidate) (:normal start)) 1.0e-12) cos-angle)
        (or (nil? epsilon) (every? #(point-on-plane? start epsilon %) (:points candidate)))))
 
-(defn- facet-indices [mesh triangle-index {:keys [facet-angle-deg facet-plane-epsilon-mm selection-angle-deg seam-tolerance-mm]}]
-  (let [start (require-triangle mesh triangle-index)
-        cos-angle (Math/cos (Math/toRadians (double (or selection-angle-deg facet-angle-deg))))
-        candidates (into #{} (filter (fn [i]
-                                       (when-let [candidate (triangle-geometry mesh i)]
-                                         (facet-neighbour? start candidate cos-angle
-                                                           (when-not (some? selection-angle-deg) facet-plane-epsilon-mm)))))
-                         (range (triangle-count mesh)))
-        directed (vec (for [i (sort candidates)
+(defn- edge-adjacency [edges]
+  (reduce (fn [result tris]
+            (let [owners (set tris)]
+              (reduce (fn [result i] (update result i (fnil into #{}) (disj owners i))) result owners)))
+          {} (vals edges)))
+
+(defn- connected [adj seeds]
+  (loop [pending (vec seeds) selected #{}]
+    (if-let [i (peek pending)]
+      (if (contains? selected i)
+        (recur (pop pending) selected)
+        (recur (into (pop pending) (get adj i)) (conj selected i)))
+      selected)))
+
+(defn- seam-adjacency [mesh candidates tolerance]
+  (let [directed (vec (for [i (sort candidates)
                             :let [[a b c] (triangle-points mesh i)]
                             edge [[a b] [b c] [c a]]]
                         [i edge]))
         edges (reduce (fn [result [[i _] segments]]
                         (reduce (fn [result [a b]] (update result (edge-key a b) (fnil conj #{}) i))
                                 result segments))
-                      {} (map vector directed (mesh-edges/split-edges (mapv second directed) seam-tolerance-mm)))
-        adjacent (reduce (fn [result tris]
-                           (reduce (fn [result i] (update result i (fnil into #{}) (disj tris i))) result tris))
-                         {} (vals edges))
-        neighbours #(get adjacent % #{})
-        initial (neighbours triangle-index)]
-    ;; Split collinear overlapping edges before lookup: A--B must connect to
-    ;; A--M and M--B at a T-junction. Membership remains bounded by the seed.
-    (loop [queue (seq (sort initial))
-           seen (conj initial triangle-index)
-           selected #{triangle-index}]
-      (if-let [candidate-index (first queue)]
-        (let [unseen (remove seen (neighbours candidate-index))]
-          (recur (concat (next queue) (sort unseen))
-                 (into seen unseen)
-                 (conj selected candidate-index)))
-        (vec (sort selected))))))
+                      {} (map vector directed (mesh-edges/split-edges (mapv second directed) tolerance)))]
+    (edge-adjacency edges)))
+
+(defn- selection-bounds [mesh indices]
+  (reduce (fn [[lo hi] point] [(mapv min lo point) (mapv max hi point)])
+          [(vec (repeat 3 Double/POSITIVE_INFINITY)) (vec (repeat 3 Double/NEGATIVE_INFINITY))]
+          (mapcat #(triangle-points mesh %) indices)))
+
+(defn- near-bounds? [mesh i [lo hi] tolerance]
+  (let [points (triangle-points mesh i)]
+    (every? (fn [axis]
+              (and (<= (reduce min (map #(nth % axis) points)) (+ (nth hi axis) tolerance))
+                   (>= (reduce max (map #(nth % axis) points)) (- (nth lo axis) tolerance))))
+            (range 3))))
+
+(defn- angular-indices [mesh triangle-index angle tolerance]
+  (let [normals (into {} (keep (fn [i]
+                                 (when-let [geometry (triangle-geometry mesh i)]
+                                   [i (:normal geometry)])))
+                      (range (triangle-count mesh)))
+        edges (edge-triangles mesh (keys normals))
+        adjacent (surfaces/angle-adjacency normals (edge-adjacency edges) angle)]
+    (loop [selected (connected adjacent [triangle-index])]
+      (let [boundary (into #{} (filter (fn [i]
+                                         (some #(= 1 (count (filter selected (get edges %))))
+                                               (triangle-edge-keys mesh i)))) selected)]
+        (if (or (empty? boundary) (= (count selected) (count normals)))
+          (vec (sort selected))
+          (let [bounds (selection-bounds mesh boundary)
+                nearby (into boundary (filter #(and (not (contains? selected %))
+                                                    (near-bounds? mesh % bounds (max tolerance 1e-6)))) (keys normals))
+                ;; Exact connectivity already covers the interior. Only repair
+                ;; boundary triangles and nearby candidates, not the whole mesh.
+                local (surfaces/angle-adjacency normals (seam-adjacency mesh nearby tolerance) angle)
+                joined (connected local boundary)
+                grown (connected adjacent (into selected joined))]
+            (if (= selected grown)
+              (vec (sort selected))
+              (recur grown))))))))
+
+(defn- facet-indices [mesh triangle-index {:keys [facet-angle-deg facet-plane-epsilon-mm selection-angle-deg seam-tolerance-mm selection-rule]}]
+  (let [start (require-triangle mesh triangle-index)]
+    (if (and (some? selection-angle-deg) (not= :seed selection-rule))
+      (angular-indices mesh triangle-index selection-angle-deg seam-tolerance-mm)
+      ;; Preserve the planar API and older saved seed-bound selections.
+      (let [cos-angle (Math/cos (Math/toRadians (double (or selection-angle-deg facet-angle-deg))))
+            candidates (into #{} (filter (fn [i]
+                                           (when-let [candidate (triangle-geometry mesh i)]
+                                             (facet-neighbour? start candidate cos-angle
+                                                               (when-not (some? selection-angle-deg) facet-plane-epsilon-mm)))))
+                             (range (triangle-count mesh)))]
+        (vec (sort (connected (seam-adjacency mesh candidates seam-tolerance-mm) [triangle-index])))))))
 
 (defn- distance-squared [a b]
   (math/dot (math/subtract a b) (math/subtract a b)))
@@ -225,17 +268,15 @@
                      points)]
     (mapv #(/ (+ %1 %2) 2.0) mins maxs)))
 
-(defn- facet-axis [mesh indices]
-  (let [axis (math/normalize
-              (reduce
-               (fn [acc triangle-index]
-                 (math/add acc (:cross (require-triangle mesh triangle-index))))
-               [0.0 0.0 0.0]
-               indices))]
-    (or axis
+(defn- facet-axis [mesh indices fallback]
+  (let [[sum area] (reduce (fn [[sum area] triangle-index]
+                             (let [{:keys [cross area2]} (require-triangle mesh triangle-index)]
+                               [(math/add sum cross) (+ area area2)]))
+                           [[0.0 0.0 0.0] 0.0] indices)
+        axis (math/normalize sum (max degenerate-area2-epsilon (* area 1e-10)))]
+    (or axis fallback
         (throw (ex-info "facet normal is degenerate"
-                        {:code :degenerate-facet
-                         :facet-indices indices})))))
+                        {:code :degenerate-facet :facet-indices indices})))))
 
 (defn- fallback-roll [axis]
   (or (some (fn [world-axis]
@@ -297,9 +338,11 @@
       {:roll roll :roll-ambiguous? (boolean ambiguous?) :roll-source :boundary-edge-normal}
       (world-axis-roll axis))))
 
-(defn- frame [mesh indices opts]
+(defn- frame [mesh indices triangle-index opts]
   (let [points (vec (unique-points mesh indices))
-        axis (facet-axis mesh indices)
+        axis (facet-axis mesh indices (when (and (some? (:selection-angle-deg opts))
+                                                 (not= :seed (:selection-rule opts)))
+                                        (:normal (require-triangle mesh triangle-index))))
         {:keys [roll roll-ambiguous? roll-source]} (roll-from-boundary axis (mapv #(triangle-points mesh %) indices) (:facet-angle-deg opts) (:seam-tolerance-mm opts))]
     {:frame {:mount/pos (bbox-midpoint points)
              :mount/axis axis
@@ -350,7 +393,7 @@
                           (<= 0 (:seam-tolerance-mm opts) 0.1))
              (throw (ex-info "Mount face seam tolerance must be between 0 and 0.1 mm." {:code :invalid-seam-tolerance})))
          indices (facet-indices mesh triangle-index opts)
-         frame-data (frame mesh indices opts)]
+         frame-data (frame mesh indices triangle-index opts)]
      (merge {:triangle-index triangle-index
              :facet-indices indices
              :kind-hint (kind-hint mesh indices (:frame frame-data) opts)}

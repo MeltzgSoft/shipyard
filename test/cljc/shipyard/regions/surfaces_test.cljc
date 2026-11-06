@@ -55,3 +55,11 @@
         (doseq [i (range (count triangles))]
           (is (= (nth (surfaces/groups triangles angle) i)
                  (surfaces/expand-components compact [i]))))))))
+
+(deftest angle-adjacency-test
+  (let [normals [[1 0 0] [0.98 0.2 0] [0.92 0.39 0] nil]
+        adjacency {0 [1 2] 1 [0 2] 2 [0 1 3] 3 [2]}]
+    (is (= {0 [1] 1 [0 2] 2 [1] 3 []}
+           (surfaces/angle-adjacency normals adjacency 20)))
+    (is (= {0 [] 1 [] 2 [] 3 []}
+           (surfaces/angle-adjacency normals adjacency 0)))))

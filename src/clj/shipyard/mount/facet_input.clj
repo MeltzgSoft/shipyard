@@ -31,9 +31,11 @@
 
 (defn selection-options [base params]
   (let [angle (or (:face-angle params) (get params "face-angle"))
+        rule (or (:face-rule params) (get params "face-rule"))
         seam (or (:face-seam params) (get params "face-seam"))
         seed (or (:face-seed params) (get params "face-seed"))]
     (cond-> base
+      (some? rule) (assoc :selection-rule (keyword rule))
       (some? seam) (assoc :seam-tolerance-mm (math/parse-finite-double seam))
       (some? angle) (assoc :selection-angle-deg (math/parse-finite-double angle))
       (some? seed) (assoc :selection-seed (if (integer? seed) seed (parse-long seed))))))

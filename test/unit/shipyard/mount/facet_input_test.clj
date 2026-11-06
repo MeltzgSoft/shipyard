@@ -39,10 +39,15 @@
   (let [positions (float-array (apply concat (apply concat curved/triangles)))
         n (* 3 (count curved/triangles))
         mesh {:positions positions :indices (int-array (range n)) :index-count n}
-        opts {:selection-angle-deg 25 :selection-seed 0}]
+        opts {:selection-angle-deg 20 :selection-seed 0}]
     (is (input/in-facet? mesh [2 3] opts))
-    (is (not (input/in-facet? mesh [4 5] opts)))
-    (is (not (input/in-facet? mesh [0 11] opts)))))
+    (is (input/in-facet? mesh [4 5] opts))
+    (is (input/in-facet? mesh [0 11] opts))
+    (is (not (input/in-facet? mesh [0 11] (assoc opts :selection-rule :seed))))))
 
 (deftest seam-selection-options
   (is (= {:seam-tolerance-mm 0.002} (input/selection-options {:seam-tolerance-mm 0.005} {"face-seam" "0.002"}))))
+
+(deftest retained-angle-rule-options
+  (is (= {:selection-rule :seed} (input/selection-options {} {"face-rule" "seed"})))
+  (is (= {:selection-rule :adjacent} (input/selection-options {} {:face-rule :adjacent}))))

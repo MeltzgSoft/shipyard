@@ -22,6 +22,7 @@
    [:part-id string?] [:mesh-key [:re #"[0-9a-f]{64}"]]
    [:owner [:string {:min 1 :max 80}]] [:sequence [:int {:min 0 :max 2147483647}]]
    [:frame [:map {:closed true} [:mount/pos vec3] [:mount/axis vec3] [:mount/roll vec3]]]
+   [:face-rule {:optional true} [:enum :adjacent :seed]]
    [:face-seam {:optional true} [:and finite [:>= 0] [:<= 0.1]]]
    [:face-angle {:optional true} [:and finite [:>= 0] [:<= 90]]]
    [:face-seed {:optional true} [:int {:min 0 :max 2147483647}]]

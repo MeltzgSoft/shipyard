@@ -28,14 +28,19 @@
   {:normals (mapv (fn [[a b c]] (math/normalize (math/cross (math/subtract b a) (math/subtract c a)) 1e-12)) triangles)
    :adjacency (adjacency triangles)})
 
+(defn angle-adjacency
+  "Keep connections whose neighboring normals differ by at most angle degrees."
+  [normals adjacency angle]
+  (let [threshold (#?(:clj Math/cos :cljs js/Math.cos) (* angle (/ #?(:clj Math/PI :cljs js/Math.PI) 180)))]
+    (into {} (map (fn [[i neighbors]]
+                    [i (filterv #(and (get normals i) (get normals %)
+                                      (>= (math/dot (get normals i) (get normals %)) (- threshold 1e-10))) neighbors)])) adjacency)))
+
 (defn partition-components
   "Compact linear projection: one component ID per triangle, offsets and members.
   Partition an already prepared topology without rebuilding its edge graph."
   [{:keys [normals adjacency]} angle]
-  (let [threshold (#?(:clj Math/cos :cljs js/Math.cos) (* angle (/ #?(:clj Math/PI :cljs js/Math.PI) 180)))
-        adj (into {} (map (fn [[i neighbors]]
-                            [i (filterv #(and (get normals i) (get normals %)
-                                              (>= (math/dot (get normals i) (get normals %)) (- threshold 1e-10))) neighbors)])) adjacency)]
+  (let [adj (angle-adjacency normals adjacency angle)]
     (loop [i 0 ids (vec (repeat (count normals) nil)) offsets [0] members []]
       (cond
         (= i (count normals)) {:ids ids :offsets offsets :members members}

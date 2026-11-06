@@ -436,7 +436,7 @@
                       :mount/pos [2.0 1.0 0.0]
                       :mount/axis [0.0 0.0 1.0]
                       :mount/roll [0.0 1.0 0.0]
-                      :mount/facet {:mesh-key mesh-key :indices [0 1] :seam-mm 0.005}
+                      :mount/facet {:mesh-key mesh-key :indices [0 1] :seam-mm 0.005 :angle-rule :adjacent}
                       :mount/outline [[[0.0 0.0 0.0] [4.0 0.0 0.0] [4.0 2.0 0.0] [0.0 2.0 0.0]]]
                       :mount/origin :picked}]}
            (get (triggers saved) "shipyard:interfaces")))
@@ -451,7 +451,7 @@
       (is (= #{:weapon} (:mount/accepts mount)))
       (is (= 2 (:mount/capacity mount)))
       (is (= [2.0 1.0 0.0] (:mount/pos mount)))
-      (is (= {:mesh-key mesh-key :indices [0 1] :seam-mm 0.005} (:mount/facet mount)))
+      (is (= {:mesh-key mesh-key :indices [0 1] :seam-mm 0.005 :angle-rule :adjacent} (:mount/facet mount)))
       (is (nil? (:facet-indices mount))))
     (testing "duplicate ids require deliberate replacement"
       (let [duplicate (mount-post h save-params)]

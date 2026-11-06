@@ -247,10 +247,12 @@
               :else
               (try
                 (let [mesh (wire/decode (Files/readAllBytes (fs/path tier0)))
-                      face-options (settings-db/face-options! (:store catalog) cache)
+                      face-options (assoc (settings-db/face-options! (:store catalog) cache)
+                                          :selection-angle-deg (or (:facet-angle-deg cache) 1)
+                                          :selection-rule :adjacent)
                       {:keys [facet-indices frame points kind-hint roll-ambiguous? roll-source]}
                       (facet/select mesh triangle-index
-                                    (facet-input/selection-options face-options (dissoc params "face-seam")))
+                                    (facet-input/selection-options face-options (dissoc params "face-seam" "face-rule")))
                       outline (mesh-edges/outline (pitting-geometry/mesh-triangles mesh facet-indices)
                                                   (:seam-tolerance-mm face-options))
                       frame (assoc frame
@@ -268,6 +270,7 @@
                                        :frame frame
                                        :mesh-key mesh-key
                                        :facet-indices facet-indices
+                                       :face-rule :adjacent
                                        :face-seam (:seam-tolerance-mm face-options)
                                        :face-seed triangle-index
                                        :face-angle (or (get params "face-angle") (:facet-angle-deg cache) 1)
@@ -347,7 +350,8 @@
   (if-not facet-indices
     result
     (let [mount-id (get-in result [:mount :mount/id])
-          face (cond-> {:mesh-key mesh-key :indices facet-indices}
+          face (cond-> {:mesh-key mesh-key :indices facet-indices
+                        :angle-rule (keyword (get params "face-rule" "adjacent"))}
                  (get params "face-seam") (assoc :seam-mm (Double/parseDouble (get params "face-seam")))
                  (get params "face-angle") (assoc :angle-deg (Double/parseDouble (get params "face-angle")))
                  (get params "face-seed") (assoc :seed (parse-long (get params "face-seed"))))]
@@ -472,6 +476,7 @@
                         :frame frame
                         :mesh-key mesh-key
                         :facet-indices indices
+                        :face-rule (when indices (or (:angle-rule selected) :seed))
                         :face-seam (when indices (or (:seam-mm selected) 0.0))
                         :face-seed (when indices (or (:seed selected) (first indices)))
                         :face-angle (when indices (or (:angle-deg selected) (get-in deps [:cache :facet-angle-deg]) 1))

@@ -301,8 +301,9 @@ within a single request, never a stored reference.
 
 Mount-face authoring offers **Face angle tolerance (°)** from 0–90° after the first
 pick. An explicit angular selection grows by geometric edge connectivity, comparing
-every candidate normal to the original clicked triangle; it does not require the
-candidate to share the seed plane and does not accumulate neighboring angle changes.
+the angle between neighboring triangle normals, using the region painter Faces
+rule. It does not require a shared seed plane. Gradual bends can carry selection
+around a curved surface; a neighboring bend above the tolerance stops growth.
 Connectivity includes overlapping collinear edge segments, so a triangulation
 T-junction does not split an otherwise connected face. A global seam-distance
 tolerance in Settings defaults to 0.005 mm and can be set from 0 to 0.1 mm
@@ -311,10 +312,13 @@ without changing source STLs. Picks retain their seam tolerance for preview,
 trimming, saving and later editing; changing Settings affects new picks and
 angle re-selections. There is no per-mount seam control. Point contacts alone do
 not connect faces. This supports curved ball-joint patches. The initial form value is 1°; requests with
-no angular override retain planar face selection. Changing tolerance reselects the
+no angular override retain the legacy planar API. The mount-authoring first pick
+uses the displayed 1° neighboring-angle rule. Changing tolerance reselects the
 full patch and recomputes its frame while preserving other draft fields and resetting
 trim history. Saving retains the mesh-scoped clicked seed, angle and selected indices;
 editing restores them, including when trimming removed the seed triangle itself.
+Older saved seed-bound selections retain their membership and rule until a new
+pick or angle change reselects them with neighboring-angle growth.
 Selection and save/preview validation use the same backend rules. A valid face
 selection can be saved as a mount without a generated cut even if no usable closed
 outline can be reconstructed; retain its frame and selected triangles. Physical

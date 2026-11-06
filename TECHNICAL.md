@@ -1936,9 +1936,14 @@ float32 position bits, with `-0.0` folded onto `0.0`, exactly as the position we
 A geometric edge is the unordered pair of those point keys. Source positions and
 triangle indices are never rewritten or snapped.
 
-For explicit face picking, first admit triangles against the seed's normal and
-(optional) plane bound below. Split their directed edges at existing interior
-vertices before building the edge-to-triangles lookup. Thus an unsplit edge A–B
+Angular mount picking shares `regions.surfaces/angle-adjacency` with the region
+painter: filter each edge connection by its two neighboring triangle normals.
+Flood exact coordinate-shared edges first. Repair only boundary triangles and
+nearby candidate triangles using the seam tolerance, then expand their exact
+components; repeat until no new triangles join. This keeps geometric seam
+processing local instead of subdividing every edge in a large source mesh.
+Legacy planar/seed-bound callers retain their admission rule below. Split directed
+edges at existing interior vertices before geometric seam lookup. Thus an unsplit edge A–B
 connects to A–M and M–B at a T-junction, and wholly contained overlapping edges
 also connect. A positive-length common segment is required: point contacts,
 crossing edges and disconnected coplanar islands are not connections. A JTS
@@ -1962,7 +1967,7 @@ required after normalization; point-only and crossing contacts are not adjacency
 Every triangle sharing a resulting geometric segment is a candidate regardless
 of incident-triangle count. Mirrored closed hull halves can retain internal caps
 at their seam; those caps must not divide the exterior mounting surface. Winding
-and the seed's angle/plane tests still govern admission. Server-derived outlines
+and the applicable neighboring-angle or legacy seed/plane test governs admission. Server-derived outlines
 use the same edge splitting before internal edge cancellation, so the seam does
 not become an outline, influence the roll default, or block preview/Save.
 After endpoint normalization, outline reconstruction first subdivides using the
@@ -1981,14 +1986,20 @@ against the **starting triangle**, not against the most recently visited triangl
 2. every candidate vertex is within **0.01 mm** of the starting triangle's plane
    (`abs(dot(start-normal, vertex - start-point)) <= 0.01`).
 
-For mount authoring with an explicit `face-angle` (finite 0–90 degrees), replace
-these two membership tests with the requested seed-normal angle bound and edge
-connectivity. Do not apply the plane-distance bound to that angular patch. Existing
-callers without the override retain both planar tests. The mesh-scoped `face-seed`
-is the original clicked tier-0 triangle even after trimming removes it from the
-selection. Preview and Save validate retained indices against that seed and angle,
-not the first remaining triangle. Persist them as optional `:seed` and `:angle-deg`
-entries in `:mount/facet`, alongside its existing mesh key and retained indices.
+For mount authoring with a finite 0–90° `face-angle`, each neighboring pair must
+satisfy `dot(normal-a, normal-b) >= cos(angle) - 1e-10`, exactly as the region
+painter. Do not compare every face with the clicked normal or apply a seed-plane
+bound. Gradual curvature can therefore connect a complete component. The first
+`/facet` pick supplies the configured 1° default explicitly, and angle changes use
+the same rule. Callers without an angular override retain the legacy planar tests.
+
+The mesh-scoped `face-seed` anchors the chosen component even after trimming removes
+that triangle. Preview and Save validate subsets against its component. Persist
+`:seed`, `:angle-deg` and `:angle-rule :adjacent` with the retained indices in
+`:mount/facet`. Hidden `face-rule` metadata carries `adjacent` or `seed` through
+HTML and preview requests. Old records without the rule edit using `seed`,
+preserving their previous selection; any new pick or angle re-selection always
+uses `adjacent`. Neither hidden rule nor the old seed-bound mode is a user control.
 The global seam default is captured once per pick and transported as hidden
 `face-seam` metadata (not an authoring control), validated at the same bounds in
 HTML and preview requests, and persisted as `:seam-mm`. Changing Settings applies
@@ -2004,10 +2015,9 @@ survive. The client supplies the seed/tolerance to the existing bounded asynchro
 rules. Membership and geometry remain server-computed; client code only posts values
 and consumes the admitted response under the existing request/activation guard.
 
-Comparing every candidate with the seed prevents a long, gently curved strip from
-entering one facet by tolerance creep. The angle admits exporter noise without joining a
-visible bevel; the distance is two orders of magnitude below the 1 mm features being
-picked in the reference collection. Both values live in `resources/config.edn` as
+For legacy planar callers, the seed angle admits exporter noise without joining
+a visible bevel; the plane distance is two orders of magnitude below the 1 mm
+features being picked in the reference collection. Both values live in `resources/config.edn` as
 `:facet-angle-deg` and `:facet-plane-epsilon-mm` under `:shipyard.mesh/cache` when the M2
 geometry component is added, so the real Cruiser probe can tune them without changing
 the algorithm.
@@ -2018,8 +2028,8 @@ error. Degenerate neighbours and triangles whose winding reverses their normal a
 crossed. The returned facet indices are sorted ascending for repeatable tests and event
 payloads, although they remain transient.
 
-Each candidate is queued at most once, including rejected internal faces. All connected
-triangles meeting the seed's plane/normal tests are included, even if the source has
+Within each flood, a triangle is expanded only once. All connected triangles
+meeting the applicable neighboring-angle or legacy seed/plane tests are included, even if the source has
 duplicated same-facing coplanar triangles. Picking does not repair or deduplicate source
 geometry; unsupported outlines retain the frame fallback and selected faces for
 ordinary mounts. Cut requests retain their boundary validation.
@@ -2043,7 +2053,9 @@ triangle order:
    triangulation happens to reference them.
 2. `:mount/axis` is the normalized sum of the facet triangles' unnormalized cross
    products. It therefore weights by area and follows the mesh winding. A zero or
-   non-finite result is an error.
+   non-finite result is an error. If a neighboring-angle
+   selection wraps a closed surface and its area-weighted normals cancel, use the
+   clicked triangle's normal to retain a valid authored frame.
 3. Recover actual wound boundary loops, cancelling internal triangle edges, and
    collapse collinear boundary vertices. Choose the longest boundary edge and set
    `:mount/roll` to the normalized in-plane perpendicular `axis × edge`. Canonicalize
