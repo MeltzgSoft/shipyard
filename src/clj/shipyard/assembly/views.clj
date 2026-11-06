@@ -67,9 +67,7 @@
             [:button.assembly__candidate
              {:type "submit" :name "part-id" :value (:part/id part)
               :class (when (= assigned (:part/id part)) "assembly__candidate--selected")}
-             [:span.assembly__candidate-name (:part/name part)]
-             [:span.assembly__candidate-meta
-              (str/join " · " (keep identity [(:part/bundle part) (:part/class part) (name (:part/role-hint part))]))]])]]
+             [:span.assembly__candidate-name (:part/name part)]])]]
         [:p.assembly__empty "No compatible parts for this mount."])
       (when (seq children)
         [:div.assembly__nested children])]

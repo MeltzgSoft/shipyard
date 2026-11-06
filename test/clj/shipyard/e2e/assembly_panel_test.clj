@@ -59,7 +59,16 @@
         (assign! driver [[:weapon 1]] "weapon")
         (s/wait-visible! driver (slot-selector [[:weapon 0] [:turret 0]]))
         (assign! driver [[:weapon 0] [:turret 0]] "turret")
+        (when-not blocked?
+          (is (s/wait-until #(some (fn [slot] (= (:turret fixture/ids) (:part-id slot)))
+                                   (get-in (s/stats driver) [:assembly :slots])))))
         (is (= 2 (s/count-els driver (str (slot-selector [[:weapon 0]]) " > .assembly__candidate-form button[name=part-id]"))))
+        (is (= ["weapon" "weapon-alt"]
+               (s/js driver (str "() => Array.from(document.querySelectorAll("
+                                 (pr-str (str (slot-selector [[:weapon 0]]) " > .assembly__candidate-form button[name=part-id]"))
+                                 ")).map(button => button.textContent.trim()).sort()"))))
+        (is (= "turret" (s/text driver (str (slot-selector [[:weapon 0] [:turret 0]])
+                                            " > .assembly__candidate-form button[name=part-id]"))))
         (is (not (str/includes? (s/text driver (str (slot-selector [[:weapon 0]]) " > .assembly__candidate-form .assembly__candidates")) "hint")))
         (is (not (str/includes? (s/text driver (str (slot-selector [[:weapon 0]]) " > .assembly__candidate-form .assembly__candidates")) "supported"))))
       (testing "replace/clear remove descendants and preserve the canvas"

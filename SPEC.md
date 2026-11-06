@@ -790,7 +790,7 @@ visible above the hull picker in the inspector, retaining their filtering behavi
   Previous/Next controls are absent. Variant selection is workspace-owned and
   never makes the source editable or assembly-eligible. Back to table restores filters,
   selected rows and scroll position; the individual editor has no listing sidebar.
-- **Assembly view** - the viewport plus a slot panel. Each slot lists compatible parts,
+- **Assembly view** - the viewport plus a slot panel. Each slot lists compatible parts by name only,
   filtered by the socket's `:mount/accepts`. Selecting one issues the `HX-Trigger` event
   that swaps geometry in the scene.
 - **Mount wizard** (§5.4) - pick a face in the viewport, review the computed frame,

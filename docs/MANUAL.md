@@ -619,7 +619,8 @@ STLs; copying an STL folder alone does not copy its authored mounts.
 
 Open **Ship Browser → New class**, then select a bundle, class, and hull in the
 Assembly tab and choose **Start assembly**. The inspector lists every mount as a collapsible drawer, with only
-the compatible parts for that mount. Select a part to assign it immediately; numbered
+the compatible parts for that mount. Part choices show only the part name.
+Select a part to assign it immediately; numbered
 positions are separate assignments, so you can use the same printable part more than
 once. Assigning a component with sockets reveals its nested drawers, such as turrets on
 a weapon. Selecting or changing a component retains the inspector’s scroll position;

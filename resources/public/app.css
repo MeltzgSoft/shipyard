@@ -805,7 +805,6 @@ body {
 .assembly__candidate { display: flex; align-items: baseline; gap: 8px; width: 100%; padding: 7px 8px; border: 1px solid transparent; border-radius: 5px; background: var(--bg); color: var(--ink); text-align: left; cursor: pointer; }
 .assembly__candidate:hover, .assembly__candidate--selected { border-color: var(--mount-color); background: var(--selection-bg); }
 .assembly__candidate-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
-.assembly__candidate-meta { color: var(--ink-faint); font-size: 10px; }
 .assembly__empty, .assembly__rail-count { color: var(--warn); font-size: 11px; }
 .assembly__filters { display: grid; gap: 8px; margin: 0; padding: 10px 12px; border-bottom: 1px solid var(--line); }
 .assembly__filters label, .assembly__hull label { display: grid; gap: 4px; color: var(--ink-dim); font-size: 11px; }
