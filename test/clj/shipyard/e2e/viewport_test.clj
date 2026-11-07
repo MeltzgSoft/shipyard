@@ -1059,7 +1059,7 @@
         (s/wait-visible! driver "#bulk-orient-results .bulk-orient__row")
         (is (= "undefined" (s/js driver "() => typeof window.__shipyard"))
             "the island really is absent")
-        (is (= 5 (s/count-els driver "#bulk-orient-results .bulk-orient__row")))
+        (is (= 6 (s/count-els driver "#bulk-orient-results .bulk-orient__row")))
         (testing "filtering still works, because htmx is a separate file"
           (s/select-option! driver "select[name=bundle]" "Ork Fleet Bundle")
           (is (s/wait-until #(= 1 (s/count-els driver "#bulk-orient-results .bulk-orient__row")))))
