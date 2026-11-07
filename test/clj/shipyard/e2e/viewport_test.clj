@@ -199,7 +199,7 @@
       (open-app!)
       (s/click! *driver* ".masthead__mode[data-workspace-mode='browse']")
       (s/wait-visible! *driver* "#bulk-orient-filters")
-      (is (s/wait-until #(= 5 (s/count-els *driver* "[data-bulk-select]")))
+      (is (s/wait-until #(= 6 (s/count-els *driver* "[data-bulk-select]")))
           "the orientation table should finish its initial HTMX load")
       (is (> (s/width *driver* "#library.bulk-orient") 1000)
           "the selection table should own the workspace rather than stay in the browse rail")
