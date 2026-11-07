@@ -350,6 +350,7 @@ bypass with `--no-verify`.
 | [docs/MANUAL.md](docs/MANUAL.md) | **Users.** How to run Shipyard and get a ship on screen. |
 | [SPEC.md](SPEC.md) | What Shipyard is for, what it deliberately is not, and why. |
 | [TECHNICAL.md](TECHNICAL.md) | Implementation design: layout, storage, mesh pipeline, HTTP, testing. |
+| [Viewport developer guide](docs/VIEWPORT.md) | Viewport API, event transport, HTTP callbacks, workspace admission and rendering lifecycle. |
 
 **These are requirements, not courtesies.** Any change to user-facing behaviour updates
 `docs/MANUAL.md` in the same pull request; any change to how the project is set up, run,

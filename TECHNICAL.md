@@ -1023,6 +1023,9 @@ never activate scene state.
 
 ## 7. HTTP surface
 
+For the viewport integration API, payload reference and request lifecycle, see the
+[viewport developer guide](docs/VIEWPORT.md).
+
 | Route | Returns |
 |---|---|
 | `GET /` | App shell - library panel, filter form, viewport canvas |
