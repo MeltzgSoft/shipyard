@@ -24,6 +24,25 @@
   (is (not (transforms/current-request? 3 2 :ships :ships)))
   (is (not (transforms/current-request? 3 3 :ships :assembly))))
 
+(deftest editor-color-defaults-and-independent-toggle-choices
+  (let [assembly {:view :editor :inspector-tab "assembly" :colors false}
+        off (transforms/toggle-colors assembly :ships)
+        schemes (assoc off :inspector-tab "schemes")
+        schemes-on (transforms/toggle-colors schemes :ships)
+        paint (assoc schemes-on :inspector-tab "paint")]
+    (is (transforms/mount-colors? assembly :ships))
+    (is (not (transforms/mount-colors? off :ships)))
+    (is (not (transforms/mount-colors? schemes :ships)))
+    (is (transforms/mount-colors? schemes-on :ships))
+    (is (not (transforms/mount-colors? paint :ships)))
+    (is (not (transforms/mount-colors? (assoc paint :inspector-tab "assembly") :ships)))
+    (is (transforms/mount-colors? (assoc paint :inspector-tab "schemes") :ships))
+    (is (not (transforms/mount-colors? (assoc off :view :table) :ships)))
+    (is (transforms/mount-colors? {:view :editor} :ships))
+    (is (not (transforms/mount-colors? {:colors false} :ships)))
+    (is (transforms/mount-colors? {:colors true} :browse))
+    (is (= {:colors false} (transforms/toggle-colors {:colors true} :browse)))))
+
 (deftest drawer-states-test
   (let [parent [[:weapon 0]] child [[:weapon 0] [:turret 0]]
         incomplete [{:id parent :assigned "weapon"} {:id child :assigned nil}]

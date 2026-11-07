@@ -1,10 +1,42 @@
 (ns shipyard.integration.workspace-test
   (:require [clojure.string :as str]
+            [clojure.edn :as edn]
+            [clojure.data.json :as json]
             [clojure.test :refer [deftest is testing]]
             [ring.mock.request :as mock]
             [shipyard.assembly-fixture :as fixture]
             [shipyard.loadout-fixture :as lf]
+            [shipyard.loadout.db :as loadouts]
+            [shipyard.ship.db :as ships]
             [shipyard.loadout.operations :as operations]))
+
+(deftest editor-color-defaults-are-projected-on-transitions-and-page-restores
+  (let [started (fixture/start!) sys (:system started) handler (:handler started)
+        id (random-uuid) ship-id (random-uuid)
+        get! #(handler (-> (mock/request :get %) (mock/header "HX-Request" "true")))
+        post! (fn [url params] (handler (-> (mock/request :post url params) (mock/header "HX-Request" "true"))))
+        event (fn [response key] (edn/read-string (get (json/read-str (get-in response [:headers "HX-Trigger"])) key)))]
+    (try
+      (loadouts/put! (:shipyard.loadout/db sys) {:loadout/id id :loadout/name "Colors cruiser"
+                                                 :loadout/hull (:hull fixture/ids) :loadout/slots {}} :create)
+      (ships/put! (:shipyard.ship/db sys) {:ship/id ship-id :ship/name "Painted cruiser" :ship/class id :ship/paint {}} :create)
+      (let [response (post! "/ships/open" {:kind "class" :id (str id)})]
+        (is (= 200 (:status response)))
+        (is (true? (:colors (event response "shipyard:workspace"))))
+        (is (str/includes? (:body response) "data-mount-colors=\"true\"")))
+      (is (false? (:colors (event (post! "/workspace/display/colors" {}) "shipyard:display"))))
+      (is (false? (:colors (event (get! "/ships/tab/schemes") "shipyard:workspace"))))
+      (is (true? (:colors (event (post! "/workspace/display/colors" {}) "shipyard:display"))))
+      (is (false? (:colors (event (get! "/ships/tab/paint") "shipyard:workspace"))))
+      (is (false? (:colors (event (get! "/ships/tab/assembly") "shipyard:workspace"))))
+      (is (str/includes? (:body (handler (mock/request :get "/"))) "data-mount-colors=\"false\""))
+      (is (true? (:colors (event (get! "/ships/tab/schemes") "shipyard:workspace"))))
+      (is (str/includes? (:body (handler (mock/request :get "/"))) "data-mount-colors=\"true\""))
+      (is (false? (:colors (event (post! "/ships/open" {:kind "ship" :id (str ship-id)}) "shipyard:workspace"))))
+      (is (true? (:colors (event (post! "/workspace/display/colors" {}) "shipyard:display"))))
+      (is (false? (:colors (event (post! "/ships/open" {:kind "class" :id (str id)}) "shipyard:workspace"))))
+      (is (true? (:colors (event (post! "/ships/open" {:kind "ship" :id (str ship-id)}) "shipyard:workspace"))))
+      (finally (fixture/stop! started)))))
 
 (deftest workspace-transitions-and-guards
   (let [started (fixture/start!) handler (:handler started) deps (lf/deps started)

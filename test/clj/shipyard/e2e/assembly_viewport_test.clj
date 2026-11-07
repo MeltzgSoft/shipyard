@@ -209,8 +209,7 @@
         (let [by-slot (slots driver)]
           (is (not= (get-in by-slot [[[:weapon 0]] :matrix]) (get-in by-slot [[[:weapon 1]] :matrix])))
           (is (= (get-in by-slot [[[:weapon 0]] :part-id]) (get-in by-slot [[[:weapon 1]] :part-id]))))
-        (s/click! driver "[data-mount-colors-toggle]")
-        (testing "mount colors can be hidden and restored without changing the assembly"
+        (testing "mount colors start enabled and can be hidden and restored without changing the assembly"
           (is (s/wait-until #(true? (:mount-colors-enabled (s/stats driver)))))
           (is (> (count (set (:materials (s/stats driver)))) 1))
           (is (pos? (:visible-mount-markers (s/stats driver))))

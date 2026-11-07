@@ -16,6 +16,7 @@
                                  (assoc-in [:settings :colors] false))})})
 
 (defn workspace! [{:keys [state]} mode] (get-in @state [:workspaces mode]))
+(defn colors! [db mode] (transforms/mount-colors? (workspace! db mode) mode))
 (defn update-workspace! [{:keys [state]} mode f & args]
   (apply swap! state update-in [:workspaces mode] f args))
 

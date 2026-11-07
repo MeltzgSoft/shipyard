@@ -37,7 +37,6 @@
         (s/await-part driver (:bridge fixture/ids))
         (s/open-class! driver "Original")
         (await-ship! driver)
-        (s/click! driver "[data-mount-colors-toggle]")
         (is (s/wait-until #(true? (:mount-colors-enabled (s/stats driver)))))
         (switch! driver "browse")
         (s/await-part driver (:bridge fixture/ids))
@@ -179,8 +178,8 @@
       (s/wait-visible! driver ".assembly__hull")
       (is (= "Ship Browser" (s/text driver ".masthead__mode--active")))
       (s/click! driver "[data-mount-colors-toggle]")
-      (is (s/wait-until #(= "true" (s/js driver "() => document.querySelector('[data-mount-colors-toggle]').getAttribute('aria-pressed')"))))
-      (is (true? (get-in @state [:workspaces :ships :colors])))
+      (is (s/wait-until #(= "false" (s/js driver "() => document.querySelector('[data-mount-colors-toggle]').getAttribute('aria-pressed')"))))
+      (is (false? (get-in @state [:workspaces :ships :tab-colors "assembly"])))
       (switch! driver "browse")
       (s/wait-visible! driver "[data-bulk-select]")
       (is (= "1 selected" (s/text driver "[data-bulk-count]")))
@@ -195,7 +194,7 @@
       (is (= "1 selected" (s/text driver "[data-bulk-count]")))
       (switch! driver "assembly")
       (s/wait-visible! driver ".assembly__hull")
-      (is (= "true" (s/js driver "() => document.querySelector('[data-mount-colors-toggle]').getAttribute('aria-pressed')")))
+      (is (= "false" (s/js driver "() => document.querySelector('[data-mount-colors-toggle]').getAttribute('aria-pressed')")))
       (finally (s/quit! driver) (fixture/stop! started)))))
 
 (deftest back-to-table-survives-a-poll-during-the-click

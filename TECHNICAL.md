@@ -2938,6 +2938,14 @@ and comma-separated expanded class UUIDs. Native details render named ships unde
 their class; double-click and Enter submit an ordinary server-rendered form outside
 the replaceable results. Edit, Duplicate and Delete remain explicit row actions.
 
+Mount-color choices are server-owned `:tab-colors` entries keyed by editor tab.
+Assembly defaults on; Schemes and Customize default off. Explicit false values are
+retained. The most recent inspector tab remains the display context through table
+navigation; a fresh table without an inspector uses the workspace's base setting.
+`workspace/colors!` projects the effective value for full-page context, transition
+events and the toggle response, so the toolbar and viewport share one source of truth.
+These transient choices survive navigation and reloads within the running app.
+
 `/assembly/*`, `/ships/*` and their asynchronous responses belong to `:ships`.
 `/ships/tab/assembly` opens its Assembly editor. The client retains only `:browse`
 and `:ships` viewport runtimes. A shared

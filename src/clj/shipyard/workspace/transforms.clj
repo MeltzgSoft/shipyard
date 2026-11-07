@@ -22,6 +22,20 @@
 (defn current-request? [activation request-activation workspace owner]
   (and (= request-activation activation) (or (nil? owner) (= workspace owner))))
 
+(defn- color-tab [state mode]
+  (when (= :ships mode)
+    (or (:inspector-tab state) (when (= :editor (:view state)) "assembly"))))
+
+(defn mount-colors? [state mode]
+  (if-let [tab (color-tab state mode)]
+    (get-in state [:tab-colors tab] (= "assembly" tab))
+    (true? (:colors state))))
+
+(defn toggle-colors [state mode]
+  (if-let [tab (color-tab state mode)]
+    (assoc-in state [:tab-colors tab] (not (mount-colors? state mode)))
+    (update state :colors not)))
+
 (defn drawer-states [previous slots]
   (into {}
         (map (fn [{:keys [id assigned]}]

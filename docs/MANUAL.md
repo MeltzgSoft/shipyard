@@ -723,7 +723,9 @@ painted hulls. The editor has **Assembly**, **Schemes**, and **Customize** tabs.
 starts a fresh assembly; **Resume assembly** returns to your working draft. Resume is
 disabled until the draft has a hull, including after starting a new empty class. Assembly
 controls now live in the floating inspector alongside scheme and paint controls.
-**Mount colors** starts off and is shared by all three editor tabs.
+**Mount colors** starts on in **Assembly**, and off in **Schemes** and **Customize**.
+Each tab remembers its own toggle choice through tab changes, Back to ships,
+workspace navigation and page reloads while Shipyard is running.
 
 Incomplete classes can be opened, edited and duplicated. **3 empty mounts** counts
 unfilled mounts on the hull and attached parts; a hull-only class is valid too.

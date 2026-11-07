@@ -103,7 +103,7 @@
 
 (defn- transition-response [db response]
   (let [{:keys [workspace activation] :as context} (workspace/active-context! db)
-        colors (:colors (workspace/workspace! db workspace))]
+        colors (workspace/colors! db workspace)]
     (-> response
         (assoc :status 200)
         (append (workspace-views/context context colors))
@@ -117,8 +117,8 @@
 
 (defn colors! [{:keys [workspace]} _]
   (let [{mode :workspace :as context} (workspace/active-context! workspace)]
-    (workspace/update-workspace! workspace mode update :colors not)
-    (let [colors (:colors (workspace/workspace! workspace mode))]
+    (workspace/update-workspace! workspace mode transforms/toggle-colors mode)
+    (let [colors (workspace/colors! workspace mode)]
       (htmx/fragment (list (update (workspace-views/colors-toggle colors mode) 1 dissoc :hx-swap-oob)
                            (workspace-views/context context colors))
                      {:events {:display {:colors colors}}}))))

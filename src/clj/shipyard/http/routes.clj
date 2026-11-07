@@ -79,7 +79,7 @@
 (defn- root! [{:keys [catalog library workspace]} _]
   (if workspace
     (let [context (workspace/activate! workspace (:workspace (workspace/active-context! workspace)))
-          colors (:colors (workspace/workspace! workspace (:workspace context)))]
+          colors (workspace/colors! workspace (:workspace context))]
       (htmx/page (views/shell (facets! catalog) (index/root! library) context colors (settings-db/theme! (:store catalog)))))
     (htmx/page (views/shell (facets! catalog) (index/root! library) (settings-db/theme! (:store catalog))))))
 

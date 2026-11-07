@@ -899,6 +899,10 @@ workspace restores its previous selection and settings.
 
 The mount-color toggle belongs to its workspace: changing it affects only that
 workspace, and leaving and returning preserves its value and rendered effect.
+Within Ship Browser, Assembly defaults mount colors on, while Schemes and Customize
+default them off. Each editor tab retains its own explicit choice independently,
+including across table/back navigation, workspace changes and page reloads during
+the running application session. Opening another class does not reset these choices.
 Shared durable catalog facts remain authoritative; workspace independence does not
 create separate copies of authored parts or saved loadouts.
 
