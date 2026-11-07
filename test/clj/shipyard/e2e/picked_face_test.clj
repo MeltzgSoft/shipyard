@@ -64,6 +64,10 @@
         (testing "removing a saved mount and repicking immediately restores the same preview"
           (s/click! driver (str "form:has(input[name=mount-id][value='" (name (:mount/id saved)) "']) button:text-is('Delete')"))
           (is (s/wait-until #(empty? (:part/mounts (:part (catalog/part-context! cat parts/id))))))
+          ;; The transaction can finish before its response replaces the inspector.
+          ;; Pick immediately after that replacement, not into the outgoing form.
+          (is (s/wait-until #(and (zero? (s/count-els driver "form[hx-post='/mounts/delete']"))
+                                  (empty? (get-in (s/stats driver) [:interfaces :items])))))
           (pick! driver parts/dense-point)
           (s/wait-visible! driver ".mount-wizard__form")
           (is (s/wait-until #(= (get-in saved [:mount/facet :indices]) (get-in (s/stats driver) [:preview :facet-indices])) 3000)))
