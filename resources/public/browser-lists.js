@@ -1,5 +1,25 @@
 // List transport; workspace and selection state remain server-owned.
 (() => {
+  let current = null;
+  function sync() {
+    const dialog = document.querySelector('[data-inventory-modal]');
+    if (dialog && !dialog.open) {
+      dialog.showModal();
+      dialog.addEventListener('cancel', event => {
+        event.preventDefault();
+        dialog.querySelector('[data-inventory-cancel]').click();
+      });
+    }
+    if (current && !current.isConnected && !dialog) {
+      document.querySelector('[data-inventory-open]')?.focus();
+    }
+    current = dialog;
+  }
+  document.addEventListener('DOMContentLoaded', sync);
+  document.addEventListener('htmx:afterSwap', sync);
+})();
+
+(() => {
   const thumbnails = '.part-thumbnail[hx-get], .ship-thumbnail[hx-get]';
   let scheduled = false;
   function refresh() {

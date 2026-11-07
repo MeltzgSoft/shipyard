@@ -45,11 +45,13 @@
     {:items (subvec items start (min (count items) (+ start page-size)))
      :page page :pages pages :total (count items)}))
 
-(defn controls [{:keys [page pages total]} url target include]
-  (when (> pages 1)
-    [:nav.table-pages {:aria-label "Table pages"}
-     (for [[label n disabled?] [["Previous" (dec page) (= page 1)] ["Next" (inc page) (= page pages)]]]
-       [:button {:type "button" :disabled disabled? :hx-get url :hx-target target :hx-swap "outerHTML"
-                 :hx-include include :hx-sync "#detail:queue last"
-                 :hx-vals (json/write-str {"page" (str n) "table-scroll" "0"})} label])
-     [:span (str "Page " page " of " pages " · " total " rows")]]))
+(defn controls
+  ([window url target include] (controls window url target include {}))
+  ([{:keys [page pages total]} url target include {:keys [method sync disabled] :or {method :get sync "#detail:queue last"}}]
+   (when (> pages 1)
+     [:nav.table-pages {:aria-label "Table pages"}
+      (for [[label n disabled?] [["Previous" (dec page) (= page 1)] ["Next" (inc page) (= page pages)]]]
+        [:button {:type "button" :disabled disabled? (keyword (str "hx-" (name method))) url :hx-target target :hx-swap "outerHTML"
+                  :hx-include include :hx-sync sync :hx-disabled-elt disabled
+                  :hx-vals (json/write-str {"page" (str n) "table-scroll" "0"})} label])
+      [:span (str "Page " page " of " pages " · " total " rows")]])))

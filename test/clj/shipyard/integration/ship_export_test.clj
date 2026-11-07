@@ -36,10 +36,14 @@
              (set (map :path (:files (export/snapshot! deps selection t/default-priority))))))
       (let [path (write! nil)]
         (with-open [zip (ZipFile. path)]
-          (is (.getEntry zip (str gun "/7x-unsupported.stl")))
-          (is (.getEntry zip (str hull "/2x-unsupported.stl")))
-          (is (.getEntry zip (str (:supported fixture/ids) "/2x-supported.stl")))
-          (is (.getEntry zip "index.csv")))
+          (is (.getEntry zip "Print/5x-weapon-unsupported.stl"))
+          (is (.getEntry zip "Print/1x-hull-unsupported.stl"))
+          (is (.getEntry zip "Print/2x-supported-supported.stl"))
+          (is (.getEntry zip "Print/index.csv"))
+          (is (.getEntry zip "Second/2x-weapon-unsupported.stl"))
+          (is (.getEntry zip "Second/1x-hull-unsupported.stl"))
+          (is (.getEntry zip "Second/index.csv"))
+          (is (every? #(= 2 (count (str/split (.getName %) #"/"))) (enumeration-seq (.entries zip)))))
         (is (not= path (write! nil))))
       (testing "stand drilling removes the requested cylindrical volume, preserving source bytes"
         (catalog/save-mounts! (:catalog deps) hull
@@ -47,7 +51,7 @@
         (let [source (fs/path (:root @(:state (:library deps))) hull "unsupported.stl")
               original (Files/readAllBytes source)
               path (write! 1.5)]
-          (with-open [zip (ZipFile. path) input (.getInputStream zip (.getEntry zip (str hull "/2x-unsupported.stl")))]
+          (with-open [zip (ZipFile. path) input (.getInputStream zip (.getEntry zip "Print/1x-hull-unsupported.stl"))]
             (let [data (.readAllBytes input)
                   target (fs/path (:temp started) "cut.stl")]
               (Files/write target data (make-array java.nio.file.OpenOption 0))

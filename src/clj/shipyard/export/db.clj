@@ -39,7 +39,7 @@
         (snapshot-value! deps selection priority)))))
 
 (defn source-path! [root {:keys [path size mtime]}]
-  (transforms/archive-path path 1)
+  (transforms/source-path path)
   (let [root (fs/real-path root) file (fs/path root path)]
     (when-not (and (fs/regular-file? file)
                    (fs/starts-with? (fs/real-path file) root)
@@ -76,10 +76,11 @@
               (.putNextEntry zip (ZipEntry. ^String (:archive-path entry)))
               (.write zip ^bytes bytes)
               (.closeEntry zip)))
-          (.putNextEntry zip (ZipEntry. "index.csv"))
-          (.write zip (.getBytes (str "path,variant,quantity\r\n"
-                                      (str/join "" (map #(str (csv (:archive-path %)) "," (name (:variant %)) "," (:quantity %) "\r\n") files))) "UTF-8"))
-          (.closeEntry zip))
+          (doseq [[directory entries] (sort-by key (group-by :ship-directory files))]
+            (.putNextEntry zip (ZipEntry. (str directory "/index.csv")))
+            (.write zip (.getBytes (str "path,variant,quantity\r\n"
+                                        (str/join "" (map #(str (csv (last (str/split (:archive-path %) #"/"))) "," (name (:variant %)) "," (:quantity %) "\r\n") entries))) "UTF-8"))
+            (.closeEntry zip)))
         (doseq [entry files] (source-path! root entry))
         (Files/createLink target temp)
         (str target)

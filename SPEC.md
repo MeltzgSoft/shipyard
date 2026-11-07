@@ -587,6 +587,13 @@ quantities. These accept any present library part without requiring a plug or ma
 mount compatibility. They persist with the class, survive Edit and Duplicate, and
 contribute only to print inventory. They never create viewport instances or slots.
 Zero quantity removes an extra from the draft; Save persists the revised inventory.
+An **Additional parts…** button opens a modal browser with the Part Browser's shared
+name, faction, class and role filters, defaulted to the hull's faction and class.
+Rows are read-only and non-expandable apart from an editable quantity column.
+Quantities persist across filtering and pagination within the modal. **Add** applies
+all staged quantities atomically to the current assembly draft; **Cancel** (including
+Escape) discards staging. Reopening starts from the current draft inventory, including
+quantities loaded from the saved class. It does not change Part Browser state.
 
 Class and named-ship thumbnails are generated on demand from their current assembly
 and paint; thumbnail paths are not part of the durable class record.
@@ -601,8 +608,9 @@ mounts; stale assignment paths and malformed catalog data remain errors.
 Ship Browser provides export checkboxes on saved class rows. Each selected class
 contributes one hull, every assigned full-path slot occurrence (including nested and
 repeated parts), and its inventory-only extra quantities. Named painted ships do not
-have export checkboxes. Counts combine by durable part identity across all selected
-classes. Filtering and workspace round trips preserve the export selection.
+have export checkboxes. Counts combine by durable part identity within each selected
+class. Shared parts appear separately in each ship's inventory. Filtering and workspace
+round trips preserve the export selection.
 
 The export control lists source variant types in preference order with individual
 Up/Down buttons. For each required part, choose the highest-priority variant available;
@@ -611,10 +619,13 @@ unsupported, supported. Selection, order, stand diameter and output directory be
 to the Ship Browser's transient export state. They do not create fleet entities or
 change saved classes. The control shows each selected source variant and total count.
 
-Choose an output directory outside the model library. Each required part appears
-once in the ZIP at its library-relative path, with its filename prefixed by the total
-quantity, for example `4x-unsupported.stl`. `index.csv` records archive paths, selected
-variants and quantities. Missing references or sources prevent export. Complete ZIPs
+Choose an output directory outside the model library. Each selected ship has one
+directory named for the class. All of that ship's files are directly inside it, with
+no nested directories. Each required part appears once per ship, with a readable
+filename prefixed by its quantity, for example `Cruiser/4x-Turret-unsupported.stl`.
+Folder and part names are sanitized and collisions are resolved without overwrites.
+Each ship directory contains `index.csv` recording its filenames, selected variants
+and quantities. Missing references or sources prevent export. Complete ZIPs
 publish atomically under unique filenames; failures leave no partial published ZIP.
 
 Stand mounts define a cylindrical socket opening, an outward axis,

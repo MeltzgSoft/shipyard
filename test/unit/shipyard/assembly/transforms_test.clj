@@ -11,6 +11,15 @@
   (transforms/transition fixture/database draft
                          (assoc op :revision (:revision draft)) available))
 
+(deftest inventory-replacement-is-atomic-and-does-not-change-placements
+  (let [draft (:draft (apply-op transforms/empty-draft {:op :hull :part-id "hull"}))
+        result (apply-op draft {:op :extras :extras {"weapon" 5 "turret" 2} :name "Working name"})]
+    (is (= {"weapon" 5 "turret" 2} (get-in result [:draft :extras])))
+    (is (= "Working name" (get-in result [:draft :name])))
+    (is (= (transforms/placements fixture/database draft) (transforms/placements fixture/database (:draft result))))
+    (doseq [extras [{"weapon" 1 "missing" 1} {"weapon" -1} {"weapon" 0} {"weapon" 1.5}]]
+      (is (= draft (:draft (apply-op draft {:op :extras :extras extras})))))))
+
 (deftest transition-test
   (testing "select, assign duplicate parts, nest, replace, clear and reset"
     (let [hull (:draft (apply-op transforms/empty-draft {:op :hull :part-id "hull"}))

@@ -927,22 +927,26 @@ reopening Customize. Restoring the original source restores its mask after the s
 
 In **Ship Browser**, tick the export checkbox beside each saved class you want to
 print, then open **Export selected ships**. Each selected class contributes one ship.
-Named painted ships are not selected for export. Shared and repeated parts combine
-into a single total quantity. **Clear selection** unticks all classes, including any
+Named painted ships are not selected for export. Repeated parts combine within each
+ship; shared parts are included in every ship that needs them. **Clear selection** unticks all classes, including any
 that were deleted or hidden by filters.
 
 Choose an **Export directory** outside your model library. Use **Up** and **Down** to
 set source variant priority. Each part uses the first available variant in that order;
-the table shows the selected variant and total quantity. **Export ZIP** writes a uniquely
-named archive and offers a download link. ZIP folders preserve library-relative paths;
-filenames start with their required count, such as `4x-unsupported.stl`. The archive
-also includes `index.csv`. Existing archives and source STLs are preserved.
+the table shows each ship's selected variants and quantities. **Export ZIP** writes a uniquely
+named archive and offers a download link. Each ship has its own folder, with all its
+files directly inside. Filenames include the required count, part name and variant,
+such as `4x-Turret-unsupported.stl`. Each ship folder also contains `index.csv`.
+Duplicate names receive distinct suffixes. Existing archives and source STLs are preserved.
 
-To include loose parts, open a class's **Assembly** tab and expand **Additional
-inventory parts**. Choose a library part and quantity, then **Add inventory part**.
-These parts do not appear on the assembly model and need no plug or socket. Use
-**Update quantity** to change the count, or zero to remove it. **Save changes** saves
-the inventory with the class. Duplicating a class retains its inventory extras.
+To include loose parts, open a class's **Assembly** tab and click **Additional parts…**.
+The modal browser starts filtered to the hull's faction and class. Change or clear the
+filters to find other parts. Rows do not expand; enter quantities directly in the
+quantity column, using zero to remove an extra. Edits remain while filtering or moving
+between pages. **Add** applies all quantities to the assembly inventory; **Cancel** or
+Escape discards modal edits. Reopening shows the current inventory quantities.
+These parts do not appear on the model and need no plug or socket. **Save changes**
+saves the inventory with the class. Duplicating a class retains its inventory extras.
 
 For adjustable stand sockets, open the part's mount wizard, pick the opening face,
 choose kind **stand**, and enter **Stand socket depth (mm)** inward from that face. The mount's axis points outward. Save the mount.

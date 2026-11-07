@@ -3,10 +3,12 @@
   (:require [clojure.edn :as edn]
             [shipyard.loadout.identity :as identity]
             [shipyard.assembly.handlers :as handlers]
+            [shipyard.assembly.inventory.handlers :as inventory]
             [shipyard.http.contracts :as contracts]))
 
 (def revision-schema [:and string? [:re #"[0-9]{1,15}"]])
 (def id-schema [:string {:min 1 :max 2048}])
+(def inventory-form [:map [:token [:string {:min 36 :max 36}]] [:name {:optional true} string?]])
 
 (defn slot-string?
   "Accept only bounded non-root EDN paths; no custom readers or arbitrary tags."
@@ -20,7 +22,11 @@
           (catch Exception _ false)))))
 
 (defn routes [deps]
-  [["/assembly/extras" {:post {:handler (partial handlers/mutate! deps :extra)
+  [["/assembly/extras/open" {:get {:handler (partial inventory/open! deps) :responses contracts/html-responses}}]
+   ["/assembly/extras/filter" {:post {:handler (partial inventory/filter! deps) :parameters {:form inventory-form} :responses contracts/html-responses}}]
+   ["/assembly/extras/add" {:post {:handler (partial inventory/add! deps) :parameters {:form inventory-form} :responses contracts/html-responses}}]
+   ["/assembly/extras/cancel" {:post {:handler (partial inventory/cancel! deps) :parameters {:form inventory-form} :responses contracts/html-responses}}]
+   ["/assembly/extras" {:post {:handler (partial handlers/mutate! deps :extra)
                                :parameters {:form [:map [:revision revision-schema] [:part-id id-schema]
                                                    [:quantity [:and string? [:re #"[0-9]{1,7}"]]]]}
                                :responses contracts/html-responses}}]

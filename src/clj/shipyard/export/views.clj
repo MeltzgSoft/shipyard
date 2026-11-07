@@ -24,9 +24,9 @@
        [:button {:type "submit" :formnovalidate true :name "move" :value (str (name variant) ":up") :disabled (zero? i)} "Up"]
        [:button {:type "submit" :formnovalidate true :name "move" :value (str (name variant) ":down") :disabled (= i 2)} "Down"]])
     (when (seq files)
-      [:table [:thead [:tr [:th "Part"] [:th "Variant"] [:th "Quantity"] [:th "Preview"]]]
+      [:table [:thead [:tr [:th "Ship"] [:th "Part"] [:th "Variant"] [:th "Quantity"] [:th "Preview"]]]
        [:tbody (for [file files]
-                 [:tr [:td (:part-id file)] [:td (name (:variant file))] [:td (str (:quantity file))]
+                 [:tr [:td (:ship-name file)] [:td (:part-id file)] [:td (name (:variant file))] [:td (str (:quantity file))]
                   [:td [:button {:type "submit" :formnovalidate true :name "preview" :value (:part-id file)} "Preview model"]]])]])
     [:button {:type "submit" :formnovalidate true :name "action" :value "review"} "Review choices"]
     [:button {:type "submit" :name "action" :value "export" :disabled (or (empty? files) (some? error))} "Export ZIP"]]

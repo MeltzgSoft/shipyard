@@ -9,6 +9,7 @@
             [shipyard.http.pagination :as pagination]
             [shipyard.vocabulary.views :as vocabulary]
             [shipyard.part-browser.views :as metadata]
+            [shipyard.part-browser.table-views :as table]
             [shipyard.part.orientation :as orientation]
             [shipyard.part.orientation-views :as orientation-views]
             [shipyard.thumbnail.views :as thumbnails]
@@ -112,21 +113,8 @@
       [:summary.part-drawer__summary
        [:input {:type "checkbox" :value (:part/id part) :aria-label (str "Select " (:part/name part))
                 :data-bulk-select "true" :name "selected" :checked (contains? selected (:part/id part))}]
-       [:span.part-thumbnail
-        (if thumbnail?
-          (thumbnails/lazy-attrs (str "/thumbnails/" (urls/encode-id (:part/id part))) "#bulk-orient-results" true)
-          {:title reason})
-        (if thumbnail? "…" "No preview")]
-       [:span.bulk-orient__part (:part/name part)]
-       [:span.bulk-orient__bundle (:part/bundle part)]
-       [:span.bulk-orient__role (name (or (:part/role-hint part) :unknown))]
-       [:span.bulk-orient__class (or (:part/class part) "—")]
-       (when-not (:import/source part)
-         (for [[_ variant label] parts/variant-filters]
-           [:span.bulk-orient__variant
-            {:data-variant (name variant) :data-available (str (contains? (set (:part/variants part)) variant))
-             :title (str (if (= variant :unsupported-pitted) "Unsupported (pitted / recessed)" label) " file")}
-            (if (contains? (set (:part/variants part)) variant) "Yes" "No")]))
+       (table/cells part "#bulk-orient-results" reason)
+       (when-not (:import/source part) (table/variant-cells part))
        [:span.bulk-orient__mounts (if (:import/source part)
                                     (if (:import/conflict? part) [:strong.detail__error "Assign variants"]
                                         (str/join " + " (sort (map name (:part/variants part)))))
@@ -200,10 +188,8 @@
          [:div.part-table-header
           (column-controls (pr-str (vec selected)) importing?)
           [:div.bulk-orient__columns
-           checkbox [:span "Preview"] [:span "Part"] [:span "Bundle / faction"] [:span "Role"] [:span "Class"]
-           (when-not importing?
-             (for [[_ variant label] parts/variant-filters]
-               [:span {:title (when (= variant :unsupported-pitted) "Unsupported (pitted / recessed)")} label]))
+           checkbox (table/headings)
+           (when-not importing? (table/variant-headings))
            [:span (if importing? "Variant" "Mount summary")] [:span (if importing? "Files / variants" "Regions")] [:span "Yaw"] [:span "Pitch"]
            [:span "Roll"] [:span "Orientation"]]]
          (if (seq parts)
@@ -316,10 +302,7 @@
        :hx-sync "this:replace"
        :hx-vals "js:{page: event.type==='load' ? (document.querySelector('[data-part-page]')?.value || '1') : '1', 'table-scroll': event.type==='load' ? (document.querySelector('#part-table-position')?.value || '0') : '0'}"
        :hx-trigger "load, change[target.tagName === 'SELECT'], search, keyup changed delay:300ms"}
-      [:label.filters__field "Name" [:input {:type "search" :name "q" :placeholder "Search names"}]]
-      [:label.filters__field "Bundle" [:select {:name "bundle"} (http-views/options "All bundles" (:bundles facets))]]
-      [:label.filters__field "Class" [:select {:name "class"} (http-views/options "All classes" (:classes facets))]]
-      [:label.filters__field "Role" [:select {:name "role"} (http-views/options "All roles" (map name (:roles facets)))]]
+      (table/filters facets {})
       [:label.filters__field "Variant"
        [:select (merge
                  (help/attrs (if import-session "Show rows containing the selected variant, including grouped files."

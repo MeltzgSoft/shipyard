@@ -10,7 +10,7 @@
             [shipyard.workspace.db :as workspace]
             [shipyard.workspace.views :as workspace-views]))
 
-(defn- response [{:keys [workspace]} result]
+(defn response! [{:keys [workspace]} result]
   (let [draft (:draft result)
         slots (:slots (when (:hull draft) (model/slots (:database result) (:hull draft) (:assignments draft) draft)))
         ship-workspace (when workspace (workspace/workspace! workspace :ships))
@@ -28,11 +28,11 @@
 (defn current! [deps {:keys [params]}]
   (when (:workspace deps) (workspace/update-workspace! (:workspace deps) :ships update :assembly-filters merge (select-keys params ["bundle" "class"])))
   (let [params (merge (:assembly-filters (when (:workspace deps) (workspace/workspace! (:workspace deps) :ships))) params)]
-    (response deps (assoc (db/request! (assoc deps :paint-profile nil) nil {:resume? (not= "1" (get params "poll"))
-                                                                            :retry (get params "retry")})
-                          :selected-hull (get params "part-id")
-                          :selected-bundle (not-empty (get params "bundle"))
-                          :selected-class (not-empty (get params "class"))))))
+    (response! deps (assoc (db/request! (assoc deps :paint-profile nil) nil {:resume? (not= "1" (get params "poll"))
+                                                                             :retry (get params "retry")})
+                           :selected-hull (get params "part-id")
+                           :selected-bundle (not-empty (get params "bundle"))
+                           :selected-class (not-empty (get params "class"))))))
 
 (defn mutate! [{{state :state} :assembly :as deps} op {:keys [parameters]}]
   (locking state
@@ -55,16 +55,16 @@
                                     (= op :compatibility) (assoc :allow-other-factions? (= "true" (:allow-other-factions form)))) {})]
           (when (and (:workspace deps) (#{:hull :reset} op) (not (:error result)))
             (workspace/update-workspace! (:workspace deps) :ships dissoc :drawers :assembly-scroll))
-          (response deps (assoc result :selected-bundle (not-empty bundle)
-                                :selected-class (not-empty class))))))))
+          (response! deps (assoc result :selected-bundle (not-empty bundle)
+                                 :selected-class (not-empty class))))))))
 
 (defn save! [deps {:keys [parameters]}]
   (let [{:keys [revision name]} (:form parameters)
         result (loadouts/save! deps (parse-long revision) name)]
-    (response deps (merge (db/request! (assoc deps :paint-profile nil) nil {})
-                          (if (:error result)
-                            {:error (:error result) :status 422}
-                            {:saved? true})))))
+    (response! deps (merge (db/request! (assoc deps :paint-profile nil) nil {})
+                           (if (:error result)
+                             {:error (:error result) :status 422}
+                             {:saved? true})))))
 
 (defn drawer! [{:keys [workspace assembly] :as deps} {:keys [parameters]}]
   (let [{:keys [slot open revision]} (:form parameters)]

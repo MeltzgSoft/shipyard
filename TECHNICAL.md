@@ -356,12 +356,27 @@ also runs at the transactional boundary.
 Ship Browser export state is transient and workspace-owned: selected class identities,
 ordered source preference, optional stand diameter, output directory and completed path.
 `export.transforms` expands hulls, every assigned full-path slot and per-class extras,
-combines quantities by part identity, chooses each part's first available source and
-prefixes each archive filename with `<quantity>x-`. No fleet list is involved.
+combines quantities by part identity within each class, chooses each part's first
+available source and prefixes each archive filename with `<quantity>x-`. Each class
+gets one flat directory containing readable part/variant filenames and its own
+`index.csv`; shared parts are included separately for each ship. Directory and part
+labels sanitize separators, control characters and unsafe filename characters;
+case-insensitive collision resolution is deterministic and preserves every entry.
+No fleet list is involved.
 Inventory extras are normalized owned `:loadout/extras` component entities, with
 `:extra/part` shared refs and `:extra/quantity` positive longs. Updates replace owned
 entries without deleting referenced parts. Draft extras are independent of assignments
 and never enter placements, appearance or mount compatibility calculations.
+The inventory modal owns one staging cell under the Ship Browser workspace, separate
+from the assembly draft and Part Browser selection/filters. Its token captures the
+assembly revision and hull. Filter/page requests merge visible quantity edits into
+that cell before rendering another window using the shared browser query, filter
+fields, thumbnail/identity/variant cells and pagination controls. Rows have no drawer,
+metadata editing or workspace-open handlers. Add checks the token/revision and applies
+the entire inventory in one assembly transition; stale requests cannot replace newer
+drafts. Cancel and Escape discard staging. Reopening copies current draft quantities
+and resets filters to the hull faction/class. Native dialog focus and modality are
+presentation only; no client quantity store is introduced.
 
 `export.db` captures classes, attachment metadata and canonical source records under
 library and shared-store locks. The same lock order guards source validation, copying
