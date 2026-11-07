@@ -60,7 +60,7 @@
       (is (= [parts/cut] (row-ids driver)))
       (is (= "1 selected" (s/text driver "[data-bulk-count]")))
       (filter! driver "has-supported" "Any" [parts/all parts/cut])
-      (filter! driver "has-pitted" "Any" [parts/all parts/cut parts/plain])
+      (filter! driver "has-pitted" "Any" [parts/all parts/cut parts/plain parts/supported])
       (filter! driver "has-unsupported" "Missing" [parts/supported])
       (is (= ["No" "Yes" "No"] (availability driver parts/supported)))
       (filter! driver "has-pitted" "Available" [])
