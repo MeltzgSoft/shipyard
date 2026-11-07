@@ -90,7 +90,7 @@
       (s/click! driver "#part-filter-sidebar [data-filter-pin]")
       (.hover page "#bulk-orient-filters select[name=variant]")
       (s/wait-visible! driver "[role=tooltip]")
-      (is (str/includes? (s/text driver "[role=tooltip]") "supported-only"))
+      (is (str/includes? (s/text driver "[role=tooltip]") "including grouped files"))
       (let [{:keys [x y width height]} (s/bounds driver "[role=tooltip]")]
         (.move (.mouse page) (+ x (/ width 2)) (+ y (/ height 2))))
       (is (s/js driver "() => !document.querySelector('[role=tooltip]').hidden")

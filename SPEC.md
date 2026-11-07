@@ -1075,7 +1075,7 @@ A variant filter
 offers all variants, unsupported, supported and unsupported-pitted. Grouped rows match
 each variant they contain. The filter applies across batches and select-all-matching,
 and survives workspace switches. Supported-only rows remain available throughout
-review and publication but are hidden in the regular Part Browser.
+review, publication and regular Part Browser browsing.
 Expanding Files / variants lazily previews each original file independently, including
 supported and pitted variants. Reassigning a variant label does not change the file's
 thumbnail. These images use the shared bounded generator and content cache.

@@ -134,9 +134,10 @@ A folder counts as a part if it holds at least one of those three files. Folders
 `other` are skipped, so slicer projects and README files can live alongside your models
 without confusing anything.
 
-Supported-only parts remain catalogued but do not appear in the regular Part Browser.
-Parts with both supported and unsupported files appear once, using the unsupported
-geometry. Pitted-only parts remain listed with no preview.
+Standalone supported and pitted parts appear in the regular Part Browser with no
+authoring preview. Expand Files / variants to preview an exact file read-only. Parts
+with supported and unsupported files grouped together appear once, using the unsupported
+geometry for authoring.
 
 Physical cut geometry accepts closed surfaces whose shared edges have balanced
 opposing faces, including edge-touching shells. Open boundaries, inconsistent
@@ -936,9 +937,10 @@ its database. The current library remains active and its saved selection is unch
 Check that the database location is writable and has free space, then press
 **Use this folder** again.
 
-**"A part I own is not listed."** Parts that ship only as `supported.stl` are hidden
-from the regular Part Browser. Their files remain in the library and can be previewed
-during import review.
+**"A part I own is not listed."** Clear the Part Browser filters and check the library
+folder layout above. Standalone supported and pitted parts are listed by default;
+variants already grouped with an unsupported model appear inside that part's Files /
+variants drawer rather than as separate rows. Rescan after changing files externally.
 
 **"A part will not open."** A small number of STL files in circulation are malformed or
 in an unexpected format. Shipyard logs which file and carries on rather than failing
