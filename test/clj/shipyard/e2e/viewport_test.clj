@@ -126,11 +126,11 @@
 
 (deftest browse-and-filter
   (open-app!)
-  (is (= 5 (s/count-els *driver* "#bulk-orient-results .bulk-orient__row")))
-  (testing "supported-only parts are hidden; pitted-only parts retain unavailable previews"
-    (is (zero? (s/count-els *driver* (str "[data-part-row='" s/supported-id "']"))))
-    (is (= 1 (s/count-els *driver* ".bulk-orient__row:has(.part-thumbnail:text-is('No preview'))")))
-    (is (str/includes? (s/text *driver* ".bulk-orient__row:has(.part-thumbnail:text-is('No preview'))")
+  (is (= 6 (s/count-els *driver* "#bulk-orient-results .bulk-orient__row")))
+  (testing "standalone variants are visible with unavailable authoring previews"
+    (is (= 1 (s/count-els *driver* (str "[data-part-row='" s/supported-id "']"))))
+    (is (= 2 (s/count-els *driver* ".bulk-orient__row:has(.part-thumbnail:text-is('No preview'))")))
+    (is (str/includes? (s/text *driver* (str "[data-part-row='" s/supported-id "']"))
                        "No preview")))
   (testing "filtering by bundle narrows the list"
     (s/select-option! *driver* "select[name=bundle]" "Ork Fleet Bundle")
@@ -138,7 +138,7 @@
     (is (str/includes? (s/text *driver* "#bulk-orient-results") "Ram Ship")))
   (testing "and All bundles widens it again"
     (s/select-option! *driver* "select[name=bundle]" "All bundles")
-    (is (s/wait-until #(= 5 (s/count-els *driver* "#bulk-orient-results .bulk-orient__row")))))
+    (is (s/wait-until #(= 6 (s/count-els *driver* "#bulk-orient-results .bulk-orient__row")))))
   (testing "free-text search matches names across bundles"
     (s/fill! *driver* "input[name=q]" "Ram")
     (is (s/wait-until #(= 2 (s/count-els *driver* "#bulk-orient-results .bulk-orient__row"))))))
