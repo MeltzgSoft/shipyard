@@ -21,11 +21,6 @@
                 false))
             variant-filters)))
 
-(defn listed? [part importing?]
-  (or importing?
-      (contains? (set (:part/variants part)) :unsupported)
-      (not (contains? (set (:part/variants part)) :supported))))
-
 (defn thumbnail? [part importing?]
   (boolean (or (:part/renderable part)
                (and importing? (= :supported (:part/source part))))))

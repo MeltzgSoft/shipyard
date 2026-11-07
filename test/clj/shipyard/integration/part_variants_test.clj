@@ -23,8 +23,8 @@
       (catalog/save-part-orientation! cat a [0 1 0 0])
       (catalog/save-mounts! cat a [fixture/plug])
       (let [anchor (part a) source (file b) content (bytes (:path source))]
-        (testing "unsupported-only default and explicit All variants filter"
-          (is (not (.contains ^String (:body (h (mock/request :get "/orient/parts"))) "Battery Supported")))
+        (testing "default listing and legacy All variants filter include standalone variants"
+          (is (.contains ^String (:body (h (mock/request :get "/orient/parts"))) "Battery Supported"))
           (is (.contains ^String (:body (h (mock/request :get "/orient/parts?variant=all"))) "Battery Supported")))
         (select! [a b])
         (is (= 200 (:status (post "/parts/variants/group" {"name" "Aligned Battery"}))))

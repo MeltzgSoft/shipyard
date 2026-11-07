@@ -4,12 +4,6 @@
             [shipyard.part-browser.thumbnail :as thumbnail]
             [shipyard.part.orientation :as orientation]))
 
-(deftest listed-test
-  (is (not (t/listed? {:part/variants [:supported]} false)))
-  (is (t/listed? {:part/variants [:supported]} true))
-  (is (t/listed? {:part/variants [:unsupported :supported]} false))
-  (is (t/listed? {:part/variants [:unsupported-pitted]} false)))
-
 (deftest thumbnail-test
   (is (t/thumbnail? {:part/renderable true} false))
   (is (t/thumbnail? {:part/renderable false :part/source :supported} true))

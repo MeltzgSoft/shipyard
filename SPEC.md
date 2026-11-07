@@ -956,8 +956,9 @@ archive status, publication and cancellation controls above the filters. Each ro
 part name, bundle/faction, role, class, Unsupported/Supported/Pitted or recessed availability,
 mount summary, whether saved regions exist,
 saved yaw/pitch/roll and orientation status. Each availability filter chooses Any,
-Available or Missing; the three requirements combine with the other filters. Active
-availability filters include supported-only rows and apply to incremental batches,
+Available or Missing; the three requirements combine with the other filters. Default
+browsing includes standalone supported and pitted groups without an ordinary unsupported
+source. Grouped variants stay in one logical-part row. Availability filters apply to incremental batches,
 select-all, individual navigation and workspace restoration. Pits and recesses share
 one cut-variant category (`:unsupported-pitted`). Availability uses observed variant facts.
 Saving generated cuts updates the affected part's inventory immediately; returning to
@@ -1105,7 +1106,8 @@ lock navigation until completion and successful saves clear draft status. Part c
 use the shared workspace activation/admission contract without altering another workspace.
 
 The Part Browser exposes the same grouping, splitting and per-file variant controls for
-published library rows. A variant filter includes supported-only rows when requested.
+published library rows. All logical parts are listed by default, including standalone
+supported/pitted sources; the Variant filter narrows that cohort without adding duplicate rows.
 Durable corrections retain the unsupported row's identity and authored data while moving
 variant bytes to canonical filenames in its folder, without overwriting files. Source
 entities follow their bytes; splitting can restore original rows. Missing/stale members,

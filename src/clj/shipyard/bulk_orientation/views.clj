@@ -322,11 +322,9 @@
       [:label.filters__field "Role" [:select {:name "role"} (http-views/options "All roles" (map name (:roles facets)))]]
       [:label.filters__field "Variant"
        [:select (merge
-                 (help/attrs (if import-session "Show rows containing the selected variant, including grouped files."
-                                 "Browsable parts excludes supported-only rows. All variants includes them."))
+                 (help/attrs "Show rows containing the selected variant, including grouped files.")
                  {:name "variant"})
-        [:option {:value ""} (if import-session "All variants" "Browsable parts")]
-        (when-not import-session [:option {:value "all"} "All variants"])
+        [:option {:value ""} "All variants"]
         [:option {:value "unsupported"} "Unsupported"]
         [:option {:value "supported"} "Supported"]
         [:option {:value "unsupported-pitted"} "Unsupported (pitted / recessed)"]]]

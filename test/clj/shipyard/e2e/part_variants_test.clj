@@ -47,9 +47,8 @@
     (try
       (s/go! driver (s/base-url sys))
       (s/wait-visible! driver (table/row source/a))
-      (is (zero? (s/count-els driver (table/row source/b))))
-      (s/select-option! driver "#bulk-orient-filters select[name=variant]" "All variants")
       (s/wait-visible! driver (table/row source/b))
+      (is (= 3 (s/count-els driver ".bulk-orient__row")))
       (group!)
       (s/click! driver (str (table/row source/a) " > summary"))
       (s/click! driver ".import-files > summary")
@@ -73,6 +72,6 @@
       (s/await-part driver source/a)
       (s/click! driver "[data-part-back]")
       (s/wait-visible! driver (table/row source/a))
-      (is (= "all" (s/js driver "() => document.querySelector('#bulk-orient-filters select[name=variant]').value")))
+      (is (= "" (s/js driver "() => document.querySelector('#bulk-orient-filters select[name=variant]').value")))
       (is (= #{:unsupported :supported} (set (:part/variants (part source/a)))))
       (finally (s/quit! driver) (fixture/stop! started)))))

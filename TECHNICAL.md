@@ -605,9 +605,10 @@ scan. Until that analysis exists, escort-class parts remain renderable with
 ```
 
 A part with only `supported.stl` (73 exist) is catalogued with `:part/variants
-#{:supported}` and no renderable source. It remains in the catalog but is hidden from
-the default Part Browser table. All variants and availability filters can include it;
-expanded file rows open exact supported or pitted meshes in a read-only inspector.
+#{:supported}` and no renderable authoring source. It remains visible in the default
+Part Browser table, as do pitted-only and supported-plus-pitted groups. Grouped files
+remain one row under their existing part identity; visibility never regroups sources.
+Expanded file rows open exact supported or pitted meshes in a read-only inspector.
 Import review may use a supported file for a thumbnail;
 that staging-only source does not make the part eligible for orientation or assembly.
 
@@ -2292,8 +2293,9 @@ Published rows expose three Yes/No variant columns from `:part/variants`. The in
 `has-unsupported`, `has-supported` and `has-pitted` filters accept an empty value,
 `available` or `missing`; `has-pitted` covers both generated pit and recess outputs.
 `part-browser.transforms/matches-availability?` intersects the requirements with the
-existing Variant filter and catalog filters. Active availability filters include
-supported-only rows. The shared pagination filter keys also drive workspace retention,
+existing Variant filter and catalog filters. The default cohort includes every logical
+part, so standalone supported/pitted groups require no special visibility filter.
+Blank Variant and legacy `variant=all` both mean all groups. The shared pagination filter keys also drive workspace retention,
 chunk admission and select-all transport; individual navigation reuses the complete
 filtered cohort. No variant geometry or new durable state is loaded for these columns.
 
