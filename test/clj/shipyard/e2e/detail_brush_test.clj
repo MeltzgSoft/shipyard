@@ -114,7 +114,8 @@
               (await-saved! driver)))
           (workspace/switch! driver "browse")
           (workspace/switch! driver "ships") (workspace/await-ship! driver)
-          (is (= (count painted) (count (:details (s/slot driver [])))))
+          (is (s/wait-until #(= (count painted) (count (:details (s/slot driver [])))))
+              "Returning to Customize restores its prepared detail projection")
           (testing "Two separated areas retain distinct colors on one instance"
             (s/input! driver "#paint-brush input[name=radius]" "2" "input")
             (apply stroke! driver (face-point driver [] 0))
