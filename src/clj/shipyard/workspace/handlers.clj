@@ -115,13 +115,26 @@
                        (when-let [events (get-in response [:headers "HX-Trigger"])] (json/read-str events)))
                  :escape-slash false)))))
 
+(defn- display-response! [workspace]
+  (let [{mode :workspace :as context} (workspace/active-context! workspace)
+        colors (workspace/colors! workspace mode)]
+    (htmx/fragment (list (update (workspace-views/colors-toggle colors mode) 1 dissoc :hx-swap-oob)
+                         (workspace-views/context context colors))
+                   {:events {:display {:colors colors}}})))
+
 (defn colors! [{:keys [workspace]} _]
-  (let [{mode :workspace :as context} (workspace/active-context! workspace)]
+  (let [{mode :workspace} (workspace/active-context! workspace)]
     (workspace/update-workspace! workspace mode transforms/toggle-colors mode)
-    (let [colors (workspace/colors! workspace mode)]
-      (htmx/fragment (list (update (workspace-views/colors-toggle colors mode) 1 dissoc :hx-swap-oob)
-                           (workspace-views/context context colors))
-                     {:events {:display {:colors colors}}}))))
+    (display-response! workspace)))
+
+(defn part-tool! [{:keys [workspace]} {:keys [parameters]}]
+  (let [{:keys [tool part-id]} (:form parameters)
+        state (workspace/workspace! workspace :browse)]
+    (if (and (= :browse (:workspace (workspace/active-context! workspace)))
+             (= :part (:view state)) (= part-id (:selection state)))
+      (do (workspace/update-workspace! workspace :browse assoc :inspector-tab tool)
+          (display-response! workspace))
+      {:status 204 :headers {} :body ""})))
 
 (defn new-ship! [{{state :state} :assembly :keys [workspace] :as deps} {:keys [parameters params]}]
   (workspace/remember! workspace :ships params)
@@ -200,13 +213,14 @@
     (when (and (= mode :browse) (= "1" (get params "table")))
       (workspace/update-workspace! workspace mode assoc :view :table))
     (when (and (= mode :browse) (not (importer/session! deps)) (get params "part-id"))
-      (workspace/update-workspace! workspace :browse assoc :view :part :selection (get params "part-id"))
+      (workspace/update-workspace! workspace :browse transforms/select-part (get params "part-id") true)
       (workspace/update-workspace! workspace :browse dissoc :variant-selection))
     (when (and (= mode :browse) (not (importer/session! deps)) (seq (get params "variant-file")))
       (workspace/update-workspace! workspace :browse assoc :view :variant :variant-selection (get params "variant-file")))
     (workspace/update-workspace! workspace :ships dissoc :brush-pending)
     (binding [workspace/*context* context]
-      (let [{:keys [filters selection variant-selection colors bulk-selection view]} (workspace/workspace! workspace mode)]
+      (let [{:keys [filters selection variant-selection bulk-selection view]} (workspace/workspace! workspace mode)
+            colors (workspace/colors! workspace mode)]
         (if (not= "true" (get headers "hx-request"))
           (htmx/page (views/shell (facets) (index/root! library) context colors))
           (transition-response

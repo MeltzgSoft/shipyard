@@ -2945,6 +2945,16 @@ navigation; a fresh table without an inspector uses the workspace's base setting
 `workspace/colors!` projects the effective value for full-page context, transition
 events and the toggle response, so the toolbar and viewport share one source of truth.
 These transient choices survive navigation and reloads within the running app.
+Part Browser uses the same `:tab-colors` projection, with separate keys for Part,
+Mounts, Regions, orientation grid and variant preview. Regions defaults off; other
+tools default on. Its inspector buttons retain DOM drafts and POST the selected tool
+and part identity to `/workspace/display/part-tool`; stale identities or inactive
+workspaces are ignored. Tool selection and the color toggle serialize through the
+workspace navigation owner. The response updates the toolbar, context and viewport
+from the same backend preference. Reloading or resuming the same part restores its
+inspector; opening a row from the table starts at Part while retaining all tool choices. Mount
+responses select Mounts coherently. Whole-part fill changes only the Regions choice,
+and the browser no longer clicks the color toggle automatically on entering Regions.
 
 `/assembly/*`, `/ships/*` and their asynchronous responses belong to `:ships`.
 `/ships/tab/assembly` opens its Assembly editor. The client retains only `:browse`

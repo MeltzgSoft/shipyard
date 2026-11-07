@@ -16,6 +16,8 @@
             [shipyard.assembly.routes :as assembly-routes]
             [shipyard.export.routes :as export-routes]
             [shipyard.workspace.db :as workspace]
+            [shipyard.workspace.transforms :as workspace-transforms]
+            [shipyard.workspace.views :as workspace-views]
             [shipyard.workspace.routes :as workspace-routes]
             [shipyard.bulk-orientation.routes :as bulk-routes]
             [shipyard.bulk-orientation.handlers :as bulk]
@@ -130,15 +132,19 @@
       (htmx/fragment (views/detail-preparing part)
                      {:events {:status {:state :preparing
                                         :message "Restoring saved mount faces."}}})
-      (htmx/fragment (views/detail-ready part mesh-key {:region-layers (db/region-registry! (:catalog deps)) :roles (vocabulary/roles! (:catalog deps)) :cut-defaults (settings-db/cut-defaults! (:store (:catalog deps)))})
-                     {:headers {"HX-Trigger-After-Swap"
-                                (htmx/trigger {:load-mesh {:url     (urls/mesh-url mesh-key 0)
-                                                           :part-id (:part/id part)
-                                                           :mesh-key mesh-key
-                                                           :mounts  (catalog-part/durable-mounts (:part/mounts part))
-                                                           :orientation (orientation/orientation-of
-                                                                         (:part/orientation part))
-                                                           :frame   true}})}}))))
+      (let [workspaces (:workspace deps)
+            colors (if workspaces (workspace/colors! workspaces :browse) true)]
+        (htmx/fragment
+         (list (views/detail-ready part mesh-key {:region-layers (db/region-registry! (:catalog deps))
+                                                  :roles (vocabulary/roles! (:catalog deps))
+                                                  :cut-defaults (settings-db/cut-defaults! (:store (:catalog deps)))
+                                                  :active-tab (:inspector-tab (when workspaces (workspace/workspace! workspaces :browse)))})
+               (when workspaces (workspace-views/color-state (workspace/active-context! workspaces) colors)))
+         {:events {:display {:colors colors}}
+          :headers {"HX-Trigger-After-Swap"
+                    (htmx/trigger {:load-mesh {:url (urls/mesh-url mesh-key 0) :part-id (:part/id part) :mesh-key mesh-key
+                                               :mounts (catalog-part/durable-mounts (:part/mounts part))
+                                               :orientation (orientation/orientation-of (:part/orientation part)) :frame true}})}})))))
 
 (defn- preprocessing!
   "Submit the job if it is not already running and answer with whatever is true
@@ -162,7 +168,7 @@
   `?retry=1` is the only way a failed job runs again. The poll fragment does not
   carry it, so a failure is shown rather than silently retried on the next tick."
   [{:keys [catalog library cache jobs] :as deps} {:keys [params path-params]}]
-  (when (:workspace deps) (workspace/update-workspace! (:workspace deps) :browse assoc :view :part :selection (:id path-params)))
+  (when (:workspace deps) (workspace/update-workspace! (:workspace deps) :browse workspace-transforms/select-part (:id path-params)))
   (let [id   (:id path-params)
         part (with-navigation deps (:part (db/part-context! catalog id)))]
     (cond
@@ -311,7 +317,7 @@
 
 (defn- mount-response!
   ([deps part-id events] (mount-response! deps part-id events nil))
-  ([{:keys [catalog library cache] :as deps} part-id events view-options]
+  ([{:keys [catalog library cache workspace] :as deps} part-id events view-options]
    (let [part (with-navigation deps (:part (db/part-context! catalog part-id)))
          mesh-key (index/mesh-key! library part-id)
          view-options (if (and (:part/id part) (:preview view-options) mesh-key
@@ -321,12 +327,17 @@
                                     (orientation/mirror-offsets (partition 3 (:positions mesh)) (:part/orientation part))))
                         view-options)]
      (if (and (:part/id part) mesh-key)
-       (htmx/fragment (views/detail-ready part mesh-key (assoc (merge {:mount-active? true :preserve-regions? true} view-options)
-                                                               :region-layers (db/region-registry! catalog) :roles (vocabulary/roles! catalog) :cut-defaults (settings-db/cut-defaults! (:store catalog))))
-                      {:events (assoc events :interfaces {:part-id part-id
-                                                          :mesh-key mesh-key
-                                                          :mounts (catalog-part/durable-mounts
-                                                                   (:part/mounts part))})})
+       (do
+         (when workspace (workspace/update-workspace! workspace :browse assoc :inspector-tab "mounts"))
+         (let [colors (if workspace (workspace/colors! workspace :browse) true)]
+           (htmx/fragment
+            (list (views/detail-ready part mesh-key (assoc (merge {:mount-active? true :preserve-regions? true} view-options)
+                                                           :region-layers (db/region-registry! catalog) :roles (vocabulary/roles! catalog)
+                                                           :cut-defaults (settings-db/cut-defaults! (:store catalog))))
+                  (when workspace (workspace-views/color-state (workspace/active-context! workspace) colors)))
+            {:events (assoc events :display {:colors colors}
+                            :interfaces {:part-id part-id :mesh-key mesh-key
+                                         :mounts (catalog-part/durable-mounts (:part/mounts part))})})))
        (if (:part/id part)
          (facet-error :mesh-not-ready "Open the part and wait for preprocessing to finish." part-id 409)
          (facet-error :part-not-found "That part is no longer in the library." part-id 404))))))

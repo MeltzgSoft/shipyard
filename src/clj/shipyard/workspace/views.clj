@@ -52,10 +52,15 @@
                         "Highlight mount faces. Turn off to see scheme colors and enable custom painting."))
           {:type "button" :data-mount-colors-toggle "true" :aria-pressed (str colors)
            :hx-post "/workspace/display/colors" :hx-target "this" :hx-swap "outerHTML"
+           :hx-sync "#workspace-navigation:queue all"
+           :hx-disabled-elt "[data-workspace-mode], [data-workspace-transition], [data-detail-tab], [data-mount-colors-toggle]"
            :hx-swap-oob "outerHTML"})
    (if (= workspace :browse)
      (if colors "View: Mount faces" "View: Layer types")
      "Mount colors")])
+
+(defn color-state [context-map colors]
+  (list (context context-map colors) (colors-toggle colors (:workspace context-map))))
 
 (defn filter-sidebar
   "A collapsible filter rail; forms retain their existing transport and state."

@@ -11,6 +11,7 @@
             [shipyard.regions.registry]
             [shipyard.catalog.db :as catalog]
             [clojure.string :as str]
+            [clojure.data.json :as json]
             [shipyard.catalog.part :as catalog-part]
             [shipyard.http.urls :as urls]
             [shipyard.file-picker.views :as file-picker]
@@ -253,24 +254,26 @@
    [:p.detail__status "Preparing preview…"]
    (poll id)])
 
+(defn- detail-tab-attrs [part-id tab active-tab]
+  {:type "button" :role "tab" :aria-selected (str (= tab active-tab))
+   :class (when (= tab active-tab) "detail__tab--active") :data-detail-tab tab
+   :hx-on:click detail-tab-activation
+   :hx-post "/workspace/display/part-tool" :hx-target "#mount-colors-toggle" :hx-swap "outerHTML"
+   :hx-params "tool,part-id" :hx-include "unset"
+   :hx-vals (json/write-str {:tool tab :part-id part-id})
+   :hx-sync "#workspace-navigation:queue all"
+   :hx-disabled-elt "[data-workspace-mode], [data-workspace-transition], [data-detail-tab], [data-mount-colors-toggle]"})
+
 (defn detail-ready
   ([part mesh-key] (detail-ready part mesh-key nil))
-  ([part mesh-key {:keys [error orientation-error preview region-layers roles cut-defaults mount-active? preserve-regions? metadata-message]}]
-   (let [mount-active? (if (some? mount-active?) mount-active? (boolean (or preview error)))]
+  ([part mesh-key {:keys [error orientation-error preview region-layers roles cut-defaults mount-active? active-tab preserve-regions? metadata-message]}]
+   (let [active-tab (if (or mount-active? preview error) "mounts" (or active-tab "part"))]
      [:div.detail.detail--ready
       (part-back part)
       [:nav.detail__tabs {:role "tablist" :aria-label "Part inspector"}
-       [:button.detail__tab
-        {:type "button" :role "tab" :aria-selected (str (not mount-active?))
-         :data-detail-tab "part" :class (when-not mount-active? "detail__tab--active")
-         :hx-on:click detail-tab-activation} "Part"]
-       [:button.detail__tab
-        {:type "button" :role "tab" :aria-selected (str mount-active?)
-         :data-detail-tab "mounts" :class (when mount-active? "detail__tab--active")
-         :hx-on:click detail-tab-activation} "Mounts"]
-       [:button.detail__tab {:type "button" :role "tab" :aria-selected "false" :data-detail-tab "regions"
-                             :hx-on:click detail-tab-activation} "Regions"]]
-      [:div.detail__summary {:data-detail-panel "part" :role "tabpanel" :hidden mount-active?}
+       (for [[tab label] [["part" "Part"] ["mounts" "Mounts"] ["regions" "Regions"]]]
+         [:button.detail__tab (detail-tab-attrs (:part/id part) tab active-tab) label])]
+      [:div.detail__summary {:data-detail-panel "part" :role "tabpanel" :hidden (not= active-tab "part")}
        (detail-head part false)
        (when (#{:hull :hull-section} (:part/role-hint part))
          [:button (merge workspace-views/transition-attrs {:type "button"
@@ -280,11 +283,11 @@
                                                            :data-workspace-mode "ships" :data-hull (:part/id part)}) "Assemble this hull"])
        (part-metadata part metadata-message)
        (part-orientation part orientation-error)]
-      [:div.detail__tab-panel {:data-detail-panel "regions" :role "tabpanel" :hidden true}
+      [:div.detail__tab-panel {:data-detail-panel "regions" :role "tabpanel" :hidden (not= active-tab "regions")}
        (if preserve-regions?
          [:section#part-regions {:hx-preserve "true"}]
          (regions/panel (:part/id part) mesh-key (catalog/part-regions part) nil nil (or region-layers shipyard.regions.registry/empty-registry)))]
-      [:div.detail__tab-panel {:data-detail-panel "mounts" :role "tabpanel" :hidden (not mount-active?)}
+      [:div.detail__tab-panel {:data-detail-panel "mounts" :role "tabpanel" :hidden (not= active-tab "mounts")}
        (interface-legend part)
        (mount-list part)
        [:div#mount-authoring.mount-wizard

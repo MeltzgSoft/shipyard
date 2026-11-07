@@ -1029,6 +1029,12 @@ body:has(#workspace-context[data-workspace="browse"]) .stage__mount-colors-toggl
   right: auto;
 }
 
+body:has(#workspace-context[data-workspace="browse"]) .stage:has([data-bulk-grid]) .stage__mount-colors-toggle {
+  top: auto;
+  bottom: 72px;
+  z-index: 3;
+}
+
 /* The Part Browser owns the table, orientation grid and individual editor. */
 body:has(#workspace-context[data-workspace="browse"]) .layout:has(#library[data-part-view="part"]) { grid-template-columns: 1fr; }
 body:has(#workspace-context[data-workspace="browse"]) #library[data-part-view="part"] { display: none; }

@@ -45,7 +45,7 @@
                           {:error "Could not save part regions to the database. See the server log for details."})))
         saved (if (:error result) before (:regions result))
         filled? (and (= action "fill") (not (:error result)))]
-    (when filled? (workspace/update-workspace! workspace :browse assoc :colors false))
+    (when filled? (workspace/update-workspace! workspace :browse assoc-in [:tab-colors "regions"] false))
     (htmx/fragment
      (list (views/panel part-id mesh-key saved (or (:selected result) layer) (:error result)
                         (catalog/region-registry! catalog) (cond-> {:mode (or mode "facets") :angle (if angle (parse-long angle) 1)}

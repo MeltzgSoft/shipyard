@@ -14,6 +14,10 @@
                                               :parameters {:path [:map [:kind [:enum "class" "ship"]] [:id [:and string? [:fn #(some? (parse-uuid %))]]]]}
                                               :responses contracts/html-responses}}]
          ["/workspace/display/colors" {:post {:handler (partial handlers/colors! deps) :responses contracts/html-responses}}]
+         ["/workspace/display/part-tool" {:post {:handler (partial handlers/part-tool! deps)
+                                                 :parameters {:form [:map [:tool [:enum "part" "mounts" "regions"]]
+                                                                     [:part-id string?]]}
+                                                 :responses contracts/html-responses}}]
          ["/workspace/:mode" {:get {:handler (partial handlers/transition! deps)
                                     :parameters {:path [:map [:mode [:enum "browse" "ships" "settings"]]]
                                                  :query [:map [:variant-file {:optional true} string?]]}

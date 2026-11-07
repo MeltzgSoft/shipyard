@@ -8,7 +8,39 @@
             [shipyard.loadout-fixture :as lf]
             [shipyard.loadout.db :as loadouts]
             [shipyard.ship.db :as ships]
+            [shipyard.http.urls :as urls]
+            [shipyard.workspace.db :as workspace]
             [shipyard.loadout.operations :as operations]))
+
+(deftest part-tools-own-their-display-preferences-and-reject-stale-tool-requests
+  (let [started (fixture/start!) sys (:system started) handler (:handler started)
+        workspaces (:shipyard.workspace/db sys) id (:weapon fixture/ids)
+        get! #(handler (-> (mock/request :get %) (mock/header "HX-Request" "true")))
+        post! (fn [uri params] (handler (mock/request :post uri params)))
+        colors (fn [response] (:colors (edn/read-string (get (json/read-str (get-in response [:headers "HX-Trigger"])) "shipyard:display"))))
+        tool! #(post! "/workspace/display/part-tool" {:part-id id :tool %})]
+    (try
+      (get! (urls/part-url id))
+      (is (true? (colors (tool! "part"))))
+      (is (false? (colors (post! "/workspace/display/colors" {}))))
+      (is (true? (colors (tool! "mounts"))))
+      (is (false? (colors (post! "/workspace/display/colors" {}))))
+      (is (false? (colors (tool! "regions"))))
+      (is (true? (colors (post! "/workspace/display/colors" {}))))
+      (is (false? (colors (tool! "part"))))
+      (is (false? (colors (tool! "mounts"))))
+      (is (= 204 (:status (post! "/workspace/display/part-tool" {:part-id "old-part" :tool "regions"}))))
+      (is (= "mounts" (:inspector-tab (workspace/workspace! workspaces :browse))))
+      (is (= 400 (:status (tool! "invalid"))))
+      (is (true? (colors (tool! "regions"))))
+      (is (str/includes? (:body (handler (mock/request :get "/"))) "data-mount-colors=\"true\""))
+      (get! (urls/part-url (:bridge fixture/ids)))
+      (is (= "part" (:inspector-tab (workspace/workspace! workspaces :browse))))
+      (is (false? (workspace/colors! workspaces :browse)))
+      (is (true? (get-in (workspace/workspace! workspaces :browse) [:tab-colors "regions"])))
+      (get! "/workspace/ships")
+      (is (= 204 (:status (tool! "mounts"))))
+      (finally (fixture/stop! started)))))
 
 (deftest editor-color-defaults-are-projected-on-transitions-and-page-restores
   (let [started (fixture/start!) sys (:system started) handler (:handler started)
@@ -24,6 +56,8 @@
         (is (= 200 (:status response)))
         (is (true? (:colors (event response "shipyard:workspace"))))
         (is (str/includes? (:body response) "data-mount-colors=\"true\"")))
+      (is (str/includes? (:body (handler (mock/request :get "/workspace/ships" {:tab "assembly"})))
+                         "data-mount-colors=\"true\""))
       (is (false? (:colors (event (post! "/workspace/display/colors" {}) "shipyard:display"))))
       (is (false? (:colors (event (get! "/ships/tab/schemes") "shipyard:workspace"))))
       (is (true? (:colors (event (post! "/workspace/display/colors" {}) "shipyard:display"))))
@@ -65,7 +99,7 @@
                                      {:visible (pr-str [(:prow fixture/ids)]) :selected (:prow fixture/ids)}))))
         (is (= (pr-str [(:prow fixture/ids)]) (get-in @state [:workspaces :browse :bulk-selection])))
         (is (= 200 (:status (request :post "/workspace/display/colors" "browse" 3 {}))))
-        (is (false? (get-in @state [:workspaces :browse :colors])))
+        (is (false? (get-in @state [:workspaces :browse :tab-colors "part"])))
         (is (= 400 (:status (request :post "/orient/selection" "browse" 3 {}))))
         (is (= 400 (:status (request :get "/workspace/invalid" "browse" 3 {}))))
         (is (= [:browse 3] ((juxt :active :activation) @state))))

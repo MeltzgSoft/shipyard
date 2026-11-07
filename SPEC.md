@@ -903,6 +903,11 @@ Within Ship Browser, Assembly defaults mount colors on, while Schemes and Custom
 default them off. Each editor tab retains its own explicit choice independently,
 including across table/back navigation, workspace changes and page reloads during
 the running application session. Opening another class does not reset these choices.
+Part Browser likewise retains independent mount-color choices for Part, Mounts,
+Regions, the orientation grid and exact-file previews. Part and Mounts default on;
+Regions defaults to layer colors. Selecting a tool preserves unsaved inspector
+fields. Returning to a tool restores its choice, including an explicit mount-color
+view in Regions. Filling a whole part switches only Regions to layer colors.
 Shared durable catalog facts remain authoritative; workspace independence does not
 create separate copies of authored parts or saved loadouts.
 

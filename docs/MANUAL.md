@@ -349,6 +349,12 @@ Double-click a part row to load it.
 | Pan | drag with the right mouse button (Alt+right-drag while a paint brush is active) |
 | Zoom | scroll wheel |
 
+Part Browser remembers separate choices for **Part**, **Mounts**, **Regions**,
+the orientation grid and source-file previews. Part and Mounts start with mount colors
+on; Regions starts with layer colors. Switching tools preserves unsaved inspector
+fields and restores that tool's display choice. **Apply layer to entire part**
+switches Regions to layer colors without changing the other tools' choices.
+
 The first time you open a part, Shipyard prepares it for display, which takes a moment on
 a large hull. The panel says *Preparing this part for display* while it works, and the
 model appears when it is done - you can keep browsing in the meantime. After that it is
@@ -508,6 +514,8 @@ update the preview to match the restored face selection.
 A recess uses **Depth** and **Border**: it follows the selected face's boundary,
 leaving that border between the face edge and the recess. Border may be zero;
 depth and diameter must be positive. Mirrored pairs mirror their cuts too.
+
+
 
 Yellow wireframes show the cut opening, floor and walls through the model,
 including its hidden side, whenever **Mount colors** is enabled, across all Part Browser
@@ -726,6 +734,7 @@ controls now live in the floating inspector alongside scheme and paint controls.
 **Mount colors** starts on in **Assembly**, and off in **Schemes** and **Customize**.
 Each tab remembers its own toggle choice through tab changes, Back to ships,
 workspace navigation and page reloads while Shipyard is running.
+
 
 Incomplete classes can be opened, edited and duplicated. **3 empty mounts** counts
 unfilled mounts on the hull and attached parts; a hull-only class is valid too.

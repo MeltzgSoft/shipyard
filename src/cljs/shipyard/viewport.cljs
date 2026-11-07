@@ -2007,13 +2007,7 @@
     (listen-event! body sys "shipyard:clear" (fn [_] (clear! sys)))
     (listen-event! body sys "shipyard:status" #(reset! (:status sys) (payload %)))
     (listen-event! body sys "shipyard:authoring" #(authoring! sys (payload %)))
-    (listen-event! body sys "shipyard:inspector-tab"
-                   (fn [_]
-                     (sync-inspector-tool! sys)
-                     (when (and (= :browse (:workspace sys)) (= "regions" (inspector-tab))
-                                @(:mount-colors-enabled sys))
-                       (when-let [button (.querySelector js/document "[data-mount-colors-toggle]")]
-                         (.click button)))))
+    (listen-event! body sys "shipyard:inspector-tab" (fn [_] (sync-inspector-tool! sys)))
     (listen-event! body sys "shipyard:clear-preview" (fn [_] (clear-authoring-preview! sys)))
     (listen-event! body sys "shipyard:assembly" #(apply-assembly! sys (payload %)))
     (listen-event! body sys "shipyard:region-projection" (fn [_] (sync-regions-from-dom! sys)))
